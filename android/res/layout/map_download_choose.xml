@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    android:layout_marginTop="32dp"
+    android:layout_marginBottom="48dp"
+    android:weightSum="100" >
+
+    <TextView
+        android:id="@+id/select_area_to_download"
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:text="" />
+
+    <RelativeLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" >
+        <!-- android:layout_weight="80" -->
+
+        <org.osmdroid.views.MapView
+            android:id="@+id/mapd"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <ImageView
+            android:id="@+id/button_downloader_go_to_current_location"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="false"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentEnd="true"
+            android:layout_marginTop="15dp"
+            android:layout_marginEnd="15dp"
+            android:background="@drawable/ic_menu_mylocation" />
+
+        <Button
+            android:id="@+id/download_selected_area"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentRight="true"
+            android:layout_margin="32dp"
+            android:text="@string/download_selected_area" />
+
+        <Button
+            android:id="@+id/cancel_download_area"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentLeft="true"
+            android:layout_margin="32dp"
+            android:text="@string/cancel_download_area" />
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="0dp" >
+             </LinearLayout>
+
+    </RelativeLayout>
+
+
+</LinearLayout>

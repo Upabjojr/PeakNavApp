@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<title>PeakNav tutorial</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body, html {
+    height: 100%;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.slideshow-container {
+    max-width: 100%;
+    position: relative;
+    margin: auto;
+}
+
+.slideshow-container img {
+    width: 100%;
+    height: auto;
+}
+
+.prev, .next {
+    cursor: pointer;
+    position: absolute;
+    top: 50%;
+    width: auto;
+    padding: 16px;
+    margin-top: -22px;
+    color: white;
+    font-weight: bold;
+    font-size: 18px;
+    transition: 0.6s ease;
+    border-radius: 0 3px 3px 0;
+    user-select: none;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.next {
+    right: 0;
+    border-radius: 3px 0 0 3px;
+}
+
+#captionText {
+    color: black;
+    font-size: 15px;
+    position: absolute;
+    top: 40%;
+    left: 30%;
+    right: 30%;
+    bottom: 40%;
+    text-align: center;
+    padding: 2%;
+    background-color: #ffffff99;
+}
+
+#circle {
+    position: absolute;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="slideshow-container">
+
+    <div id="backgroundImg" class="mySlides"></div>
+    <div id="captionText">Caption Text</div>
+
+    <div id="circle">
+        <svg width="100" height="100">
+            <circle cx="50" cy="50" r="20" stroke="darkgreen" stroke-width="4" fill="none" />
+        </svg>
+    </div>
+
+    <a class="prev" onclick="plusSlides(-1)">❮</a>
+    <a class="next" onclick="plusSlides(1)">❯</a>
+
+</div>
+
+<script>
+var slideIndex = 0;
+var timer;
+
+function get_image(img_path) {
+    var img = new Image();
+    img.src = img_path;
+    return img;
+}
+
+// OVERLOAD::get_image
+
+let imageBase = get_image("imageBase.jpg");
+let imageOptions = get_image("imageOptions.jpg");
+let imageOptionsSat = get_image("imageOptionsSat.jpg");
+let imageBaseSat = get_image("imageBaseSat.jpg");
+
+let slideData = [
+    {
+        "background": imageBase,
+        "text": "Gyroscope",
+        "pointing": {"top": "70%", "left": "-6.1%"}
+    },
+    {
+        "background": imageBase,
+        "text": "Elevation",
+        "pointing": {"top": "50%", "left": "-6.1%"}
+    },
+    {
+        "background": imageBase,
+        "text": "Gallery",
+        "pointing": {"top": "-12.5%", "left": "-6.1%"}
+    },
+    {
+        "background": imageBase,
+        "text": "Take a picture!",
+        "pointing": {"top": "-12.5%", "left": "7.8%"}
+    },
+    {
+        "background": imageBase,
+        "text": "Search",
+        "pointing": {"top": "-12.5%", "left": "86.2%"}
+    },
+    {
+        "background": imageBase,
+        "text": "Share picture",
+        "pointing": {"top": "52.7%", "left": "86.2%"}
+    },
+    {
+        "background": imageBase,
+        "text": "Current location",
+        "pointing": {"top": "70.0%", "left": "86.2%"}
+    },
+    {
+        "background": imageBase,
+        "text": "Options",
+        "pointing": {"top": "4.5%", "left": "86.2%"}
+    },
+    {
+        "background": imageOptions,
+        "text": "Option menus",
+        "pointing": null
+    },
+    {
+        "background": imageOptionsSat,
+        "text": "Selecting satellite view",
+        "pointing": null
+    },
+    {
+        "background": imageBaseSat,
+        "text": "Satellite view",
+        "pointing": null
+    },
+];
+
+function showSlides() {
+    var backgroundImg = document.querySelector("#backgroundImg");
+    var captionText = document.querySelector("#captionText");
+
+    let slide = slideData[slideIndex];
+    backgroundImg.innerHTML = "";
+    backgroundImg.appendChild(slide.background);
+    captionText.innerText = slide.text;
+
+    let pointing = slide.pointing;
+    if (pointing == null) {
+        circle.style.display = "none";
+    } else {
+        circle.style.display = "";
+        circle.style.top = pointing["top"];
+        circle.style.left = pointing["left"];
+    }
+    // timer = setTimeout(showSlides, 2000);
+}
+
+showSlides();
+
+function plusSlides(n) {
+    clearTimeout(timer);
+    slideIndex += n;
+    if (slideIndex >= slideData.length) {
+        slideIndex = slideData.length - 1;
+    } else if (slideIndex < 0) {
+        slideIndex = 0;
+    }
+    showSlides();
+}
+
+var radius = 10;
+var circIndex = 0;
+
+function rgb(r, g, b) {
+    return '#' + Math.round(r * 255).toString(16).padStart(2, '0') +
+            Math.round(g * 255).toString(16).padStart(2, '0') +
+            Math.round(b * 255).toString(16).padStart(2, '0');
+}
+
+function changeCircle() {
+    let circle = document.querySelector("circle");
+    circIndex++;
+    if (circIndex > 5) {
+        circIndex = 0;
+    }
+    radius = 20 - circIndex;
+    circle.setAttribute("r", radius);
+    circle.setAttribute("stroke", rgb(0, 0.5 + circIndex/10.0, 0.5 + (5.0 - circIndex)/10.0))
+}
+
+setInterval(changeCircle, 100);
+
+document.addEventListener("keydown", function(event) {
+    if (event.keyCode === 37) {
+        plusSlides(-1);
+        console.log("Left arrow key pressed");
+    } else if (event.keyCode === 39) {
+        plusSlides(1);
+        console.log("Right arrow key pressed");
+    }
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="240mm"
+   height="360mm"
+   viewBox="0 0 240 360"
+   version="1.1"
+   id="svg8282"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   sodipodi:docname="icon_elevation_button.svg"
+   inkscape:export-filename="icon_elevation_button.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview8284"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="true"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="0.53182881"
+     inkscape:cx="459.73441"
+     inkscape:cy="716.39595"
+     inkscape:window-width="1920"
+     inkscape:window-height="986"
+     inkscape:window-x="-11"
+     inkscape:window-y="-11"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs8279">
+    <marker
+       style="overflow:visible"
+       id="marker9424"
+       refX="0"
+       refY="0"
+       orient="auto-start-reverse"
+       inkscape:stockid="TriangleStart"
+       markerWidth="5.3244081"
+       markerHeight="6.155385"
+       viewBox="0 0 5.3244081 6.1553851"
+       inkscape:isstock="true"
+       inkscape:collect="always"
+       preserveAspectRatio="xMidYMid">
+      <path
+         transform="scale(0.5)"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:context-stroke;stroke-width:1pt"
+         d="M 5.77,0 -2.88,5 V -5 Z"
+         id="path9422" />
+    </marker>
+    <marker
+       style="overflow:visible"
+       id="TriangleStart"
+       refX="0"
+       refY="0"
+       orient="auto-start-reverse"
+       inkscape:stockid="TriangleStart"
+       markerWidth="5.3244081"
+       markerHeight="6.155385"
+       viewBox="0 0 5.3244081 6.1553851"
+       inkscape:isstock="true"
+       inkscape:collect="always"
+       preserveAspectRatio="xMidYMid">
+      <path
+         transform="scale(0.5)"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:context-stroke;stroke-width:1pt"
+         d="M 5.77,0 -2.88,5 V -5 Z"
+         id="path135" />
+    </marker>
+  </defs>
+  <g
+     inkscape:label="Level 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <g
+       id="path8822">
+      <path
+         style="color:#000000;fill:#ffffff;stroke-width:0;stroke-linecap:round;-inkscape-stroke:none"
+         d="M 240,180 A 120,180 0 0 1 120,360 120,180 0 0 1 0,180 120,180 0 0 1 120,0 120,180 0 0 1 240,180 Z"
+         id="path9607" />
+      <path
+         style="color:#000000;fill:#ffffff;stroke-linecap:round;-inkscape-stroke:none"
+         d="M 240,180 C 240,360 240,360 120,360 0,360 0,360 0,180 0,0 0,0 120,0 240,0 240,0 240,180 Z"
+         id="path9609"
+         sodipodi:nodetypes="sssss" />
+    </g>
+    <g
+       id="rect9244">
+      <path
+         style="color:#000000;fill:#000000;stroke-linecap:round;-inkscape-stroke:none"
+         d="m 20,60 v 240 c 0,60 200,60 200,0 V 60 C 220,0 20,0 20,60 Z m 30,15 c 0,-55 140,-55 140,0 v 210 c 0,55 -140,55 -140,0 z"
+         id="path9603"
+         sodipodi:nodetypes="cccccccccc" />
+    </g>
+    <path
+       style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:15;stroke-linecap:round;stroke-dasharray:none;marker-start:url(#TriangleStart);marker-end:url(#marker9424)"
+       d="M 120,100 V 260"
+       id="path9260"
+       sodipodi:nodetypes="cc" />
+  </g>
+</svg>

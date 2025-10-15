@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name_releaseBundle">PeakNav</string>
+    <string name="app_name_release">PeakNav Release</string>
+    <string name="app_name_debug">PEaKNav Debug</string>
+    <string name="download_selected_area">Download area</string>
+    <string name="cancel_download_area">Back</string>
+    <string name="search_title">Search</string>
+    <string name="search">Search</string>
+
+    <string name="shared_pref_launcher">sharedPrefLauncher</string>
+</resources>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rendertheme xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" map-background="#F8F8F8"
+    map-background-outside="#DDDDDD" version="5" xmlns="http://mapsforge.org/renderTheme"
+    xsi:schemaLocation="http://mapsforge.org/renderTheme https://raw.githubusercontent.com/mapsforge/mapsforge/master/resources/renderTheme.xsd">
+
+    <rule e="way" k="piste:type" v="downhill">
+        <rule e="any" k="piste:difficulty" v="easy">
+            <line stroke="#770000FF" stroke-width="9.0" stroke-linecap="butt" />
+            <lineSymbol position="center" display="always" priority="50" repeat="true"
+                symbol-width="20" symbol-height="18"
+                repeat-gap="25" repeat-start="0" dy="0"
+                src="mapsforge/triangle_arrow.svg" />
+        </rule>
+        <rule e="any" k="piste:difficulty" v="intermediate">
+            <line stroke="#FFFF0000" stroke-width="9.0" stroke-linecap="butt" />
+            <lineSymbol position="center" display="always" priority="50" repeat="true"
+                symbol-width="20" symbol-height="18"
+                repeat-gap="25" repeat-start="0" dy="0"
+                src="mapsforge/triangle_arrow.svg" />
+        </rule>
+        <rule e="any" k="piste:difficulty" v="advanced">
+            <line stroke="#77000000" stroke-width="9.0" stroke-linecap="butt" />
+            <lineSymbol position="center" display="always" priority="50" repeat="true"
+                symbol-width="20" symbol-height="18"
+                repeat-gap="25" repeat-start="0" dy="0"
+                src="mapsforge/triangle_arrow.svg" />
+        </rule>
+    </rule>
+
+</rendertheme>
