@@ -82,6 +82,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         searchFrame.setLayout(null);
         searchFrame.setSize(800, 600);
         searchFrame.setVisible(true);
+        searchFrame.setTitle(s("Search"));
         JPanel panel = new JPanel();
         panel.setVisible(true);
         BoxLayout layout = new BoxLayout(panel, BoxLayout.PAGE_AXIS);

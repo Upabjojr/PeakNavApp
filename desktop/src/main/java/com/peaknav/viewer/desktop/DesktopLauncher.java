@@ -29,6 +29,7 @@ public class DesktopLauncher {
 				return true;
 			}
 		});
+		config.setPreferencesConfig(".peaknav", Files.FileType.External);
 		setNumOfCpuCores(4);
 		MapViewerDesktopSingleton.initializeDesktopGraphicFactory();
 		mapApp = MapViewerDesktopSingleton.getAppInstance();
