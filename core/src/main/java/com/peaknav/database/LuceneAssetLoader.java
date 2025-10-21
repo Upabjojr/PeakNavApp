@@ -14,8 +14,7 @@ import java.nio.file.Paths;
 
 public class LuceneAssetLoader {
     private final String assetFolderName = "geonames_index.362";
-    private final File localDir = new File(Gdx.files.local("").file(), assetFolderName);
-
+    private final File localDir = new File(Gdx.files.external("").file(), assetFolderName);
 
     private void copyAssetsToInternalStorage() throws IOException {
 
@@ -23,9 +22,9 @@ public class LuceneAssetLoader {
             localDir.mkdirs();
         }
 
-
-        FileHandle assetFolder = Gdx.files.internal(assetFolderName);
-        for (FileHandle assetFile : assetFolder.list()) {
+        FileHandle index = Gdx.files.internal(assetFolderName + "/filelist.txt");
+        for (String name : index.readString().split("\\r?\\n")) {
+            FileHandle assetFile = Gdx.files.internal(assetFolderName + "/" + name);
             File dest = new File(localDir, assetFile.name());
             if (!dest.exists()) {
                 try (InputStream is = assetFile.read();

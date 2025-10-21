@@ -98,17 +98,30 @@ public class DesktopFiles implements Files {
         return true;
     }
 
+    public static String getGdxFilesExternalRootFolderName() {
+        String os = System.getProperty("os.name").toLowerCase();
+
+        if (os.contains("win")) {
+            return DesktopLauncher.appName;
+        } else if (os.contains("mac")) {
+            return DesktopLauncher.appName;
+        } else {
+            return "." + DesktopLauncher.appName.toLowerCase();
+        }
+    }
+
     public static String getGdxFilesExternalPath() {
         String os = System.getProperty("os.name").toLowerCase();
         String userHome = System.getProperty("user.home");
 
         String folder;
+        String folderName = getGdxFilesExternalRootFolderName();
         if (os.contains("win")) {
-            folder = System.getenv("APPDATA") + "\\" + DesktopLauncher.appName;
+            folder = System.getenv("APPDATA") + "\\" + folderName;
         } else if (os.contains("mac")) {
-            folder = userHome + "/Library/Application Support/" + DesktopLauncher.appName;
+            folder = userHome + "/Library/Application Support/" + folderName;
         } else {
-            folder = userHome + "/." + DesktopLauncher.appName.toLowerCase();
+            folder = userHome + "/" + folderName;
         }
 
         new File(folder).mkdirs();

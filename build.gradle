@@ -47,7 +47,20 @@ configure(subprojects - project(':android')) {
             assetsFile.append(it + "\n")
         }
     }
+    tasks.register("generateGeonamesAssetIndex") {
+        def assetsDir = file("${project.rootDir}/assets/geonames_index.362")
+        def indexFile = new File(assetsDir, "filelist.txt")
+
+        inputs.dir(assetsDir)
+        outputs.file(indexFile)
+
+        def files = assetsDir.listFiles()
+        if (files) {
+            indexFile.text = files.collect { it.name }.join("\n")
+        }
+    }
     processResources.dependsOn 'generateAssetList'
+    processResources.dependsOn 'generateGeonamesAssetIndex'
 
     compileJava {
         options.incremental = true

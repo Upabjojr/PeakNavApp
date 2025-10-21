@@ -1,6 +1,7 @@
 package com.peaknav.viewer.desktop;
 
 import static com.peaknav.viewer.controller.MapController.setNumOfCpuCores;
+import static com.peaknav.viewer.desktop.DesktopFiles.getGdxFilesExternalRootFolderName;
 
 import com.badlogic.gdx.Files;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
@@ -21,7 +22,6 @@ public class DesktopLauncher {
 		Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
 		config.setForegroundFPS(60);
 		config.setTitle(appName);
-		config.setPreferencesConfig(DesktopFiles.getGdxFilesExternalPath(), Files.FileType.External);
 		config.setWindowListener(new Lwjgl3WindowAdapter() {
 			@Override
 			public boolean closeRequested() {
@@ -29,7 +29,7 @@ public class DesktopLauncher {
 				return true;
 			}
 		});
-		config.setPreferencesConfig(".peaknav", Files.FileType.External);
+		config.setPreferencesConfig(getGdxFilesExternalRootFolderName(), Files.FileType.External);
 		setNumOfCpuCores(4);
 		MapViewerDesktopSingleton.initializeDesktopGraphicFactory();
 		mapApp = MapViewerDesktopSingleton.getAppInstance();
