@@ -12,6 +12,17 @@ import org.mapsforge.core.model.Tile;
 public abstract class ElevationImageAbstract {
     public static final float MISSING_VERTEX_VALUE = Float.NaN;;
     public static final int numVertAttributes = 8;
+
+    /**
+     * Most vertices a tile mesh may have. The index buffers built here and in
+     * {@link com.peaknav.elevation.NormalShader} are {@code short[]} — GL ES 2 has no 32-bit
+     * element indices — so a vertex number beyond this wraps silently on the cast and the
+     * triangles then point at arbitrary vertices, tearing holes you can see the sky through.
+     *
+     * <p>Mesh edges are always {@code 2^k + 1}, so in practice this allows an edge of 129
+     * (16641 vertices) and rules out 257 (66049).
+     */
+    public static final int MAX_MESH_VERTICES = Short.MAX_VALUE;
     protected final float coordStepX, coordStepY;
     public final BoundingBox boundingBox;
     protected volatile short[] elevations;
@@ -62,6 +73,13 @@ public abstract class ElevationImageAbstract {
         int eleY = (int) floatY;
 
         final int eL1 = edgeLength - 1;
+        // Clamp to the tile so a coordinate at/just outside its bounds can't
+        // index the elevation array out of range.
+        if (eleX < 0) eleX = 0;
+        else if (eleX > eL1) eleX = eL1;
+        if (eleY < 0) eleY = 0;
+        else if (eleY > eL1) eleY = eL1;
+
         float el1 = getTileMatrixElevationLatits(eleX, eleY);
         float el2 = getTileMatrixElevationLatits(eleX + ((eleX < eL1)? 1 : -1), eleY);
         float el3 = getTileMatrixElevationLatits(eleX, eleY + ((eleY < eL1)? 1 : -1));

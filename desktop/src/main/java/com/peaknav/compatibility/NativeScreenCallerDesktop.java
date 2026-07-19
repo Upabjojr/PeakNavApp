@@ -13,6 +13,7 @@ import com.peaknav.network.NominatimResponse;
 import com.peaknav.ui.ClickCallback;
 import com.peaknav.ui.CurrentLocationCallback;
 import com.peaknav.ui.CurrentLocationListener;
+import com.peaknav.ui.TextFieldsCallback;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.desktop.GalleryPickDesktop;
 import com.peaknav.viewer.desktop.MapViewerDesktopSingleton;
@@ -75,84 +76,100 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         getAppState().setMapDataDownloaded(true);
     }
 
+    /**
+     * Distinguishes the latest search from earlier ones, so a slow online (Nominatim) response
+     * arriving after the user has already searched again cannot interleave stale rows into the
+     * list (clicking a row would then navigate to the wrong place). Only touched on the EDT.
+     */
+    private int searchGeneration = 0;
+
     @Override
     public void openScreenSearchLocation(ClickCallback callback) {
-        // mapApp.pause();
-        JFrame searchFrame = new JFrame();
-        searchFrame.setLayout(null);
-        searchFrame.setSize(800, 600);
-        searchFrame.setVisible(true);
-        searchFrame.setTitle(s("Search"));
-        JPanel panel = new JPanel();
-        panel.setVisible(true);
-        BoxLayout layout = new BoxLayout(panel, BoxLayout.PAGE_AXIS);
-        panel.setLayout(layout);
-        panel.setBounds(0, 0, 800, 600);
-        searchFrame.add(panel);
+        // The whole window is built on the EDT (this method is called from the GL render thread;
+        // constructing Swing UI there is undefined behaviour and deadlock-prone on macOS).
+        SwingUtilities.invokeLater(() -> {
+            JFrame searchFrame = new JFrame();
+            searchFrame.setLayout(null);
+            searchFrame.setSize(800, 600);
+            searchFrame.setTitle(s("Search"));
+            JPanel panel = new JPanel();
+            BoxLayout layout = new BoxLayout(panel, BoxLayout.PAGE_AXIS);
+            panel.setLayout(layout);
+            panel.setBounds(0, 0, 800, 600);
+            searchFrame.add(panel);
 
-        JTextField textField = new JTextField("", 1);
-        textField.setMaximumSize(new Dimension(300, 65));
-        panel.add(textField, BorderLayout.CENTER);
-        JButton searchButton = new JButton();
-        searchButton.setText(s("Search"));
-        searchButton.setSize(new Dimension(150, 50));
-        panel.add(searchButton);
-        panel.add(Box.createVerticalGlue());
+            JTextField textField = new JTextField("", 1);
+            textField.setMaximumSize(new Dimension(300, 65));
+            panel.add(textField, BorderLayout.CENTER);
+            JButton searchButton = new JButton();
+            searchButton.setText(s("Search"));
+            searchButton.setSize(new Dimension(150, 50));
+            panel.add(searchButton);
+            panel.add(Box.createVerticalGlue());
 
-        textField.requestFocus();
-        SwingUtilities.getRootPane(searchButton).setDefaultButton(searchButton);
+            SwingUtilities.getRootPane(searchButton).setDefaultButton(searchButton);
 
-        DefaultListModel<String> model = new DefaultListModel<>();
+            DefaultListModel<String> model = new DefaultListModel<>();
 
-        JList<String> list = new JList<>(model);
-        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        list.setVisibleRowCount(10);
-        list.setFixedCellHeight(28);
-        list.setBorder(new EmptyBorder(6, 6, 6, 6));
+            JList<String> list = new JList<>(model);
+            list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            list.setVisibleRowCount(10);
+            list.setFixedCellHeight(28);
+            list.setBorder(new EmptyBorder(6, 6, 6, 6));
 
-        list.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                int idx = list.locationToIndex(e.getPoint());
-                if (idx != -1) {
-                    Rectangle cellBounds = list.getCellBounds(idx, idx);
-                    if (cellBounds != null && cellBounds.contains(e.getPoint())) {
-                        // String item = model.getElementAt(idx);
-                        // System.err.println(item);
-                        LuceneGeonameSearch.GeonameResult result = jGeonameResults.get(idx);
-                        getC().L.setCurrentTargetCoords(result.lat, result.lon);
-                        searchFrame.dispose();
+            list.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    int idx = list.locationToIndex(e.getPoint());
+                    if (idx != -1) {
+                        Rectangle cellBounds = list.getCellBounds(idx, idx);
+                        if (cellBounds != null && cellBounds.contains(e.getPoint())
+                                && idx < jGeonameResults.size()) {
+                            LuceneGeonameSearch.GeonameResult result = jGeonameResults.get(idx);
+                            // Core-state mutation (tile updates, missing-data checks) belongs on
+                            // the GL thread, not the EDT.
+                            Gdx.app.postRunnable(
+                                    () -> getC().L.setCurrentTargetCoords(result.lat, result.lon));
+                            searchFrame.dispose();
+                        }
                     }
                 }
-            }
-        });
-
-        panel.add(new JScrollPane(list), BorderLayout.CENTER);
-
-        searchButton.addActionListener(actionEvent -> {
-            String searchText = textField.getText();
-            List<LuceneGeonameSearch.GeonameResult> geonameResults = getC().luceneGeonameSearch.searchGeoName(searchText);
-            model.clear();
-            for (LuceneGeonameSearch.GeonameResult gr : geonameResults) {
-                model.addElement(gr.getFullName());
-            }
-            jGeonameResults.clear();
-            jGeonameResults.addAll(geonameResults);
-
-            getC().onlineSearch.parseDestinationText(searchText, nominatimResponses -> {
-                for (NominatimResponse nominatimResponse : nominatimResponses) {
-                    LuceneGeonameSearch.GeonameResult geonameResult = new LuceneGeonameSearch.GeonameResult(
-                            nominatimResponse.displayName, nominatimResponse.displayName,
-                            nominatimResponse.lat, nominatimResponse.lon, -1
-                    );
-                    model.addElement(geonameResult.getFullName());
-                    jGeonameResults.add(geonameResult);
-                }
             });
-            MapViewerSingleton.getAppInstance().resume();
-            // searchFrame.dispose();
+
+            panel.add(new JScrollPane(list), BorderLayout.CENTER);
+
+            searchButton.addActionListener(actionEvent -> {
+                final int generation = ++searchGeneration;
+                String searchText = textField.getText();
+                List<LuceneGeonameSearch.GeonameResult> geonameResults = getC().luceneGeonameSearch.searchGeoName(searchText);
+                model.clear();
+                for (LuceneGeonameSearch.GeonameResult gr : geonameResults) {
+                    model.addElement(gr.getFullName());
+                }
+                jGeonameResults.clear();
+                jGeonameResults.addAll(geonameResults);
+
+                // The callback arrives on a network thread: the list model and the shared result
+                // list may only be touched on the EDT, and only if no newer search superseded us.
+                getC().onlineSearch.parseDestinationText(searchText,
+                        nominatimResponses -> SwingUtilities.invokeLater(() -> {
+                    if (generation != searchGeneration) {
+                        return; // stale response of an earlier search
+                    }
+                    for (NominatimResponse nominatimResponse : nominatimResponses) {
+                        LuceneGeonameSearch.GeonameResult geonameResult = new LuceneGeonameSearch.GeonameResult(
+                                nominatimResponse.displayName, nominatimResponse.displayName,
+                                nominatimResponse.lat, nominatimResponse.lon, -1
+                        );
+                        model.addElement(geonameResult.getFullName());
+                        jGeonameResults.add(geonameResult);
+                    }
+                }));
+                MapViewerSingleton.getAppInstance().resume();
+            });
+            searchFrame.setVisible(true);
+            textField.requestFocus();
         });
-        searchFrame.show();
     }
 
     @Override
@@ -166,18 +183,99 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     }
 
     @Override
+    public void pickGpxFile() {
+        SwingUtilities.invokeLater(() -> {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
+            chooser.setAcceptAllFileFilterUsed(false);
+            chooser.addChoosableFileFilter(new javax.swing.filechooser.FileFilter() {
+                @Override
+                public boolean accept(java.io.File f) {
+                    return f.isDirectory() || f.getName().toLowerCase().endsWith(".gpx");
+                }
+
+                @Override
+                public String getDescription() {
+                    return "GPX tracks (*.gpx)";
+                }
+            });
+            if (chooser.showOpenDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION) {
+                return;
+            }
+            java.io.File file = chooser.getSelectedFile();
+            if (file == null) {
+                return;
+            }
+            getC().submitExecutorGeneric(() -> {
+                try {
+                    String xml = new String(
+                            java.nio.file.Files.readAllBytes(file.toPath()),
+                            java.nio.charset.StandardCharsets.UTF_8);
+                    getC().gpxManager.loadFromXml(xml);
+                } catch (java.io.IOException e) {
+                    System.err.println("[GPX] could not read " + file + ": " + e.getMessage());
+                }
+            });
+        });
+    }
+
+    @Override
+    public void promptGoToImageLocation(double lat, double lon) {
+        SwingUtilities.invokeLater(() -> {
+            int dialogResult = JOptionPane.showConfirmDialog(
+                    null,
+                    s("Go_to_image_location_prompt"), // message
+                    s("Image_location_found"),        // title
+                    JOptionPane.YES_NO_OPTION
+            );
+            if (dialogResult == JOptionPane.YES_OPTION) {
+                // Runs on the EDT; hop to the GL thread for the core-state mutation.
+                Gdx.app.postRunnable(() -> getC().L.setCurrentTargetCoords(lat, lon));
+            }
+        });
+    }
+
+    @Override
+    public void warnCannotReadImageLocation() {
+        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                null,
+                s("Image_location_missing"),
+                s("Image_location_missing_title"),
+                JOptionPane.WARNING_MESSAGE));
+    }
+
+    @Override
     public void openAppInfoScreen() {
-        Desktop desktop = Desktop.getDesktop();
-        try {
-            desktop.open(Gdx.files.internal("info/app_info.html").file());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        openBundledHtml("info/app_info.html");
     }
 
     @Override
     public void openAppTutorial() {
+        // Just the tutorial slideshow; the keyboard-controls overlay is separate (raised
+        // in core when an unbound key is pressed). Desktop has no WebView, so — like
+        // openAppInfoScreen — the tutorial is handed to the system browser.
+        openBundledHtml("info/app_tutorial.html");
+    }
 
+    /**
+     * Opens a bundled HTML page in the system browser. When the app runs from a packaged jar,
+     * {@code Gdx.files.internal(...).file()} is not a real file, so the page is extracted to a
+     * temp file first. Failures surface as an alert instead of a RuntimeException on the GL
+     * thread (which used to kill the action silently).
+     */
+    private void openBundledHtml(String internalPath) {
+        try {
+            java.io.File file = Gdx.files.internal(internalPath).file();
+            if (!file.exists()) {
+                java.io.File tmp = java.io.File.createTempFile("peaknav-", ".html");
+                tmp.deleteOnExit();
+                Gdx.files.internal(internalPath).copyTo(new com.badlogic.gdx.files.FileHandle(tmp));
+                file = tmp;
+            }
+            Desktop.getDesktop().open(file);
+        } catch (Exception e) {
+            alertMessage(internalPath + ": " + e.getMessage());
+        }
     }
 
     private final CurrentLocationListener currentLocationListener = new CurrentLocationListener() {
@@ -193,34 +291,211 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     }
 
     @Override
+    public void chooseSkyTime() {
+        SwingUtilities.invokeLater(() -> {
+            com.peaknav.sky.SkyModel sky = getC().skyModel;
+            long init = sky.currentTimeMillis();
+            javax.swing.JSpinner spinner = new javax.swing.JSpinner(new javax.swing.SpinnerDateModel(
+                    new java.util.Date(init), null, null, java.util.Calendar.MINUTE));
+            spinner.setEditor(new javax.swing.JSpinner.DateEditor(spinner, "yyyy-MM-dd HH:mm"));
+            Object[] options = { s("OK"), s("Sky_time_device_clock"), s("Cancel") };
+            int result = JOptionPane.showOptionDialog(null, spinner, s("Sky_time"),
+                    JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
+            if (result == 0) {
+                java.util.Date d = (java.util.Date) spinner.getValue();
+                sky.setCustomTimeMillis(d.getTime());
+            } else if (result == 1) {
+                sky.clearCustomTime();
+            }
+        });
+    }
+
+    @Override
     public void askForDownloadScreen(double lat, double lon) {
-        // System.err.println("Download screen?");
-
-        int dialogResult = JOptionPane.showConfirmDialog(
-                null,
-                s("Missing_data_prompt"), // message
-                s("Missing_data_prompt"), // title
-                JOptionPane.YES_NO_OPTION
-        );
-
-        if (dialogResult == JOptionPane.YES_OPTION) {
-            this.openMapDataDownloadChooser();
-        } else if (dialogResult == JOptionPane.NO_OPTION) {
-            getC().L.setCurrentTargetCoords(
-                    getC().L.getCurrentLatitude(),
-                    getC().L.getCurrentLongitude()
+        // Marshalled to the EDT: this is reached from inside MapViewerScreen.render (a camera fly
+        // ending over missing data), and a synchronous JOptionPane there both violates Swing
+        // threading and freezes the whole render loop until the user answers.
+        SwingUtilities.invokeLater(() -> {
+            int dialogResult = JOptionPane.showConfirmDialog(
+                    null,
+                    s("Missing_data_prompt"), // message
+                    s("Missing_data_prompt"), // title
+                    JOptionPane.YES_NO_OPTION
             );
-        }
+
+            if (dialogResult == JOptionPane.YES_OPTION) {
+                this.openMapDataDownloadChooser();
+            } else if (dialogResult == JOptionPane.NO_OPTION) {
+                // Go back to where we were, without re-running the missing-data check: doing that
+                // here would pop this very dialog straight back up when the old spot lacks data
+                // too. Target mutation belongs on the GL thread, not the EDT.
+                Gdx.app.postRunnable(() -> getC().L.setCurrentTargetCoords(
+                        getC().L.getCurrentLatitude(),
+                        getC().L.getCurrentLongitude(),
+                        false
+                ));
+            }
+        });
     }
 
     @Override
     public void shareSnapshot(Pixmap pixmap) {
+        if (pixmap == null) {
+            return;
+        }
+        // Default file name carries a timestamp so successive shots don't collide.
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+        final String defaultName = "PeakNav_" + stamp + ".png";
+        SwingUtilities.invokeLater(() -> {
+            try {
+                javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+                chooser.setDialogTitle(s("Save_image"));
+                chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
+                chooser.setSelectedFile(new java.io.File(defaultName));
+                javax.swing.filechooser.FileNameExtensionFilter pngFilter =
+                        new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_png"), "png");
+                javax.swing.filechooser.FileNameExtensionFilter jpgFilter =
+                        new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_jpeg"), "jpg", "jpeg");
+                chooser.setAcceptAllFileFilterUsed(false);
+                chooser.addChoosableFileFilter(pngFilter);
+                chooser.addChoosableFileFilter(jpgFilter);
+                chooser.setFileFilter(pngFilter);
 
+                if (chooser.showSaveDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION) {
+                    pixmap.dispose();
+                    return;
+                }
+                java.io.File file = chooser.getSelectedFile();
+                if (file == null) {
+                    pixmap.dispose();
+                    return;
+                }
+                // Pick the format from the file extension; JPEG for .jpg/.jpeg, PNG otherwise. When
+                // no known extension is typed, fall back to the selected filter and append it.
+                String lower = file.getName().toLowerCase(java.util.Locale.ROOT);
+                boolean jpeg;
+                if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+                    jpeg = true;
+                } else if (lower.endsWith(".png")) {
+                    jpeg = false;
+                } else {
+                    jpeg = chooser.getFileFilter() == jpgFilter;
+                    file = new java.io.File(file.getParentFile(), file.getName() + (jpeg ? ".jpg" : ".png"));
+                }
+                if (file.exists()) {
+                    int overwrite = javax.swing.JOptionPane.showConfirmDialog(null,
+                            s("Overwrite_prompt"), s("File_exists"),
+                            javax.swing.JOptionPane.YES_NO_OPTION);
+                    if (overwrite != javax.swing.JOptionPane.YES_OPTION) {
+                        pixmap.dispose();
+                        return;
+                    }
+                }
+                final java.io.File target = file;
+                final boolean asJpeg = jpeg;
+                Thread saver = new Thread(() -> {
+                    try {
+                        savePixmapToFile(pixmap, target, asJpeg);
+                        SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
+                                null, s("Image_saved") + ":\n" + target.getAbsolutePath()));
+                    } catch (Exception e) {
+                        SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
+                                null, s("Save_failed_msg") + "\n" + e.getMessage(),
+                                s("Save_failed"), javax.swing.JOptionPane.ERROR_MESSAGE));
+                    } finally {
+                        pixmap.dispose();
+                    }
+                }, "snapshot-save");
+                saver.setDaemon(true);
+                saver.start();
+            } catch (Throwable t) {
+                pixmap.dispose();
+            }
+        });
     }
+
+    /**
+     * Writes a libGDX {@link Pixmap} to disk as PNG or JPEG via ImageIO. The pixmap comes straight
+     * from {@code glReadPixels} and is therefore bottom-up, so rows are flipped here (PNG output on
+     * other platforms relies on PixmapIO's own flip). JPEG has no alpha channel, so it is written as
+     * opaque RGB.
+     */
+    private static void savePixmapToFile(Pixmap pixmap, java.io.File file, boolean jpeg)
+            throws java.io.IOException {
+        int w = pixmap.getWidth(), h = pixmap.getHeight();
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(
+                w, h, jpeg ? java.awt.image.BufferedImage.TYPE_INT_RGB
+                           : java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < h; y++) {
+            int srcY = h - 1 - y; // flip: glReadPixels rows go bottom-to-top
+            for (int x = 0; x < w; x++) {
+                int rgba = pixmap.getPixel(x, srcY); // 0xRRGGBBAA
+                int r = (rgba >>> 24) & 0xFF;
+                int g = (rgba >>> 16) & 0xFF;
+                int b = (rgba >>> 8) & 0xFF;
+                int a = rgba & 0xFF;
+                image.setRGB(x, y, (a << 24) | (r << 16) | (g << 8) | b); // RGB type ignores alpha
+            }
+        }
+        java.io.File parent = file.getParentFile();
+        if (parent != null) {
+            parent.mkdirs();
+        }
+        if (!javax.imageio.ImageIO.write(image, jpeg ? "jpg" : "png", file)) {
+            throw new java.io.IOException("no ImageIO writer for " + (jpeg ? "JPEG" : "PNG"));
+        }
+    }
+
+    /** The toast currently on screen, if any. Only touched on the EDT. */
+    private javax.swing.JWindow currentToast;
 
     @Override
     public void makeToast(String message) {
+        if (message == null || message.isEmpty()) {
+            return;
+        }
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            if (java.awt.GraphicsEnvironment.isHeadless()) {
+                System.err.println("[Toast] " + message);
+                return;
+            }
+            // A burst of toasts (e.g. several provider errors) replaces the previous one instead
+            // of stacking identical always-on-top windows on the same spot.
+            if (currentToast != null) {
+                currentToast.dispose();
+                currentToast = null;
+            }
+            javax.swing.JWindow toast = new javax.swing.JWindow();
+            currentToast = toast;
+            toast.setAlwaysOnTop(true);
+            javax.swing.JLabel label = new javax.swing.JLabel(
+                    "<html><body style='width:360px'>" + escapeHtml(message) + "</body></html>");
+            label.setForeground(java.awt.Color.WHITE);
+            label.setBorder(javax.swing.BorderFactory.createEmptyBorder(12, 16, 12, 16));
+            javax.swing.JPanel panel = new javax.swing.JPanel(new java.awt.BorderLayout());
+            panel.setBackground(new java.awt.Color(32, 32, 32));
+            panel.add(label, java.awt.BorderLayout.CENTER);
+            toast.setContentPane(panel);
+            toast.pack();
 
+            java.awt.Rectangle screen = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getDefaultScreenDevice().getDefaultConfiguration().getBounds();
+            int x = screen.x + (screen.width - toast.getWidth()) / 2;
+            int y = screen.y + screen.height - toast.getHeight() - 80;
+            toast.setLocation(x, y);
+            toast.setVisible(true);
+
+            // Auto-dismiss so it behaves like an Android toast rather than a dialog to click away.
+            javax.swing.Timer timer = new javax.swing.Timer(3500, e -> {
+                toast.setVisible(false);
+                toast.dispose();
+                if (currentToast == toast) {
+                    currentToast = null;
+                }
+            });
+            timer.setRepeats(false);
+            timer.start();
+        });
     }
 
     @Override
@@ -235,12 +510,92 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void alertMessage(String message) {
+        if (message == null || message.isEmpty()) {
+            return;
+        }
+        javax.swing.SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
+                null, message, "PeakNav", javax.swing.JOptionPane.WARNING_MESSAGE));
+    }
 
+    private static String escapeHtml(String s) {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     @Override
+    public void promptForTextFields(
+            String title, String message, String[] labels, String[] initialValues, TextFieldsCallback callback) {
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            javax.swing.JPanel fieldsPanel = new javax.swing.JPanel(
+                    new java.awt.GridLayout(labels.length * 2, 1, 0, 2));
+            javax.swing.JTextField[] fields = new javax.swing.JTextField[labels.length];
+            for (int i = 0; i < labels.length; i++) {
+                String initial = (initialValues != null && i < initialValues.length
+                        && initialValues[i] != null) ? initialValues[i] : "";
+                fields[i] = new javax.swing.JTextField(initial, 40);
+                fieldsPanel.add(new javax.swing.JLabel(labels[i]));
+                fieldsPanel.add(fields[i]);
+            }
+
+            javax.swing.JPanel panel = new javax.swing.JPanel(new java.awt.BorderLayout(0, 8));
+            if (message != null && !message.isEmpty()) {
+                // A read-only, wrapped area so the (multi-line) token help sits above the fields.
+                javax.swing.JTextArea help = new javax.swing.JTextArea(message);
+                help.setEditable(false);
+                help.setOpaque(false);
+                help.setLineWrap(true);
+                help.setWrapStyleWord(true);
+                help.setBorder(null);
+                panel.add(help, java.awt.BorderLayout.NORTH);
+            }
+            panel.add(fieldsPanel, java.awt.BorderLayout.CENTER);
+
+            int result = javax.swing.JOptionPane.showConfirmDialog(
+                    null, panel, title,
+                    javax.swing.JOptionPane.OK_CANCEL_OPTION,
+                    javax.swing.JOptionPane.PLAIN_MESSAGE);
+
+            if (result != javax.swing.JOptionPane.OK_OPTION) {
+                callback.onCancelled();
+                return;
+            }
+            String[] values = new String[fields.length];
+            for (int i = 0; i < fields.length; i++) {
+                values[i] = fields[i].getText();
+            }
+            callback.onEntered(values);
+        });
+    }
+
+    /**
+     * The machine's physical memory, which decides how much terrain detail is loaded.
+     *
+     * <p>This used to answer a flat 3 GB. The detail tiers are chosen with {@code > 3.0 GB}, so
+     * every desktop — however much memory it had — landed in the tier meant for the smallest
+     * phones and got the coarsest tiles. Ask the OS instead, and fall back to a figure that at
+     * least reads as a desktop rather than a low-end handset.
+     */
+    @Override
     public long getTotalMemory() {
-        return 3L*1024L*1024L*1024L;
+        // Reflection because the accessor was renamed: getTotalPhysicalMemorySize on older JDKs,
+        // getTotalMemorySize from 14 on. Neither is on the portable interface.
+        java.lang.management.OperatingSystemMXBean bean =
+                java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+        for (String method : new String[]{"getTotalMemorySize", "getTotalPhysicalMemorySize"}) {
+            try {
+                java.lang.reflect.Method m = bean.getClass().getMethod(method);
+                m.setAccessible(true);
+                Object value = m.invoke(bean);
+                if (value instanceof Number) {
+                    long total = ((Number) value).longValue();
+                    if (total > 0) {
+                        return total;
+                    }
+                }
+            } catch (Throwable ignored) {
+                // Try the next name, then fall back below.
+            }
+        }
+        return 8L * 1024L * 1024L * 1024L;
     }
 
     private final OrientationPointerListener orientationPointerListener = new OrientationPointerListener() {

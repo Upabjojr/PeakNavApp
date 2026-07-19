@@ -1,7 +1,7 @@
 package com.peaknav.viewer;
 
 import static com.peaknav.elevation.ElevationUtils.getElevationLatitsFromMaxCoords;
-import static com.peaknav.utils.PeakNavUtils.containsNonLatinCharacters;
+import static com.peaknav.utils.PeakNavUtils.containsUnrenderableCharacters;
 
 import org.mapsforge.core.model.Tag;
 import org.mapsforge.core.model.Tile;
@@ -163,7 +163,7 @@ public class MapDataManager {
             if (ele == null) {
                 ele = getElevationLatitsFromMaxCoords(lon, lat, false);
             }
-            if (containsNonLatinCharacters(name)) {
+            if (containsUnrenderableCharacters(name)) {
                 if (name_en != null) {
                     name = name_en;
                 } else if (name_latn != null) {

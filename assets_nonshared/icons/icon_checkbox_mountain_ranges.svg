@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="240mm" height="240mm" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fbeede"/>
+      <stop offset="1" stop-color="#f3d9b5"/>
+    </linearGradient>
+    <linearGradient id="rockBack" x1="0" y1="60" x2="0" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a98763"/>
+      <stop offset="1" stop-color="#7c5a3a"/>
+    </linearGradient>
+    <linearGradient id="rockFront" x1="0" y1="70" x2="0" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8a6440"/>
+      <stop offset="1" stop-color="#5c3f26"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+
+  <g clip-path="url(#disc)">
+    <rect x="0" y="0" width="240" height="240" fill="url(#sky)"/>
+
+    <!-- sun -->
+    <circle cx="182" cy="72" r="20" fill="#f6b64c"/>
+
+    <!-- back ridge (a whole range, several peaks) -->
+    <path d="M-10 210 L44 96 L84 150 L120 78 L160 148 L206 100 L250 210 Z"
+          fill="url(#rockBack)" stroke="#4d3320" stroke-width="2"/>
+
+    <!-- front peaks with snow caps -->
+    <path d="M-10 214 L62 108 L134 214 Z" fill="url(#rockFront)" stroke="#3a2716" stroke-width="2.5"/>
+    <path d="M96 214 L170 92 L246 214 Z" fill="url(#rockFront)" stroke="#3a2716" stroke-width="2.5"/>
+
+    <!-- snow caps -->
+    <path d="M62 108 L44 134 q9 -7 18 0 q9 7 18 0 L86 148 z" fill="#ffffff" stroke="#cfe1ea" stroke-width="1.5"/>
+    <path d="M170 92 L150 122 q10 -8 20 0 q10 8 20 0 L190 122 z" fill="#ffffff" stroke="#cfe1ea" stroke-width="1.5"/>
+    <path d="M120 82 L106 104 q7 -6 14 0 q7 6 14 0 z" fill="#ffffff" stroke="#cfe1ea" stroke-width="1.2" opacity="0.9"/>
+  </g>
+
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#3a2716" stroke-width="3"/>
+</svg>

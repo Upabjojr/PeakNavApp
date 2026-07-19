@@ -39,9 +39,16 @@ public class PathUtils {
         return "elev_tiles";
     }
 
+    /**
+     * Where an unpacked tile of this layer lives: under the app's external map folder, in the
+     * layer's own directory tree. Every downloadable layer shares this layout — the PBF extracts
+     * and the area labels alike — and differs only in the file extension, which comes from the
+     * layer itself.
+     */
     public static File getPbfExternalFilePath(Tile tile, PbfLayer pbfLayer) {
         File file = new File(Gdx.files.external(getMapFolder()).file(), pbfLayer.name());
-        LinkedList<String> dirs = getDirsOfOsmPbfFile(file, tile, ".osm.pbf", pbfLayer.name());
+        LinkedList<String> dirs = getDirsOfOsmPbfFile(
+                file, tile, pbfLayer.getFileExtension(), pbfLayer.name());
         File path = new File(dirs.removeFirst());
         while (!dirs.isEmpty()) {
             path = new File(path, dirs.removeFirst());

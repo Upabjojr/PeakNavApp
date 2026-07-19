@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Pause the fly-over": same track badge as icon_gpx_play, with pause bars instead of the
+     triangle, so the button reads as the same control in its other state. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+    <linearGradient id="pause" x1="0" y1="86" x2="0" y2="158" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb648"/>
+      <stop offset="1" stop-color="#d67e12"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+
+  <g clip-path="url(#disc)">
+    <path d="M6 186 C 46 186, 52 132, 88 120 C 126 107, 128 66, 172 58 C 196 54, 214 54, 236 58"
+          fill="none" stroke="#c9d4dc" stroke-width="26" stroke-linecap="round"/>
+    <path d="M6 186 C 46 186, 52 132, 88 120 C 126 107, 128 66, 172 58 C 196 54, 214 54, 236 58"
+          fill="none" stroke="#e8482f" stroke-width="14" stroke-linecap="round"/>
+
+    <circle cx="26" cy="185" r="15" fill="#ffffff" stroke="#8a2318" stroke-width="5"/>
+    <circle cx="214" cy="56" r="15" fill="#ffffff" stroke="#8a2318" stroke-width="5"/>
+
+    <circle cx="120" cy="122" r="62" fill="#ffffff" opacity="0.92"/>
+    <circle cx="120" cy="122" r="62" fill="none" stroke="#3a2a08" stroke-width="6"/>
+    <g fill="url(#pause)" stroke="#3a2a08" stroke-width="6" stroke-linejoin="round">
+      <rect x="94" y="90" width="20" height="64" rx="5"/>
+      <rect x="126" y="90" width="20" height="64" rx="5"/>
+    </g>
+  </g>
+
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#3a2a08" stroke-width="3"/>
+</svg>

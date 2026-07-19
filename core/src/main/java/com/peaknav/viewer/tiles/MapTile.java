@@ -16,6 +16,7 @@ import com.badlogic.gdx.graphics.g3d.Model;
 import com.badlogic.gdx.graphics.g3d.ModelInstance;
 import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute;
 import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder;
+import com.badlogic.gdx.math.MathUtils;
 
 import java.io.DataOutputStream;
 import java.io.File;
@@ -81,7 +82,164 @@ public class MapTile {
     }
 
     public void reassignVertices() {
-        mesh.setVertices(vertices);
+        uploadMeshVertices();
+    }
+
+    /** Reused scratch for the sanitised copy sent to the GPU while the skirt is still NaN. */
+    private float[] renderVertices = null;
+
+    // --- Tucking a coarse edge under a finer neighbour -------------------------------------
+    // Edge ids, and for each the axis pushed (0 = x, 1 = y) and the direction of the push.
+    public static final int EDGE_EAST = 0, EDGE_WEST = 1, EDGE_NORTH = 2, EDGE_SOUTH = 3;
+    private static final int[] EDGE_AXIS = {0, 0, 1, 1};
+    private static final float[] EDGE_SIGN = {1f, -1f, 1f, -1f};
+
+    /** Per edge: how far to push it outward, and how far to drop it. Zero means no tuck. */
+    private final float[] tuckPush = new float[4];
+    private final float[] tuckDrop = new float[4];
+    private volatile boolean anyTuck = false;
+
+    /**
+     * Asks that this tile's given edge be tucked under the neighbour across it.
+     *
+     * <p>Where a coarse tile meets a finer one their elevations are welded to exactly the same
+     * heights, yet the boundary is still a single long triangle edge on this side and a chain of
+     * shorter ones on the other. The GPU rasterises the two independently, and rounding leaves
+     * sub-pixel slivers along that T-junction which show as thin sky-coloured lines. Nothing about
+     * the welded heights can fix it — the surfaces already meet.
+     *
+     * <p>So the coarse edge is pushed a little way past the boundary, under the finer tile, and
+     * dropped slightly. The overlap covers the sliver with terrain, and the drop keeps the lip
+     * below the finer surface instead of fighting it for depth.
+     *
+     * <p>Applied only to the copy uploaded to the GPU, never to {@link #vertices}: welding keeps
+     * reading and rewriting the true heights, so repeated welds cannot make the lip creep.
+     */
+    public void requestEdgeTuck(int edge, float push, float drop) {
+        if (edge < 0 || edge >= 4 || push <= 0f) {
+            return;
+        }
+        if (push > tuckPush[edge]) {
+            tuckPush[edge] = push;
+            tuckDrop[edge] = drop;
+        }
+        anyTuck = true;
+    }
+
+    /** Forgets pending tucks; the mesh is about to be rebuilt and neighbours will re-weld. */
+    private void clearEdgeTucks() {
+        java.util.Arrays.fill(tuckPush, 0f);
+        java.util.Arrays.fill(tuckDrop, 0f);
+        anyTuck = false;
+    }
+
+    private void applyEdgeTucks(float[] v) {
+        int w = getWidth();
+        int h = getHeight();
+        for (int edge = 0; edge < 4; edge++) {
+            float push = tuckPush[edge];
+            if (push <= 0f) {
+                continue;
+            }
+            float drop = tuckDrop[edge];
+            int axis = EDGE_AXIS[edge];
+            float delta = EDGE_SIGN[edge] * push;
+            int count = (axis == 0) ? h : w;
+            for (int k = 0; k < count; k++) {
+                int index;
+                switch (edge) {
+                    case EDGE_EAST:  index = k * w + (w - 1); break;
+                    case EDGE_WEST:  index = k * w;           break;
+                    case EDGE_NORTH: index = (h - 1) * w + k; break;
+                    default:         index = k;               break; // EDGE_SOUTH
+                }
+                int s = index * numVertAttributes;
+                if (s + 2 >= v.length) {
+                    continue;
+                }
+                v[s + axis] += delta;
+                v[s + 2] -= drop;
+            }
+        }
+    }
+
+    /**
+     * Uploads the vertices to the GPU, but with any not-yet-welded skirt — the last mesh row and
+     * column, held at {@code NaN} until a neighbour tile fills them — replaced by their nearest
+     * interior neighbour. Welding relies on those {@code NaN} markers in {@link #vertices}, yet the
+     * GPU turns a {@code NaN} position into a black spike (see it over the sea) or a hole at a tile
+     * seam. Sanitising only the uploaded copy keeps welding correct while keeping that garbage off
+     * screen; for flat sea tiles the skirt collapses onto sea level, which is exactly right.
+     */
+    private void uploadMeshVertices() {
+        if (mesh == null || vertices == null) {
+            return;
+        }
+        float[] upload = vertices;
+        boolean tuck = anyTuck;
+        if (hasNanElevation(vertices) || tuck) {
+            // sanitizeSkirt always starts from a fresh copy of the true vertices, so applying the
+            // tuck to its result stays idempotent however often this runs.
+            upload = sanitizeSkirt(vertices);
+            if (tuck) {
+                applyEdgeTucks(upload);
+            }
+        }
+        mesh.setVertices(upload);
+    }
+
+    private static boolean hasNanElevation(float[] v) {
+        for (int i = 2; i < v.length; i += numVertAttributes) {
+            if (Float.isNaN(v[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private float[] sanitizeSkirt(float[] v) {
+        if (renderVertices == null || renderVertices.length != v.length) {
+            renderVertices = new float[v.length];
+        }
+        System.arraycopy(v, 0, renderVertices, 0, v.length);
+
+        int count = v.length / numVertAttributes;
+        // The mesh is square, so the grid width is the root of the vertex count. Deriving it from
+        // the array itself (rather than getWidth()) stays correct whatever the tile's resolution.
+        int width = (int) Math.round(Math.sqrt(count));
+        int last = width - 1;
+        for (int s = 0; s < count; s++) {
+            int dst = s * numVertAttributes;
+            if (!Float.isNaN(renderVertices[dst + 2])) {
+                continue;
+            }
+            int x = s % width;
+            int y = s / width;
+
+            // Step direction from the skirt back into the interior (east and/or north edge).
+            int dx = (x >= last) ? -1 : 0;
+            int dy = (y >= last) ? -1 : 0;
+            int nx = x + dx;
+            int ny = y + dy;
+            int inner1 = (nx + ny * width) * numVertAttributes;
+
+            // Extrapolate the elevation from the two innermost rows so the edge continues the
+            // (round-earth curved) surface rather than repeating the interior height — that keeps
+            // adjacent flat sea tiles meeting flush, so the outline pass finds no false step there.
+            int ix2 = nx + dx;
+            int iy2 = ny + dy;
+            if (ix2 >= 0 && ix2 < width && iy2 >= 0 && iy2 < width) {
+                int inner2 = (ix2 + iy2 * width) * numVertAttributes;
+                renderVertices[dst + 2] = 2f * renderVertices[inner1 + 2] - renderVertices[inner2 + 2];
+            } else {
+                renderVertices[dst + 2] = renderVertices[inner1 + 2];
+            }
+            // The normal only affects shading, so the nearest interior one is plenty.
+            renderVertices[dst + 3] = renderVertices[inner1 + 3];
+            renderVertices[dst + 4] = renderVertices[inner1 + 4];
+            renderVertices[dst + 5] = renderVertices[inner1 + 5];
+        }
+        return renderVertices;
     }
 
     public float[] getMapTileVertices() {
@@ -120,6 +278,11 @@ public class MapTile {
     private final ConcurrentHashMap<PixmapLayerName, Texture> textureMap = new ConcurrentHashMap<>();
     private final Queue<DrawingPair> texturePixmapMap = new LinkedBlockingQueue<>();
     private final Set<PixmapLayerName> textureLayerAdded = new HashSet<>();
+
+    // Version of the GPX paths this tile's GPX_PATH texture was drawn for (see GpxTileRasterizer);
+    // -1 means never drawn, so a tile picks the paths up as it loads.
+    public volatile int gpxVersionDrawn = -1;
+    public volatile boolean hasGpxTexture = false;
 
 
     public MapTileState getMapTileState() {
@@ -169,8 +332,7 @@ public class MapTile {
         while (!texturePixmapMap.isEmpty()) {
             DrawingPair pair = texturePixmapMap.remove();
             // TODO: check if satellite provider has changed...
-            Texture texture = new Texture(pair.pixmap);
-            texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            Texture texture = createLayerTexture(pair.layer, pair.pixmap);
             PixmapLayerName layer = pair.layer;
             Texture previousTexture = textureMap.get(layer);
             textureMap.put(layer, texture);
@@ -180,6 +342,48 @@ public class MapTile {
             pair.pixmap.dispose();
             refreshUserData();
         }
+    }
+
+    /**
+     * Builds the GL texture for one tile layer, choosing the sampling that keeps it sharp on the 3D
+     * terrain.
+     *
+     * <p>The tiles are draped over terrain and almost always seen at a grazing angle, where plain
+     * bilinear filtering aliases into a jagged, shimmering "pixelated" mess — no amount of tile
+     * resolution fixes that, because the problem is minification along the view direction, not a lack
+     * of texels. Mip-maps plus anisotropic filtering are the actual fix: mip-maps supply pre-filtered
+     * lower levels for the minified axis, and anisotropy keeps the other axis crisp so roads do not
+     * turn to mush. Mip-map generation needs a power-of-two texture on GL ES 2 (this app's context),
+     * which is why the road tiles are sized to a power of two; anything non-POT (or the GPX layer)
+     * falls back to the previous filtering.
+     */
+    private Texture createLayerTexture(PixmapLayerName layer, Pixmap pixmap) {
+        // The GPX layer is filtered linearly. It used to be nearest-neighbour because the phase
+        // was a raw 0..1 fraction whose wrap interpolation smeared; it is now stored as a
+        // sine/cosine pair with a soft coverage ramp (see GpxTileRasterizer), both of which
+        // interpolate cleanly, and nearest sampling was what made the path look pixelated up
+        // close. No mip-maps: they would thin the alpha of a line only a few texels wide until it
+        // faded out at distance.
+        if (layer == PixmapLayerName.GPX_PATH) {
+            Texture texture = new Texture(pixmap);
+            texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            return texture;
+        }
+        boolean powerOfTwo = MathUtils.isPowerOfTwo(pixmap.getWidth())
+                && MathUtils.isPowerOfTwo(pixmap.getHeight());
+        if (powerOfTwo) {
+            Texture texture = new Texture(pixmap, true); // generate mip-maps
+            texture.setFilter(Texture.TextureFilter.MipMapLinearLinear,
+                    Texture.TextureFilter.Linear);
+            float maxAniso = Texture.getMaxAnisotropicFilterLevel();
+            if (maxAniso > 1f) {
+                texture.setAnisotropicFilter(Math.min(maxAniso, 8f));
+            }
+            return texture;
+        }
+        Texture texture = new Texture(pixmap);
+        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        return texture;
     }
 
     public void setTexturePixmap(PixmapLayerName layer, Pixmap pixmap) {
@@ -215,6 +419,29 @@ public class MapTile {
         return Integer.max(0, 6 - (zoomLevel - MapTile.ZOOM_LEVEL_MIN));
     }
 
+    /** Mesh vertices along one edge of a tile at this zoom level and elevation factor. */
+    public static int edgeLengthFor(int zoomLevel, int elevFactor) {
+        return 1 + 4096 / (1 << (zoomLevel - ZOOM_LEVEL_MIN)) / (1 << elevFactor);
+    }
+
+    /**
+     * Raises the elevation factor (coarsening the mesh) until it fits in 16-bit element indices.
+     * Enforced here rather than only at the call site because exceeding
+     * {@link ElevationImageAbstract#MAX_MESH_VERTICES} does not fail loudly — the index cast wraps
+     * and the tile renders as torn geometry.
+     */
+    public static int clampElevFactorToIndexLimit(int zoomLevel, int elevFactor) {
+        int factor = Integer.max(0, elevFactor);
+        while (factor < 16) {
+            long edge = edgeLengthFor(zoomLevel, factor);
+            if (edge * edge <= ElevationImageAbstract.MAX_MESH_VERTICES) {
+                break;
+            }
+            factor++;
+        }
+        return factor;
+    }
+
     public MapTile(Tile tile, int zoomElevFactor) {
         this.tile = tile;
         Tile tileMinZoom = tile;
@@ -222,8 +449,8 @@ public class MapTile {
             tileMinZoom = tileMinZoom.getParent();
         this.tileMinZoom = tileMinZoom;
 
-        this.zoomElevFactor = zoomElevFactor;
-        this.edgeLength = 1 + 4096 / (1 << (tile.zoomLevel - ZOOM_LEVEL_MIN)) / (1 << zoomElevFactor);
+        this.zoomElevFactor = clampElevFactorToIndexLimit(tile.zoomLevel, zoomElevFactor);
+        this.edgeLength = edgeLengthFor(tile.zoomLevel, this.zoomElevFactor);
 
         textureWidth = 1024; // 15 * (getWidth() - 1);
         textureHeight = 1024; // 15 * (getHeight() - 1);
@@ -252,11 +479,12 @@ public class MapTile {
     }
 
     public void prepareMeshData() {
+        clearEdgeTucks(); // a fresh mesh; neighbours re-weld and re-request as needed
         numVertices = getWidth() * getHeight();
         int numIndices = (getWidth() - 1) * (getHeight() - 1) * 6;
         mesh = new Mesh(true, numVertices, numIndices, getC().staticData.mapTileVertexAttributes);
         mesh.setIndices(elevationImage.getMeshIndices());
-        mesh.setVertices(vertices);
+        uploadMeshVertices();
         buildModelInstance();
     }
 
@@ -295,7 +523,8 @@ public class MapTile {
             return;
         instance.userData = new RenderableUserData(this,
                 textureMap.get(PixmapLayerName.BASE_ROADS),
-                textureMap.get(PixmapLayerName.UNDERLAY_LAYER));
+                textureMap.get(PixmapLayerName.UNDERLAY_LAYER),
+                textureMap.get(PixmapLayerName.GPX_PATH));
     }
 
     public void dispose() {
@@ -372,9 +601,7 @@ public class MapTile {
     public void recomputeNormals() {
         future = getC().executorEleLoad.submit(() -> {
             elevationImage.setVertexNormals(vertices);
-            Gdx.app.postRunnable(() -> {
-                mesh.setVertices(vertices);
-            });
+            Gdx.app.postRunnable(this::uploadMeshVertices);
         });
     }
 
@@ -416,15 +643,18 @@ public class MapTile {
         public final MapTile mapTile;
         public final Texture textureRoads;
         public final Texture textureSatellite;
+        public final Texture textureGpx;
         // public final Texture textureNormals;
 
         public RenderableUserData(MapTile mapTile,
                                   Texture textureRoads,
-                                  Texture textureSatellite
+                                  Texture textureSatellite,
+                                  Texture textureGpx
                                   ) {
             this.mapTile = mapTile;
             this.textureRoads = textureRoads;
             this.textureSatellite = textureSatellite;
+            this.textureGpx = textureGpx;
         }
 
     }

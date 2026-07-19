@@ -3,9 +3,12 @@ package com.peaknav.compatibility;
 import static android.Manifest.permission.ACCESS_COARSE_LOCATION;
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
 import static com.peaknav.utils.PeakNavPermissions.checkLocationPermission;
+import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.views.AndroidLauncher.CAMERA_PERMISSION;
 import static com.peaknav.views.AndroidLauncher.CAMERA_REQUEST_CODE;
+import static com.peaknav.views.AndroidLauncher.MEDIA_LOCATION_REQUEST_CODE;
+import static com.peaknav.views.AndroidLauncher.PICK_GPX;
 import static com.peaknav.views.AndroidLauncher.PICK_IMAGE;
 
 import android.Manifest;
@@ -22,6 +25,7 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.provider.Settings;
@@ -42,6 +46,7 @@ import com.peaknav.controller.OrientationPointerController;
 import com.peaknav.gesture.OrientationPointerListener;
 import com.peaknav.ui.CurrentLocationCallback;
 import com.peaknav.ui.CurrentLocationListener;
+import com.peaknav.ui.TextFieldsCallback;
 import com.peaknav.utils.AndroidUI;
 import com.peaknav.viewer.GoToDownloadDialog;
 import com.peaknav.viewer.MapViewerSingleton;
@@ -99,6 +104,56 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     .setCancelable(false);
             AlertDialog alert = alertBuilder.create();
             alert.show();
+        });
+    }
+
+    @Override
+    public void promptForTextFields(
+            String title, String message, String[] labels, String[] initialValues, TextFieldsCallback callback) {
+        mainActivity.runOnUiThread(() -> {
+            android.widget.LinearLayout layout = new android.widget.LinearLayout(mainActivity);
+            layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+            int padding = Math.round(16 * mainActivity.getResources().getDisplayMetrics().density);
+            layout.setPadding(padding, padding, padding, padding);
+
+            if (message != null && !message.isEmpty()) {
+                android.widget.TextView help = new android.widget.TextView(mainActivity);
+                help.setText(message);
+                help.setPadding(0, 0, 0, padding);
+                layout.addView(help);
+            }
+
+            android.widget.EditText[] fields = new android.widget.EditText[labels.length];
+            for (int i = 0; i < labels.length; i++) {
+                android.widget.TextView label = new android.widget.TextView(mainActivity);
+                label.setText(labels[i]);
+                layout.addView(label);
+
+                android.widget.EditText field = new android.widget.EditText(mainActivity);
+                field.setSingleLine(true);
+                if (initialValues != null && i < initialValues.length && initialValues[i] != null) {
+                    field.setText(initialValues[i]);
+                }
+                fields[i] = field;
+                layout.addView(field);
+            }
+
+            android.widget.ScrollView scrollView = new android.widget.ScrollView(mainActivity);
+            scrollView.addView(layout);
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(mainActivity);
+            builder.setTitle(title)
+                    .setView(scrollView)
+                    .setPositiveButton(s("OK"), (dialogInterface, i) -> {
+                        String[] values = new String[fields.length];
+                        for (int f = 0; f < fields.length; f++) {
+                            values[f] = fields[f].getText().toString();
+                        }
+                        callback.onEntered(values);
+                    })
+                    .setNegativeButton(s("Cancel"), (dialogInterface, i) -> callback.onCancelled())
+                    .setOnCancelListener(dialogInterface -> callback.onCancelled());
+            builder.create().show();
         });
     }
 
@@ -215,10 +270,66 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
 
     @Override
     public void openGalleryPick() {
+        // On Android 10+ the OS strips GPS EXIF from imported images unless the app holds
+        // ACCESS_MEDIA_LOCATION. Ask for it first, then open the picker either way — the
+        // import warns if the location turns out to be unreadable.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !hasMediaLocationPermission()) {
+            ActivityCompat.requestPermissions(
+                    mainActivity,
+                    new String[]{Manifest.permission.ACCESS_MEDIA_LOCATION},
+                    MEDIA_LOCATION_REQUEST_CODE);
+        } else {
+            launchGalleryPicker();
+        }
+    }
+
+    @Override
+    public void pickGpxFile() {
+        // GPX has no single agreed MIME type, so accept any openable document and let the user
+        // pick the .gpx. AndroidLauncher.onActivityResult reads the stream and hands it to the
+        // GpxManager.
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        startActivityForResultAndPause(Intent.createChooser(intent, "Select GPX"), PICK_GPX);
+    }
+
+    /** Launches the image chooser. Public so the launcher can call it after the permission prompt. */
+    public void launchGalleryPicker() {
         Intent intent = new Intent();
         intent.setType("image/*");
         intent.setAction(Intent.ACTION_GET_CONTENT);
         startActivityForResultAndPause(Intent.createChooser(intent, "Select Picture"), PICK_IMAGE);
+    }
+
+    private boolean hasMediaLocationPermission() {
+        return ContextCompat.checkSelfPermission(
+                mainActivity,
+                Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    public void warnCannotReadImageLocation() {
+        mainActivity.runOnUiThread(() -> {
+            AlertDialog.Builder alertBuilder = new AlertDialog.Builder(mainActivity);
+            alertBuilder.setTitle(s("Image_location_missing_title"))
+                    .setMessage(s("Image_location_missing"))
+                    .setPositiveButton(android.R.string.ok, null);
+            alertBuilder.create().show();
+        });
+    }
+
+    @Override
+    public void promptGoToImageLocation(double lat, double lon) {
+        mainActivity.runOnUiThread(() -> {
+            AlertDialog.Builder alertBuilder = new AlertDialog.Builder(mainActivity);
+            alertBuilder.setTitle(s("Image_location_found"))
+                    .setMessage(s("Go_to_image_location_prompt"))
+                    .setPositiveButton(s("Yes"),
+                            (dialogInterface, i) -> getC().L.setCurrentTargetCoords(lat, lon))
+                    .setNegativeButton(s("No"), null);
+            alertBuilder.create().show();
+        });
     }
 
     @Override
@@ -413,6 +524,42 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         runOnUiThread(() -> {
             GoToDownloadDialog fragment = new GoToDownloadDialog((float) lat, (float) lon);
             openFragmentWithTransaction(fragment, "go_to_download_dialog");
+        });
+    }
+
+    @Override
+    public void chooseSkyTime() {
+        mainActivity.runOnUiThread(() -> {
+            com.peaknav.sky.SkyModel sky = com.peaknav.utils.PeakNavUtils.getC().skyModel;
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            cal.setTimeInMillis(sky.currentTimeMillis());
+            // Force the OS Material dialog theme so the pickers render as the modern calendar and
+            // clock-face widgets, not the spinner "buttons" the app's GdxTheme falls back to. Follow
+            // the device's dark/light setting on Android 10+ (Q); a light dialog before that.
+            int pickerTheme = (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
+                    && (mainActivity.getResources().getConfiguration().uiMode
+                        & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                        == android.content.res.Configuration.UI_MODE_NIGHT_YES)
+                    ? android.R.style.Theme_Material_Dialog
+                    : android.R.style.Theme_Material_Light_Dialog;
+            android.app.DatePickerDialog dateDlg = new android.app.DatePickerDialog(mainActivity, pickerTheme,
+                    (view, year, month, day) -> {
+                        android.app.TimePickerDialog timeDlg = new android.app.TimePickerDialog(mainActivity,
+                                pickerTheme,
+                                (tv, hour, minute) -> {
+                                    java.util.Calendar c = java.util.Calendar.getInstance();
+                                    c.set(year, month, day, hour, minute, 0);
+                                    c.set(java.util.Calendar.MILLISECOND, 0);
+                                    sky.setCustomTimeMillis(c.getTimeInMillis());
+                                },
+                                cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE), true);
+                        timeDlg.show();
+                    },
+                    cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH),
+                    cal.get(java.util.Calendar.DAY_OF_MONTH));
+            dateDlg.setButton(android.app.DatePickerDialog.BUTTON_NEUTRAL,
+                    s("Sky_time_device_clock"), (dialog, which) -> sky.clearCustomTime());
+            dateDlg.show();
         });
     }
 

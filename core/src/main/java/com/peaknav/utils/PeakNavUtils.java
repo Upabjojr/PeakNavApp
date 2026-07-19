@@ -84,21 +84,34 @@ public class PeakNavUtils {
         return readImageCached(new FileHandle(imageFile));
     }
 
+    /**
+     * Returns the cached pixmap for the file, or null when the file is missing or unreadable.
+     * Every successful call takes one reference: the caller must hand it back with
+     * {@link #decrementReferenceCounter(Pixmap)} once done drawing from it, so a pixmap evicted
+     * from the cache is only natively disposed when nobody is using it any more.
+     */
     public static Pixmap readImageCached(FileHandle imageFileHandle) {
         try {
-            return cachedImages.get(imageFileHandle, () -> {
+            Pixmap pixmap = cachedImages.get(imageFileHandle, () -> {
                 if (!imageFileHandle.exists()) {
-                    return null;
+                    // Cache.get forbids a null result; signal the miss with an exception instead
+                    // (returning null used to throw Guava's unchecked InvalidCacheLoadException
+                    // past our catch and up into the tile worker).
+                    throw new IOException("missing image file: " + imageFileHandle);
                 }
-                Pixmap pixmap;
-
-                pixmap = readImage(imageFileHandle.file());
-                pixmapReferenceCounter.put(pixmap, new AtomicInteger(1));
+                Pixmap loaded = readImage(imageFileHandle.file());
+                pixmapReferenceCounter.put(loaded, new AtomicInteger(0));
                 freePixmapCache();
-                return pixmap;
+                return loaded;
             });
-        } catch (ExecutionException e) {
-            e.printStackTrace();
+            AtomicInteger counter = pixmapReferenceCounter.get(pixmap);
+            if (counter != null) {
+                counter.incrementAndGet();
+            }
+            return pixmap;
+        } catch (ExecutionException | RuntimeException e) {
+            // ExecutionException: missing file; RuntimeException: Guava's unchecked wrapper
+            // around a decode failure (e.g. a truncated download). Both mean "no image".
             return null;
         }
     }
@@ -171,9 +184,15 @@ public class PeakNavUtils {
         PeakNavUtils.loadFactory = loadFactory;
     }
 
+    /**
+     * Copies the stream into the file, closing BOTH streams even on failure — the download paths
+     * call this once per tile, so anything left open here leaks a socket and a file descriptor.
+     */
     public static long copyFile(InputStream source, File destination) throws IOException {
-        FileOutputStream outputStream = new FileOutputStream(destination);
-        return copyFile(source, outputStream);
+        try (InputStream in = source;
+             FileOutputStream outputStream = new FileOutputStream(destination)) {
+            return copyFile(in, outputStream);
+        }
     }
 
     public static long copyFile(InputStream source, OutputStream sink)
@@ -206,15 +225,26 @@ public class PeakNavUtils {
 
     private final static ConcurrentMap<String, Lock> blockedImages = new ConcurrentHashMap<>();
 
+    /** Hands back a reference taken by {@link #readImageCached}; null-safe. */
     public static void decrementReferenceCounter(Pixmap pixmap) {
-        pixmapReferenceCounter.get(pixmap).decrementAndGet();
+        if (pixmap == null) {
+            return;
+        }
+        AtomicInteger counter = pixmapReferenceCounter.get(pixmap);
+        if (counter != null) {
+            counter.decrementAndGet();
+        }
+        // An evicted pixmap whose last user just finished can be disposed right away instead of
+        // waiting for the next cache load.
+        freePixmapCache();
     }
 
     public static synchronized void freePixmapCache() {
         Queue<Pixmap> requeue = new LinkedList<>();
         while (!disposalQueue.isEmpty()) {
             Pixmap pixmap = disposalQueue.poll();
-            if (pixmapReferenceCounter.get(pixmap).get() == 0) {
+            AtomicInteger counter = pixmapReferenceCounter.get(pixmap);
+            if (counter == null || counter.get() <= 0) {
                 pixmap.dispose();
                 pixmapReferenceCounter.remove(pixmap);
             } else {
@@ -249,7 +279,73 @@ public class PeakNavUtils {
 
     public static void setBytesAsBackgroundImage(byte[] bytesJpeg) {
         Pixmap pixmap = new Pixmap(bytesJpeg, 0, bytesJpeg.length);
+        // libGDX's decoder ignores the EXIF orientation tag, so a portrait photo (stored
+        // as landscape pixels + a rotate tag) would come out sideways. Apply it here.
+        pixmap = applyExifOrientation(pixmap, ExifReader.extractOrientation(bytesJpeg));
         MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(pixmap);
+    }
+
+    /**
+     * Returns a pixmap with the EXIF orientation baked in, disposing the source when a new
+     * one is produced. Orientations 5..8 swap width and height (a quarter turn).
+     */
+    static Pixmap applyExifOrientation(Pixmap src, int orientation) {
+        if (orientation <= ExifReader.ORIENTATION_NORMAL || orientation > 8) {
+            return src;
+        }
+        int w = src.getWidth();
+        int h = src.getHeight();
+        boolean quarterTurn = orientation >= 5; // 5,6,7,8 transpose the axes
+        Pixmap dst = new Pixmap(quarterTurn ? h : w, quarterTurn ? w : h, src.getFormat());
+        dst.setBlending(Pixmap.Blending.None);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int color = src.getPixel(x, y);
+                int nx;
+                int ny;
+                switch (orientation) {
+                    case 2: nx = w - 1 - x; ny = y;             break; // flip horizontal
+                    case 3: nx = w - 1 - x; ny = h - 1 - y;     break; // rotate 180
+                    case 4: nx = x;         ny = h - 1 - y;     break; // flip vertical
+                    case 5: nx = y;         ny = x;             break; // transpose
+                    case 6: nx = h - 1 - y; ny = x;             break; // rotate 90 CW
+                    case 7: nx = h - 1 - y; ny = w - 1 - x;     break; // transverse
+                    case 8: nx = y;         ny = w - 1 - x;     break; // rotate 90 CCW
+                    default: nx = x;        ny = y;             break;
+                }
+                dst.drawPixel(nx, ny, color);
+            }
+        }
+        src.dispose();
+        return dst;
+    }
+
+    /**
+     * If the given image carries EXIF GPS coordinates, ask the user (through the
+     * native screen caller) whether to navigate to the place it was taken.
+     */
+    public static void checkImageGpsAndPrompt(byte[] imageBytes) {
+        NativeScreenCaller nativeScreenCaller = getNativeScreenCaller();
+        if (nativeScreenCaller == null) {
+            return;
+        }
+        double[] latLon = ExifReader.extractLatLon(imageBytes);
+        if (latLon != null && !isNullIsland(latLon[0], latLon[1])) {
+            nativeScreenCaller.promptGoToImageLocation(latLon[0], latLon[1]);
+        } else {
+            // No usable coordinates: the photo has none, its location EXIF was stripped (Android,
+            // without ACCESS_MEDIA_LOCATION), or it is tagged at Null Island (see below).
+            nativeScreenCaller.warnCannotReadImageLocation();
+        }
+    }
+
+    /**
+     * (0,0) in the Gulf of Guinea — "Null Island" — is the placeholder cameras and apps write when
+     * they have no real fix, so an image tagged there was almost never actually taken there. Treat
+     * anything within ~100 m of it as having no location, rather than flying the map to the ocean.
+     */
+    private static boolean isNullIsland(double lat, double lon) {
+        return Math.abs(lat) < 0.001 && Math.abs(lon) < 0.001;
     }
 
     public static String s(String key) {
@@ -273,22 +369,18 @@ public class PeakNavUtils {
     }
     */
 
-    public static boolean containsNonLatinCharacters(String str) {
-        for (int i = 0; i < str.length(); i++) {
-            char c = str.charAt(i);
-            /*
-            !(c >= '\u0000' && c <= '\u007F') &&     // Basic Latin
-                !(c >= '\u0080' && c <= '\u00FF') &&     // Latin-1 Supplement
-                !(c >= '\u0100' && c <= '\u017F') &&     // Latin Extended-A
-                !(c >= '\u0180' && c <= '\u024F'))      // Latin Extended-B
-             */
-            if (
-                    !(c <= '\u024F')
-            ) {
-                return true; // Non-Latin character found
-            }
-        }
-        return false; // No non-Latin characters found
+    /**
+     * Whether the name would draw as missing-glyph boxes and should be replaced by its
+     * {@code name:en} / {@code name:latn} variant.
+     *
+     * <p>This asks {@link FontCharacters} what the generated fonts actually contain rather than
+     * assuming a code-point range: the old fixed cut-off at U+024F claimed Latin Extended-A/B
+     * were fine when the atlas in fact stopped at U+00FF, so Croatian and other Central European
+     * names were kept and then rendered as boxes. Tying the two together means the check can
+     * never drift from the font again.
+     */
+    public static boolean containsUnrenderableCharacters(String str) {
+        return FontCharacters.containsUnrenderable(str);
     }
 
 }

@@ -10,12 +10,10 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
-import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Polygon;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Align;
 
-import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 import com.peaknav.viewer.screens.MapViewerScreen;
@@ -25,8 +23,19 @@ public class DrawLabel {
     private final MapViewerScreen mapViewerScreen;
     public final DrawLabelCategory drawLabelCategory;
     private volatile float screenLabelY;
-    public final GlyphLayout glyphLayoutSmall;
-    public final GlyphLayout glyphLayoutMedium;
+    /**
+     * Built lazily on the render thread by {@link #drawOnSpriteBatch}, never in the constructor.
+     * GlyphLayout shares one static, non thread safe GlyphRun pool across the whole process, and
+     * labels are constructed on the POI loading thread while the render thread lays out scene2d
+     * widgets; both using that pool at once produced a run full of nulls and crashed the app.
+     * Sizes come from {@link LabelTextMeasure} instead, which is safe from any thread.
+     */
+    private GlyphLayout glyphLayoutSmall;
+    private GlyphLayout glyphLayoutMedium;
+    private final String text;
+    private final Color textColor;
+    private final float textWidthSmall, textHeightSmall;
+    private final float textWidthMedium, textHeightMedium;
     public volatile float invRotUpperLeftGlyphX, invRotUpperLeftGlyphY;
     private volatile float screenPoiX, screenPoiY;
     // public final Vector3 position3D = new Vector3();
@@ -41,17 +50,29 @@ public class DrawLabel {
     private float rectangleHeight = 0f;
     private float rectangleWidth = 0f;
 
+    /** Render thread only: builds the GlyphLayout on first use. */
     public void drawOnSpriteBatch(SpriteBatch spriteBatch) {
         BitmapFont bitmapFont = getDrawLabelFont();
-        bitmapFont.draw(spriteBatch, getCurrentGlyphLayout(), invRotUpperLeftGlyphX, invRotUpperLeftGlyphY);
+        boolean large = P.getViewLargeFonts();
+        GlyphLayout layout = large ? glyphLayoutMedium : glyphLayoutSmall;
+        if (layout == null) {
+            layout = new GlyphLayout(
+                    bitmapFont, text, textColor, mapViewerScreen.targetWidth, Align.left, false);
+            if (large) {
+                glyphLayoutMedium = layout;
+            } else {
+                glyphLayoutSmall = layout;
+            }
+        }
+        bitmapFont.draw(spriteBatch, layout, invRotUpperLeftGlyphX, invRotUpperLeftGlyphY);
     }
 
-    private GlyphLayout getCurrentGlyphLayout() {
-        if (P.getViewLargeFonts()) {
-            return glyphLayoutMedium;
-        } else {
-            return glyphLayoutSmall;
-        }
+    private float getCurrentTextWidth() {
+        return P.getViewLargeFonts() ? textWidthMedium : textWidthSmall;
+    }
+
+    private float getCurrentTextHeight() {
+        return P.getViewLargeFonts() ? textHeightMedium : textHeightSmall;
     }
 
     public boolean isVisible() {
@@ -69,14 +90,52 @@ public class DrawLabel {
         return isVisibleByPreferences() && (!hiddenByMountains);
     }
 
+    /** Border thickness as a share of the label height, so it scales with the font size. */
+    private static final float OUTLINE_HEIGHT_FRACTION = 0.11f;
+    private static final float OUTLINE_MIN_PIXELS = 2f;
+
+    private final float[] outlineVertices = new float[8];
+
     public void drawRectangle(ShapeRenderer shapeRenderer) {
         if (polygon == null)
             return;
-        shapeRenderer.setColor(drawLabelCategory.getBackgroundColor());
         float[] vertices = polygon.getTransformedVertices();
-        shapeRenderer.triangle(vertices[0], vertices[1], vertices[2], vertices[3], vertices[4], vertices[5]);
-        shapeRenderer.triangle(vertices[4], vertices[5], vertices[6], vertices[7], vertices[0], vertices[1]);
+
+        // Border first, as a slightly larger quad behind the fill. Without it a label is only as
+        // visible as its fill, and no fill light enough to carry black text can separate itself
+        // from sky or snow.
+        float width = Math.max(OUTLINE_MIN_PIXELS, rectangleHeight * OUTLINE_HEIGHT_FRACTION);
+        expandQuad(vertices, width, outlineVertices);
+        shapeRenderer.setColor(DrawLabelCategory.getOutlineColor());
+        drawQuad(shapeRenderer, outlineVertices);
+
+        shapeRenderer.setColor(drawLabelCategory.getBackgroundColor());
+        drawQuad(shapeRenderer, vertices);
+
         shapeRenderer.setColor(Color.RED);
+    }
+
+    /**
+     * Pushes each corner of the (rotated) label rectangle outwards by {@code width}, along the
+     * rectangle's own axes so the border comes out an even thickness all the way round.
+     */
+    private void expandQuad(float[] vertices, float width, float[] out) {
+        float ux = drawLabelCategory.rotationAngleCos * width;
+        float uy = drawLabelCategory.rotationAngleSin * width;
+        float vx = -drawLabelCategory.rotationAngleSin * width;
+        float vy = drawLabelCategory.rotationAngleCos * width;
+
+        // Vertex order is (min,min) (max,min) (max,max) (min,max); see
+        // updateLabelPolygonCoordinates.
+        out[0] = vertices[0] - ux - vx;   out[1] = vertices[1] - uy - vy;
+        out[2] = vertices[2] + ux - vx;   out[3] = vertices[3] + uy - vy;
+        out[4] = vertices[4] + ux + vx;   out[5] = vertices[5] + uy + vy;
+        out[6] = vertices[6] - ux + vx;   out[7] = vertices[7] - uy + vy;
+    }
+
+    private static void drawQuad(ShapeRenderer shapeRenderer, float[] v) {
+        shapeRenderer.triangle(v[0], v[1], v[2], v[3], v[4], v[5]);
+        shapeRenderer.triangle(v[4], v[5], v[6], v[7], v[0], v[1]);
     }
 
     public DrawLabel(DrawLabelCategory drawLabelCategory, PoiObject poiObject) {
@@ -92,8 +151,13 @@ public class DrawLabel {
         BitmapFont bitmapFontMedium = getC().styleSingleton.getBitmapFontMedium();
         BitmapFont bitmapFontSmall =  getC().styleSingleton.getBitmapFontSmall();
 
-        glyphLayoutMedium = new GlyphLayout(bitmapFontMedium, text, color, mapViewerScreen.targetWidth, Align.left, false);
-        glyphLayoutSmall = new GlyphLayout(bitmapFontSmall, text, color, mapViewerScreen.targetWidth, Align.left, false);
+        this.text = text;
+        this.textColor = color;
+        // Measured rather than laid out: this constructor runs on the POI loading thread.
+        this.textWidthMedium = LabelTextMeasure.width(bitmapFontMedium, text);
+        this.textHeightMedium = LabelTextMeasure.height(bitmapFontMedium);
+        this.textWidthSmall = LabelTextMeasure.width(bitmapFontSmall, text);
+        this.textHeightSmall = LabelTextMeasure.height(bitmapFontSmall);
     }
 
 
@@ -110,9 +174,6 @@ public class DrawLabel {
     }
 
     public void updateHiddenByMountains() {
-        if (poiObject.name.equals("Doss del Sabion")) {
-                System.err.println("a");
-        }
         hiddenByMountains = !getC().visibility.checkVisible(
                 poiObject.getPosition3D(tempVec1), mapViewerScreen.impactPixmap);
     }
@@ -161,34 +222,20 @@ public class DrawLabel {
         return Gdx.graphics.getHeight()*0.4f;
     }
 
-    public void updateGlyphData(final List<Polygon> polygonsFront, final List<Polygon> polygonsBack) {
-        List<Polygon> polygons;
-        if (this.hiddenBehind) {
-            polygons = polygonsBack;
-        } else {
-            polygons = polygonsFront;
-        }
-
-        // updatePositionExtra();
-
-        for (Polygon previousRect : polygons) {
-            if (Intersector.overlapConvexPolygons(polygon, previousRect)) {
-                this.hiddenByLabel = true;
-                return;
-            }
-        }
-        hiddenByLabel = false;
-        polygons.add(polygon);
-
+    public void updateGlyphData(final LabelOverlapIndex indexFront, final LabelOverlapIndex indexBack) {
+        // Labels behind the camera are kept in their own index: they are never on screen at the
+        // same time as the ones in front, so they must not hide each other across that split.
+        LabelOverlapIndex index = this.hiddenBehind ? indexBack : indexFront;
+        hiddenByLabel = !index.tryPlace(polygon);
     }
 
     public void updateLabelPolygonCoordinates() {
-        GlyphLayout glyphLayout = getCurrentGlyphLayout();
+        float textHeight = getCurrentTextHeight();
 
-        rectangleHeight = 1.3f * glyphLayout.height;
-        float deltaW = glyphLayout.height * heightScaleY;
+        rectangleHeight = 1.3f * textHeight;
+        float deltaW = textHeight * heightScaleY;
 
-        rectangleWidth = glyphLayout.width;
+        rectangleWidth = getCurrentTextWidth();
         float rwp2 = rectangleWidth +2*deltaW;
 
         float[] polyVerts = polygon.getVertices();
@@ -209,7 +256,7 @@ public class DrawLabel {
 
         correctionForOutOfScreen();
 
-        float rectUpperLeftX = this.screenPoiX - glyphLayout.height * drawLabelCategory.rotationAngleSin;
+        float rectUpperLeftX = this.screenPoiX - textHeight * drawLabelCategory.rotationAngleSin;
         float rectUpperLeftY = this.screenLabelY + rectangleHeight * drawLabelCategory.rotationAngleCos;
 
         float invRotUpperLeftX = drawLabelCategory.rotationAngleCos * rectUpperLeftX + drawLabelCategory.rotationAngleSin * rectUpperLeftY;

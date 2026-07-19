@@ -107,30 +107,40 @@ public class MapTileWelder {
         BoundingBox bb2 = mapTile2.tile.getBoundingBox();
 
         Range range1, range2;
+        int edge1, edge2;
 
         if (isApproxEqual(bb1.maxLongitude, bb2.minLongitude)) {
             // mapTile1 is left of mapTile2:
             range1 = getLatRangeB(mapTile1, true);
             range2 = getLatRangeB(mapTile2, false);
+            edge1 = MapTile.EDGE_EAST;
+            edge2 = MapTile.EDGE_WEST;
         } else if (isApproxEqual(bb1.minLongitude, bb2.maxLongitude)) {
             // mapTile1 is right of mapTile2:
             range1 = getLatRangeB(mapTile1,false);
             range2 = getLatRangeB(mapTile2,true);
+            edge1 = MapTile.EDGE_WEST;
+            edge2 = MapTile.EDGE_EAST;
         } else if (isApproxEqual(bb1.maxLatitude, bb2.minLatitude)) {
             // mapTile1 is below mapTile2:
             // Remember: larger tileY means lower latitude!
             range1 = getLonRangeB(mapTile1, true);
             range2 = getLonRangeB(mapTile2, false);
+            edge1 = MapTile.EDGE_NORTH;
+            edge2 = MapTile.EDGE_SOUTH;
         } else if (isApproxEqual(bb1.minLatitude, bb2.maxLatitude)) {
             // mapTile1 is below mapTile2:
             // Remember: larger tileY means lower latitude!
             range1 = getLonRangeB(mapTile1, false);
             range2 = getLonRangeB(mapTile2, true);
+            edge1 = MapTile.EDGE_SOUTH;
+            edge2 = MapTile.EDGE_NORTH;
         } else {
             throw new RuntimeException("impossible state");
         }
 
         weldPositions(range1, range2);
+        tuckCoarserEdge(range1, range2, edge1, edge2);
 
         mapTile1.recomputeNormals();
         mapTile2.recomputeNormals();
@@ -140,6 +150,75 @@ public class MapTileWelder {
             mapTile2.reassignVertices();
         });
 
+    }
+
+    /**
+     * How far the coarse edge is pushed under its finer neighbour, and how far it is dropped, as
+     * fractions of that tile's own cell size.
+     *
+     * <p>Scaling with the cell is what makes one pair of numbers work everywhere: a tile's cell
+     * size and the distance it is viewed from grow together, so a lip of a fixed fraction of a
+     * cell stays a roughly constant width on screen. At this push it measures between one and
+     * three pixels for every tile the LOD can produce — wide enough to cover a sliver, and buried
+     * under the neighbour either way.
+     *
+     * <p>The push and the drop are deliberately not the same size. Moving the boundary vertex
+     * tilts the whole of the tile's last cell, so the surface dips by roughly the drop where it
+     * meets the neighbour; a drop as large as the push would put a visible step along every seam.
+     * Kept this shallow the step stays well under a pixel, while the lip still leans away from the
+     * neighbour's surface rather than fighting it for depth.
+     */
+    private static final float TUCK_PUSH_FRACTION = 0.35f;
+    private static final float TUCK_DROP_FRACTION = 0.10f;
+
+    /**
+     * Where the two edges carry a different number of vertices, tucks the coarser one under the
+     * finer. See {@link MapTile#requestEdgeTuck}: the welded heights already match exactly, so
+     * this exists purely to hide the sub-pixel gaps a T-junction leaves when the GPU rasterises
+     * the long coarse edge and the short fine ones separately.
+     */
+    private void tuckCoarserEdge(Range range1, Range range2, int edge1, int edge2) {
+        int steps1 = range1.getSteps();
+        int steps2 = range2.getSteps();
+        if (steps1 == steps2) {
+            return; // equal density: the boundaries share every vertex, nothing can slip through
+        }
+        MapTile coarse;
+        Range coarseRange;
+        int coarseEdge;
+        if (steps1 < steps2) {
+            coarse = mapTile1;
+            coarseRange = range1;
+            coarseEdge = edge1;
+        } else {
+            coarse = mapTile2;
+            coarseRange = range2;
+            coarseEdge = edge2;
+        }
+        float cell = edgeCellSize(coarse, coarseRange);
+        if (cell <= 0f) {
+            return;
+        }
+        coarse.requestEdgeTuck(coarseEdge,
+                TUCK_PUSH_FRACTION * cell, TUCK_DROP_FRACTION * cell);
+    }
+
+    /** Spacing between two neighbouring vertices along this edge, in world units. */
+    private float edgeCellSize(MapTile mapTile, Range range) {
+        float[] v = mapTile.getMapTileVertices();
+        if (v == null) {
+            return 0f;
+        }
+        int a = range.start;
+        int b = range.start + range.step;
+        int sa = a * numVertAttributes;
+        int sb = b * numVertAttributes;
+        if (sa < 0 || sb + 1 >= v.length) {
+            return 0f;
+        }
+        float dx = v[sb] - v[sa];
+        float dy = v[sb + 1] - v[sa + 1];
+        return (float) Math.sqrt(dx * dx + dy * dy);
     }
 
     private boolean isApproxEqual(double a, double b) {

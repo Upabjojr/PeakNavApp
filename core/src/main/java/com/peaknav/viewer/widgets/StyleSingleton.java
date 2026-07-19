@@ -3,6 +3,8 @@ package com.peaknav.viewer.widgets;
 import static com.peaknav.utils.Constants.peakNavGreyColor;
 import static com.peaknav.utils.PeakNavUtils.getC;
 
+import com.peaknav.utils.FontCharacters;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
@@ -36,6 +38,46 @@ public class StyleSingleton {
         minSize = Float.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
     }
 
+    /**
+     * How much larger than the on-screen target size the glyph atlas is baked. Text in this app is
+     * frequently scaled up (large map / area labels, toasts), and a BitmapFont scaled beyond its
+     * baked size samples a low-res atlas. Baking at a multiple of the display size gives the glyphs
+     * enough real pixels to stay crisp when enlarged; combined with linear+mipmap filtering the
+     * result is smooth both when magnified and minified. 2x is a good sharpness/VRAM trade-off.
+     */
+    private static final float FONT_SUPERSAMPLE = 2.0f;
+
+    /**
+     * Applies the supersample factor to the requested display size and enables smooth filtering.
+     * A Linear mag filter removes the blocky look when text is drawn larger than the atlas; a Linear
+     * min filter (no mip-maps) antialiases it when drawn smaller — because the atlas is baked bigger
+     * than the display size, ordinary labels are down-sampled, which with bilinear filtering is
+     * effectively supersampled anti-aliasing. Mip-maps are deliberately avoided: FreeType packs
+     * glyphs into a non-power-of-two atlas, and NPOT + mip-maps is unsupported on OpenGL ES 2.0
+     * (older Android), where it can render the font black. The font's own scale is divided back down
+     * so metrics — and therefore all existing layout — are unchanged.
+     */
+    private BitmapFont generateFont(FreeTypeFontGenerator generator,
+                                    FreeTypeFontGenerator.FreeTypeFontParameter parameter,
+                                    int displaySize) {
+        // Every font gets the same glyph set, set here rather than per call site so none can be
+        // generated with FreeType's default (which stops at Latin-1 and drew Croatian, Czech,
+        // Hungarian … names as boxes). See FontCharacters.
+        parameter.characters = FontCharacters.BAKED;
+        parameter.size = Math.round(displaySize * FONT_SUPERSAMPLE);
+        parameter.minFilter = Texture.TextureFilter.Linear;
+        parameter.magFilter = Texture.TextureFilter.Linear;
+        // Border width, if any, is specified in target pixels, so scale it up to match the atlas.
+        if (parameter.borderWidth > 0f) {
+            parameter.borderWidth *= FONT_SUPERSAMPLE;
+        }
+        BitmapFont font = generator.generateFont(parameter);
+        // Draw glyphs at their intended display size: metrics stay identical to the old 1x fonts,
+        // only the underlying atlas is higher resolution.
+        font.getData().setScale(1f / FONT_SUPERSAMPLE);
+        return font;
+    }
+
     public synchronized void generateAllFonts() {
         FreeTypeFontGenerator freeTypeFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("liberation_fonts/LiberationSans-Regular.ttf"));
 
@@ -43,43 +85,25 @@ public class StyleSingleton {
 
 
         freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-
-        freeTypeFontParameter.characters = FreeTypeFontGenerator.DEFAULT_CHARS;
-
-        // freeTypeFontParameter.incremental = true;
-        freeTypeFontParameter.size = Math.round(minSize*0.08f);
-        bitmapFont = freeTypeFontGenerator.generateFont(freeTypeFontParameter);
+        bitmapFont = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.08f));
 
         freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        // freeTypeFontParameter.incremental = true;
-        freeTypeFontParameter.size = Math.round(minSize*0.06f);
-        // freeTypeFontParameter.borderColor = Color.WHITE;
         freeTypeFontParameter.color = Color.BLACK;
-        // freeTypeFontParameter.borderWidth = 2f;
-        bitmapFontMedium = freeTypeFontGenerator.generateFont(freeTypeFontParameter);
+        bitmapFontMedium = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.06f));
 
         freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        // freeTypeFontParameter.incremental = true;
-        freeTypeFontParameter.size = Math.round(minSize*0.04f);
-        // freeTypeFontParameter.borderColor = Color.WHITE;
         freeTypeFontParameter.color = Color.BLACK;
-        // freeTypeFontParameter.borderWidth = 2f;
-        bitmapFontSmall = freeTypeFontGenerator.generateFont(freeTypeFontParameter);
+        bitmapFontSmall = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.04f));
 
         freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        // freeTypeFontParameter.incremental = true;
-        freeTypeFontParameter.size = Math.round(minSize*0.025f);
         freeTypeFontParameter.borderColor = Color.WHITE;
         freeTypeFontParameter.color = Color.BLACK;
         freeTypeFontParameter.borderWidth = 2f;
-        bitmapFontVerySmall = freeTypeFontGenerator.generateFont(freeTypeFontParameter);
+        bitmapFontVerySmall = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.025f));
 
         freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        // freeTypeFontParameter.incremental = true;
-        freeTypeFontParameter.size = Math.round(minSize*0.04f);
         freeTypeFontParameter.color = Color.WHITE;
-        bitmapFontSmallWhite = freeTypeFontGenerator.generateFont(freeTypeFontParameter);
-        // PixmapIO.writePNG(Gdx.files.external("bitmap_data.png"), bitmapFont.getRegion().getTexture().getTextureData().consumePixmap())
+        bitmapFontSmallWhite = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.04f));
 
         freeTypeFontGenerator.dispose();
     }

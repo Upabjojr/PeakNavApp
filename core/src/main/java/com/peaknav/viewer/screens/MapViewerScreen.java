@@ -21,17 +21,20 @@ import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Interpolation;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Button;
 import com.badlogic.gdx.scenes.scene2d.ui.ImageButton;
+import com.badlogic.gdx.scenes.scene2d.ui.Slider;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.Window;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 
+import com.badlogic.gdx.utils.Pools;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 
 import com.badlogic.gdx.utils.viewport.FitViewport;
@@ -55,6 +58,7 @@ import com.peaknav.gesture.MountainInputController;
 import com.peaknav.gesture.PositionChangeListener;
 import com.peaknav.utils.Units;
 import com.peaknav.viewer.tiles.MapTile;
+import com.peaknav.viewer.widgets.KeyboardHelpOverlay;
 import com.peaknav.viewer.widgets.WidgetGetter;
 
 
@@ -67,6 +71,7 @@ public class MapViewerScreen implements Screen {
 	public WidgetGetter.TableLocation tableLocation;
 	public Table tableWatermark;
 	public WidgetGetter.TableTool tableTool;
+	private KeyboardHelpOverlay keyboardHelpOverlay;
 
 	public MountainInputController controller;
 	private final float baseFieldOfView;
@@ -92,7 +97,32 @@ public class MapViewerScreen implements Screen {
 	private ShapeRenderer shapeRenderer;
 	private WidgetGetter.TableDownloadData tableDownloadData;
 	public LabelRenderer labelRenderer;
+	public com.peaknav.viewer.renderer_gdx.SkyRenderer skyRenderer;
+	private final float[] skyColorTmp = new float[3];
+	private final float[] skySunDir = new float[3];
 	private TileBatchRenderer tileBatchRenderer;
+	private volatile GpxFrameRequest pendingGpxFrame;
+
+	/** Low/high points of a just-loaded GPX, so the next location settle can frame the track. */
+	private static final class GpxFrameRequest {
+		final double lowLat, lowLon, highLat, highLon;
+		final float lowEleMeters, highEleMeters; // NaN when the GPX had no elevation
+		GpxFrameRequest(double lowLat, double lowLon, float lowEleMeters,
+						double highLat, double highLon, float highEleMeters) {
+			this.lowLat = lowLat;
+			this.lowLon = lowLon;
+			this.lowEleMeters = lowEleMeters;
+			this.highLat = highLat;
+			this.highLon = highLon;
+			this.highEleMeters = highEleMeters;
+		}
+	}
+
+	public void requestGpxFraming(double lowLat, double lowLon, float lowEleMeters,
+								  double highLat, double highLon, float highEleMeters) {
+		pendingGpxFrame = new GpxFrameRequest(lowLat, lowLon, lowEleMeters,
+				highLat, highLon, highEleMeters);
+	}
 
 	public final MoveCameraAction moveCameraAction = new MoveCameraAction();
 	public volatile ImpactPixmap impactPixmap;
@@ -146,6 +176,9 @@ public class MapViewerScreen implements Screen {
 	public void setCurrentCoordLocation(double longitude, double latitude, double elevation) {
 		elevation += LIFT_ELEV;
 
+		// The observer moved: recompute Sun/Moon/planet/star positions for the new location.
+		getC().skyModel.invalidate();
+
 		tableTool.setRefreshNeeded(true);
 
 		boolean missingData = getC().checkMissingData.checkMissingIfNotDismissed(latitude, longitude);
@@ -163,18 +196,46 @@ public class MapViewerScreen implements Screen {
 
 		cam.smoothDirection();
 
-		moveCameraAction.setCameraVectors(
-				// TODO: which latitude? Why not getC().L.getCurrentTargetLatitude() ?
-				new Vector3((float)convertLonitsToLatits(longitude, latitude),
-						(float)latitude,
-						(float)(elevation)),
-				cam.direction,
-				Vector3.Z,
-				true
-		);
+		boolean gpxFramed = false;        // suppress the default "drop camera on target" bar handling
+		boolean appliedGpxFraming = false; // actually (re)computed the framing on this call
+		if (pendingGpxFrame != null) {
+			// A GPX was just loaded: instead of dropping the camera on the target, frame the whole
+			// track from a high vantage and fly there.
+			GpxFrameRequest request = pendingGpxFrame;
+			pendingGpxFrame = null;
+			applyGpxFraming(request);
+			// Hold the framing: as the destination's tiles stream in, this callback re-fires for
+			// the same target; without this those re-fires would snap the camera onto the target
+			// (with its mid-fly heading) and wreck the framing — worst when coming from far, where
+			// more tiles load. Remember the target so a genuine user move still moves the camera.
+			gpxFrameHoldUntilMs = System.currentTimeMillis() + GPX_FRAME_HOLD_MS;
+			gpxFrameLat = latitude;
+			gpxFrameLon = longitude;
+			gpxFramed = true;
+			appliedGpxFraming = true;
+		} else if (System.currentTimeMillis() < gpxFrameHoldUntilMs
+				&& Math.abs(latitude - gpxFrameLat) < 1e-4
+				&& Math.abs(longitude - gpxFrameLon) < 1e-4) {
+			// Same GPX target re-firing during the fly/settle: leave the camera and bar alone (the
+			// position listener below keeps the bar synced, preserving any manual elevation change).
+			gpxFramed = true;
+		} else {
+			gpxFrameHoldUntilMs = 0L;
+			moveCameraAction.setCameraVectors(
+					// TODO: which latitude? Why not getC().L.getCurrentTargetLatitude() ?
+					new Vector3((float)convertLonitsToLatits(longitude, latitude),
+							(float)latitude,
+							(float)(elevation)),
+					cam.direction,
+					Vector3.Z,
+					true
+			);
+		}
 
-		float percz = convertUnitsZ2ElevationBar((float)elevation);
-		tableTool.sliderElevation.setVisualPercent(percz);
+		if (!gpxFramed) {
+			float percz = convertUnitsZ2ElevationBar((float)elevation);
+			tableTool.sliderElevation.setVisualPercent(percz);
+		}
 
 		for (PositionChangeListener positionChangeListener : positionChangeListeners) {
 			positionChangeListener.onCameraPositionChanged(cam.position.cpy());
@@ -183,8 +244,563 @@ public class MapViewerScreen implements Screen {
 
 		tableLocation.setButtonHereFromGps();
 
+		if (appliedGpxFraming) {
+			// Align the bar with the framed camera height (the camera is still flying there, so its
+			// current z isn't it yet). Done after the listeners so it is the final word; the ground
+			// reference it measures against was set in applyGpxFraming.
+			tableTool.sliderElevation.setVisualPercent(convertUnitsZ2ElevationBar(gpxCamPos.z));
+		}
+
 		getC().dataRetrieveThreadManager.triggerUpdateVisibilityPositionChanged();
 
+	}
+
+	private final Vector3 gpxCamPos = new Vector3();
+	private final Vector3 gpxLookDir = new Vector3();
+	private final Vector3 gpxLowW = new Vector3();
+	private final Vector3 gpxHighW = new Vector3();
+
+	/** Seconds of the smooth fly-and-rotate into the GPX framing. */
+	private static final float GPX_FLY_SECONDS = 2.6f;
+	/** Minimum camera height above the track's low point, so the whole path is seen from high up. */
+	private static final float GPX_MIN_HEIGHT_METERS = 5000f;
+	/** How long, after a GPX framing, to ignore re-fired location callbacks for the same target. */
+	private static final long GPX_FRAME_HOLD_MS = 9000L;
+
+	private long gpxFrameHoldUntilMs = 0L;
+	private double gpxFrameLat, gpxFrameLon;
+
+	/**
+	 * Frames the loaded track vertically: the low point on the bottom edge of the screen, the high
+	 * point on the top edge, from a camera at least {@link #GPX_MIN_HEIGHT_METERS} above the low
+	 * point (higher for long tracks). It then flies there smoothly, rotating as it goes.
+	 *
+	 * <p>The camera, low point and high point are coplanar (the vertical plane through the low point
+	 * along the low->high heading), so it solves in that plane: the camera sits at height H behind
+	 * the low point; the look pitch is fixed to put the low point on the bottom frustum edge, and
+	 * the back-distance B is solved so the high point lands on the top edge.
+	 */
+	private void applyGpxFraming(GpxFrameRequest r) {
+		gpxWorld(r.lowLat, r.lowLon, r.lowEleMeters, gpxLowW);
+		gpxWorld(r.highLat, r.highLon, r.highEleMeters, gpxHighW);
+
+		float dhx = gpxHighW.x - gpxLowW.x;
+		float dhy = gpxHighW.y - gpxLowW.y;
+		float dh = (float) Math.sqrt(dhx * dhx + dhy * dhy); // horizontal separation
+		float dz = gpxHighW.z - gpxLowW.z;                   // elevation gain (latits)
+		float len = (float) Math.sqrt(dh * dh + dz * dz);    // low->high 3D distance
+
+		// Horizontal heading low->high; if the two are vertically stacked, stand off to the south.
+		float ux, uy;
+		if (dh < 1e-7f) {
+			ux = 0f;
+			uy = -1f;
+		} else {
+			ux = dhx / dh;
+			uy = dhy / dh;
+		}
+
+		float theta = (float) Math.toRadians(cam.fieldOfView); // vertical field of view
+		// At least 5000 m above the low point, and higher for a long track so it isn't cramped.
+		float height = Math.max(0.5f * len, Units.convertMetersToLatits(GPX_MIN_HEIGHT_METERS));
+		float back = solveGpxBack(dh, dz, height, theta);
+
+		gpxCamPos.set(gpxLowW.x - ux * back, gpxLowW.y - uy * back, gpxLowW.z + height);
+
+		// Look pitch: depression down to the low point, raised by half the FOV so the low point sits
+		// exactly on the bottom frustum edge.
+		float depression = (float) Math.atan2(height, back);
+		float af = -depression + theta * 0.5f;
+		float cosF = (float) Math.cos(af);
+		float sinF = (float) Math.sin(af);
+		gpxLookDir.set(ux * cosF, uy * cosF, sinF).nor();
+
+		// The elevation bar measures altitude above the ground under the camera, but the camera is
+		// no longer over the map target — so point that ground reference at the camera's own spot.
+		// Read the terrain there if it's loaded; otherwise use the track's high point, a safe floor
+		// that keeps scrolling the bar down from diving underground.
+		float camLat = gpxCamPos.y;
+		float camLon = Units.convertLatitsToLonits(gpxCamPos.x, camLat);
+		Float sampled = com.peaknav.elevation.ElevationUtils.getElevationLatitsFromMaxCoords(
+				camLon, camLat, false);
+		float groundZ;
+		if (sampled != null) {
+			groundZ = sampled - com.peaknav.elevation.ElevationUtils
+					.getElevationCorrectionForRoundEarth(camLat, camLon);
+		} else {
+			groundZ = Math.max(gpxLowW.z, gpxHighW.z);
+		}
+		getC().L.setCurrentTerrainEleQuiet(groundZ);
+
+		flyToGpxFraming();
+	}
+
+	private void flyToGpxFraming() {
+		// Smooth ease-in-out fly, position and heading interpolating together over the whole move.
+		moveCameraAction.setCameraVectors(gpxCamPos, gpxLookDir, Vector3.Z,
+				false, Interpolation.smooth, false, 0f, 1f, GPX_FLY_SECONDS);
+	}
+
+	/**
+	 * With the camera at (-B, H) in the vertical plane (low=(0,0), high=(dh,dz)) and the look pitch
+	 * pinned so the low point is on the bottom edge, the high point lands on the top edge when
+	 * atan2(dz-H, dh+B) + atan2(H, B) = theta. Solve that for the back-distance B by bisection.
+	 */
+	private static float solveGpxBack(float dh, float dz, float height, float theta) {
+		float lo = 1e-6f;
+		float hi = 1.0f; // latits; ~100 km, plenty of range
+		float glo = gpxBackResidual(lo, dh, dz, height, theta);
+		float ghi = gpxBackResidual(hi, dh, dz, height, theta);
+		if ((glo < 0f) == (ghi < 0f)) {
+			return height; // no bracket (near-vertical/degenerate): fall back to a 45-degree look
+		}
+		for (int i = 0; i < 40; i++) {
+			float mid = 0.5f * (lo + hi);
+			float gm = gpxBackResidual(mid, dh, dz, height, theta);
+			if ((gm < 0f) == (glo < 0f)) {
+				lo = mid;
+				glo = gm;
+			} else {
+				hi = mid;
+			}
+		}
+		return 0.5f * (lo + hi);
+	}
+
+	private static float gpxBackResidual(float back, float dh, float dz, float height, float theta) {
+		return (float) Math.atan2(dz - height, dh + back)
+				+ (float) Math.atan2(height, back) - theta;
+	}
+
+	// --- Cinematic GPX tour: fly along the track from above, then orbit its end 360 degrees. ---
+	// The viewing distance is derived from the size of the track rather than fixed: a flat 700 m
+	// above / 500 m behind sat so close to the path that the surrounding mountains were out of
+	// frame. These bounds keep a short walk from being viewed from orbit and a long alpine route
+	// from being followed with the peaks cropped away.
+	private static final float GPX_TOUR_HEIGHT_FRACTION = 0.45f; // of the track's bounding span
+	private static final float GPX_TOUR_HEIGHT_MIN_METERS = 2600f;
+	private static final float GPX_TOUR_HEIGHT_MAX_METERS = 8000f;
+	private static final float GPX_TOUR_BACK_FRACTION = 0.65f;
+	private static final float GPX_TOUR_BACK_MIN_METERS = 4000f;
+	private static final float GPX_TOUR_BACK_MAX_METERS = 12000f;
+	/**
+	 * Field of view while touring. The map's normal 30 degrees is a long lens: it crops to the
+	 * path and cuts the peaks on either side out of frame no matter how far back the camera sits.
+	 * Widening it for the tour is what actually brings the surrounding mountains into shot; the
+	 * previous value is restored when the tour ends.
+	 */
+	private static final float GPX_TOUR_FIELD_OF_VIEW = 62f;
+	private static final float GPX_TOUR_INTRO_SECONDS = 2.5f;   // ease-in from the current view
+	private static final float GPX_TOUR_SECONDS = 22f;          // total time flying along the track
+	private static final float GPX_TOUR_SEEK_SECONDS = 1.2f;    // ease-in after a scrub-bar jump
+	/**
+	 * Path smoothing. The track is resampled to this many evenly spaced points and then low-pass
+	 * filtered: the window is a fraction of that count, so the amount of smoothing scales with the
+	 * route instead of with how densely the receiver happened to log. Two passes of a box filter
+	 * approximate a Gaussian, which is enough to turn GPS zig-zag into a trend line the camera can
+	 * follow without jerking. The heading is measured over +/- the lookahead, so it changes over a
+	 * long baseline and curves come in gradually.
+	 */
+	private static final int GPX_TOUR_SAMPLES = 160;
+	private static final float GPX_SMOOTH_WINDOW_FRACTION = 0.10f;
+	private static final int GPX_SMOOTH_PASSES = 2;
+	private static final float GPX_LOOKAHEAD_FRACTION = 0.05f;
+	/** Orbit radius/height as a multiple of the fly-along setback/height. */
+	private static final float GPX_ORBIT_RADIUS_FACTOR = 1.0f;
+	private static final float GPX_ORBIT_HEIGHT_FACTOR = 0.7f;
+	// 10 degrees per step: fine enough that the circle reads as a smooth arc rather than a polygon.
+	private static final int GPX_ORBIT_STEPS = 36;
+	private static final float GPX_ORBIT_STEP_SECONDS = 0.34f;
+	/** How much longer the final orbit step lasts than the first, so the circle eases to a stop. */
+	private static final float GPX_ORBIT_SLOWDOWN = 2.2f;
+
+	/**
+	 * Plays a cinematic tour of the loaded GPX track: the camera flies along it from above and a
+	 * little behind, looking ahead down the route so the surrounding mountains stay in frame, then
+	 * makes one decelerating orbit of the end point.
+	 *
+	 * <p>The camera does NOT follow the recorded points directly. A GPS trace is noisy and unevenly
+	 * spaced — sampling it as-is made the camera jitter and snap through every switchback. Instead
+	 * the track is resampled at even spacing along its length and then low-pass filtered, so the
+	 * camera flies the general trend of the route at a constant speed and the recorded wobble is
+	 * averaged away. The heading is taken over a long baseline on that smoothed path rather than
+	 * between neighbouring points, which is what keeps curves gradual.
+	 *
+	 * <p>The result is stored as keyframes so the tour can be replayed from any point
+	 * ({@link #seekGpxTour}) when the user drags the scrub bar.
+	 */
+	public void startGpxFlythrough() {
+		com.peaknav.gpx.GpxTrack track = null;
+		for (com.peaknav.gpx.GpxTrack t : getC().gpxManager.getTracks()) {
+			if (track == null || t.size() > track.size()) {
+				track = t;
+			}
+		}
+		if (track == null || track.size() < 2) {
+			return;
+		}
+		java.util.List<com.peaknav.gpx.GpxTrack.Point> pts = track.getPoints();
+
+		// Every recorded point, in world space; the smoothing below needs the full resolution.
+		java.util.List<Vector3> raw = new java.util.ArrayList<>(pts.size());
+		for (int i = 0; i < pts.size(); i++) {
+			Vector3 w = gpxTourWorld(pts.get(i));
+			if (raw.isEmpty() || raw.get(raw.size() - 1).dst(w) > 1e-7f) {
+				raw.add(w); // drop exact duplicates: they carry no heading
+			}
+		}
+		if (raw.size() < 2) {
+			return;
+		}
+
+		// De-noise, then space evenly, then polish — in that order, and it matters. Arc length
+		// along a raw GPS trace is dominated by the jitter rather than by forward progress, so
+		// resampling first spends samples wherever the receiver wobbled most and the camera still
+		// speeds up and slows down. Smoothing the dense samples first gives a curve whose length
+		// is real distance; only then does even spacing mean even speed.
+		java.util.List<Vector3> path = gpxResampleByLength(raw, GPX_TOUR_SAMPLES * 3);
+		int denseWindow = Math.max(3, (int) (path.size() * GPX_SMOOTH_WINDOW_FRACTION) | 1);
+		path = gpxMovingAverage(path, denseWindow, GPX_SMOOTH_PASSES);
+		path = gpxResampleByLength(path, GPX_TOUR_SAMPLES);
+		int window = Math.max(3, (int) (path.size() * GPX_SMOOTH_WINDOW_FRACTION) | 1);
+		path = gpxMovingAverage(path, window, GPX_SMOOTH_PASSES);
+		int m = path.size();
+		if (m < 2) {
+			return;
+		}
+
+		// Size the viewing distance from the track's own extent (see the constants).
+		float spanMeters = gpxSpanMeters(path);
+		float heightMeters = MathUtils.clamp(GPX_TOUR_HEIGHT_FRACTION * spanMeters,
+				GPX_TOUR_HEIGHT_MIN_METERS, GPX_TOUR_HEIGHT_MAX_METERS);
+		float backMeters = MathUtils.clamp(GPX_TOUR_BACK_FRACTION * spanMeters,
+				GPX_TOUR_BACK_MIN_METERS, GPX_TOUR_BACK_MAX_METERS);
+		float heightAbove = Units.convertMetersToLatits(heightMeters);
+		float backDist = Units.convertMetersToLatits(backMeters);
+
+		// Camera positions: behind and above the smoothed path, using a heading measured over a
+		// long baseline (+/- lookahead samples) rather than between neighbours.
+		int lookahead = Math.max(2, Math.round(m * GPX_LOOKAHEAD_FRACTION));
+		java.util.List<Vector3> camPath = new java.util.ArrayList<>(m);
+		for (int i = 0; i < m; i++) {
+			Vector3 cur = path.get(i);
+			Vector3 a = path.get(Math.max(0, i - lookahead));
+			Vector3 b = path.get(Math.min(m - 1, i + lookahead));
+			Vector3 fwd = new Vector3(b.x - a.x, b.y - a.y, 0f);
+			if (fwd.len() < 1e-9f) {
+				fwd.set(0f, 1f, 0f);
+			}
+			fwd.nor();
+			camPath.add(new Vector3(cur.x - fwd.x * backDist, cur.y - fwd.y * backDist,
+					cur.z + heightAbove));
+		}
+		// One more pass over the camera track itself: the offset can still kink where the route
+		// doubles back on itself.
+		camPath = gpxMovingAverage(camPath, window, GPX_SMOOTH_PASSES);
+
+		gpxTourFrames.clear();
+		float stepSeconds = GPX_TOUR_SECONDS / Math.max(1, m - 1);
+		for (int i = 0; i < m; i++) {
+			Vector3 camPos = camPath.get(i);
+			// Aim at a point further along the smoothed route, so the camera leads into curves.
+			Vector3 aim = path.get(Math.min(m - 1, i + lookahead));
+			Vector3 dir = new Vector3(aim).sub(camPos).nor();
+			gpxTourFrames.add(new GpxTourFrame(camPos, dir,
+					i == 0 ? GPX_TOUR_INTRO_SECONDS : stepSeconds, i == 0));
+		}
+
+		// Exactly one orbit of the end point, starting from wherever the fly-along left off.
+		// Every frame re-aims at the end point, so the camera circles it while keeping it in the
+		// middle of frame — it orbits the summit rather than spinning on the spot. The frames get
+		// progressively longer so the circle eases to a stop instead of ending mid-swing.
+		Vector3 endW = path.get(m - 1);
+		Vector3 lastCamPos = camPath.get(m - 1);
+		float orbitR = Units.convertMetersToLatits(backMeters * GPX_ORBIT_RADIUS_FACTOR);
+		float orbitH = Units.convertMetersToLatits(heightMeters * GPX_ORBIT_HEIGHT_FACTOR);
+		Vector3 lookAt = new Vector3(endW.x, endW.y, endW.z + Units.convertMetersToLatits(60f));
+		float startAng = (float) Math.atan2(lastCamPos.y - endW.y, lastCamPos.x - endW.x);
+		for (int s = 1; s <= GPX_ORBIT_STEPS; s++) {
+			float ang = startAng + (float) (2.0 * Math.PI * s / GPX_ORBIT_STEPS);
+			Vector3 op = new Vector3(endW.x + (float) Math.cos(ang) * orbitR,
+					endW.y + (float) Math.sin(ang) * orbitR, endW.z + orbitH);
+			Vector3 od = new Vector3(lookAt).sub(op).nor();
+			float t = (float) s / GPX_ORBIT_STEPS;
+			gpxTourFrames.add(new GpxTourFrame(op, od,
+					GPX_ORBIT_STEP_SECONDS * (1f + (GPX_ORBIT_SLOWDOWN - 1f) * t * t), false));
+		}
+
+		queueGpxTourFrom(0);
+	}
+
+	/** One queued camera pose of the tour. Kept so the tour can be restarted from any point. */
+	private static final class GpxTourFrame {
+		final Vector3 pos;
+		final Vector3 dir;
+		final float seconds;
+		final boolean intro; // the first frame eases in from wherever the camera currently is
+		GpxTourFrame(Vector3 pos, Vector3 dir, float seconds, boolean intro) {
+			this.pos = pos;
+			this.dir = dir;
+			this.seconds = seconds;
+			this.intro = intro;
+		}
+	}
+
+	private final java.util.List<GpxTourFrame> gpxTourFrames = new java.util.ArrayList<>();
+
+	/** (Re)queues the tour from the given keyframe, replacing anything already queued. */
+	private void queueGpxTourFrom(int firstFrame) {
+		if (gpxTourFrames.isEmpty()) {
+			return;
+		}
+		firstFrame = MathUtils.clamp(firstFrame, 0, gpxTourFrames.size() - 1);
+		moveCameraAction.clearSteps();
+		float total = 0f;
+		for (int i = firstFrame; i < gpxTourFrames.size(); i++) {
+			GpxTourFrame f = gpxTourFrames.get(i);
+			total += f.seconds;
+			if (i == firstFrame) {
+				// Ease in from the current view rather than cutting to the new pose.
+				moveCameraAction.setCameraVectors(f.pos, f.dir, Vector3.Z,
+						true, Interpolation.smooth, false, 0f, 1f,
+						f.intro ? GPX_TOUR_INTRO_SECONDS : GPX_TOUR_SEEK_SECONDS);
+			} else {
+				moveCameraAction.addFlatStep(f.pos, f.dir, Vector3.Z,
+						Interpolation.linear, f.seconds);
+			}
+		}
+		if (!gpxTourActive) {
+			gpxFieldOfViewBeforeTour = cam.fieldOfView; // restored by stopGpxFlythrough
+		}
+		cam.fieldOfView = GPX_TOUR_FIELD_OF_VIEW;
+		cam.update();
+		gpxTourActive = true;
+		// Keep re-fired location callbacks from snapping the camera for the rest of the tour.
+		gpxFrameHoldUntilMs = System.currentTimeMillis() + (long) ((total + 2f) * 1000f);
+		gpxFrameLat = getC().L.getTargetLatitude();
+		gpxFrameLon = getC().L.getTargetLongitude();
+	}
+
+	/** Progress through the tour, 0..1, for the scrub bar. */
+	public float getGpxTourProgress() {
+		int total = gpxTourFrames.size();
+		if (!gpxTourActive || total == 0) {
+			return 0f;
+		}
+		int remaining = moveCameraAction.remainingSteps();
+		return MathUtils.clamp((total - remaining) / (float) total, 0f, 1f);
+	}
+
+	/** Jumps the tour to a fraction of the way along and carries on from there. */
+	public void seekGpxTour(float fraction) {
+		if (gpxTourFrames.isEmpty()) {
+			return;
+		}
+		boolean wasPaused = moveCameraAction.isPaused();
+		queueGpxTourFrom(Math.round(MathUtils.clamp(fraction, 0f, 1f) * (gpxTourFrames.size() - 1)));
+		moveCameraAction.setPaused(wasPaused);
+	}
+
+	/**
+	 * Resamples a polyline to {@code n} points spaced evenly along its length, so the tour advances
+	 * at a constant speed instead of lingering wherever the receiver logged points densely.
+	 */
+	private static java.util.List<Vector3> gpxResampleByLength(java.util.List<Vector3> src, int n) {
+		int srcN = src.size();
+		float[] cum = new float[srcN];
+		for (int i = 1; i < srcN; i++) {
+			cum[i] = cum[i - 1] + src.get(i - 1).dst(src.get(i));
+		}
+		float total = cum[srcN - 1];
+		java.util.List<Vector3> out = new java.util.ArrayList<>(n);
+		if (total < 1e-9f) {
+			out.add(new Vector3(src.get(0)));
+			out.add(new Vector3(src.get(srcN - 1)));
+			return out;
+		}
+		int seg = 0;
+		for (int i = 0; i < n; i++) {
+			float want = total * i / (n - 1);
+			while (seg < srcN - 2 && cum[seg + 1] < want) {
+				seg++;
+			}
+			float segLen = cum[seg + 1] - cum[seg];
+			float t = (segLen < 1e-9f) ? 0f : (want - cum[seg]) / segLen;
+			out.add(new Vector3(src.get(seg)).lerp(src.get(seg + 1), t));
+		}
+		return out;
+	}
+
+	/**
+	 * Centred moving average over the points; repeating it approximates a Gaussian blur, which is
+	 * what turns the recorded zig-zag into the smooth trend line the camera follows. Endpoints keep
+	 * their position (the window shrinks at the ends) so the tour still starts and finishes on the
+	 * track.
+	 */
+	private static java.util.List<Vector3> gpxMovingAverage(
+			java.util.List<Vector3> src, int window, int passes) {
+		java.util.List<Vector3> cur = src;
+		int half = window / 2;
+		for (int p = 0; p < passes; p++) {
+			java.util.List<Vector3> out = new java.util.ArrayList<>(cur.size());
+			for (int i = 0; i < cur.size(); i++) {
+				int lo = Math.max(0, i - half);
+				int hi = Math.min(cur.size() - 1, i + half);
+				// Shrink symmetrically at the ends, otherwise the average drags the first and last
+				// points inward and the tour no longer lines up with the track.
+				int reach = Math.min(i - lo, hi - i);
+				float x = 0f, y = 0f, z = 0f;
+				for (int k = i - reach; k <= i + reach; k++) {
+					Vector3 v = cur.get(k);
+					x += v.x;
+					y += v.y;
+					z += v.z;
+				}
+				int count = 2 * reach + 1;
+				out.add(new Vector3(x / count, y / count, z / count));
+			}
+			cur = out;
+		}
+		return cur;
+	}
+
+	/** True from the moment a tour is queued until its last camera move finishes or it is stopped. */
+	private boolean gpxTourActive = false;
+	/** Which icon the play/pause button is currently showing, so it is only swapped on a change. */
+	private boolean gpxButtonShowingPause = false;
+
+	/**
+	 * Shows the GPX buttons only while a track is loaded, and keeps the play/pause button showing
+	 * the action it will perform: a pause bar while the tour runs, a play triangle otherwise.
+	 */
+	private void updateGpxButtons() {
+		if (tableLocation == null || tableLocation.buttonGpxFly == null) {
+			return;
+		}
+		if (gpxTourActive && moveCameraAction.isComplete()) {
+			endGpxTour(); // the tour played out on its own
+		}
+		boolean hasGpx = !getC().gpxManager.isEmpty();
+		tableLocation.buttonGpxFly.setVisible(hasGpx);
+		if (tableLocation.buttonGpxClear != null) {
+			tableLocation.buttonGpxClear.setVisible(hasGpx);
+		}
+		boolean showPause = isGpxTourPlaying();
+		if (showPause != gpxButtonShowingPause) {
+			gpxButtonShowingPause = showPause;
+			tableLocation.buttonGpxFly.getStyle().up = getC().widgetTextures.getTextureRegionDrawable(
+					showPause ? "icons/icon_gpx_pause.png" : "icons/icon_gpx_play.png");
+		}
+
+		// Scrub bar: visible for as long as a tour is loaded (playing or paused), tracking
+		// progress except while the user has hold of the knob.
+		boolean tourLive = gpxTourActive && !moveCameraAction.isComplete();
+		tableLocation.gpxSeekTable.setVisible(tourLive);
+		if (tourLive && !tableLocation.gpxSeekSlider.isDragging()) {
+			gpxSeekSliderUpdating = true;
+			try {
+				tableLocation.gpxSeekSlider.setValue(getGpxTourProgress());
+			} finally {
+				gpxSeekSliderUpdating = false;
+			}
+		}
+	}
+
+	/** Guards the scrub bar's change listener while the code (not the user) moves the knob. */
+	private boolean gpxSeekSliderUpdating = false;
+
+	/** Whether a GPX tour is running or paused (i.e. the pause/play button should show pause). */
+	public boolean isGpxTourPlaying() {
+		return gpxTourActive && !moveCameraAction.isComplete() && !moveCameraAction.isPaused();
+	}
+
+	public boolean isGpxTourPaused() {
+		return gpxTourActive && !moveCameraAction.isComplete() && moveCameraAction.isPaused();
+	}
+
+	/** Play / pause / restart, all from the one on-map button. */
+	public void toggleGpxFlythrough() {
+		if (isGpxTourPlaying()) {
+			moveCameraAction.setPaused(true);
+		} else if (isGpxTourPaused()) {
+			moveCameraAction.setPaused(false);
+			// The hold expires while paused; extend it so the resumed tour is not interrupted.
+			gpxFrameHoldUntilMs = Math.max(gpxFrameHoldUntilMs,
+					System.currentTimeMillis() + 60_000L);
+		} else {
+			startGpxFlythrough();
+		}
+	}
+
+	/** Abandons a running tour and releases the camera (used when the GPX itself is cleared). */
+	public void stopGpxFlythrough() {
+		endGpxTour();
+		moveCameraAction.clearSteps();
+		gpxTourFrames.clear(); // don't keep keyframes for a track that is going away
+		gpxFrameHoldUntilMs = 0L;
+	}
+
+	/** Field of view to put back when the tour finishes; NaN while no tour has widened it. */
+	private float gpxFieldOfViewBeforeTour = Float.NaN;
+
+	/** Marks the tour finished and restores the pre-tour field of view. */
+	private void endGpxTour() {
+		gpxTourActive = false;
+		if (!Float.isNaN(gpxFieldOfViewBeforeTour)) {
+			cam.fieldOfView = gpxFieldOfViewBeforeTour;
+			gpxFieldOfViewBeforeTour = Float.NaN;
+			cam.update();
+		}
+	}
+
+	/** Largest horizontal extent of the track, in metres — drives how far back the camera sits. */
+	private static float gpxSpanMeters(java.util.List<Vector3> wp) {
+		float minX = Float.MAX_VALUE, maxX = -Float.MAX_VALUE;
+		float minY = Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
+		for (int i = 0; i < wp.size(); i++) {
+			Vector3 v = wp.get(i);
+			if (v.x < minX) minX = v.x;
+			if (v.x > maxX) maxX = v.x;
+			if (v.y < minY) minY = v.y;
+			if (v.y > maxY) maxY = v.y;
+		}
+		float dx = maxX - minX;
+		float dy = maxY - minY;
+		return Units.convertLatitsToMeters((float) Math.sqrt(dx * dx + dy * dy));
+	}
+
+	private Vector3 gpxTourWorld(com.peaknav.gpx.GpxTrack.Point p) {
+		Vector3 v = new Vector3();
+		gpxWorld(p.lat, p.lon, p.hasElevation ? p.eleMeters : Float.NaN, v);
+		return v;
+	}
+
+	private static float gpxHoriz(Vector3 a, Vector3 b) {
+		float dx = b.x - a.x;
+		float dy = b.y - a.y;
+		return (float) Math.sqrt(dx * dx + dy * dy);
+	}
+
+	/** Unit horizontal heading of the track at waypoint i. */
+	private static Vector3 gpxForward(java.util.List<Vector3> wp, int i) {
+		int m = wp.size();
+		Vector3 a = (i == m - 1) ? wp.get(i - 1) : wp.get(i);
+		Vector3 b = (i == m - 1) ? wp.get(i) : wp.get(i + 1);
+		Vector3 f = new Vector3(b.x - a.x, b.y - a.y, 0f);
+		return (f.len() < 1e-9f) ? new Vector3(0f, 1f, 0f) : f.nor();
+	}
+
+	private void gpxWorld(double lat, double lon, float eleMeters, Vector3 out) {
+		float ele = Float.isNaN(eleMeters)
+				? Units.convertLatitsToMeters((float) getC().L.getCurrentTerrainEle())
+				: eleMeters;
+		float corr = com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(
+				(float) lat, (float) lon);
+		// Scale longitude by cos(targetLat), the single reference the terrain and POIs use, so this
+		// world position lines up with them (not each point's own latitude — see GpxPathRenderer).
+		out.set((float) convertLonitsToLatits(lon, getC().L.getTargetLatitude()),
+				(float) lat,
+				Units.convertMetersToLatits(ele) - corr);
 	}
 
 	public void pointCameraForGyroscope(float xDir, float yDir, float zDir,
@@ -218,6 +834,20 @@ public class MapViewerScreen implements Screen {
 		return Interpolation.exp5Out.apply((z - baseEle)/(MAX_ELEV_BAR_ELEV - baseEle));
 	}
 
+	/**
+	 * Moves the elevation bar by a fraction of its full travel, positive upwards. Goes
+	 * through the slider rather than straight to the camera so that the knob, the
+	 * toast and the elevation itself stay in step, exactly as when the bar is dragged.
+	 *
+	 * @param deltaPercent how far to move, 1.0 being the whole bar
+	 */
+	public void nudgeCameraElevationBar(float deltaPercent) {
+		if (tableTool == null)
+			return;
+		Slider slider = tableTool.sliderElevation;
+		slider.setVisualPercent(MathUtils.clamp(slider.getVisualPercent() + deltaPercent, 0f, 1f));
+	}
+
 	public void setCameraElevationBar(float elevation) {
 		double newElevation = convertUnitsElevationBar2Z(elevation);
 		moveCameraAction.camQueueLock.writeLock().lock();
@@ -238,6 +868,41 @@ public class MapViewerScreen implements Screen {
 
 	public void takeSnapshot() {
 		flagTakeSnapshot = true;
+	}
+
+	/**
+	 * Shows the keyboard-controls overlay. Kept separate from the tutorial: it is
+	 * raised when the user presses a key that has no binding (see
+	 * {@link com.peaknav.gesture.MountainInputController}). The overlay is itself gated
+	 * on a hardware keyboard being present, so this is a no-op on touch-only devices.
+	 */
+	public void showKeyboardControls() {
+		if (keyboardHelpOverlay != null) {
+			keyboardHelpOverlay.show();
+		}
+	}
+
+	public void hideKeyboardControls() {
+		if (keyboardHelpOverlay != null) {
+			keyboardHelpOverlay.hide();
+		}
+	}
+
+	public boolean isKeyboardControlsVisible() {
+		return keyboardHelpOverlay != null && keyboardHelpOverlay.isVisible();
+	}
+
+	/**
+	 * Fires the "?" icon button as if it had been clicked, so a keyboard "?" and the
+	 * on-screen button run the exact same action on every platform.
+	 */
+	public void activateHelpButton() {
+		if (tableLocation == null || tableLocation.helpButton == null) {
+			return;
+		}
+		ChangeListener.ChangeEvent changeEvent = Pools.obtain(ChangeListener.ChangeEvent.class);
+		tableLocation.helpButton.fire(changeEvent);
+		Pools.free(changeEvent);
 	}
 
 	private Stage stage;
@@ -304,13 +969,28 @@ public class MapViewerScreen implements Screen {
 		stageCopyright.addActor(tableCopyright);
 
 		stage.addActor(tableLocation.progressBarTable);
+		stage.addActor(tableLocation.gpxSeekTable);
+		tableLocation.gpxSeekSlider.addListener(new ChangeListener() {
+			@Override
+			public void changed(ChangeEvent event, Actor actor) {
+				// Only react to the user dragging, not to the per-frame position updates below.
+				if (gpxSeekSliderUpdating) {
+					return;
+				}
+				seekGpxTour(tableLocation.gpxSeekSlider.getValue());
+			}
+		});
 
 		optionPane = new OptionPane(tableLocation.optionsButton, widgetUnitStep);
 		stage.addActor(optionPane.getTable());
 		stage.addActor(optionPane.getTableOneColumn());
 		stage.addActor(optionPane.getSelectBoxSatelliteSource());
+		stage.addActor(optionPane.getSelectBoxDownloadSource());
 		stage.addActor(optionPane.getSelectBoxUnits());
 		stage.addActor(optionPane.getSelectInfoOpts());
+		stage.addActor(optionPane.getSelectGpx());
+		stage.addActor(optionPane.getSelectLabels());
+		stage.addActor(optionPane.getSelectSky());
 		// stage.addActor(optionPane.getTableAppInfo());
 		optionPane.hide();
 
@@ -347,9 +1027,14 @@ public class MapViewerScreen implements Screen {
 		labelLoading = new LabelLoading(widgetUnitStep);
 		stage.addActor(labelLoading.getTableCenterNoData());
 
+		// Added last so its scrim draws on top of every other widget when shown.
+		keyboardHelpOverlay = new KeyboardHelpOverlay(widgetUnitStep);
+		stage.addActor(keyboardHelpOverlay.getRoot());
+
 		labelRenderer = new LabelRenderer(
 				spriteBatch, shapeRenderer, new Texture(Gdx.files.internal("icons/icon_compass.png")),
 				widgetUnitStep);
+		skyRenderer = new com.peaknav.viewer.renderer_gdx.SkyRenderer(spriteBatch, shapeRenderer);
 		labelRenderer.setBackgroundAlpha(
 				tableTool.sliderCameraAlpha.getVisualPercent()
 		);
@@ -439,6 +1124,10 @@ public class MapViewerScreen implements Screen {
 			cam.viewportHeight = height;
 			cam.update();
 			cam.resizeFieldOfViewToBounds();
+			// The four 180° depth cameras must follow, or the depth pixmaps rebuilt below are
+			// rendered/sampled with the old aspect and every occlusion lookup lands on the
+			// wrong pixel from here on.
+			cam.resizeGeographicCameras(width, height);
 
 			stageViewport.update(width, height, true);
 			stageNavigationViewport.update(width, height, true);
@@ -450,6 +1139,14 @@ public class MapViewerScreen implements Screen {
 			shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());
 			Gdx.gl.glViewport(0, 0, width, height);
 			tileBatchRenderer.resize(width, height);
+
+			// The geographical depth pixmaps used for label/area occlusion are sized to the viewport.
+			// A resize invalidates them: sampling now projects with the new viewport but reads the
+			// old-size pixmaps out of bounds, so every area reads as occluded and all labels vanish
+			// until the camera next moves. Request a fresh render so they are rebuilt at the new size.
+			if (impactPixmap != null) {
+				impactPixmap.impactPixmapNewRequested = true;
+			}
 
 			getC().dataRetrieveThreadManager.triggerUpdateVisibilityByZooming();
 
@@ -474,9 +1171,44 @@ public class MapViewerScreen implements Screen {
 	private final Vector3 prev_position = new Vector3();
 	private final Matrix4 prev_combined = new Matrix4();
 
+	/** When the camera last rotated, and whether a settle-time overlap pass is still owed. */
+	private long lastCameraRotationMillis = 0L;
+	private boolean overlapSettlePending = false;
+	/** How long the camera must sit still after rotating before the overlap pass is re-run. */
+	private static final long OVERLAP_SETTLE_DELAY_MILLIS = 250L;
+
+	/**
+	 * Keeps the sky model and the terrain relief light in step with the observer and the clock.
+	 * When the sky view is on, the terrain is lit from the real Sun (dim ambient at night); when it
+	 * is off, the fixed NW/45° cartographic light is restored for legibility.
+	 */
+	private void updateSky() {
+		// Always compute the sky so the Sun is always positioned and drawn. Only when the sky view
+		// is on do we light the terrain from the real Sun (and tint the sky day/night in clearScreen);
+		// otherwise the map keeps its plain sky and the legible NW/45° relief light.
+		getC().skyModel.update(getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude(),
+				getC().skyModel.currentTimeMillis());
+		if (P.isSkyView()) {
+			getC().skyModel.getSunDirection(skySunDir);
+			getC().sunLight.setDirection(skySunDir[0], skySunDir[1], skySunDir[2]);
+		} else {
+			getC().sunLight.setFromAzimuthAltitude(
+					com.peaknav.viewer.SunLight.DEFAULT_AZIMUTH_DEGREES,
+					com.peaknav.viewer.SunLight.DEFAULT_ALTITUDE_DEGREES);
+		}
+	}
+
 	private void clearScreen() {
-		// Sky color (not really necessary, will be reset by GLSL script):
-		Gdx.gl.glClearColor(135/255f, 206/255f, 250/255f, 1);
+		// Sky color: day-blue by default, or the astronomically-tinted sky (blue by day, dark at
+		// night, dusk in between) driven by the computed Sun altitude when the sky view is on.
+		if (P.isSkyView()) {
+			com.peaknav.viewer.renderer_gdx.SkyRenderer.skyColor(
+					com.peaknav.viewer.renderer_gdx.SkyRenderer.ambianceSunAltitude(
+							getC().skyModel.getSunAltitudeDeg()), skyColorTmp);
+			Gdx.gl.glClearColor(skyColorTmp[0], skyColorTmp[1], skyColorTmp[2], 1);
+		} else {
+			Gdx.gl.glClearColor(135/255f, 206/255f, 250/255f, 1);
+		}
 		Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
 		Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
 
@@ -498,6 +1230,8 @@ public class MapViewerScreen implements Screen {
 		if (paused) {
 			return;
 		}
+
+		updateGpxButtons();
 
 		float targetLat = getC().L.getTargetLatitude();
 		float targetLon = getC().L.getTargetLongitude();
@@ -526,6 +1260,8 @@ public class MapViewerScreen implements Screen {
 
 		tileBatchRenderer.startElevationRetrievalAndAssignmentThreads();
 
+		updateSky();
+
 		clearScreen();
 
 		if (mapApp.isPaused()) {
@@ -536,8 +1272,8 @@ public class MapViewerScreen implements Screen {
 			moveCameraAction.act(deltaTime);
 		}
 
-		controller.update();
-
+		// updateCameraInputController() ends in controller.update(), so calling it here
+		// too would advance every held key twice per frame.
 		updateCameraInputController();
 
 		boolean flagChange = false;
@@ -559,7 +1295,18 @@ public class MapViewerScreen implements Screen {
 				});
 			}
 			prev_combined.set(cam.combined);
+			lastCameraRotationMillis = timeNow;
+			overlapSettlePending = true;
 			flagChange = true;
+		}
+
+		// The rotation overlap pass only fires every few degrees, so a final small turn can
+		// leave labels overlapping once the camera stops. When it has been still briefly, run
+		// one more pass to de-overlap the orientation the user actually landed on.
+		if (overlapSettlePending && !flagChange
+				&& System.currentTimeMillis() - lastCameraRotationMillis > OVERLAP_SETTLE_DELAY_MILLIS) {
+			overlapSettlePending = false;
+			getC().dataRetrieveThreadManager.triggerUpdateVisibilityLabelOverlap();
 		}
 
 		/*
@@ -602,13 +1349,17 @@ public class MapViewerScreen implements Screen {
 			}
 			labelRenderer.renderBackgroundPixmap();
 		} else {
+			// Sky objects are drawn before the terrain so opaque terrain occludes anything below a
+			// ridge (correct horizon hiding for free). The Sun is always drawn; the other objects are
+			// gated inside the renderer by the sky-view toggle.
+			skyRenderer.render();
 			// TODO: this prevents roads from being displayed in snapshot mode!
 			tileBatchRenderer.render();
 		}
 
 		// The order of these two cannot be changed, otherwise bad outlines will appear!
 		tileBatchRenderer.renderPseudodistancesGeographical(impactPixmap);
-		tileBatchRenderer.renderPseudodistances();
+		tileBatchRenderer.renderPseudodistancesIfNeeded(flagChange);
 
 		// tileBatchRenderer.renderPseudodistancesNoFrameBuffer();
 
@@ -704,11 +1455,20 @@ public class MapViewerScreen implements Screen {
 	@Override
 	public void pause() {
 		paused = true;
+		if (controller != null) {
+			// No keyUp arrives for a key that was held when the window went away.
+			controller.clearKeyboardLook();
+		}
 	}
 
 	@Override
 	public void resume() {
 		paused = false;
+		if (tileBatchRenderer != null) {
+			// Android drops the contents of every frame buffer when the GL context goes
+			// away, so the cached pseudodistances cannot be reused across a resume.
+			tileBatchRenderer.invalidatePseudodistances();
+		}
 	}
 
 	@Override
@@ -716,9 +1476,69 @@ public class MapViewerScreen implements Screen {
 
 	}
 
+	/**
+	 * Ends any 2D batch a mid-frame Throwable left open. {@link com.peaknav.viewer.MapApp#render}
+	 * catches such errors, but a batch stuck in "drawing" state made every following frame's
+	 * {@code begin()} throw as well — the loop then failed before drawing anything, and the app
+	 * sat on a blank screen until force-closed. After this cleanup the next frame starts clean.
+	 */
+	public void recoverFromRenderError() {
+		endBatchQuietly(spriteBatch);
+		endBatchQuietly(spriteBatchOutlines);
+		try {
+			if (shapeRenderer != null && shapeRenderer.isDrawing()) {
+				shapeRenderer.end();
+			}
+		} catch (Throwable ignored) {
+		}
+		if (stage != null)
+			endBatchQuietly(stage.getBatch());
+		if (stageCopyright != null)
+			endBatchQuietly(stageCopyright.getBatch());
+		if (stageNavigationOverview != null)
+			endBatchQuietly(stageNavigationOverview.getBatch());
+		// The sky pass disables depth writes; restore the default in case it blew up mid-way.
+		Gdx.gl.glDepthMask(true);
+	}
+
+	static void endBatchQuietly(com.badlogic.gdx.graphics.g2d.Batch batch) {
+		try {
+			if (batch != null && batch.isDrawing()) {
+				batch.end();
+			}
+		} catch (Throwable ignored) {
+		}
+	}
+
 	@Override
 	public void dispose() {
-		labelRenderer.dispose();
+		// Everything the screen owns; previously only the label renderer (i.e. the compass
+		// texture) was freed and all other GL/native resources leaked per screen lifecycle.
+		if (labelRenderer != null)
+			labelRenderer.dispose();
+		if (skyRenderer != null)
+			skyRenderer.dispose();
+		if (tileBatchRenderer != null)
+			tileBatchRenderer.dispose();
+		if (impactPixmap != null)
+			impactPixmap.dispose();
+		if (stage != null)
+			stage.dispose();
+		if (stageCopyright != null)
+			stageCopyright.dispose();
+		if (stageNavigationOverview != null)
+			stageNavigationOverview.dispose();
+		if (spriteBatch != null)
+			spriteBatch.dispose();
+		if (spriteBatchOutlines != null) {
+			// The outline shader was set with setShader(), so the batch does not own it.
+			ShaderProgram outlineShader = spriteBatchOutlines.getShader();
+			spriteBatchOutlines.dispose();
+			if (outlineShader != null)
+				outlineShader.dispose();
+		}
+		if (shapeRenderer != null)
+			shapeRenderer.dispose();
 	}
 
 	public boolean updateImpact() {

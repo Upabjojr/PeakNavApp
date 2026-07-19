@@ -1,73 +1,45 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with Inkscape (http://www.inkscape.org/) -->
-
-<svg
-   width="240mm"
-   height="240mm"
-   viewBox="0 0 240 240"
-   version="1.1"
-   id="svg1117"
-   inkscape:version="1.4.2 (2aeb623e1d, 2025-05-12)"
-   sodipodi:docname="ic_launcher.svg"
-   inkscape:export-filename="icon_checkbox_download_data.png"
-   inkscape:export-xdpi="13.546667"
-   inkscape:export-ydpi="13.546667"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
-  <sodipodi:namedview
-     id="namedview1119"
-     pagecolor="#ffffff"
-     bordercolor="#b0b0b0"
-     borderopacity="0.31764706"
-     inkscape:showpageshadow="2"
-     inkscape:pageopacity="0.0"
-     inkscape:pagecheckerboard="true"
-     inkscape:deskcolor="#d1d1d1"
-     inkscape:document-units="mm"
-     showgrid="false"
-     inkscape:zoom="0.89571167"
-     inkscape:cx="525.83886"
-     inkscape:cy="450.47978"
-     inkscape:window-width="1854"
-     inkscape:window-height="1131"
-     inkscape:window-x="0"
-     inkscape:window-y="0"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="layer1"
-     showguides="false" />
-  <defs
-     id="defs1114">
-    <inkscape:perspective
-       sodipodi:type="inkscape:persp3d"
-       inkscape:vp_x="0 : 120 : 1"
-       inkscape:vp_y="0 : 1000 : 0"
-       inkscape:vp_z="240 : 120 : 1"
-       inkscape:persp3d-origin="120 : 80 : 1"
-       id="perspective1722" />
+<!-- PeakNav in-app splash emblem (IntroScreen). Not the Android home-screen icon. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="116"/></clipPath>
+    <linearGradient id="sky" x1="0" y1="4" x2="0" y2="236" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fbe7c2"/>
+      <stop offset="0.5" stop-color="#9fd0ea"/>
+      <stop offset="1" stop-color="#4f95c4"/>
+    </linearGradient>
+    <linearGradient id="rockBack" x1="0" y1="70" x2="0" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a98763"/><stop offset="1" stop-color="#7c5a3a"/>
+    </linearGradient>
+    <linearGradient id="rockFront" x1="0" y1="80" x2="0" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7d5836"/><stop offset="1" stop-color="#4f351f"/>
+    </linearGradient>
   </defs>
-  <g
-     inkscape:label="Level 1"
-     inkscape:groupmode="layer"
-     id="layer1">
-    <circle
-       style="fill:#ffffff;stroke:#000000;stroke-width:0;stroke-dasharray:none;fill-opacity:1"
-       id="path1294"
-       cx="120"
-       cy="120"
-       r="120" />
-    <text
-       xml:space="preserve"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:52.0364px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:start;writing-mode:lr-tb;direction:ltr;text-anchor:start;fill:#000000;fill-opacity:1;stroke-width:0.271023"
-       x="4.8252907"
-       y="140.21628"
-       id="text1"
-       transform="scale(1.006808,0.993238)"><tspan
-         sodipodi:role="line"
-         id="tspan1"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:52.0364px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke-width:0.271023"
-         x="4.8252907"
-         y="140.21628">PeakNav</tspan></text>
+
+  <circle cx="120" cy="120" r="118" fill="#0e3348"/>
+  <g clip-path="url(#disc)">
+    <rect x="0" y="0" width="240" height="240" fill="url(#sky)"/>
+    <circle cx="176" cy="70" r="22" fill="#ffd873" opacity="0.95"/>
+
+    <!-- back range -->
+    <path d="M-10 210 L40 120 L88 170 L120 96 L166 160 L210 118 L250 210 Z"
+          fill="url(#rockBack)" stroke="#4d3320" stroke-width="2"/>
+    <!-- front peaks -->
+    <path d="M-10 214 L70 96 L150 214 Z" fill="url(#rockFront)" stroke="#3a2716" stroke-width="2.5"/>
+    <path d="M104 214 L176 104 L246 214 Z" fill="url(#rockFront)" stroke="#3a2716" stroke-width="2.5"/>
+    <!-- snow caps -->
+    <path d="M70 96 L50 128 q10 -8 20 0 q10 8 20 0 z" fill="#ffffff" stroke="#cfe1ea" stroke-width="1.5"/>
+    <path d="M176 104 L156 136 q10 -8 20 0 q10 8 20 0 z" fill="#ffffff" stroke="#cfe1ea" stroke-width="1.5"/>
+
+    <!-- compass needle emblem -->
+    <g transform="translate(120,150) rotate(28)" opacity="0.96">
+      <circle cx="0" cy="0" r="30" fill="#ffffff" fill-opacity="0.9" stroke="#12222e" stroke-width="4"/>
+      <path d="M0 -26 L8 0 L0 -4 L-8 0 Z" fill="#d23b32" stroke="#7a1c17" stroke-width="1.5"/>
+      <path d="M0 26 L8 0 L0 4 L-8 0 Z" fill="#33404a" stroke="#12222e" stroke-width="1.5"/>
+      <circle cx="0" cy="0" r="4" fill="#12222e"/>
+    </g>
   </g>
+  <circle cx="120" cy="120" r="116" fill="none" stroke="#ffffff" stroke-width="6"/>
+  <circle cx="120" cy="120" r="118" fill="none" stroke="#0e3348" stroke-width="4"/>
 </svg>

@@ -2,7 +2,6 @@ package com.peaknav.database;
 
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.queryParser.ParseException;
 import org.apache.lucene.queryParser.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
@@ -26,21 +25,39 @@ public class LuceneGeonameSearch {
         public final float lat;
         public final float lon;
         public final int population;
+        /** ISO country code, or empty when the index predates it / the result is not a place. */
+        public final String country;
 
         public GeonameResult(String name, String asciiname, float lat, float lon, int population) {
+            this(name, asciiname, lat, lon, population, "");
+        }
+
+        public GeonameResult(String name, String asciiname, float lat, float lon, int population,
+                             String country) {
             this.name = name;
             this.asciiname = asciiname;
             this.lat = lat;
             this.lon = lon;
             this.population = population;
+            this.country = (country == null) ? "" : country;
         }
 
+        /**
+         * Label shown in the results list. A search now matches a place's name in any language, so
+         * the same query can return several places with the same name in different countries; the
+         * country code is what tells them apart.
+         */
         public String getFullName() {
             StringBuilder stringBuilder = new StringBuilder();
             stringBuilder.append(this.name);
-            if (!this.name.equals(this.asciiname)) {
+            if (this.asciiname != null && !this.name.equals(this.asciiname)) {
                 stringBuilder.append(" - ");
                 stringBuilder.append(this.asciiname);
+            }
+            if (!this.country.isEmpty()) {
+                stringBuilder.append(" (");
+                stringBuilder.append(this.country);
+                stringBuilder.append(')');
             }
             return stringBuilder.toString();
         }
@@ -58,14 +75,17 @@ public class LuceneGeonameSearch {
         StandardAnalyzer analyzer = new StandardAnalyzer(Version.LUCENE_36);
         QueryParser parser = new QueryParser(Version.LUCENE_36, "name", analyzer);
 
-        Query query = null;
-        try {
-            query = parser.parse(queryName + "~0.8");
-        } catch (ParseException e) {
-            throw new RuntimeException(e);
-        }
-
         List<GeonameResult> geonameResults = new ArrayList<>();
+
+        Query query;
+        try {
+            // Escape user input so Lucene special characters can't produce a
+            // ParseException / TokenMgrError; catch anything else defensively so
+            // arbitrary text typed in the search box can never crash the app.
+            query = parser.parse(QueryParser.escape(queryName) + "~0.8");
+        } catch (Throwable t) {
+            return geonameResults;
+        }
 
         if (indexSearcher == null) {
             return geonameResults;
@@ -74,15 +94,21 @@ public class LuceneGeonameSearch {
         try {
             TopDocs topDocs = indexSearcher.search(query, maxResults);
             for (ScoreDoc sd : topDocs.scoreDocs) {
-                Document doc = indexSearcher.doc(sd.doc);
-                String name = doc.get("name");
-                String asciiName = doc.get("asciiname");
-                float lat = Float.parseFloat(doc.get("lat_store"));
-                float lon = Float.parseFloat(doc.get("lon_store"));
-                int population = Integer.parseInt(doc.get("population_store"));
+                try {
+                    Document doc = indexSearcher.doc(sd.doc);
+                    String name = doc.get("name");
+                    String asciiName = doc.get("asciiname");
+                    float lat = Float.parseFloat(doc.get("lat_store"));
+                    float lon = Float.parseFloat(doc.get("lon_store"));
+                    int population = Integer.parseInt(doc.get("population_store"));
+                    String country = doc.get("country_store"); // absent in indexes built before
 
-                geonameResults.add(new GeonameResult(name, asciiName, lat, lon, population));
-                // System.out.printf("%s: %f,%f (pop: %d)\n", name, lat, lon, population);
+                    geonameResults.add(
+                            new GeonameResult(name, asciiName, lat, lon, population, country));
+                    // System.out.printf("%s: %f,%f (pop: %d)\n", name, lat, lon, population);
+                } catch (NumberFormatException | NullPointerException ignored) {
+                    // Skip index documents missing the stored coordinate fields.
+                }
             }
 
         } catch (IOException ignored) {

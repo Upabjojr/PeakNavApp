@@ -310,12 +310,33 @@ public class IntroScreen implements Screen {
     public void hide() {
     }
 
+    /** See {@link MapViewerScreen#recoverFromRenderError()} — same blank-screen safeguard. */
+    public void recoverFromRenderError() {
+        MapViewerScreen.endBatchQuietly(spriteBatch);
+        try {
+            if (shapeRenderer != null && shapeRenderer.isDrawing()) {
+                shapeRenderer.end();
+            }
+        } catch (Throwable ignored) {
+        }
+        if (stage != null) {
+            MapViewerScreen.endBatchQuietly(stage.getBatch());
+        }
+    }
+
     @Override
     public void dispose() {
-        ic_launcher_texture.dispose();
-        ic_launcher_texture = null;
-        shapeRenderer.dispose();
-        stage.dispose();
+        // Null guards: these are created in show(), which may never have run.
+        if (ic_launcher_texture != null) {
+            ic_launcher_texture.dispose();
+            ic_launcher_texture = null;
+        }
+        if (shapeRenderer != null)
+            shapeRenderer.dispose();
+        if (spriteBatch != null)
+            spriteBatch.dispose();
+        if (stage != null)
+            stage.dispose();
     }
 
 }

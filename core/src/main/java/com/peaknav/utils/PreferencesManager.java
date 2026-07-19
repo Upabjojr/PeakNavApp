@@ -20,7 +20,16 @@ import static com.peaknav.utils.Constants.PREFERENCES.UNDERLAY_IMAGE_PROVIDER;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LARGE_FONTS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_BASE_ROADS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SUN_SHADING;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_CONSTELLATIONS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_MODE;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ALPINE_HUTS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ISLANDS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_CITIES;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_MOUNTAIN_RANGES;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_LAKES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PEAKS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PISTES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PLACE_NAMES;
@@ -34,7 +43,9 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.math.Vector3;
+import com.peaknav.config.JsonConfigStore;
 import com.peaknav.viewer.imgmapprovider.SatelliteImageProvider;
+import com.peaknav.viewer.imgmapprovider.SatelliteProviderRegistry;
 import com.peaknav.viewer.render_tiles.PixmapLayerName;
 
 import java.util.Map;
@@ -50,13 +61,24 @@ public class PreferencesManager {
     private boolean peakVisible;
     private boolean visiblePlaceNames;
     private boolean visibleAlpineHuts;
+    private boolean visibleIslands;
+    private boolean visibleCities;
+    private boolean visibleMountainRanges;
+    private boolean visibleLakes;
     private boolean largeFonts;
     private boolean layerVisibleUnderlayLayer;
     private boolean viewerLayerVisibleBaseRoads;
     private boolean layerVisibleNavigation;
     private Map<PixmapLayerName, Long> lastChange = new TreeMap<>();
     private boolean layerVisibleOpenStreetMap;
-    private SatelliteProviderOptions underlayImageProvider;
+    private boolean sunShading;
+    private boolean horizonCompass;
+    private boolean skyView;
+    private boolean skyConstellations;
+    /** 0 = follow local time, 1 = force day, 2 = force night. */
+    private int skyMode;
+    private SatelliteImageProvider underlayImageProvider;
+    private SatelliteProviderRegistry satelliteProviderRegistry;
     private boolean locationPermissionDenied;
     private boolean collectDownloadInfo;
     private boolean firstTimeAppRun;
@@ -136,8 +158,17 @@ public class PreferencesManager {
         peakVisible = preferences.getBoolean(VIEWER_SHOW_PEAKS, true);
         visiblePlaceNames = preferences.getBoolean(VIEWER_SHOW_PLACE_NAMES, true);
         visibleAlpineHuts = preferences.getBoolean(VIEWER_SHOW_ALPINE_HUTS, true);
+        visibleIslands = preferences.getBoolean(VIEWER_SHOW_ISLANDS, true);
+        visibleCities = preferences.getBoolean(VIEWER_SHOW_CITIES, true);
+        visibleMountainRanges = preferences.getBoolean(VIEWER_SHOW_MOUNTAIN_RANGES, true);
+        visibleLakes = preferences.getBoolean(VIEWER_SHOW_LAKES, true);
         pisteVisible = preferences.getBoolean(VIEWER_SHOW_PISTES, true);
         layerVisibleUnderlayLayer = preferences.getBoolean(VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER, true);
+        sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
+        horizonCompass = preferences.getBoolean(VIEWER_HORIZON_COMPASS, true);
+        skyView = preferences.getBoolean(VIEWER_SKY, false);
+        skyConstellations = preferences.getBoolean(VIEWER_SKY_CONSTELLATIONS, true);
+        skyMode = preferences.getInteger(VIEWER_SKY_MODE, 0);
         // Set to "true" for subscribed users:
         viewerLayerVisibleBaseRoads = preferences.getBoolean(VIEWER_LAYER_VISIBLE_BASE_ROADS, true);
         largeFonts = preferences.getBoolean(VIEWER_LARGE_FONTS, false);
@@ -147,13 +178,15 @@ public class PreferencesManager {
         // collectAnonymousStatsPrompted = preferences.getBoolean(COLLECT_ANONYMOUS_STATS_PROMPTED, false);
         locationPermissionDenied = preferences.getBoolean(LOCATION_PERMISSION_DENIED, false);
 
+        satelliteProviderRegistry = new SatelliteProviderRegistry(
+                new JsonConfigStore(SatelliteProviderRegistry.CONFIG_FILE));
+        migrateCustomSatelliteProvidersFromPreferences();
         String satPrefName = preferences.getString(
                 UNDERLAY_IMAGE_PROVIDER, "");
-        try {
-            underlayImageProvider = SatelliteProviderOptions.valueOf(
-                    satPrefName);
-        } catch (IllegalArgumentException iae) {
-            underlayImageProvider = SatelliteProviderOptions.LANDSAT;
+        // The stored value is a provider id: a built-in enum name, or a custom provider's id.
+        underlayImageProvider = satelliteProviderRegistry.findById(satPrefName);
+        if (underlayImageProvider == null) {
+            underlayImageProvider = SatelliteProviderOptions.LANDSAT.getSatelliteImageProvider();
         }
 
         String prefUnitSystem = preferences.getString(VIEWER_UNIT_SYSTEM, UnitSystem.METRIC.name());
@@ -242,6 +275,38 @@ public class PreferencesManager {
         return visibleAlpineHuts;
     }
 
+    public boolean isVisibleIslands() { return visibleIslands; }
+
+    public void setVisibleIslands(boolean visible) {
+        visibleIslands = visible;
+        preferences.putBoolean(VIEWER_SHOW_ISLANDS, visible);
+        preferences.flush();
+    }
+
+    public boolean isVisibleCities() { return visibleCities; }
+
+    public void setVisibleCities(boolean visible) {
+        visibleCities = visible;
+        preferences.putBoolean(VIEWER_SHOW_CITIES, visible);
+        preferences.flush();
+    }
+
+    public boolean isVisibleMountainRanges() { return visibleMountainRanges; }
+
+    public void setVisibleMountainRanges(boolean visible) {
+        visibleMountainRanges = visible;
+        preferences.putBoolean(VIEWER_SHOW_MOUNTAIN_RANGES, visible);
+        preferences.flush();
+    }
+
+    public boolean isVisibleLakes() { return visibleLakes; }
+
+    public void setVisibleLakes(boolean visible) {
+        visibleLakes = visible;
+        preferences.putBoolean(VIEWER_SHOW_LAKES, visible);
+        preferences.flush();
+    }
+
     public boolean getViewLargeFonts() {
         return largeFonts;
     }
@@ -263,14 +328,114 @@ public class PreferencesManager {
         preferences.flush();
     }
 
-    public SatelliteProviderOptions getUnderlayImageProvider() {
+    public SatelliteImageProvider getUnderlayImageProvider() {
         return underlayImageProvider;
     }
 
+    public SatelliteProviderRegistry getSatelliteProviderRegistry() {
+        return satelliteProviderRegistry;
+    }
+
+    /**
+     * Older builds stored custom satellite sources as indexed preference keys. Move them into the
+     * JSON registry once (only when it is still empty), then drop the old keys so we do not import
+     * twice or leave stale data behind.
+     */
+    private void migrateCustomSatelliteProvidersFromPreferences() {
+        int count = preferences.getInteger("satellite_custom_count", 0);
+        if (count <= 0) {
+            return;
+        }
+        java.util.List<String[]> legacy = new java.util.ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            legacy.add(new String[]{
+                    preferences.getString("satellite_custom_url_" + i, ""),
+                    preferences.getString("satellite_custom_name_" + i, ""),
+                    preferences.getString("satellite_custom_attribution_" + i, "")});
+        }
+        satelliteProviderRegistry.importIfEmpty(legacy);
+
+        preferences.remove("satellite_custom_count");
+        for (int i = 0; i < count; i++) {
+            preferences.remove("satellite_custom_url_" + i);
+            preferences.remove("satellite_custom_name_" + i);
+            preferences.remove("satellite_custom_attribution_" + i);
+        }
+        preferences.flush();
+    }
+
     public void setUnderlayImageProvider(SatelliteProviderOptions uip) {
+        setUnderlayImageProvider(uip.getSatelliteImageProvider());
+    }
+
+    public void setUnderlayImageProvider(SatelliteImageProvider uip) {
         underlayImageProvider = uip;
-        preferences.putString(UNDERLAY_IMAGE_PROVIDER, uip.toString());
+        preferences.putString(UNDERLAY_IMAGE_PROVIDER, uip.getId());
         lastChange.put(UNDERLAY_LAYER, System.currentTimeMillis());
+        preferences.flush();
+    }
+
+    /**
+     * Falls back to a built-in source when the selected custom provider is removed, so the
+     * satellite layer can never be left pointing at a provider that no longer exists.
+     */
+    public void onCustomProviderRemoved(SatelliteImageProvider removed) {
+        if (underlayImageProvider != null
+                && underlayImageProvider.getId().equals(removed.getId())) {
+            setUnderlayImageProvider(SatelliteProviderOptions.LANDSAT);
+        }
+    }
+
+    /** Whether the terrain is lit by the sun; when off it gets flat, non directional light. */
+    public boolean isSunShading() {
+        return sunShading;
+    }
+
+    /** Whether the cardinal-direction markers (N, NE, E, …) are drawn on the sky horizon. */
+    public boolean isHorizonCompass() {
+        return horizonCompass;
+    }
+
+    public void setHorizonCompass(boolean enabled) {
+        horizonCompass = enabled;
+        preferences.putBoolean(VIEWER_HORIZON_COMPASS, enabled);
+        preferences.flush();
+    }
+
+    public boolean isSkyView() {
+        return skyView;
+    }
+
+    public void setSkyView(boolean enabled) {
+        skyView = enabled;
+        preferences.putBoolean(VIEWER_SKY, enabled);
+        preferences.flush();
+    }
+
+    public boolean isSkyConstellations() {
+        return skyConstellations;
+    }
+
+    public void setSkyConstellations(boolean enabled) {
+        skyConstellations = enabled;
+        preferences.putBoolean(VIEWER_SKY_CONSTELLATIONS, enabled);
+        preferences.flush();
+    }
+
+    /** 0 = follow local time, 1 = force day, 2 = force night. */
+    public int getSkyMode() {
+        return skyMode;
+    }
+
+    public void setSkyMode(int mode) {
+        skyMode = ((mode % 3) + 3) % 3;
+        preferences.putInteger(VIEWER_SKY_MODE, skyMode);
+        preferences.flush();
+    }
+
+    public void setSunShading(boolean enabled) {
+        sunShading = enabled;
+        preferences.putBoolean(VIEWER_SUN_SHADING, enabled);
         preferences.flush();
     }
 
@@ -367,7 +532,7 @@ public class PreferencesManager {
     }
 
     public SatelliteImageProvider getUnderlayImageProviderObject() {
-        return underlayImageProvider.getSatelliteImageProvider();
+        return underlayImageProvider;
     }
 
 }

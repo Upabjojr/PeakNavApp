@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.peaknav.gesture.OrientationPointerListener;
 import com.peaknav.ui.ClickCallback;
 import com.peaknav.ui.CurrentLocationListener;
+import com.peaknav.ui.TextFieldsCallback;
 
 public abstract class NativeScreenCaller {
 
@@ -31,6 +32,27 @@ public abstract class NativeScreenCaller {
 
     public abstract void openGalleryPick();
 
+    /**
+     * Open a native file picker for a {@code .gpx} file and hand its text to
+     * {@code getC().gpxManager.loadFromXml(...)}. Platforms without a file picker leave this as a
+     * no-op (the GPX-from-URL option still works everywhere).
+     */
+    public void pickGpxFile() {
+    }
+
+    /**
+     * Ask the user whether to navigate to the coordinates a background image was
+     * taken at (recovered from its EXIF GPS metadata).
+     */
+    public abstract void promptGoToImageLocation(double lat, double lon);
+
+    /**
+     * Tell the user the imported image carries no readable location, so the map cannot
+     * jump to where it was taken. On Android this also happens when the app lacks the
+     * ACCESS_MEDIA_LOCATION permission, which makes the system strip the GPS EXIF.
+     */
+    public abstract void warnCannotReadImageLocation();
+
     public abstract void openAppInfoScreen();
 
     public abstract void openAppTutorial();
@@ -49,6 +71,24 @@ public abstract class NativeScreenCaller {
 
     public abstract void comingSoon();
     public abstract void alertMessage(String message);
+
+    /**
+     * Opens a native picker to freeze the sky at a chosen date/time (in the device's local zone), or
+     * reset it to the live device clock. Concrete no-op default so platforms without one still build.
+     */
+    public void chooseSkyTime() { }
+
+    /**
+     * Asks the user to fill in one or more text fields in a native dialog.
+     *
+     * @param title         dialog title
+     * @param message       optional explanatory text shown above the fields (null/empty to omit)
+     * @param labels        one label per field, shown next to it
+     * @param initialValues initial contents, same length as {@code labels} (entries may be null)
+     * @param callback      receives the entered values, or a cancellation
+     */
+    public abstract void promptForTextFields(
+            String title, String message, String[] labels, String[] initialValues, TextFieldsCallback callback);
 
     public abstract long getTotalMemory();
 

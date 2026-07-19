@@ -1,169 +1,53 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with Inkscape (http://www.inkscape.org/) -->
-
-<svg
-   width="240mm"
-   height="240mm"
-   viewBox="0 0 240 240"
-   version="1.1"
-   id="svg1117"
-   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
-   sodipodi:docname="icon_checkbox_satellite.svg"
-   inkscape:export-filename="icon_checkbox_satellite.png"
-   inkscape:export-xdpi="13.546667"
-   inkscape:export-ydpi="13.546667"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
-  <sodipodi:namedview
-     id="namedview1119"
-     pagecolor="#ffffff"
-     bordercolor="#b0b0b0"
-     borderopacity="0.31764706"
-     inkscape:showpageshadow="2"
-     inkscape:pageopacity="0.0"
-     inkscape:pagecheckerboard="true"
-     inkscape:deskcolor="#d1d1d1"
-     inkscape:document-units="mm"
-     showgrid="false"
-     inkscape:zoom="1.1360799"
-     inkscape:cx="393.01813"
-     inkscape:cy="473.55824"
-     inkscape:window-width="1920"
-     inkscape:window-height="986"
-     inkscape:window-x="-11"
-     inkscape:window-y="-11"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="layer1"
-     showguides="false" />
-  <defs
-     id="defs1114">
-    <marker
-       style="overflow:visible"
-       id="Dot"
-       refX="0"
-       refY="0"
-       orient="auto"
-       inkscape:stockid="Dot"
-       markerWidth="3"
-       markerHeight="3"
-       viewBox="0 0 5.6666667 5.6666667"
-       inkscape:isstock="true"
-       inkscape:collect="always"
-       preserveAspectRatio="xMidYMid">
-      <path
-         transform="scale(0.5)"
-         style="fill:context-stroke;fill-rule:evenodd;stroke:context-stroke;stroke-width:1pt"
-         d="M 5,0 C 5,2.76 2.76,5 0,5 -2.76,5 -5,2.76 -5,0 c 0,-2.76 2.3,-5 5,-5 2.76,0 5,2.24 5,5 z"
-         id="Dot1"
-         sodipodi:nodetypes="sssss" />
-    </marker>
-    <inkscape:perspective
-       sodipodi:type="inkscape:persp3d"
-       inkscape:vp_x="0 : 120 : 1"
-       inkscape:vp_y="0 : 1000 : 0"
-       inkscape:vp_z="240 : 120 : 1"
-       inkscape:persp3d-origin="120 : 80 : 1"
-       id="perspective1722" />
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0b1c3a"/>
+      <stop offset="1" stop-color="#1d3d6e"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3f7fd0"/>
+      <stop offset="1" stop-color="#1f4f9c"/>
+    </linearGradient>
   </defs>
-  <g
-     inkscape:label="Level 1"
-     inkscape:groupmode="layer"
-     id="layer1">
-    <circle
-       style="fill:#ffffff;stroke:#000000;stroke-width:0;stroke-dasharray:none"
-       id="path1294"
-       cx="120"
-       cy="120"
-       r="120" />
-    <rect
-       style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:2.98008;stroke-linecap:round;stroke-opacity:1"
-       id="rect410"
-       width="47.01992"
-       height="22.019928"
-       x="56.49004"
-       y="96.490044" />
-    <rect
-       style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:2.98008;stroke-linecap:round;stroke-opacity:1"
-       id="rect410-1"
-       width="47.019924"
-       height="22.019922"
-       x="136.49004"
-       y="96.490044" />
-    <rect
-       style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:1.61238;stroke-linecap:round;stroke-opacity:0.969412"
-       id="rect436"
-       width="28.387585"
-       height="1.3876226"
-       x="105.80619"
-       y="106.80619" />
-    <ellipse
-       style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:3;stroke-linecap:round;stroke-opacity:1"
-       id="path490"
-       cx="119.99998"
-       cy="146.01184"
-       rx="28.833122"
-       ry="12.249365" />
-    <rect
-       style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:2.47506;stroke-linecap:round;stroke-opacity:1"
-       id="rect434"
-       width="17.524944"
-       height="52.524948"
-       x="111.23751"
-       y="81.237526" />
-    <path
-       style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:3;stroke-linecap:round;stroke-opacity:1;marker-end:url(#Dot)"
-       d="M 119.99998,146.01184 V 170"
-       id="path1101"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-       d="M 56.490038,107.50001 H 103.50996"
-       id="path4274" />
-    <path
-       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-       d="m 85,97 v 21"
-       id="path4276"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-       d="m 95,97 v 21"
-       id="path4278"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-       d="m 65,97 v 21"
-       id="path4280"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-       d="m 75,97 v 21"
-       id="path4280-2"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-       d="m 136.49,107.50001 h 47.01992"
-       id="path4274-9" />
-    <path
-       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-       d="M 164.99996,96.999997 V 118"
-       id="path4276-3"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-       d="M 174.99996,96.999997 V 118"
-       id="path4278-2"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-       d="M 144.99996,96.999997 V 118"
-       id="path4280-0"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-       d="M 154.99996,96.999997 V 118"
-       id="path4280-2-5"
-       sodipodi:nodetypes="cc" />
+
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <g clip-path="url(#disc)">
+    <rect x="0" y="0" width="240" height="240" fill="url(#sky)"/>
+    <!-- stars -->
+    <g fill="#ffffff" opacity="0.8">
+      <circle cx="40" cy="48" r="2.5"/><circle cx="196" cy="60" r="2"/><circle cx="70" cy="196" r="2"/>
+      <circle cx="204" cy="176" r="2.5"/><circle cx="150" cy="36" r="1.8"/>
+    </g>
+
+    <g transform="rotate(-20 120 120)">
+      <!-- solar panels -->
+      <g stroke="#0f2136" stroke-width="2.5">
+        <rect x="14" y="104" width="66" height="34" fill="url(#panel)"/>
+        <rect x="160" y="104" width="66" height="34" fill="url(#panel)"/>
+      </g>
+      <g stroke="#bcd6f2" stroke-width="1.5" opacity="0.8">
+        <path d="M36 104 v34 M58 104 v34 M14 121 h66"/>
+        <path d="M182 104 v34 M204 104 v34 M160 121 h66"/>
+      </g>
+      <!-- connecting struts -->
+      <rect x="80" y="118" width="80" height="6" fill="#8a97a6"/>
+      <!-- body -->
+      <rect x="98" y="98" width="44" height="46" rx="6" fill="#c9d3de" stroke="#0f2136" stroke-width="3"/>
+      <rect x="106" y="106" width="28" height="14" rx="2" fill="#5a6675"/>
+      <!-- dish -->
+      <ellipse cx="120" cy="158" rx="20" ry="9" fill="#e6edf4" stroke="#0f2136" stroke-width="2.5"/>
+      <line x1="120" y1="144" x2="120" y2="152" stroke="#0f2136" stroke-width="3"/>
+      <circle cx="120" cy="158" r="3" fill="#0f2136"/>
+    </g>
+
+    <!-- signal arcs -->
+    <g fill="none" stroke="#8fe08a" stroke-width="4" stroke-linecap="round">
+      <path d="M158 176 a26 26 0 0 1 18 18"/>
+      <path d="M150 190 a40 40 0 0 1 28 28"/>
+    </g>
   </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#0b1c3a" stroke-width="3"/>
 </svg>

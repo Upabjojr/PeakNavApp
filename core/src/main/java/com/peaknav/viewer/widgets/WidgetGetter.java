@@ -7,6 +7,8 @@ import static com.peaknav.utils.PreferencesManager.P;
 import static com.peaknav.utils.Units.formatDistanceToUnitSystem;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.utils.Align;
+import com.badlogic.gdx.utils.Scaling;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
@@ -168,7 +170,17 @@ public class WidgetGetter {
         drawable.setMinHeight(widgetUnitStep);
         style.imageChecked = drawable;
         style.imageUp = drawable;
-        return new ImageTextButtonOptionPane(text, style);
+        ImageTextButtonOptionPane button = new ImageTextButtonOptionPane(text, style);
+        // Consistent layout across every menu button: content hugs the left edge, the icon sits in a
+        // fixed square cell (scaled to fit so non-square icons are not stretched), and the label is
+        // left-aligned in the remaining width — so icons line up in one column and text in another,
+        // regardless of icon shape or label length.
+        button.left();
+        button.getImage().setScaling(Scaling.fit);
+        button.getImageCell().size(widgetUnitStep);
+        button.getLabelCell().padLeft(0.3f * widgetUnitStep).expandX().left();
+        button.getLabel().setAlignment(Align.left);
+        return button;
     }
 
     public TextButton getTextButton(String text, boolean toggable) {
@@ -374,13 +386,19 @@ public class WidgetGetter {
     public class TableLocation extends TableContainer {
 
         public final Button optionsButton;
+        public final Button helpButton;
         private final Button hereButton;
         private final TextureRegionDrawable icon_here;
         private final TextureRegionDrawable icon_here_gps;
         public final Button buttonGoToDest;
         private final Button buttonCancelGoToDest;
         public final Table tableCancelGoToDest;
+        public final Button buttonGpxFly; // cinematic tour of the loaded GPX; shown only when one is loaded
+        public final Button buttonGpxClear; // discards the loaded GPX; shown alongside buttonGpxFly
         public final Label copyrightLabel;
+        /** Scrub bar for the GPX tour: shown only while one is running, drag to jump along it. */
+        public final Table gpxSeekTable;
+        public final Slider gpxSeekSlider;
         public final Table progressBarTable;
         public final ProgressBar progressBar;
 
@@ -397,6 +415,25 @@ public class WidgetGetter {
 
             table.right().top();
             table.setFillParent(true);
+
+            // GPX scrub bar, along the bottom of the screen and clear of the side button columns.
+            gpxSeekTable = new Table();
+            gpxSeekTable.bottom();
+            gpxSeekTable.setFillParent(true);
+            gpxSeekTable.setVisible(false);
+
+            Slider.SliderStyle gpxSeekStyle = new Slider.SliderStyle();
+            gpxSeekStyle.knob = getC().widgetTextures.getTextureRegionDrawable(
+                    "icons/icon_slider_alpha.png");
+            gpxSeekStyle.knob.setMinHeight(widgetUnitStep);
+            gpxSeekStyle.knob.setMinWidth(widgetUnitStep);
+            gpxSeekStyle.background = getC().widgetTextures.getNinePatchDrawable(
+                    "icons/slider_nine_patch.png");
+            gpxSeekSlider = new Slider(0f, 1f, 0.002f, false, gpxSeekStyle);
+            gpxSeekTable.add(gpxSeekSlider)
+                    .width(Gdx.graphics.getWidth() - 6f * widgetUnitStep)
+                    .height(widgetUnitStep)
+                    .padBottom(2.2f * widgetUnitStep);
 
             progressBarTable = new Table();
             progressBarTable.top().right();
@@ -478,14 +515,6 @@ public class WidgetGetter {
                     getC().getMapViewerScreen().tableTool.buttonOrientation.setChecked(false);
                     Vector3 impactLifted = mapApp.mapViewerScreen.impact.cpy();
                     impactLifted.z += mapApp.mapViewerScreen.LIFT_ELEV;
-                    mapApp.mapViewerScreen.moveCameraAction.setCameraVectors(
-                            impactLifted,
-                            mapApp.mapViewerScreen.cam.direction,
-                            mapApp.mapViewerScreen.cam.up,
-                            false,
-                            Interpolation.fastSlow,
-                            false
-                    );
                     Vector3 newDir = mapApp.mapViewerScreen.cam.direction.cpy().scl(-1);
                     // Don't watch too high:
                     final float Z_LIMIT = 0.2f;
@@ -497,13 +526,26 @@ public class WidgetGetter {
                         newDir.y *= scl;
                         // newDir.nor();
                     }
+                    // One combined move that flies to the destination and turns to look at it.
+                    //  - Interpolation.linear: progress is raw time; each phase eases itself in and
+                    //    out (see easeWindow), so both the flight and the turn accelerate from rest
+                    //    and glide to a stop rather than starting or stopping abruptly.
+                    //  - directionStartFraction 0.25: the turn begins a quarter of the way in and
+                    //    runs to the very end, so it is spread over most of the move (gentle).
+                    //  - positionEndFraction 0.6: the camera lands at 60% of the move, so the turn
+                    //    keeps going for a while after arrival.
+                    //  - 2s duration (vs the 1s default): stretches that turn out further, so it
+                    //    rotates slowly rather than whipping around.
                     mapApp.mapViewerScreen.moveCameraAction.setCameraVectors(
-                            null,
+                            impactLifted,
                             newDir,
                             mapApp.mapViewerScreen.cam.up,
                             false,
-                            Interpolation.fastSlow,
-                            true
+                            Interpolation.linear,
+                            true,
+                            0.25f,
+                            0.6f,
+                            2.0f
                     );
 
                     mapApp.mapViewerScreen.removeImpact();
@@ -512,6 +554,40 @@ public class WidgetGetter {
             tableCancelGoToDest.add(buttonGoToDest).width(widgetUnitStep)
                     .height(widgetUnitStep);
             table.add(tableCancelGoToDest).right().expandY()
+                    .padRight(borderPad)
+                    .row();
+
+            // Cinematic GPX tour. Hidden until a track is loaded (MapViewerScreen toggles it).
+            // A play triangle, not the camera icon: with the camera it was indistinguishable from
+            // the photo button right above it, so nobody read it as "play the loaded route".
+            // The same button pauses the tour once it is running — its icon is swapped by
+            // MapViewerScreen.updateGpxButtons, so play and pause never occupy two slots.
+            buttonGpxFly = getC().widgetTextures.getButtonWithIcon("icons/icon_gpx_play.png", null);
+            buttonGpxFly.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    mapApp.mapViewerScreen.toggleGpxFlythrough();
+                }
+            });
+            buttonGpxFly.setVisible(false);
+            table.add(buttonGpxFly).width(widgetUnitStep).height(widgetUnitStep).expandY()
+                    .right()
+                    .padRight(borderPad)
+                    .row();
+
+            // Clear the loaded track(s). Also hidden until there is something to clear.
+            buttonGpxClear = getC().widgetTextures.getButtonWithIcon(
+                    "icons/icon_gpx_clear.png", null);
+            buttonGpxClear.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    mapApp.mapViewerScreen.stopGpxFlythrough();
+                    getC().gpxManager.clear();
+                }
+            });
+            buttonGpxClear.setVisible(false);
+            table.add(buttonGpxClear).width(widgetUnitStep).height(widgetUnitStep).expandY()
+                    .right()
                     .padRight(borderPad)
                     .row();
 
@@ -535,10 +611,12 @@ public class WidgetGetter {
                     P.getUnderlayImageProvider().getCopyrightNotice(), labelStyleVerySmall);
 
             tableBottomRight.add(copyrightLabel).bottom().padRight(0.5f*widgetUnitStep);
-            Button helpButton = getC().widgetTextures.getButtonWithIcon("icons/icon_help.png");
+            helpButton = getC().widgetTextures.getButtonWithIcon("icons/icon_help.png");
             helpButton.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
+                    // The "?" button is the tutorial only. Keyboard controls are a
+                    // separate overlay, shown when an unbound key is pressed.
                     getNativeScreenCaller().openAppTutorial();
                 }
             });

@@ -23,6 +23,7 @@ import com.badlogic.gdx.graphics.g3d.shaders.DefaultShader;
 import com.badlogic.gdx.graphics.g3d.utils.DefaultShaderProvider;
 import com.badlogic.gdx.graphics.g3d.utils.TextureDescriptor;
 import com.badlogic.gdx.graphics.glutils.FrameBuffer;
+import com.badlogic.gdx.math.Vector3;
 import com.peaknav.elevation.ElevationImageProvider;
 import com.peaknav.utils.TileAndZoomElevFactor;
 import com.peaknav.viewer.MapViewerSingleton;
@@ -32,8 +33,12 @@ import com.peaknav.viewer.screens.LabelLoading;
 import com.peaknav.viewer.tiles.MapTile;
 import com.peaknav.viewer.tiles.MapTileWelder;
 
+import org.mapsforge.core.util.MercatorProjection;
+
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -45,10 +50,15 @@ public class TileBatchRenderer {
     private final Environment environment;
     private final ModelBatch modelBatchPseudodistances;
     private FrameBuffer fbo;
+    private boolean pseudodistancesDirty = true;
+    private long pseudodistancesMapTileUpdateTime = Long.MIN_VALUE;
     private final ExecutorService executorStartThreads = Executors.newSingleThreadExecutor();
     private volatile Future<?> futureStartThreads = null;
 
     private final ExecutorService executorMapTileFixer = Executors.newSingleThreadExecutor();
+
+    // Ever-increasing animation clock for the GPX flow, wrapped to keep shader fract() precise.
+    private float gpxTime = 0f;
 
     public TileBatchRenderer(PerspectiveCameraExt camera, Environment environment) {
         this.camera = camera;
@@ -73,6 +83,34 @@ public class TileBatchRenderer {
                                 if (rud.textureSatellite == null)
                                     whiteBackground = 1;
                                 shader.program.setUniformi(u_whiteBackground.alias, whiteBackground);
+                            }
+                        });
+
+                        // Same for every tile in the frame, so it is set once per render rather
+                        // than per renderable.
+                        BaseShader.Uniform u_sunDirection = new BaseShader.Uniform("u_sunDirection");
+                        shader.register(u_sunDirection, new BaseShader.GlobalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                Vector3 sun = getC().sunLight.getDirection();
+                                shader.program.setUniformf(u_sunDirection.alias, sun.x, sun.y, sun.z);
+                            }
+                        });
+
+                        BaseShader.Uniform u_sunEnabled = new BaseShader.Uniform("u_sunEnabled");
+                        shader.register(u_sunEnabled, new BaseShader.GlobalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                shader.program.setUniformi(u_sunEnabled.alias, P.isSunShading() ? 1 : 0);
+                            }
+                        });
+
+                        // Drives the animated GPX flow (see fragment_shader.glsl).
+                        BaseShader.Uniform u_time = new BaseShader.Uniform("u_time");
+                        shader.register(u_time, new BaseShader.GlobalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                shader.program.setUniformf(u_time.alias, gpxTime);
                             }
                         });
 
@@ -116,6 +154,30 @@ public class TileBatchRenderer {
                             }
                         });
 
+                        // GPX path overlay, painted onto the tile surface (see GpxTileRasterizer).
+                        BaseShader.Uniform u_gpxSet = new BaseShader.Uniform("u_gpxSet");
+                        shader.register(u_gpxSet, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                MapTile.RenderableUserData rud = (MapTile.RenderableUserData) renderable.userData;
+                                shader.program.setUniformi(u_gpxSet.alias, rud.textureGpx != null ? 1 : 0);
+                            }
+                        });
+
+                        BaseShader.Uniform u_textureGpx = new BaseShader.Uniform("u_textureGpx");
+                        TextureDescriptor<Texture> textureDescriptor3 = new TextureDescriptor<>();
+                        shader.register(u_textureGpx, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                Texture texture = ((MapTile.RenderableUserData) renderable.userData).textureGpx;
+                                if (texture == null)
+                                    return;
+                                textureDescriptor3.set(texture, null, null, null, null);
+                                final int unit = shader.context.textureBinder.bind(textureDescriptor3);
+                                shader.set(inputID, unit);
+                            }
+                        });
+
                         return shader;
                     }
                 },
@@ -127,11 +189,18 @@ public class TileBatchRenderer {
                         Gdx.files.internal("fragment_shader_pseudodistances.glsl").readString()),
                 null);
 
-        this.fbo = new FrameBuffer(
-                Pixmap.Format.RGBA8888,
-                Gdx.graphics.getWidth(),
-                Gdx.graphics.getHeight(),
-                true);
+        this.fbo = createPseudodistanceFbo(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+    }
+
+    private static FrameBuffer createPseudodistanceFbo(int width, int height) {
+        FrameBuffer newFbo = new FrameBuffer(Pixmap.Format.RGBA8888, width, height, true);
+        Texture texture = newFbo.getColorBufferTexture();
+        // The color buffer is data, not an image: each texel is a distance encoded in
+        // base 256. Interpolating two of them mixes bytes of different magnitude and
+        // yields a distance that is simply wrong, so it must never be filtered.
+        texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        texture.setWrap(Texture.TextureWrap.ClampToEdge, Texture.TextureWrap.ClampToEdge);
+        return newFbo;
     }
 
     public void startElevationRetrievalAndAssignmentThreads() {
@@ -143,12 +212,15 @@ public class TileBatchRenderer {
 
         futureStartThreads = executorStartThreads.submit(() -> {
             boolean flag = true;
+            // Every provider a currently-live tile depends on; kept off the eviction list below.
+            Set<TileAndZoomElevFactor> neededProviders = new HashSet<>();
             for (MapTile mapTile : getC().mapTileStorage.getMapTiles()) {
+                TileAndZoomElevFactor tileZoom = mapTile.getMinZoomTileWithElevFactor();
+                neededProviders.add(tileZoom);
                 if (mapTile.getMapTileState() != ELEVATION_DATA_NOT_LOADED)
                     continue;
                 flag = false;
 
-                TileAndZoomElevFactor tileZoom = mapTile.getMinZoomTileWithElevFactor();
                 ElevationImageProvider provider = getC().elevationImageProviderManager.getProviderOrQueueForLoading(tileZoom);
                 if (provider == null) {
                     continue;
@@ -164,6 +236,21 @@ public class TileBatchRenderer {
                 }
 
             }
+            // Bound the provider cache now that we know which providers the live tiles need.
+            // Safe here: this thread is the only one that starts crops, so a provider at
+            // referenceCount 0 has none in flight and none can begin during the sweep.
+            int targetTileX = MercatorProjection.longitudeToTileX(
+                    getC().L.getTargetLongitude(), MapTile.ZOOM_LEVEL_MIN);
+            int targetTileY = MercatorProjection.latitudeToTileY(
+                    getC().L.getTargetLatitude(), MapTile.ZOOM_LEVEL_MIN);
+            getC().elevationImageProviderManager.evictUnneededProviders(
+                    neededProviders, targetTileX, targetTileY);
+            // Paint the GPX paths onto the tiles (cheap once a tile is up to date with the current
+            // paths version; draws newly-loaded tiles and redraws all tiles when paths change).
+            com.peaknav.gpx.GpxTileRasterizer.updateTiles(
+                    getC().mapTileStorage.getMapTiles(),
+                    getC().gpxManager.getTracks(),
+                    getC().gpxManager.getVersion());
             if (flag && MapViewerSingleton.getViewerInstance().labelLoading.getState() == LabelLoading.State.LOADING) {
                 MapViewerSingleton.getViewerInstance().labelLoading.setState(LabelLoading.State.LOADED);
             }
@@ -171,6 +258,10 @@ public class TileBatchRenderer {
     }
 
     public void render() {
+        gpxTime += Gdx.graphics.getDeltaTime();
+        if (gpxTime > 3600f) {
+            gpxTime -= 3600f;
+        }
         drawQueuedMapTiles();
 
         if (getC().mapTileStorage.readyToDispose) {
@@ -251,7 +342,28 @@ public class TileBatchRenderer {
         });
     }
 
-    public void renderPseudodistances()  {
+    /** Forces the next frame to redraw the pseudodistance buffer from scratch. */
+    public void invalidatePseudodistances() {
+        pseudodistancesDirty = true;
+    }
+
+    /**
+     * Redraws the pseudodistance buffer only when it can no longer be trusted. Its
+     * contents depend on nothing but the camera and the terrain meshes, so on a frame
+     * where neither moved the buffer of the previous frame is still exact and a whole
+     * extra geometry pass over every visible tile can be skipped.
+     *
+     * @param cameraChanged whether the camera moved or rotated during this frame
+     */
+    public void renderPseudodistancesIfNeeded(boolean cameraChanged) {
+        long mapTileUpdateTime = getAppState().getLastAnyMapTileUpdateTime();
+        if (!pseudodistancesDirty
+                && !cameraChanged
+                && mapTileUpdateTime == pseudodistancesMapTileUpdateTime) {
+            return;
+        }
+        pseudodistancesMapTileUpdateTime = mapTileUpdateTime;
+        pseudodistancesDirty = false;
         renderPseudodistances(camera, false);
     }
 
@@ -327,15 +439,14 @@ public class TileBatchRenderer {
 
             impactPixmap.setPixmapGeographical(pixmapNorth, pixmapEast, pixmapSouth, pixmapWest);
             impactPixmap.impactPixmapNewRequested = false;
+            // These four passes leave the west-facing view in the frame buffer, so the
+            // outlines of the actual view have to be redrawn before they are read.
+            pseudodistancesDirty = true;
         }
     }
 
     public Texture getSobelTexture() {
-        Texture distanceTex = fbo.getColorBufferTexture();
-        distanceTex.bind(0);
-        distanceTex.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-        distanceTex.setWrap(Texture.TextureWrap.ClampToEdge, Texture.TextureWrap.ClampToEdge);
-        return distanceTex;
+        return fbo.getColorBufferTexture();
     }
 
 
@@ -351,22 +462,28 @@ public class TileBatchRenderer {
         }
     }
 
-    private void resizeCamera(Camera camera, int width, int height) {
-        if (camera == null)
-            return;
-        camera.viewportWidth = width;
-        camera.viewportHeight = height;
-        camera.update();
-    }
     public void resize(int width, int height) {
-        this.fbo = new FrameBuffer(
-                Pixmap.Format.RGBA8888,
-                width,
-                height,
-                true);
+        if (this.fbo != null) {
+            this.fbo.dispose();
+        }
+        this.fbo = createPseudodistanceFbo(width, height);
+        pseudodistancesDirty = true;
+        // The main camera and the four geographic depth cameras are resized by
+        // MapViewerScreen.resize (ModelBatch.getCamera() is null outside begin/end,
+        // so resizing "the batch's camera" here was a guaranteed no-op).
+    }
 
-        resizeCamera(modelBatchPseudodistances.getCamera(), width, height);
-        resizeCamera(modelBatch.getCamera(), width, height);
+    public void dispose() {
+        // Non-daemon single-thread executors: without shutdown they keep the desktop JVM
+        // alive after the window closes.
+        executorStartThreads.shutdown();
+        executorMapTileFixer.shutdown();
+        if (fbo != null) {
+            fbo.dispose();
+            fbo = null;
+        }
+        modelBatch.dispose();
+        modelBatchPseudodistances.dispose();
     }
 
 }

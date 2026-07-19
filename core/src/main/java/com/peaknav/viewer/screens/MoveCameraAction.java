@@ -21,10 +21,30 @@ public class MoveCameraAction extends TemporalAction {
     public MoveCameraAction() {
     }
 
+    /** While paused the queued steps are kept but not advanced, so the camera holds its pose. */
+    private volatile boolean paused = false;
+
+    public void setPaused(boolean paused) {
+        this.paused = paused;
+    }
+
+    public boolean isPaused() {
+        return paused;
+    }
+
+    /** Drops every queued move (and unpauses), e.g. when the GPX being toured is cleared. */
+    public synchronized void clearSteps() {
+        steps.clear();
+        paused = false;
+    }
+
     @Override
     public boolean act(float delta) {
         if (steps.size() == 0) {
             return true;
+        }
+        if (paused) {
+            return false; // keep the queue, just stop advancing it
         }
         MoveCameraActionStep step;
         try {
@@ -62,12 +82,53 @@ public class MoveCameraAction extends TemporalAction {
     public synchronized void setCameraVectors(
             Vector3 targetPosition, Vector3 targetDirection, Vector3 targetUp,
             boolean immediate, Interpolation interpolation, boolean setLocationAtEnd) {
+        setCameraVectors(targetPosition, targetDirection, targetUp,
+                immediate, interpolation, setLocationAtEnd, 0f);
+    }
+
+    // directionStartFraction delays the heading change until that fraction of the move (0 = track
+    // the whole move); see MoveCameraActionStep.
+    public synchronized void setCameraVectors(
+            Vector3 targetPosition, Vector3 targetDirection, Vector3 targetUp,
+            boolean immediate, Interpolation interpolation, boolean setLocationAtEnd,
+            float directionStartFraction) {
+        setCameraVectors(targetPosition, targetDirection, targetUp,
+                immediate, interpolation, setLocationAtEnd, directionStartFraction, 1f, 0f);
+    }
+
+    // positionEndFraction lets the position finish before the step does (so the heading keeps
+    // turning after arrival); durationSeconds overrides the move length (0 = default). See
+    // MoveCameraActionStep.
+    public synchronized void setCameraVectors(
+            Vector3 targetPosition, Vector3 targetDirection, Vector3 targetUp,
+            boolean immediate, Interpolation interpolation, boolean setLocationAtEnd,
+            float directionStartFraction, float positionEndFraction, float durationSeconds) {
         if (immediate) {
             steps.clear();
         }
         steps.add(new MoveCameraActionStep(this, targetPosition,
                 targetDirection, targetUp,
-                immediate, interpolation, setLocationAtEnd));
+                immediate, interpolation, setLocationAtEnd,
+                directionStartFraction, positionEndFraction, durationSeconds));
+    }
+
+    /**
+     * Queues a move with the parabolic lift suppressed — for a path built from many short
+     * consecutive hops, where a per-hop arc reads as the camera bobbing rather than flying.
+     */
+    public synchronized void addFlatStep(
+            Vector3 targetPosition, Vector3 targetDirection, Vector3 targetUp,
+            Interpolation interpolation, float durationSeconds) {
+        MoveCameraActionStep step = new MoveCameraActionStep(this, targetPosition,
+                targetDirection, targetUp,
+                false, interpolation, false, 0f, 1f, durationSeconds);
+        step.setArcLift(false);
+        steps.add(step);
+    }
+
+    /** How many queued moves are still to play; used to report tour progress. */
+    public int remainingSteps() {
+        return steps.size();
     }
 
     /*

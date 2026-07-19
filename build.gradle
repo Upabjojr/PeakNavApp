@@ -25,16 +25,21 @@ allprojects {
     }
 }
 
-configure(subprojects - project(':android')) {
-    apply plugin: 'java-library'
-    sourceCompatibility = 8
-
-    // From https://lyze.dev/2021/04/29/libGDX-Internal-Assets-List/
-    // The article can be helpful when using assets.txt in your project.
+// These tasks build index files inside the shared root `assets/` folder. Register
+// them ONCE, on :core, so there is a single producer of each output — registering
+// them per-subproject (as before) made every non-android module declare the same
+// output file, which tripped Gradle's implicit-dependency validation when another
+// module's processResources consumed that folder. Every module that packages the
+// shared assets depends on the :core tasks: the JVM modules below wire
+// processResources.dependsOn, and :android wires mergeAssets.dependsOn
+// ':core:generateGeonamesAssetIndex' (see android/build.gradle).
+// From https://lyze.dev/2021/04/29/libGDX-Internal-Assets-List/
+// The article can be helpful when using assets.txt in your project.
+project(':core') {
     tasks.register('generateAssetList') {
-        inputs.dir("${project.rootDir}/assets/")
+        inputs.dir("${rootDir}/assets/")
         // projectFolder/assets
-        File assetsFolder = new File("${project.rootDir}/assets/")
+        File assetsFolder = new File("${rootDir}/assets/")
         // projectFolder/assets/assets.txt
         File assetsFile = new File(assetsFolder, "assets.txt")
         // delete that file in case we've already created it
@@ -48,7 +53,7 @@ configure(subprojects - project(':android')) {
         }
     }
     tasks.register("generateGeonamesAssetIndex") {
-        def assetsDir = file("${project.rootDir}/assets/geonames_index.362")
+        def assetsDir = file("${rootDir}/assets/geonames_index.362")
         def indexFile = new File(assetsDir, "filelist.txt")
 
         inputs.dir(assetsDir)
@@ -56,11 +61,21 @@ configure(subprojects - project(':android')) {
 
         def files = assetsDir.listFiles()
         if (files) {
-            indexFile.text = files.collect { it.name }.join("\n")
+            // Exclude the manifest itself so it doesn't list its own name.
+            indexFile.text = files.findAll { it.name != "filelist.txt" }.collect { it.name }.join("\n")
         }
     }
-    processResources.dependsOn 'generateAssetList'
-    processResources.dependsOn 'generateGeonamesAssetIndex'
+}
+
+configure(subprojects - project(':android')) {
+    apply plugin: 'java-library'
+    // Set this through the `java` extension rather than as a bare project property:
+    // the project-level `sourceCompatibility` convention is deprecated in Gradle 8
+    // and removed in Gradle 9, where it fails with "unknown property".
+    java.sourceCompatibility = 8
+
+    processResources.dependsOn ':core:generateAssetList'
+    processResources.dependsOn ':core:generateGeonamesAssetIndex'
 
     compileJava {
         options.incremental = true

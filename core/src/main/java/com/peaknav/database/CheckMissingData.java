@@ -2,6 +2,7 @@ package com.peaknav.database;
 
 import static com.peaknav.elevation.ElevationImageStorage.getElevationCropsPathJpg;
 import static com.peaknav.elevation.ElevationImageStorage.getElevationCropsPathPng;
+import static com.peaknav.elevation.blocksS3.CheckS3ElevExistBlock.checkS3ElevationExistence;
 import static com.peaknav.utils.PathUtils.findTileWithDataByZoomingOut;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getLogger;
@@ -52,8 +53,23 @@ public class CheckMissingData {
         return new Tile(tileX, tileY, zoomLevel, MapTile.MF_ZOOM);
     }
 
+    /**
+     * Whether elevation for this tile is missing <em>and could be obtained</em>.
+     *
+     * <p>Asking only whether the files are on disk is not enough. Out at sea there is no elevation
+     * block to fetch, so the files are absent, downloading changes nothing, and the answer stays
+     * "missing" for ever — which is what made the app keep offering a download that had already
+     * been done. The published blocks are known up front (the same table
+     * {@link com.peaknav.elevation.ElevationImageStorage} consults to decide whether a tile has
+     * any data at all), so where there is nothing to fetch, nothing is reported missing.
+     */
     public static boolean checkMissingElevationForTile(Tile tile) {
         getLogger().debug(TAG, "checkMissingElevationForCoord entered");
+
+        if (!checkS3ElevationExistence(tile.tileX, tile.tileY)) {
+            getLogger().debug(TAG, "no elevation block published for " + tile + "; nothing to fetch");
+            return false;
+        }
 
         int zoomElevLevel = MapTile.computeZoomElevFactor(tile);
         // TODO: should this check other rescale factors? (i.e. not just 2?)
@@ -109,11 +125,27 @@ public class CheckMissingData {
         return iLon*1000 + iLat;
     }
 
+    public boolean isDismissed(double lat, double lon) {
+        return dismissed.contains(encodeDismissed(lat, lon));
+    }
+
     public boolean checkMissingIfNotDismissed(double lat, double lon) {
-        if (dismissed.contains(encodeDismissed(lat, lon))) {
+        if (isDismissed(lat, lon)) {
             return false;
         }
         return checkMissingDataForCoord(lat, lon);
+    }
+
+    /**
+     * Elevation-only counterpart of {@link #checkMissingIfNotDismissed}, for the prompt raised
+     * when the target coordinates move. It has to honour the same dismissal as the in-app banner,
+     * otherwise the user gets asked again for an area they already answered about.
+     */
+    public boolean checkMissingElevationIfNotDismissed(double lat, double lon) {
+        if (isDismissed(lat, lon)) {
+            return false;
+        }
+        return checkMissingElevationForCoord(lat, lon);
     }
 
     public void downloadMissingData(double lat, double lon) {

@@ -10,9 +10,11 @@ import org.mapsforge.core.model.LatLong;
 import org.mapsforge.core.model.Tile;
 import org.mapsforge.core.util.MercatorProjection;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
@@ -145,5 +147,61 @@ public class ElevationImageProviderManager {
     public void clearProviders() {
         mapToRescale.clear();
         providers.clear();
+    }
+
+    // Elevation providers used to accumulate for the whole session: one per (min-zoom tile,
+    // detail) block ever visited, each holding a storage ElevationImage (two off-heap pixmaps
+    // plus short[]/float[] arrays), and nothing removed them except a post-download clear. As
+    // the user panned around the world this grew without bound. This caps the cache: providers
+    // that no live map tile needs, and that have no crop in flight (referenceCount 0), are the
+    // most distant coarse blocks — evicting them frees that memory, and they reload cheaply
+    // from local disk if revisited.
+    //
+    // Safe to run only from the elevation-retrieval thread (the sole caller of
+    // submitToExecutor, which is what raises a provider's reference count): a provider seen at
+    // referenceCount 0 there has no crop in flight and none can start mid-sweep.
+    private static final int MAX_PROVIDERS = 48;
+
+    public void evictUnneededProviders(Set<TileAndZoomElevFactor> stillNeeded,
+                                       int targetTileX, int targetTileY) {
+        synchronized (providers) {
+            int over = providers.size() - MAX_PROVIDERS;
+            if (over <= 0)
+                return;
+
+            List<TileAndZoomElevFactor> candidates = new ArrayList<>();
+            for (Map.Entry<TileAndZoomElevFactor, ElevationImageProvider> entry : providers.entrySet()) {
+                if (stillNeeded.contains(entry.getKey()))
+                    continue;
+                if (entry.getValue().getReferenceCount() != 0)
+                    continue;
+                candidates.add(entry.getKey());
+            }
+
+            // Farthest tiles first: least likely to be looked at again soon.
+            candidates.sort((a, b) -> Long.compare(
+                    tileDistanceSq(b.tile, targetTileX, targetTileY),
+                    tileDistanceSq(a.tile, targetTileX, targetTileY)));
+
+            for (int i = 0; i < candidates.size() && over > 0; i++) {
+                TileAndZoomElevFactor key = candidates.get(i);
+                ElevationImageProvider provider = providers.remove(key);
+                if (provider == null)
+                    continue;
+                // mapToRescale maps a tile to its best-detail provider key; only drop it if it
+                // still points at the provider we are evicting.
+                if (key.equals(mapToRescale.get(key.tile))) {
+                    mapToRescale.remove(key.tile);
+                }
+                provider.dispose();
+                over--;
+            }
+        }
+    }
+
+    private static long tileDistanceSq(Tile tile, int targetTileX, int targetTileY) {
+        long dx = (long) tile.tileX - targetTileX;
+        long dy = (long) tile.tileY - targetTileY;
+        return dx * dx + dy * dy;
     }
 }

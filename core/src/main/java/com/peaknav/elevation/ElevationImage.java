@@ -14,6 +14,13 @@ public class ElevationImage extends ElevationImageAbstract {
     private final Pixmap eleJpg;
     private final Pixmap elePng;
 
+    // Storage-level images keep their pixmaps alive because crop() (and terrain-elevation
+    // lookups) read them repeatedly. A cropped per-tile image, by contrast, is never cropped
+    // again and its pixmaps feed only its own computeElevationsFromImages(); once the short[]
+    // elevations exist the pixmaps are dead weight (two off-heap allocations per visible tile).
+    // crop() sets this so those pixmaps are released as soon as the elevations are computed.
+    private boolean releasePixmapsAfterElevations = false;
+
     // TODO: this should be private... there should be a loader checking if the tile has already been loaded...
     public ElevationImage(Pixmap eleJpg, Pixmap elePng, Tile tile, BoundingBox boundingBox) {
         super(eleJpg.getWidth(), tile, boundingBox);
@@ -43,7 +50,18 @@ public class ElevationImage extends ElevationImageAbstract {
                 elevationsShort[pos] = val;
             }
         }
-        // TODO: dispose of eleJpg and elePng, as they are no longer needed from here on?
+        // For cropped per-tile images the source pixmaps are no longer needed once the
+        // elevations exist: nothing crops them again, and getEleJpg/saveToExternal are unused.
+        // Releasing them here frees two off-heap Pixmaps per visible tile. Storage-level images
+        // leave the flag false so crop() and elevation lookups can keep reading the pixmaps.
+        if (releasePixmapsAfterElevations) {
+            if (!eleJpg.isDisposed()) {
+                eleJpg.dispose();
+            }
+            if (!elePng.isDisposed()) {
+                elePng.dispose();
+            }
+        }
         return elevationsShort;
     }
 
@@ -95,7 +113,11 @@ public class ElevationImage extends ElevationImageAbstract {
         croppedJpg.drawPixmap(eleJpg, startLon, startLat, width, height, 0, 0, width, height);
         croppedPng.drawPixmap(elePng, startLon, startLat, width, height, 0, 0, width, height);
 
-        return new ElevationImage(croppedJpg, croppedPng, tile, newBoundingBox);
+        ElevationImage cropped = new ElevationImage(croppedJpg, croppedPng, tile, newBoundingBox);
+        // This cropped image is consumed by exactly one map tile and never cropped again, so its
+        // pixmaps can be freed the moment its elevations are computed.
+        cropped.releasePixmapsAfterElevations = true;
+        return cropped;
     }
 
     public Pixmap getEleJpg() {

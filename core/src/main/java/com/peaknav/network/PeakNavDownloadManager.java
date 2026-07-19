@@ -3,6 +3,7 @@ package com.peaknav.network;
 import static com.peaknav.compatibility.PeakNavAppState.getAppState;
 import static com.peaknav.database.CheckMissingData.getTileAtZoomLevel;
 import static com.peaknav.utils.PathUtils.createRecurrentPathsForOsmTilesInExternal;
+import static com.peaknav.utils.PathUtils.getMapFolder;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getLogger;
 import static com.peaknav.utils.PreferencesManager.P;
@@ -74,6 +75,7 @@ public class PeakNavDownloadManager {
         addQueueElevations(lat, lon);
         addQueueHighways(lat, lon);
         addQueuePois(lat, lon);
+        addQueueAreas(lat, lon);
     }
 
     public List<Tile> getQueueTilesEven(double lat, double lon, byte zoomLevel, int tileSpan) {
@@ -153,6 +155,19 @@ public class PeakNavDownloadManager {
         addQueueMapData(lat, lon, zoomPoiCompressed, 3, PbfLayer.PBF_POI);
     }
 
+    /**
+     * Area labels, queued alongside the POI and highway extracts so a region arrives complete.
+     *
+     * <p>Their archives are cut one zoom coarser than the POI ones, so each covers four times the
+     * ground and the span has to shrink to match: a 2×2 block at zoom 5 spans 22.5° of longitude
+     * against the 16.9° a 3×3 block spanned at zoom 6, in four requests rather than nine. An even
+     * span is deliberate — it takes the 2×2 nearest the position, so the neighbouring block is
+     * always included and labels do not appear only once a boundary is crossed.
+     */
+    private void addQueueAreas(double lat, double lon) {
+        addQueueMapData(lat, lon, PbfLayer.ZOOM_LEVEL_AREAS_ARCHIVE, 2, PbfLayer.AREAS);
+    }
+
     private synchronized void updateProgressText(final int counterMapData, int downloadSize) {
         StringBuilder builder = new StringBuilder();
 
@@ -167,20 +182,99 @@ public class PeakNavDownloadManager {
         // notificationManager.setText(builder.toString(), progress);
     }
 
+    /**
+     * A failed tile is dropped from the download queue and never fetched again, which leaves that
+     * area permanently without data (and the app repeatedly offering to download it). Network
+     * errors are often momentary, so retry a few times before giving up on a tile.
+     */
+    private static final int DOWNLOAD_ATTEMPTS = 3;
+    private static final long DOWNLOAD_RETRY_BASE_MILLIS = 700L;
+    private static final int DOWNLOAD_CONNECT_TIMEOUT_MILLIS = 20_000;
+    private static final int DOWNLOAD_READ_TIMEOUT_MILLIS = 60_000;
+
+    /**
+     * Tries each configured provider's URL in turn until the tile downloads, so extra
+     * providers act as mirrors: if HuggingFace is unreachable, the next one is tried.
+     *
+     * @throws IOException when no provider is configured or every one failed.
+     */
+    private void downloadFromProviders(List<String> candidateUrls, File localFile) throws IOException {
+        if (candidateUrls == null || candidateUrls.isEmpty()) {
+            throw new IOException("No download provider is configured");
+        }
+        IOException lastFailure = null;
+        for (String url : candidateUrls) {
+            try {
+                downloadWithRetries(url, localFile);
+                return;
+            } catch (IOException ex) {
+                lastFailure = ex;
+                if (candidateUrls.size() > 1) {
+                    getLogger().debug(TAG, "provider failed, trying next: " + url + " -> " + ex);
+                }
+            }
+        }
+        throw lastFailure;
+    }
+
+    /**
+     * Downloads {@code urlString} to {@code localFile}, retrying transient failures.
+     *
+     * @throws IOException when every attempt failed; the caller then drops the tile as before.
+     */
+    private void downloadWithRetries(String urlString, File localFile) throws IOException {
+        IOException lastFailure = null;
+        for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+            try {
+                URL url = new URL(urlString);
+                URLConnection conn = url.openConnection();
+                conn.setConnectTimeout(DOWNLOAD_CONNECT_TIMEOUT_MILLIS);
+                conn.setReadTimeout(DOWNLOAD_READ_TIMEOUT_MILLIS);
+
+                try (InputStream in = conn.getInputStream();
+                     FileOutputStream fos = new FileOutputStream(localFile)) {
+                    byte[] readBuf = new byte[8192];
+                    int readLen;
+                    while ((readLen = in.read(readBuf)) > 0) {
+                        fos.write(readBuf, 0, readLen);
+                    }
+                }
+                return;
+            } catch (IOException ex) {
+                lastFailure = ex;
+                // Never leave a half written archive behind: it would be unpacked as if complete.
+                if (localFile.exists()) {
+                    localFile.delete();
+                }
+                getLogger().debug(TAG, "download attempt " + attempt + "/" + DOWNLOAD_ATTEMPTS
+                        + " failed for " + urlString + ": " + ex);
+                if (attempt < DOWNLOAD_ATTEMPTS) {
+                    try {
+                        Thread.sleep(DOWNLOAD_RETRY_BASE_MILLIS * attempt);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw lastFailure;
+                    }
+                }
+            }
+        }
+        throw lastFailure;
+    }
+
     public void processQueue() {
 
         List<MapSqlite.QueuedTile> queuedTiles = mapSqlite.getDownloadQueue();
 
         Timestamp now = new Timestamp(Calendar.getInstance().getTimeInMillis());
 
-        List<PeakNavHttpCompressDownloader.HfDownloadUrl> urls = eleDown.getHfDownloadUrlList(queuedTiles);
+        List<PeakNavHttpCompressDownloader.DownloadTarget> targets = eleDown.getDownloadTargets(queuedTiles);
 
         final AtomicInteger counterMapData = new AtomicInteger(0);
 
         List<Future<?>> futures = new LinkedList<>();
-        int downloadSize = urls.size();
+        int downloadSize = targets.size();
 
-        for (PeakNavHttpCompressDownloader.HfDownloadUrl hfDownloadUrl : urls) {
+        for (PeakNavHttpCompressDownloader.DownloadTarget target : targets) {
             Future<?> e = downloadExecutor.submit(
                     () -> {
                         boolean ok = false;
@@ -192,49 +286,36 @@ public class PeakNavDownloadManager {
                                 return;
                             }
 
-                            localFile = Gdx.files.external("peaknav_downloads/" + hfDownloadUrl.objectKey).file();
+                            localFile = Gdx.files.external("peaknav_downloads/" + target.objectKey).file();
 
                             if (!localFile.exists()) {
-                                List<String> dirs = Arrays.asList(hfDownloadUrl.objectKey.split("/"));
+                                List<String> dirs = Arrays.asList(target.objectKey.split("/"));
                                 dirs = dirs.subList(0, dirs.size() - 1);
                                 createRecurrentPathsForOsmTilesInExternal(dirs);
 
-                                URL url = new URL(hfDownloadUrl.getUrl());
-                                URLConnection conn = url.openConnection();
-
-                                InputStream s3is = conn.getInputStream();
                                 File localFileDir = localFile.getParentFile();
                                 if (!localFileDir.exists()) {
                                     localFile.getParentFile().mkdirs();
                                 }
-                                FileOutputStream fos = new FileOutputStream(localFile);
 
-                                byte[] read_buf = new byte[1024];
-                                int read_len = 0;
-                                while ((read_len = s3is.read(read_buf)) > 0) {
-                                    fos.write(read_buf, 0, read_len);
-                                }
-
-                                //
-                                s3is.close();
-                                fos.close();
+                                downloadFromProviders(target.candidateUrls, localFile);
                             }
 
                             okDownload = true;
 
-                            unpackTarGz(localFile, Gdx.files.external(".").file());
+                            unpackTarGz(localFile, unpackRootFor(target.queuedTile));
 
                             ok = true;
                         } catch (IOException ex) {
                             throw new RuntimeException(ex);
                         } finally {
                             if (ok) {
-                                mapSqlite.updateDownloadQueueMapDataTimestamp(hfDownloadUrl.queuedTile, now);
+                                mapSqlite.updateDownloadQueueMapDataTimestamp(target.queuedTile, now);
                             } else {
                                 if (localFile != null && localFile.exists()) {
                                     localFile.delete();
                                 }
-                                mapSqlite.removeDownloadQueueMapData(hfDownloadUrl.queuedTile);
+                                mapSqlite.removeDownloadQueueMapData(target.queuedTile);
                             }
                             updateProgressText(counterMapData.incrementAndGet(), downloadSize);
                         }
@@ -255,6 +336,17 @@ public class PeakNavDownloadManager {
         if (notificationManager != null) {
             notificationManager.clear();
         }
+    }
+
+    /**
+     * Where an archive's contents are unpacked.
+     *
+     * <p>Every archive carries its full path inside it ({@code map_folder/…}, {@code elev_tiles/…}),
+     * so they all unpack at the external root — the areas included, which is why there is no
+     * per-layer case here to get wrong.
+     */
+    private static File unpackRootFor(MapSqlite.QueuedTile queuedTile) {
+        return Gdx.files.external(".").file();
     }
 
     public static void unpackTarGz(File inputFile, File outputDir) throws IOException {

@@ -1,5 +1,6 @@
 package com.peaknav.viewer.controller;
 
+import static com.peaknav.compatibility.PeakNavAppState.getAppState;
 import static com.peaknav.database.CheckMissingData.checkMissingElevationForCoord;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
@@ -48,6 +49,17 @@ public class CurrentLocation {
 
     private volatile float currentTerrainEle;
 
+    /**
+     * Sets the ground-elevation reference (used by the elevation bar and the height readout)
+     * without the side effects of {@link #setCurrentTerrainEle} — no re-entrant location callback,
+     * no camera move. Used when the camera is deliberately decoupled from the target, e.g. while
+     * surveying a GPX track from high above it, so the bar's range and readout track where the
+     * camera actually is.
+     */
+    public void setCurrentTerrainEleQuiet(float ele) {
+        this.currentTerrainEle = ele;
+    }
+
     private float targetLatitude;
     private float targetLongitude;
 
@@ -81,7 +93,10 @@ public class CurrentLocation {
         targetLatitude = (float) lat;
         targetLongitude = (float) lon;
 
-        if (checkMissing && checkMissingElevationForCoord(lat, lon)) {
+        if (checkMissing && shouldAskToDownloadMissingData(lat, lon)) {
+            // Remember that this area has been asked about before showing the dialog, so a moving
+            // GPS fix (which re-targets on every update) cannot raise it again and again.
+            getC().checkMissingData.dismiss(lat, lon);
             getNativeScreenCaller().askForDownloadScreen(lat, lon);
         }
         getC().elevationImageProviderManager.setProviderForTargetCoords(targetLatitude, targetLongitude);
@@ -89,6 +104,32 @@ public class CurrentLocation {
         getC().tileManager.updateMapTiles();
 
         currentTerrainEleFired = LocationState.WAITING_FOR_ELEVATION;
+    }
+
+    /**
+     * How long after a download finishes the "data is missing" dialog stays suppressed. Tiles are
+     * still being written and re-read for a moment after the download ends, so without this the
+     * app asks to download data it has just fetched.
+     */
+    private static final long DOWNLOAD_SETTLE_MILLIS = 30_000L;
+
+    /**
+     * Whether to raise the modal "download missing data?" dialog. This is deliberately much more
+     * reluctant than the in-app banner (see MapViewerScreen/TableDownloadData), which stays
+     * visible whenever data is missing and is the non-intrusive way to offer the download.
+     */
+    private boolean shouldAskToDownloadMissingData(double lat, double lon) {
+        if (getNativeScreenCaller() == null) {
+            // iOS does not provide one.
+            return false;
+        }
+        if (getAppState().isMapDataDownloadStarted()
+                || getAppState().isMapDataDownloadRecentlyFinished(DOWNLOAD_SETTLE_MILLIS)) {
+            // A download is already running or has just covered this; asking now is the
+            // "it keeps asking even though I am downloading" case.
+            return false;
+        }
+        return getC().checkMissingData.checkMissingElevationIfNotDismissed(lat, lon);
     }
 
     public void setCurrentFinalCoords(double lat, double lon, double elevation) {

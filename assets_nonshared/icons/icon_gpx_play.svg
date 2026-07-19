@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Fly over path": a play triangle on the GPX track, so it reads as "play the route"
+     rather than as a second camera button. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+    <linearGradient id="play" x1="0" y1="76" x2="0" y2="168" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4cc463"/>
+      <stop offset="1" stop-color="#1f8c3c"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+
+  <g clip-path="url(#disc)">
+    <!-- the track: a winding GPX trace across the badge -->
+    <path d="M6 186 C 46 186, 52 132, 88 120 C 126 107, 128 66, 172 58 C 196 54, 214 54, 236 58"
+          fill="none" stroke="#c9d4dc" stroke-width="26" stroke-linecap="round"/>
+    <path d="M6 186 C 46 186, 52 132, 88 120 C 126 107, 128 66, 172 58 C 196 54, 214 54, 236 58"
+          fill="none" stroke="#e8482f" stroke-width="14" stroke-linecap="round"/>
+
+    <!-- start and end markers on the trace -->
+    <circle cx="26" cy="185" r="15" fill="#ffffff" stroke="#8a2318" stroke-width="5"/>
+    <circle cx="214" cy="56" r="15" fill="#ffffff" stroke="#8a2318" stroke-width="5"/>
+
+    <!-- play triangle, the part that has to read instantly at 128 px -->
+    <circle cx="120" cy="122" r="62" fill="#ffffff" opacity="0.92"/>
+    <circle cx="120" cy="122" r="62" fill="none" stroke="#12331c" stroke-width="6"/>
+    <path d="M102 88 L160 122 L102 156 Z"
+          fill="url(#play)" stroke="#12331c" stroke-width="6" stroke-linejoin="round"/>
+  </g>
+
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#12331c" stroke-width="3"/>
+</svg>

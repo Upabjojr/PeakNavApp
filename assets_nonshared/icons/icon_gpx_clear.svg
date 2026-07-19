@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Clear the loaded GPX": the same track badge, greyed out and struck through with a cross. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+  </defs>
+
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+
+  <g clip-path="url(#disc)">
+    <!-- the track, desaturated: it is the thing being discarded -->
+    <path d="M6 186 C 46 186, 52 132, 88 120 C 126 107, 128 66, 172 58 C 196 54, 214 54, 236 58"
+          fill="none" stroke="#d8dfe4" stroke-width="26" stroke-linecap="round"/>
+    <path d="M6 186 C 46 186, 52 132, 88 120 C 126 107, 128 66, 172 58 C 196 54, 214 54, 236 58"
+          fill="none" stroke="#a9b4bd" stroke-width="14" stroke-linecap="round"/>
+
+    <circle cx="26" cy="185" r="15" fill="#ffffff" stroke="#8b969e" stroke-width="5"/>
+    <circle cx="214" cy="56" r="15" fill="#ffffff" stroke="#8b969e" stroke-width="5"/>
+
+    <!-- cross, on a light disc so it stays legible over the track -->
+    <circle cx="120" cy="122" r="62" fill="#ffffff" opacity="0.92"/>
+    <circle cx="120" cy="122" r="62" fill="none" stroke="#7a1c17" stroke-width="6"/>
+    <g stroke="#d23b32" stroke-width="20" stroke-linecap="round">
+      <line x1="96" y1="98" x2="144" y2="146"/>
+      <line x1="144" y1="98" x2="96" y2="146"/>
+    </g>
+  </g>
+
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#7a1c17" stroke-width="3"/>
+</svg>
