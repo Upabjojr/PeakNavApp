@@ -2,9 +2,12 @@ package com.peaknav.viewer.desktop;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Pixmap;
+import com.peaknav.utils.PeakNavUtils;
 import com.peaknav.viewer.MapViewerSingleton;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 
 import javax.swing.JFileChooser;
 import javax.swing.filechooser.FileFilter;
@@ -53,5 +56,12 @@ public class GalleryPickDesktop {
     private void setAppBackgroundImage(File imageFile) {
         Pixmap pixmap = new Pixmap(new FileHandle(imageFile));
         MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(pixmap);
+
+        try {
+            byte[] bytes = Files.readAllBytes(imageFile.toPath());
+            PeakNavUtils.checkImageGpsAndPrompt(bytes);
+        } catch (IOException e) {
+            // Reading the image for GPS metadata failed; the background was still set.
+        }
     }
 }

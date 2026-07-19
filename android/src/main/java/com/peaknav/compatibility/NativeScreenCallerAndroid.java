@@ -3,6 +3,7 @@ package com.peaknav.compatibility;
 import static android.Manifest.permission.ACCESS_COARSE_LOCATION;
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
 import static com.peaknav.utils.PeakNavPermissions.checkLocationPermission;
+import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.views.AndroidLauncher.CAMERA_PERMISSION;
 import static com.peaknav.views.AndroidLauncher.CAMERA_REQUEST_CODE;
@@ -219,6 +220,19 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         intent.setType("image/*");
         intent.setAction(Intent.ACTION_GET_CONTENT);
         startActivityForResultAndPause(Intent.createChooser(intent, "Select Picture"), PICK_IMAGE);
+    }
+
+    @Override
+    public void promptGoToImageLocation(double lat, double lon) {
+        mainActivity.runOnUiThread(() -> {
+            AlertDialog.Builder alertBuilder = new AlertDialog.Builder(mainActivity);
+            alertBuilder.setTitle(s("Image_location_found"))
+                    .setMessage(s("Go_to_image_location_prompt"))
+                    .setPositiveButton(s("Yes"),
+                            (dialogInterface, i) -> getC().L.setCurrentTargetCoords(lat, lon))
+                    .setNegativeButton(s("No"), null);
+            alertBuilder.create().show();
+        });
     }
 
     @Override

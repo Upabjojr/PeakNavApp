@@ -31,6 +31,12 @@ public abstract class NativeScreenCaller {
 
     public abstract void openGalleryPick();
 
+    /**
+     * Ask the user whether to navigate to the coordinates a background image was
+     * taken at (recovered from its EXIF GPS metadata).
+     */
+    public abstract void promptGoToImageLocation(double lat, double lon);
+
     public abstract void openAppInfoScreen();
 
     public abstract void openAppTutorial();

@@ -5,6 +5,7 @@ import static com.peaknav.utils.PeakNavPermissions.LOCATION_REQUEST_CODE;
 import static com.peaknav.utils.PeakNavPermissions.handleLocationPermission;
 import static com.peaknav.utils.PeakNavUtils.getLoadFactory;
 import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
+import static com.peaknav.utils.PeakNavUtils.checkImageGpsAndPrompt;
 import static com.peaknav.utils.PeakNavUtils.setBytesAsBackgroundImage;
 import static com.peaknav.viewer.controller.MapController.setNumOfCpuCores;
 
@@ -158,6 +159,7 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 					byte[] b = buffer.toByteArray();
 
 					setBytesAsBackgroundImage(b);
+					checkImageGpsAndPrompt(b);
 				}
 			} catch (FileNotFoundException e) {
 				throw new RuntimeException(e);

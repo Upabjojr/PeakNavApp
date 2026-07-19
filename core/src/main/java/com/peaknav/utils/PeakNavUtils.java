@@ -252,6 +252,17 @@ public class PeakNavUtils {
         MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(pixmap);
     }
 
+    /**
+     * If the given image carries EXIF GPS coordinates, ask the user (through the
+     * native screen caller) whether to navigate to the place it was taken.
+     */
+    public static void checkImageGpsAndPrompt(byte[] imageBytes) {
+        double[] latLon = ExifGpsExtractor.extractLatLon(imageBytes);
+        if (latLon != null && getNativeScreenCaller() != null) {
+            getNativeScreenCaller().promptGoToImageLocation(latLon[0], latLon[1]);
+        }
+    }
+
     public static String s(String key) {
         if (getC().i18n == null)
             return key.replace("_", " ");

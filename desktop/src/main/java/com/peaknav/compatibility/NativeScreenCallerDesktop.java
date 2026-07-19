@@ -166,6 +166,21 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     }
 
     @Override
+    public void promptGoToImageLocation(double lat, double lon) {
+        SwingUtilities.invokeLater(() -> {
+            int dialogResult = JOptionPane.showConfirmDialog(
+                    null,
+                    s("Go_to_image_location_prompt"), // message
+                    s("Image_location_found"),        // title
+                    JOptionPane.YES_NO_OPTION
+            );
+            if (dialogResult == JOptionPane.YES_OPTION) {
+                getC().L.setCurrentTargetCoords(lat, lon);
+            }
+        });
+    }
+
+    @Override
     public void openAppInfoScreen() {
         Desktop desktop = Desktop.getDesktop();
         try {
