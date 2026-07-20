@@ -62,6 +62,13 @@ public abstract class ElevationImageAbstract {
         int eleY = (int) floatY;
 
         final int eL1 = edgeLength - 1;
+        // Clamp to the tile so a coordinate at/just outside its bounds can't
+        // index the elevation array out of range.
+        if (eleX < 0) eleX = 0;
+        else if (eleX > eL1) eleX = eL1;
+        if (eleY < 0) eleY = 0;
+        else if (eleY > eL1) eleY = eL1;
+
         float el1 = getTileMatrixElevationLatits(eleX, eleY);
         float el2 = getTileMatrixElevationLatits(eleX + ((eleX < eL1)? 1 : -1), eleY);
         float el3 = getTileMatrixElevationLatits(eleX, eleY + ((eleY < eL1)? 1 : -1));

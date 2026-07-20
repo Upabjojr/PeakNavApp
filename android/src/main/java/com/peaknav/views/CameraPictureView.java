@@ -43,7 +43,6 @@ import com.peaknav.compatibility.NativeScreenCallerAndroid;
 import com.peaknav.viewer.MapViewerSingleton;
 
 import java.io.ByteArrayOutputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -59,27 +58,32 @@ public class CameraPictureView extends Fragment {
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         if (requestCode == PICK_IMAGE && resultCode == RESULT_OK) {
-            if (data != null) {
+            if (data != null && data.getData() != null) {
                 getC().submitExecutorGeneric(() -> {
-                    try {
-                    InputStream inputStream = getActivity().getContentResolver().openInputStream(data.getData());
-
-                    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-
-                    int numRead;
-                    byte[] d = new byte[16384];
-
-                    while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
-                        buffer.write(d, 0, numRead);
+                    FragmentActivity activity = getActivity();
+                    if (activity == null) {
+                        return;
                     }
+                    // Any failure here (detached fragment, unreadable URI, corrupt
+                    // image) must not escape: an uncaught exception on this worker
+                    // thread would trip the app's global handler and System.exit.
+                    try (InputStream inputStream =
+                                 activity.getContentResolver().openInputStream(data.getData())) {
+                        if (inputStream == null) {
+                            return;
+                        }
+                        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 
-                    byte[] b = buffer.toByteArray();
+                        int numRead;
+                        byte[] d = new byte[16384];
 
-                    setBytesAsBackgroundImage(b);
-                    } catch (FileNotFoundException e) {
-                        throw new RuntimeException(e);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
+                        while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
+                            buffer.write(d, 0, numRead);
+                        }
+
+                        setBytesAsBackgroundImage(buffer.toByteArray());
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
                 });
             }
@@ -104,8 +108,9 @@ public class CameraPictureView extends Fragment {
         view = inflater.inflate(R.layout.fragment_camera_picture_view, container, false);
 
 
-        if (ActivityCompat.checkSelfPermission(getActivity(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+        if (getActivity() == null || ActivityCompat.checkSelfPermission(getActivity(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             finish();
+            return view;
         }
 
         handler = new Handler();
@@ -154,6 +159,11 @@ public class CameraPictureView extends Fragment {
             @Override
             public void surfaceCreated(@NonNull SurfaceHolder holder) {
                 camera = Camera.open();
+                if (camera == null) {
+                    // Camera unavailable or in use by another app.
+                    finish();
+                    return;
+                }
                 Camera.Parameters param = camera.getParameters();
                 List<Camera.Size> previewSizes = param.getSupportedPreviewSizes();
                 int maxWidth = 0;

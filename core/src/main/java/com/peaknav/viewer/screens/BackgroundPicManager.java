@@ -47,10 +47,14 @@ public class BackgroundPicManager {
         if (prev != null) {
             prev.dispose();
         }
-        Texture prevTexture = this.backgroundTexture;
-        if (prev != null) {
-            prevTexture.dispose();
-            backgroundTexture = null;
+        // Drop the old texture so the renderer recreates it from the new pixmap.
+        // Texture.dispose() is a GL call and this method may run off the render
+        // thread (e.g. from the camera/gallery background executor), so defer the
+        // dispose to the GL thread.
+        final Texture prevTexture = this.backgroundTexture;
+        this.backgroundTexture = null;
+        if (prevTexture != null) {
+            Gdx.app.postRunnable(prevTexture::dispose);
         }
     }
 

@@ -2,7 +2,6 @@ package com.peaknav.database;
 
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.queryParser.ParseException;
 import org.apache.lucene.queryParser.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
@@ -58,14 +57,17 @@ public class LuceneGeonameSearch {
         StandardAnalyzer analyzer = new StandardAnalyzer(Version.LUCENE_36);
         QueryParser parser = new QueryParser(Version.LUCENE_36, "name", analyzer);
 
-        Query query = null;
-        try {
-            query = parser.parse(queryName + "~0.8");
-        } catch (ParseException e) {
-            throw new RuntimeException(e);
-        }
-
         List<GeonameResult> geonameResults = new ArrayList<>();
+
+        Query query;
+        try {
+            // Escape user input so Lucene special characters can't produce a
+            // ParseException / TokenMgrError; catch anything else defensively so
+            // arbitrary text typed in the search box can never crash the app.
+            query = parser.parse(QueryParser.escape(queryName) + "~0.8");
+        } catch (Throwable t) {
+            return geonameResults;
+        }
 
         if (indexSearcher == null) {
             return geonameResults;
@@ -74,15 +76,19 @@ public class LuceneGeonameSearch {
         try {
             TopDocs topDocs = indexSearcher.search(query, maxResults);
             for (ScoreDoc sd : topDocs.scoreDocs) {
-                Document doc = indexSearcher.doc(sd.doc);
-                String name = doc.get("name");
-                String asciiName = doc.get("asciiname");
-                float lat = Float.parseFloat(doc.get("lat_store"));
-                float lon = Float.parseFloat(doc.get("lon_store"));
-                int population = Integer.parseInt(doc.get("population_store"));
+                try {
+                    Document doc = indexSearcher.doc(sd.doc);
+                    String name = doc.get("name");
+                    String asciiName = doc.get("asciiname");
+                    float lat = Float.parseFloat(doc.get("lat_store"));
+                    float lon = Float.parseFloat(doc.get("lon_store"));
+                    int population = Integer.parseInt(doc.get("population_store"));
 
-                geonameResults.add(new GeonameResult(name, asciiName, lat, lon, population));
-                // System.out.printf("%s: %f,%f (pop: %d)\n", name, lat, lon, population);
+                    geonameResults.add(new GeonameResult(name, asciiName, lat, lon, population));
+                    // System.out.printf("%s: %f,%f (pop: %d)\n", name, lat, lon, population);
+                } catch (NumberFormatException | NullPointerException ignored) {
+                    // Skip index documents missing the stored coordinate fields.
+                }
             }
 
         } catch (IOException ignored) {

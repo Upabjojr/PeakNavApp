@@ -30,7 +30,6 @@ import com.peaknav.utils.StopThreadException;
 import com.peaknav.viewer.MapApp;
 
 import java.io.ByteArrayOutputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.LinkedList;
@@ -142,29 +141,29 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 	protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
 
-		if (requestCode == PICK_IMAGE && resultCode == RESULT_OK) {
-			try {
-				if (data != null) {
-					InputStream inputStream = getContentResolver().openInputStream(data.getData());
-
-					ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-
-					int numRead;
-					byte[] d = new byte[16384];
-
-					while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
-						buffer.write(d, 0, numRead);
-					}
-
-					byte[] b = buffer.toByteArray();
-
-					setBytesAsBackgroundImage(b);
-					checkImageGpsAndPrompt(b);
+		if (requestCode == PICK_IMAGE && resultCode == RESULT_OK
+				&& data != null && data.getData() != null) {
+			// A deleted file, revoked permission, or corrupt image must fail
+			// gracefully here rather than crash the app.
+			try (InputStream inputStream = getContentResolver().openInputStream(data.getData())) {
+				if (inputStream == null) {
+					return;
 				}
-			} catch (FileNotFoundException e) {
-				throw new RuntimeException(e);
-			} catch (IOException e) {
-				throw new RuntimeException(e);
+				ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+
+				int numRead;
+				byte[] d = new byte[16384];
+
+				while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
+					buffer.write(d, 0, numRead);
+				}
+
+				byte[] b = buffer.toByteArray();
+
+				setBytesAsBackgroundImage(b);
+				checkImageGpsAndPrompt(b);
+			} catch (Exception e) {
+				e.printStackTrace();
 			}
 		}
 	}

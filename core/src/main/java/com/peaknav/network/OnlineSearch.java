@@ -53,26 +53,32 @@ public class OnlineSearch {
         Gdx.net.sendHttpRequest(request, new Net.HttpResponseListener() {
             @Override
             public void handleHttpResponse(Net.HttpResponse httpResponse) {
-                String responseJson = httpResponse.getResultAsString();
-                JsonReader jsonReader = new JsonReader();
-                JsonValue list = jsonReader.parse(responseJson);
-
                 ArrayList<NominatimResponse> retval = new ArrayList<>();
+                try {
+                    String responseJson = httpResponse.getResultAsString();
+                    JsonValue list = new JsonReader().parse(responseJson);
 
-                for (int i = 0; i < list.size; i++) {
-                    JsonValue jso = list.get(i);
-                    // String osmType = jso.getString("osm_type");
-                    // if (!osmType.equals("node")) {
-                        // continue;
-                    // }
-                    retval.add(new NominatimResponse(jso));
+                    // Nominatim can return a non-array error/rate-limit body, or
+                    // an empty/unparseable one; only iterate a real result array.
+                    if (list != null && list.isArray()) {
+                        for (JsonValue jso = list.child; jso != null; jso = jso.next) {
+                            try {
+                                retval.add(new NominatimResponse(jso));
+                            } catch (Exception ignored) {
+                                // Skip malformed entries.
+                            }
+                        }
+                    }
+
+                    float lat = getC().L.getTargetLatitude();
+                    float lon = getC().L.getTargetLongitude();
+                    Collections.sort(retval, (r1, r2) -> Double.compare(
+                            Math.hypot(r1.lat - lat, r1.lon - lon),
+                            Math.hypot(r2.lat - lat, r2.lon - lon)
+                    ));
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-                float lat = getC().L.getTargetLatitude();
-                float lon = getC().L.getTargetLongitude();
-                Collections.sort(retval, (r1, r2) -> Double.compare(
-                        Math.hypot(r1.lat - lat, r1.lon - lon),
-                        Math.hypot(r2.lat - lat, r2.lon - lon)
-                ));
                 callback.applySearchResults(retval);
             }
 
