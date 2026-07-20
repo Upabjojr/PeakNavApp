@@ -56,7 +56,8 @@ configure(subprojects - project(':android')) {
 
         def files = assetsDir.listFiles()
         if (files) {
-            indexFile.text = files.collect { it.name }.join("\n")
+            // Exclude the manifest itself so it doesn't list its own name.
+            indexFile.text = files.findAll { it.name != "filelist.txt" }.collect { it.name }.join("\n")
         }
     }
     processResources.dependsOn 'generateAssetList'

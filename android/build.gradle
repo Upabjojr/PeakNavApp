@@ -143,6 +143,13 @@ tasks.matching { it.name.contains("merge") && it.name.contains("JniLibFolders") 
     packageTask.dependsOn 'copyAndroidNatives'
 }
 
+// ':core:generateGeonamesAssetIndex' writes assets/geonames_index.362/filelist.txt into the
+// shared '../assets' folder that this module packages. Declare the dependency so Gradle orders
+// the asset merge after it; otherwise mergeAssets fails with an implicit-dependency validation error.
+tasks.matching { it.name == 'mergeDebugAssets' || it.name == 'mergeReleaseAssets' }.configureEach { mergeTask ->
+    mergeTask.dependsOn ':core:generateGeonamesAssetIndex'
+}
+
 tasks.register('run', Exec) {
     def path
     def localProperties = project.file("../local.properties")
