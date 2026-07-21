@@ -9,6 +9,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import com.ibm.icu.text.Transliterator;
 import com.peaknav.compatibility.LoadFactory;
 import com.peaknav.database.CheckMissingData;
+import com.peaknav.viewer.SunLight;
 import com.peaknav.database.LuceneGeonameSearch;
 import com.peaknav.database.MapSqlite;
 import com.peaknav.database.MissingDataDownloader;
@@ -55,6 +56,9 @@ public class MapController {
     public final PeakNavThreadExecutor executorGeneric = new PeakNavThreadExecutor(1, "excGnrc");
 
     public final CurrentLocation L = new CurrentLocation();
+
+    /** Direction the terrain is lit from; fed to the terrain shader as u_sunDirection. */
+    public final SunLight sunLight = new SunLight();
     public final TileManager tileManager;
 
     public final ObjectManager O;

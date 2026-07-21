@@ -23,6 +23,7 @@ import com.badlogic.gdx.graphics.g3d.shaders.DefaultShader;
 import com.badlogic.gdx.graphics.g3d.utils.DefaultShaderProvider;
 import com.badlogic.gdx.graphics.g3d.utils.TextureDescriptor;
 import com.badlogic.gdx.graphics.glutils.FrameBuffer;
+import com.badlogic.gdx.math.Vector3;
 import com.peaknav.elevation.ElevationImageProvider;
 import com.peaknav.utils.TileAndZoomElevFactor;
 import com.peaknav.viewer.MapViewerSingleton;
@@ -73,6 +74,17 @@ public class TileBatchRenderer {
                                 if (rud.textureSatellite == null)
                                     whiteBackground = 1;
                                 shader.program.setUniformi(u_whiteBackground.alias, whiteBackground);
+                            }
+                        });
+
+                        // Same for every tile in the frame, so it is set once per render rather
+                        // than per renderable.
+                        BaseShader.Uniform u_sunDirection = new BaseShader.Uniform("u_sunDirection");
+                        shader.register(u_sunDirection, new BaseShader.GlobalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                Vector3 sun = getC().sunLight.getDirection();
+                                shader.program.setUniformf(u_sunDirection.alias, sun.x, sun.y, sun.z);
                             }
                         });
 
