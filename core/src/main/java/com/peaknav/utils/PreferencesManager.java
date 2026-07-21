@@ -35,6 +35,7 @@ import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.math.Vector3;
 import com.peaknav.viewer.imgmapprovider.SatelliteImageProvider;
+import com.peaknav.viewer.imgmapprovider.SatelliteProviderRegistry;
 import com.peaknav.viewer.render_tiles.PixmapLayerName;
 
 import java.util.Map;
@@ -56,7 +57,8 @@ public class PreferencesManager {
     private boolean layerVisibleNavigation;
     private Map<PixmapLayerName, Long> lastChange = new TreeMap<>();
     private boolean layerVisibleOpenStreetMap;
-    private SatelliteProviderOptions underlayImageProvider;
+    private SatelliteImageProvider underlayImageProvider;
+    private SatelliteProviderRegistry satelliteProviderRegistry;
     private boolean locationPermissionDenied;
     private boolean collectDownloadInfo;
     private boolean firstTimeAppRun;
@@ -147,13 +149,13 @@ public class PreferencesManager {
         // collectAnonymousStatsPrompted = preferences.getBoolean(COLLECT_ANONYMOUS_STATS_PROMPTED, false);
         locationPermissionDenied = preferences.getBoolean(LOCATION_PERMISSION_DENIED, false);
 
+        satelliteProviderRegistry = new SatelliteProviderRegistry(preferences);
         String satPrefName = preferences.getString(
                 UNDERLAY_IMAGE_PROVIDER, "");
-        try {
-            underlayImageProvider = SatelliteProviderOptions.valueOf(
-                    satPrefName);
-        } catch (IllegalArgumentException iae) {
-            underlayImageProvider = SatelliteProviderOptions.LANDSAT;
+        // The stored value is a provider id: a built-in enum name, or a custom provider's id.
+        underlayImageProvider = satelliteProviderRegistry.findById(satPrefName);
+        if (underlayImageProvider == null) {
+            underlayImageProvider = SatelliteProviderOptions.LANDSAT.getSatelliteImageProvider();
         }
 
         String prefUnitSystem = preferences.getString(VIEWER_UNIT_SYSTEM, UnitSystem.METRIC.name());
@@ -263,15 +265,34 @@ public class PreferencesManager {
         preferences.flush();
     }
 
-    public SatelliteProviderOptions getUnderlayImageProvider() {
+    public SatelliteImageProvider getUnderlayImageProvider() {
         return underlayImageProvider;
     }
 
+    public SatelliteProviderRegistry getSatelliteProviderRegistry() {
+        return satelliteProviderRegistry;
+    }
+
     public void setUnderlayImageProvider(SatelliteProviderOptions uip) {
+        setUnderlayImageProvider(uip.getSatelliteImageProvider());
+    }
+
+    public void setUnderlayImageProvider(SatelliteImageProvider uip) {
         underlayImageProvider = uip;
-        preferences.putString(UNDERLAY_IMAGE_PROVIDER, uip.toString());
+        preferences.putString(UNDERLAY_IMAGE_PROVIDER, uip.getId());
         lastChange.put(UNDERLAY_LAYER, System.currentTimeMillis());
         preferences.flush();
+    }
+
+    /**
+     * Falls back to a built-in source when the selected custom provider is removed, so the
+     * satellite layer can never be left pointing at a provider that no longer exists.
+     */
+    public void onCustomProviderRemoved(SatelliteImageProvider removed) {
+        if (underlayImageProvider != null
+                && underlayImageProvider.getId().equals(removed.getId())) {
+            setUnderlayImageProvider(SatelliteProviderOptions.LANDSAT);
+        }
     }
 
     public boolean isViewerLayerVisibleBaseRoads() {
@@ -367,7 +388,7 @@ public class PreferencesManager {
     }
 
     public SatelliteImageProvider getUnderlayImageProviderObject() {
-        return underlayImageProvider.getSatelliteImageProvider();
+        return underlayImageProvider;
     }
 
 }

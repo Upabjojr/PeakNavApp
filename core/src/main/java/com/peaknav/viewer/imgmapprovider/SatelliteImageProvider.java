@@ -18,16 +18,20 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class SatelliteImageProvider {
 
     public static final String OPENSTREETMAP_CONTRIBUTORS = "OpenStreetMap contributors";
 
+    /** Used for custom providers, whose real zoom ceiling we cannot know up-front. */
+    public static final byte DEFAULT_MAX_ZOOM = 15;
+
     public enum SatelliteProviderOptions {
         USGS_SATELLITE("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}", "USGS Satellite", "U.S. Geological Survey", "jpg", (byte) 8),
-        LANDSAT("https://gitc.earthdata.nasa.gov/wmts/epsg3857/best/Landsat_WELD_CorrectedReflectance_TrueColor_Global_Annual/default/default//GoogleMapsCompatible_Level12/{z}/{y}/{x}.jpeg", s("Satellite"), "USGS/Nasa", "jpeg", (byte) 15);
+        // The tile matrix set is GoogleMapsCompatible_Level12, so the service only serves up to
+        // zoom 12 and answers 400 above it. Anything higher has to be scaled up from a zoom 12
+        // tile, which is what downloadTileImageIfNotExists does for zoom levels beyond maxZoom.
+        LANDSAT("https://gitc.earthdata.nasa.gov/wmts/epsg3857/best/Landsat_WELD_CorrectedReflectance_TrueColor_Global_Annual/default/default//GoogleMapsCompatible_Level12/{z}/{y}/{x}.jpeg", s("Satellite"), "USGS/Nasa", "jpeg", (byte) 12);
 
         // These ones probably need a license in order to be used, DO NOT UNCOMMENT:
 
@@ -42,24 +46,18 @@ public class SatelliteImageProvider {
         // MICROSOFT_EARTH("http://a0.ortho.tiles.virtualearth.net/tiles/a{u}.jpg?g=45", "Microsoft Earth", "jpg");
 
         private final SatelliteImageProvider satelliteImageProvider;
-        private final String providerName;
-        private final String copyrightNotice;
-        public final byte maxZoom;
 
         SatelliteProviderOptions(
                 String urlTemplate, String providerName,
                 String copyrightNotice, String imageExtension, byte maxZoom) {
-            this.providerName = providerName;
-            this.copyrightNotice = copyrightNotice;
             this.satelliteImageProvider = new SatelliteImageProvider(
-                    urlTemplate, providerName, copyrightNotice, imageExtension, this);
-            this.maxZoom = maxZoom;
+                    name(), urlTemplate, providerName, copyrightNotice, imageExtension, maxZoom, false);
         }
 
         SatelliteProviderOptions(
                 String urlTemplate, String providerName,
                 String copyrightNotice, String imageExtension) {
-            this(urlTemplate, providerName, copyrightNotice, imageExtension, (byte)15);
+            this(urlTemplate, providerName, copyrightNotice, imageExtension, DEFAULT_MAX_ZOOM);
         }
 
         SatelliteProviderOptions(
@@ -73,103 +71,90 @@ public class SatelliteImageProvider {
         }
 
         public String getProviderName() {
-            return providerName;
+            return satelliteImageProvider.getProviderName();
         }
 
         public String getCopyrightNotice() {
-            List<String> cn = new LinkedList<>();
-            if (P.isLayerVisibleUnderlayLayer())
-                cn.add(copyrightNotice);
-            if (!copyrightNotice.contains(OPENSTREETMAP_CONTRIBUTORS)) {
-                if (P.isPeakVisible() || P.isVisiblePlaceNames() ||
-                        P.isVisibleAlpineHuts() || P.isViewerLayerVisibleBaseRoads()) {
-                    cn.add(OPENSTREETMAP_CONTRIBUTORS);
-                }
-            }
-            if (cn.size() == 0)
-                return "";
-            return "©" + String.join(". ", cn);
+            return satelliteImageProvider.getCopyrightNotice();
         }
     }
 
     private final SatelliteImageCacheStorage satelliteImageCacheStorage;
-    private final String urlTemplate;
+    private final SatelliteUrlTemplate urlTemplate;
+    private final String id;
     private final String providerName;
     private final String copyrightNotice;
-    private SatelliteProviderOptions satelliteProviderOptions;
+    private final byte maxZoom;
+    private final boolean custom;
 
     public SatelliteImageProvider(
+            String id,
             String urlTemplate, String providerName,
             String copyrightNotice,
             String imageExtension,
-            SatelliteProviderOptions satelliteProviderOptions) {
-        this.urlTemplate = urlTemplate;
+            byte maxZoom,
+            boolean custom) {
+        this.id = id;
+        this.urlTemplate = new SatelliteUrlTemplate(urlTemplate);
         this.providerName = providerName;
-        this.copyrightNotice = copyrightNotice;
-        this.satelliteProviderOptions = satelliteProviderOptions;
-        if (imageExtension == null)
-            imageExtension = getImageExtensionFromTemplate(urlTemplate);
+        this.copyrightNotice = copyrightNotice == null ? "" : copyrightNotice;
+        this.maxZoom = maxZoom;
+        this.custom = custom;
+        if (imageExtension == null) {
+            imageExtension = SatelliteUrlTemplate.guessImageExtension(urlTemplate);
+        }
         this.satelliteImageCacheStorage = new SatelliteImageCacheStorage(urlTemplate, imageExtension);
     }
 
-    /*public SatelliteImageProvider(String urlTemplate) {
-        this(urlTemplate, null);
-    }*/
+    /** Builds a user supplied provider. The url template must already have been validated. */
+    public static SatelliteImageProvider custom(
+            String id, String urlTemplate, String providerName, String copyrightNotice) {
+        return new SatelliteImageProvider(
+                id, urlTemplate, providerName, copyrightNotice, null, DEFAULT_MAX_ZOOM, true);
+    }
 
-    private static String getImageExtensionFromTemplate(String urlTemplate) {
-        String imageExtension;
-        String urlTemplateLower = urlTemplate.toLowerCase();
-        if (urlTemplateLower.contains(".jpg") || urlTemplateLower.contains(".jpeg"))
-            imageExtension = "jpg";
-        else if (urlTemplateLower.contains(".png"))
-            imageExtension = "png";
-        else
-            throw new RuntimeException("could not detect image format");
-        return imageExtension;
+    public String getId() {
+        return id;
+    }
+
+    public boolean isCustom() {
+        return custom;
+    }
+
+    public byte getMaxZoom() {
+        return maxZoom;
+    }
+
+    public String getProviderName() {
+        return providerName;
+    }
+
+    public String getUrlTemplate() {
+        return urlTemplate.getTemplate();
+    }
+
+    /** The attribution as supplied, without the OpenStreetMap credit composed onto it. */
+    public String getRawCopyrightNotice() {
+        return copyrightNotice;
+    }
+
+    public String getCopyrightNotice() {
+        List<String> cn = new LinkedList<>();
+        if (P.isLayerVisibleUnderlayLayer() && !copyrightNotice.isEmpty())
+            cn.add(copyrightNotice);
+        if (!copyrightNotice.contains(OPENSTREETMAP_CONTRIBUTORS)) {
+            if (P.isPeakVisible() || P.isVisiblePlaceNames() ||
+                    P.isVisibleAlpineHuts() || P.isViewerLayerVisibleBaseRoads()) {
+                cn.add(OPENSTREETMAP_CONTRIBUTORS);
+            }
+        }
+        if (cn.size() == 0)
+            return "";
+        return "©" + String.join(". ", cn);
     }
 
     public String getURL(final int z, final int x, final int y) {
-        Pattern pattern = Pattern.compile("\\{([xyzu])\\}");
-        Matcher matcher = pattern.matcher(urlTemplate);
-
-        StringBuilder stringBuilder = new StringBuilder();
-        int lastIdx = 0;
-        while (matcher.find()) {
-            String g = matcher.group(1);
-            stringBuilder.append(urlTemplate, lastIdx, matcher.start());
-            switch (g) {
-                case "x":
-                    stringBuilder.append(x);
-                    break;
-                case "y":
-                    stringBuilder.append(y);
-                    break;
-                case "z":
-                    stringBuilder.append(z);
-                    break;
-                case "u":
-                    stringBuilder.append(getQuadKey(z, x, y));
-                    break;
-            }
-            lastIdx = matcher.end();
-        }
-        stringBuilder.append(urlTemplate.substring(lastIdx));
-        return stringBuilder.toString();
-    }
-
-    private final char[] num2char = {'0', '1', '2', '3'};
-
-    private String getQuadKey(int z, int x, int y) {
-        char[] quadkey = new char[z];
-        int ix = x;
-        int iy = y;
-        for (int i = z - 1; i >= 0; i--) {
-            int n = ((iy % 2) << 1) | (ix % 2);
-            quadkey[i] = num2char[n];
-            ix >>= 1;
-            iy >>= 1;
-        }
-        return new String(quadkey);
+        return urlTemplate.expand(z, x, y);
     }
 
     public File getImageFileHandle(int z, int x, int y) {
@@ -177,9 +162,9 @@ public class SatelliteImageProvider {
     }
 
     public void downloadTileImageIfNotExists(Tile tile) {
-        if (tile.zoomLevel > satelliteProviderOptions.maxZoom) {
-            int factor = (1 << (tile.zoomLevel - satelliteProviderOptions.maxZoom));
-            Tile zoutTile = new Tile(tile.tileX/factor, tile.tileY/factor, satelliteProviderOptions.maxZoom, MF_ZOOM);
+        if (tile.zoomLevel > maxZoom) {
+            int factor = (1 << (tile.zoomLevel - maxZoom));
+            Tile zoutTile = new Tile(tile.tileX/factor, tile.tileY/factor, maxZoom, MF_ZOOM);
             File zoImagePath = downloadTileToFileIfNotExists(zoutTile);
             File imagePath = getImageFileHandle(tile.zoomLevel, tile.tileX, tile.tileY);
             Pixmap zoPixmap = PeakNavUtils.readImageCached(zoImagePath);

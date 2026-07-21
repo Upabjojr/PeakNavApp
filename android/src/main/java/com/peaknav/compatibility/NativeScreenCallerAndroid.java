@@ -43,6 +43,7 @@ import com.peaknav.controller.OrientationPointerController;
 import com.peaknav.gesture.OrientationPointerListener;
 import com.peaknav.ui.CurrentLocationCallback;
 import com.peaknav.ui.CurrentLocationListener;
+import com.peaknav.ui.TextFieldsCallback;
 import com.peaknav.utils.AndroidUI;
 import com.peaknav.viewer.GoToDownloadDialog;
 import com.peaknav.viewer.MapViewerSingleton;
@@ -100,6 +101,49 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     .setCancelable(false);
             AlertDialog alert = alertBuilder.create();
             alert.show();
+        });
+    }
+
+    @Override
+    public void promptForTextFields(
+            String title, String[] labels, String[] initialValues, TextFieldsCallback callback) {
+        mainActivity.runOnUiThread(() -> {
+            android.widget.LinearLayout layout = new android.widget.LinearLayout(mainActivity);
+            layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+            int padding = Math.round(16 * mainActivity.getResources().getDisplayMetrics().density);
+            layout.setPadding(padding, padding, padding, padding);
+
+            android.widget.EditText[] fields = new android.widget.EditText[labels.length];
+            for (int i = 0; i < labels.length; i++) {
+                android.widget.TextView label = new android.widget.TextView(mainActivity);
+                label.setText(labels[i]);
+                layout.addView(label);
+
+                android.widget.EditText field = new android.widget.EditText(mainActivity);
+                field.setSingleLine(true);
+                if (initialValues != null && i < initialValues.length && initialValues[i] != null) {
+                    field.setText(initialValues[i]);
+                }
+                fields[i] = field;
+                layout.addView(field);
+            }
+
+            android.widget.ScrollView scrollView = new android.widget.ScrollView(mainActivity);
+            scrollView.addView(layout);
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(mainActivity);
+            builder.setTitle(title)
+                    .setView(scrollView)
+                    .setPositiveButton(s("OK"), (dialogInterface, i) -> {
+                        String[] values = new String[fields.length];
+                        for (int f = 0; f < fields.length; f++) {
+                            values[f] = fields[f].getText().toString();
+                        }
+                        callback.onEntered(values);
+                    })
+                    .setNegativeButton(s("Cancel"), (dialogInterface, i) -> callback.onCancelled())
+                    .setOnCancelListener(dialogInterface -> callback.onCancelled());
+            builder.create().show();
         });
     }
 

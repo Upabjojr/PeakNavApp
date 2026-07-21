@@ -13,6 +13,7 @@ import com.peaknav.network.NominatimResponse;
 import com.peaknav.ui.ClickCallback;
 import com.peaknav.ui.CurrentLocationCallback;
 import com.peaknav.ui.CurrentLocationListener;
+import com.peaknav.ui.TextFieldsCallback;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.desktop.GalleryPickDesktop;
 import com.peaknav.viewer.desktop.MapViewerDesktopSingleton;
@@ -251,6 +252,38 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     @Override
     public void alertMessage(String message) {
 
+    }
+
+    @Override
+    public void promptForTextFields(
+            String title, String[] labels, String[] initialValues, TextFieldsCallback callback) {
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            javax.swing.JPanel panel = new javax.swing.JPanel(
+                    new java.awt.GridLayout(labels.length * 2, 1, 0, 2));
+            javax.swing.JTextField[] fields = new javax.swing.JTextField[labels.length];
+            for (int i = 0; i < labels.length; i++) {
+                String initial = (initialValues != null && i < initialValues.length
+                        && initialValues[i] != null) ? initialValues[i] : "";
+                fields[i] = new javax.swing.JTextField(initial, 40);
+                panel.add(new javax.swing.JLabel(labels[i]));
+                panel.add(fields[i]);
+            }
+
+            int result = javax.swing.JOptionPane.showConfirmDialog(
+                    null, panel, title,
+                    javax.swing.JOptionPane.OK_CANCEL_OPTION,
+                    javax.swing.JOptionPane.PLAIN_MESSAGE);
+
+            if (result != javax.swing.JOptionPane.OK_OPTION) {
+                callback.onCancelled();
+                return;
+            }
+            String[] values = new String[fields.length];
+            for (int i = 0; i < fields.length; i++) {
+                values[i] = fields[i].getText();
+            }
+            callback.onEntered(values);
+        });
     }
 
     @Override

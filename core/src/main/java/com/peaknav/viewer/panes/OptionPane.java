@@ -21,9 +21,13 @@ import static com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL;
 import static com.peaknav.utils.PreferencesManager.UnitSystem.METRIC;
 import static com.peaknav.viewer.imgmapprovider.SatelliteImageProvider.SatelliteProviderOptions;
 
+import com.peaknav.compatibility.NativeScreenCaller;
+import com.peaknav.ui.TextFieldsCallback;
+import com.peaknav.viewer.imgmapprovider.SatelliteImageProvider;
+
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -47,7 +51,8 @@ public class OptionPane {
     private final float height;
     private final float padHeight;
     private final float roundButtonSize;
-    private final EnumMap<SatelliteProviderOptions, TextButton> selectBoxSatSrcMap = new EnumMap<>(SatelliteProviderOptions.class);
+    /** Keyed by provider id, since custom providers are not enum constants. */
+    private final Map<String, TextButton> selectBoxSatSrcMap = new LinkedHashMap<>();
 
 /*
     public Table getTableAppInfo() {
@@ -232,36 +237,47 @@ public class OptionPane {
         Table table = new Table();
         table.center();
         table.setFillParent(true);
+        populateSatelliteSourceSelectBox(table);
+        return table;
+    }
+
+    /**
+     * (Re)builds the list of satellite sources. It has to be rebuildable rather than built once,
+     * because the user can add and remove their own providers while the app is running.
+     */
+    private void populateSatelliteSourceSelectBox(Table table) {
+        table.clearChildren();
+        selectBoxSatSrcMap.clear();
+
         List<Table> buttons = new ArrayList<>(16);
 
-        SatelliteProviderOptions defaultOption = P.getUnderlayImageProvider();
+        SatelliteImageProvider selected = P.getUnderlayImageProvider();
 
-        for (SatelliteProviderOptions option : SatelliteProviderOptions.values()) {
+        for (SatelliteImageProvider provider : P.getSatelliteProviderRegistry().getAllProviders()) {
             TextButton button = getC().widgetGetter.getTextButton(
-                    option.getProviderName(), true);
+                    provider.getProviderName(), true);
             button.setProgrammaticChangeEvents(false);
 
-            if (option == defaultOption) {
+            if (selected != null && provider.getId().equals(selected.getId())) {
                 button.setChecked(true);
                 prevChecked = button;
             } else {
                 button.setChecked(false);
             }
 
-            selectBoxSatSrcMap.put(option, button);
+            selectBoxSatSrcMap.put(provider.getId(), button);
 
             button.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
                     changer.execute(
                             () -> {
-                                // if (true || !button.isChecked()) {
-                                P.setUnderlayImageProvider(option);
-                                getC().widgetGetter.setCopyrightLabel(option.getCopyrightNotice());
+                                P.setUnderlayImageProvider(provider);
+                                getC().widgetGetter.setCopyrightLabel(provider.getCopyrightNotice());
                                 getC().tileManager.tileRenderer.drawSatelliteLayer();
-                                // }
                             });
-                    prevChecked.setChecked(false);
+                    if (prevChecked != null)
+                        prevChecked.setChecked(false);
                     button.setChecked(true);
                     prevChecked = button;
                     table.setVisible(false);
@@ -269,8 +285,34 @@ public class OptionPane {
                     hide();
                 }
             });
-            buttons.add(button);
+
+            if (provider.isCustom()) {
+                // Custom entries get a delete button next to the name.
+                Table row = new Table();
+                row.add(button).width(buttonWidth*0.8f);
+                TextButton removeButton = getC().widgetGetter.getTextButton("X", false);
+                removeButton.addListener(new ChangeListener() {
+                    @Override
+                    public void changed(ChangeEvent event, Actor actor) {
+                        P.getSatelliteProviderRegistry().removeCustomProvider(provider);
+                        P.onCustomProviderRemoved(provider);
+                        prevChecked = null;
+                        populateSatelliteSourceSelectBox(table);
+                        getC().widgetGetter.setCopyrightLabel(
+                                P.getUnderlayImageProvider().getCopyrightNotice());
+                    }
+                });
+                row.add(removeButton).width(buttonWidth*0.2f).height(height);
+                buttons.add(row);
+            } else {
+                buttons.add(button);
+            }
         }
+
+        WidgetGetter.ImageTextButtonOptionPane addCustom = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_satellite.png", s("Add_custom_provider"), false);
+        addCustom.addClickListener(() -> promptForCustomSatelliteProvider(table));
+        buttons.add(addCustom);
 
         WidgetGetter.ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton("icons/icon_back.png", s("Back"), false);
         back.addClickListener(() -> {
@@ -281,7 +323,42 @@ public class OptionPane {
 
         addButtonsToTable(table, buttons, true);
         table.setVisible(false);
-        return table;
+    }
+
+    /**
+     * Asks for a custom tile source. The native dialog runs on the platform UI thread, so the
+     * menu is rebuilt through postRunnable to get back onto the render thread first.
+     */
+    private void promptForCustomSatelliteProvider(Table table) {
+        NativeScreenCaller nativeScreenCaller = getNativeScreenCaller();
+        if (nativeScreenCaller == null) {
+            // iOS does not provide one.
+            return;
+        }
+        nativeScreenCaller.promptForTextFields(
+                s("Add_custom_provider"),
+                new String[]{s("Provider_URL_template"), s("Provider_name"), s("Provider_attribution")},
+                new String[]{"", "", ""},
+                new TextFieldsCallback() {
+                    @Override
+                    public void onEntered(String[] values) {
+                        String error = P.getSatelliteProviderRegistry()
+                                .addCustomProvider(values[0], values[1], values[2]);
+                        Gdx.app.postRunnable(() -> {
+                            if (error != null) {
+                                nativeScreenCaller.makeToast(error);
+                                return;
+                            }
+                            prevChecked = null;
+                            populateSatelliteSourceSelectBox(table);
+                            table.setVisible(true);
+                        });
+                    }
+
+                    @Override
+                    public void onCancelled() {
+                    }
+                });
     }
 
     private Table createSelectBoxUnitSystem() {
@@ -490,9 +567,10 @@ public class OptionPane {
     }
 
     private void checkSelectBoxSatSrcSelection() {
-        SatelliteProviderOptions provider = P.getUnderlayImageProvider();
-        for (Map.Entry<SatelliteProviderOptions, TextButton> entry : selectBoxSatSrcMap.entrySet()) {
-            if (entry.getKey() == provider) {
+        SatelliteImageProvider provider = P.getUnderlayImageProvider();
+        String selectedId = provider == null ? null : provider.getId();
+        for (Map.Entry<String, TextButton> entry : selectBoxSatSrcMap.entrySet()) {
+            if (entry.getKey().equals(selectedId)) {
                 entry.getValue().setChecked(true);
             } else {
                 entry.getValue().setChecked(false);

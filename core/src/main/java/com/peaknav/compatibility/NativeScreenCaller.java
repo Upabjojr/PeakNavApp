@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.peaknav.gesture.OrientationPointerListener;
 import com.peaknav.ui.ClickCallback;
 import com.peaknav.ui.CurrentLocationListener;
+import com.peaknav.ui.TextFieldsCallback;
 
 public abstract class NativeScreenCaller {
 
@@ -55,6 +56,17 @@ public abstract class NativeScreenCaller {
 
     public abstract void comingSoon();
     public abstract void alertMessage(String message);
+
+    /**
+     * Asks the user to fill in one or more text fields in a native dialog.
+     *
+     * @param title         dialog title
+     * @param labels        one label per field, shown next to it
+     * @param initialValues initial contents, same length as {@code labels} (entries may be null)
+     * @param callback      receives the entered values, or a cancellation
+     */
+    public abstract void promptForTextFields(
+            String title, String[] labels, String[] initialValues, TextFieldsCallback callback);
 
     public abstract long getTotalMemory();
 
