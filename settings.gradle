@@ -1,1 +1,9 @@
-include 'desktop', 'android', 'ios', 'html', 'core'
+include 'desktop', 'android', 'ios', 'core'
+
+// The GWT `html` target is optional and incomplete, and is not checked into git,
+// so it is absent on some checkouts/branches. Only include it when the module
+// directory is actually present; otherwise its absence breaks tasks like
+// `:desktop:run` with a missing-project error.
+if (new File(settingsDir, 'html').isDirectory()) {
+    include 'html'
+}
