@@ -69,7 +69,10 @@ project(':core') {
 
 configure(subprojects - project(':android')) {
     apply plugin: 'java-library'
-    sourceCompatibility = 8
+    // Set this through the `java` extension rather than as a bare project property:
+    // the project-level `sourceCompatibility` convention is deprecated in Gradle 8
+    // and removed in Gradle 9, where it fails with "unknown property".
+    java.sourceCompatibility = 8
 
     processResources.dependsOn ':core:generateAssetList'
     processResources.dependsOn ':core:generateGeonamesAssetIndex'

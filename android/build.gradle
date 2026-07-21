@@ -10,7 +10,10 @@ apply plugin: 'com.android.application'
 
 android {
     namespace "com.peaknav"
-    compileSdk 35
+    // 36 is required by androidx.core 1.17.0, which gdx-backend-android 1.14.2 pulls in.
+    // Raising compileSdk only affects which APIs can be compiled against; targetSdk (the
+    // runtime behaviour opt-in) and minSdk are deliberately left alone.
+    compileSdk 36
     sourceSets {
         main {
             manifest.srcFile 'AndroidManifest.xml'
@@ -85,7 +88,7 @@ dependencies {
     implementation "androidx.annotation:annotation:1.1.0"
     implementation "androidx.appcompat:appcompat:1.1.0"
 
-    implementation "com.google.guava:guava:33.5.0-android"
+    implementation "com.google.guava:guava:33.6.0-android"
 
     api "com.badlogicgames.gdx:gdx-box2d:3.1.1-0"
     natives "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-armeabi-v7a"
@@ -104,7 +107,7 @@ dependencies {
 
     implementation 'com.caverock:androidsvg:1.4'
 
-    implementation 'org.openstreetmap.pbf:osmpbf:1.6.0'
+    implementation 'org.openstreetmap.pbf:osmpbf:1.6.1'
 
     implementation "com.alexdupre:pngj:2.1.2.1"
 

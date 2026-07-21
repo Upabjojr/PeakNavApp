@@ -24,9 +24,17 @@ public class LuceneAssetLoader {
 
         FileHandle index = Gdx.files.internal(assetFolderName + "/filelist.txt");
         for (String name : index.readString().split("\\r?\\n")) {
+            name = name.trim();
+            if (name.isEmpty()) continue;
             FileHandle assetFile = Gdx.files.internal(assetFolderName + "/" + name);
             File dest = new File(localDir, assetFile.name());
-            if (!dest.exists()) {
+            // Re-copy when the file is missing *or* differs in size from the packaged
+            // asset. The index can be rebuilt without the folder name changing, so an
+            // existence-only check keeps the old segment files and mixes them with the
+            // new ones, which leaves a corrupt index behind. length() reports 0 when a
+            // platform cannot size an asset; fall back to the existence check there.
+            long assetLength = assetFile.length();
+            if (!dest.exists() || (assetLength > 0 && dest.length() != assetLength)) {
                 try (InputStream is = assetFile.read();
                      FileOutputStream os = new FileOutputStream(dest)) {
                     byte[] buffer = new byte[8192];

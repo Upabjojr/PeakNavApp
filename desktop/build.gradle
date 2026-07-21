@@ -19,8 +19,13 @@ apply plugin: 'io.github.fourlastor.construo'
 import io.github.fourlastor.construo.Target
 
 sourceSets.main.resources.srcDirs += [ rootProject.file('assets').path ]
-mainClassName = 'com.peaknav.viewer.desktop.DesktopLauncher'
-application.setMainClass(mainClassName)
+// `mainClassName` was a project-level convention of the `application` plugin and is
+// removed in Gradle 9 (Android Studio bundles a newer Gradle than the CLI here).
+// Declare it as an extra property instead — matching ios/build.gradle — so the jar
+// manifest below can still read `project.mainClassName`, and feed the application
+// extension from it.
+ext.mainClassName = 'com.peaknav.viewer.desktop.DesktopLauncher'
+application.mainClass.set(ext.mainClassName)
 eclipse.project.name = appName + '-desktop'
 java.sourceCompatibility = 8
 java.targetCompatibility = 8
@@ -41,20 +46,20 @@ dependencies {
     api "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
     api "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-desktop"
 
-    implementation "com.google.guava:guava:33.1.0-jre"
+    implementation "com.google.guava:guava:33.6.0-jre"
 
     implementation "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-desktop"
 
     implementation 'org.mapsforge:mapsforge-map-awt:0.17.0'
     implementation 'org.mapsforge:mapsforge-themes:0.17.0'
 
-    implementation 'com.formdev:svgSalamander:1.1.2.4'
+    implementation 'com.formdev:svgSalamander:1.1.4'
 
-    implementation 'org.xerial:sqlite-jdbc:3.36.0.3'
+    implementation 'org.xerial:sqlite-jdbc:3.53.2.0'
 
     // implementation 'de.westnordost:osmapi-overpass:2.0'
 
-    implementation 'org.openstreetmap.pbf:osmpbf:1.5.0'
+    implementation 'org.openstreetmap.pbf:osmpbf:1.6.1'
 
     // Test dependencies :
     testImplementation "com.badlogicgames.gdx:gdx-backend-headless:$gdxVersion"
