@@ -25,43 +25,49 @@ allprojects {
     }
 }
 
+// These tasks build index files inside the shared root `assets/` folder, so
+// register them ONCE on the root project. Registering them per-subproject (as
+// before) made every non-android module declare the same output file, which
+// tripped Gradle's implicit-dependency validation when another module's
+// processResources consumed that folder.
+// From https://lyze.dev/2021/04/29/libGDX-Internal-Assets-List/
+// The article can be helpful when using assets.txt in your project.
+tasks.register('generateAssetList') {
+    inputs.dir("${rootDir}/assets/")
+    // projectFolder/assets
+    File assetsFolder = new File("${rootDir}/assets/")
+    // projectFolder/assets/assets.txt
+    File assetsFile = new File(assetsFolder, "assets.txt")
+    // delete that file in case we've already created it
+    assetsFile.delete()
+
+    // iterate through all files inside that folder
+    // convert it to a relative path
+    // and append it to the file assets.txt
+    fileTree(assetsFolder).collect { assetsFolder.relativePath(it) }.sort().each {
+        assetsFile.append(it + "\n")
+    }
+}
+tasks.register("generateGeonamesAssetIndex") {
+    def assetsDir = file("${rootDir}/assets/geonames_index.362")
+    def indexFile = new File(assetsDir, "filelist.txt")
+
+    inputs.dir(assetsDir)
+    outputs.file(indexFile)
+
+    def files = assetsDir.listFiles()
+    if (files) {
+        // Exclude the manifest itself so it doesn't list its own name.
+        indexFile.text = files.findAll { it.name != "filelist.txt" }.collect { it.name }.join("\n")
+    }
+}
+
 configure(subprojects - project(':android')) {
     apply plugin: 'java-library'
     sourceCompatibility = 8
 
-    // From https://lyze.dev/2021/04/29/libGDX-Internal-Assets-List/
-    // The article can be helpful when using assets.txt in your project.
-    tasks.register('generateAssetList') {
-        inputs.dir("${project.rootDir}/assets/")
-        // projectFolder/assets
-        File assetsFolder = new File("${project.rootDir}/assets/")
-        // projectFolder/assets/assets.txt
-        File assetsFile = new File(assetsFolder, "assets.txt")
-        // delete that file in case we've already created it
-        assetsFile.delete()
-
-        // iterate through all files inside that folder
-        // convert it to a relative path
-        // and append it to the file assets.txt
-        fileTree(assetsFolder).collect { assetsFolder.relativePath(it) }.sort().each {
-            assetsFile.append(it + "\n")
-        }
-    }
-    tasks.register("generateGeonamesAssetIndex") {
-        def assetsDir = file("${project.rootDir}/assets/geonames_index.362")
-        def indexFile = new File(assetsDir, "filelist.txt")
-
-        inputs.dir(assetsDir)
-        outputs.file(indexFile)
-
-        def files = assetsDir.listFiles()
-        if (files) {
-            // Exclude the manifest itself so it doesn't list its own name.
-            indexFile.text = files.findAll { it.name != "filelist.txt" }.collect { it.name }.join("\n")
-        }
-    }
-    processResources.dependsOn 'generateAssetList'
-    processResources.dependsOn 'generateGeonamesAssetIndex'
+    processResources.dependsOn rootProject.tasks.named('generateAssetList')
+    processResources.dependsOn rootProject.tasks.named('generateGeonamesAssetIndex')
 
     compileJava {
         options.incremental = true
