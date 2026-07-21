@@ -39,11 +39,25 @@ public class PeakNavAppState {
         this.mapDataDownloadStarted = mapDataDownloadStarted;
         if (mapDataDownloadStarted) {
             getAppInstance().introScreen.triggerMapDataDownloadStarted();
+        } else {
+            mapDataDownloadFinishedTime = System.currentTimeMillis();
         }
     }
 
     public boolean isMapDataDownloadStarted() {
         return mapDataDownloadStarted;
+    }
+
+    private volatile long mapDataDownloadFinishedTime = 0L;
+
+    /**
+     * Whether a map data download finished within the given time window. Freshly downloaded tiles
+     * take a moment to be written out and picked up, so for a short while afterwards the data can
+     * still look missing. Without this, the app asks to download data it has only just fetched.
+     */
+    public boolean isMapDataDownloadRecentlyFinished(long withinMillis) {
+        return mapDataDownloadFinishedTime != 0L
+                && System.currentTimeMillis() - mapDataDownloadFinishedTime < withinMillis;
     }
 
     public void setMapDataDownloadProgressRatio(float mapDataDownloadPercent) {

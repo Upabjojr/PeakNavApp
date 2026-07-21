@@ -109,11 +109,27 @@ public class CheckMissingData {
         return iLon*1000 + iLat;
     }
 
+    public boolean isDismissed(double lat, double lon) {
+        return dismissed.contains(encodeDismissed(lat, lon));
+    }
+
     public boolean checkMissingIfNotDismissed(double lat, double lon) {
-        if (dismissed.contains(encodeDismissed(lat, lon))) {
+        if (isDismissed(lat, lon)) {
             return false;
         }
         return checkMissingDataForCoord(lat, lon);
+    }
+
+    /**
+     * Elevation-only counterpart of {@link #checkMissingIfNotDismissed}, for the prompt raised
+     * when the target coordinates move. It has to honour the same dismissal as the in-app banner,
+     * otherwise the user gets asked again for an area they already answered about.
+     */
+    public boolean checkMissingElevationIfNotDismissed(double lat, double lon) {
+        if (isDismissed(lat, lon)) {
+            return false;
+        }
+        return checkMissingElevationForCoord(lat, lon);
     }
 
     public void downloadMissingData(double lat, double lon) {

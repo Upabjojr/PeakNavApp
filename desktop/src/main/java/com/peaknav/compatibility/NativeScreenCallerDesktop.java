@@ -222,9 +222,12 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         if (dialogResult == JOptionPane.YES_OPTION) {
             this.openMapDataDownloadChooser();
         } else if (dialogResult == JOptionPane.NO_OPTION) {
+            // Go back to where we were, without re-running the missing-data check: doing that
+            // here would pop this very dialog straight back up when the old spot lacks data too.
             getC().L.setCurrentTargetCoords(
                     getC().L.getCurrentLatitude(),
-                    getC().L.getCurrentLongitude()
+                    getC().L.getCurrentLongitude(),
+                    false
             );
         }
     }

@@ -27,9 +27,13 @@ public class PeakNavThreadExecutor extends ThreadPoolExecutor {
         execute(() -> {
             try {
                 runnable.run();
-            } catch (StopThreadException stopThreadException) {}
+            } catch (StopThreadException stopThreadException) {
+            } finally {
+                // Drop it once it is done. Without this the list only ever grows, and stopLoop()
+                // ends up calling stop() on every runnable the app has ever submitted.
+                submittedStoppableRunnable.remove(runnable);
+            }
         });
-        // submittedStoppableRunnable.remove(runnable);
     }
 
     public PeakNavThreadExecutor(int numThreads, String name) {

@@ -172,7 +172,11 @@ tasks.register('run', Exec) {
     }
 
     def adb = path + "/platform-tools/adb"
-    commandLine "$adb", 'shell', 'am', 'start', '-n', 'com.peaknav.viewer/com.peaknav.views.AndroidLauncher'
+    // The component has to match the installed package: applicationId plus the debug build's
+    // applicationIdSuffix. This was hardcoded to 'com.peaknav.viewer', which is not the
+    // applicationId, so the task always failed with "Activity class ... does not exist".
+    def launchPackage = android.defaultConfig.applicationId + android.buildTypes.debug.applicationIdSuffix
+    commandLine "$adb", 'shell', 'am', 'start', '-n', "${launchPackage}/com.peaknav.views.AndroidLauncher"
 }
 
 eclipse.project.name = appName + "-android"

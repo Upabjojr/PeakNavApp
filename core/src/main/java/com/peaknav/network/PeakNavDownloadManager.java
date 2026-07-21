@@ -167,6 +167,60 @@ public class PeakNavDownloadManager {
         // notificationManager.setText(builder.toString(), progress);
     }
 
+    /**
+     * A failed tile is dropped from the download queue and never fetched again, which leaves that
+     * area permanently without data (and the app repeatedly offering to download it). Network
+     * errors are often momentary, so retry a few times before giving up on a tile.
+     */
+    private static final int DOWNLOAD_ATTEMPTS = 3;
+    private static final long DOWNLOAD_RETRY_BASE_MILLIS = 700L;
+    private static final int DOWNLOAD_CONNECT_TIMEOUT_MILLIS = 20_000;
+    private static final int DOWNLOAD_READ_TIMEOUT_MILLIS = 60_000;
+
+    /**
+     * Downloads {@code urlString} to {@code localFile}, retrying transient failures.
+     *
+     * @throws IOException when every attempt failed; the caller then drops the tile as before.
+     */
+    private void downloadWithRetries(String urlString, File localFile) throws IOException {
+        IOException lastFailure = null;
+        for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+            try {
+                URL url = new URL(urlString);
+                URLConnection conn = url.openConnection();
+                conn.setConnectTimeout(DOWNLOAD_CONNECT_TIMEOUT_MILLIS);
+                conn.setReadTimeout(DOWNLOAD_READ_TIMEOUT_MILLIS);
+
+                try (InputStream in = conn.getInputStream();
+                     FileOutputStream fos = new FileOutputStream(localFile)) {
+                    byte[] readBuf = new byte[8192];
+                    int readLen;
+                    while ((readLen = in.read(readBuf)) > 0) {
+                        fos.write(readBuf, 0, readLen);
+                    }
+                }
+                return;
+            } catch (IOException ex) {
+                lastFailure = ex;
+                // Never leave a half written archive behind: it would be unpacked as if complete.
+                if (localFile.exists()) {
+                    localFile.delete();
+                }
+                getLogger().debug(TAG, "download attempt " + attempt + "/" + DOWNLOAD_ATTEMPTS
+                        + " failed for " + urlString + ": " + ex);
+                if (attempt < DOWNLOAD_ATTEMPTS) {
+                    try {
+                        Thread.sleep(DOWNLOAD_RETRY_BASE_MILLIS * attempt);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw lastFailure;
+                    }
+                }
+            }
+        }
+        throw lastFailure;
+    }
+
     public void processQueue() {
 
         List<MapSqlite.QueuedTile> queuedTiles = mapSqlite.getDownloadQueue();
@@ -199,25 +253,12 @@ public class PeakNavDownloadManager {
                                 dirs = dirs.subList(0, dirs.size() - 1);
                                 createRecurrentPathsForOsmTilesInExternal(dirs);
 
-                                URL url = new URL(hfDownloadUrl.getUrl());
-                                URLConnection conn = url.openConnection();
-
-                                InputStream s3is = conn.getInputStream();
                                 File localFileDir = localFile.getParentFile();
                                 if (!localFileDir.exists()) {
                                     localFile.getParentFile().mkdirs();
                                 }
-                                FileOutputStream fos = new FileOutputStream(localFile);
 
-                                byte[] read_buf = new byte[1024];
-                                int read_len = 0;
-                                while ((read_len = s3is.read(read_buf)) > 0) {
-                                    fos.write(read_buf, 0, read_len);
-                                }
-
-                                //
-                                s3is.close();
-                                fos.close();
+                                downloadWithRetries(hfDownloadUrl.getUrl(), localFile);
                             }
 
                             okDownload = true;
