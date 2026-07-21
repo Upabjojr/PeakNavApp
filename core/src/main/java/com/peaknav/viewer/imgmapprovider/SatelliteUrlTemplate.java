@@ -2,23 +2,35 @@ package com.peaknav.viewer.imgmapprovider;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * A tile URL template, using the placeholder syntax of the OpenStreetMap in-browser editor (iD)
- * and the editor-layer-index it draws its imagery list from. That means a URL copied from there
- * can be pasted straight in as a custom provider.
+ * and the editor-layer-index it draws its imagery list from, so a URL copied from there can be
+ * pasted straight in as a custom provider.
  *
- * <p>Supported placeholders:
+ * <p>TMS tokens:
  * <ul>
- *   <li>{@code {x}}, {@code {y}} — tile column and row</li>
- *   <li>{@code {z}} / {@code {zoom}} — zoom level</li>
- *   <li>{@code {-y}} — row counted from the bottom, for TMS services</li>
- *   <li>{@code {u}} — quadkey, as used by Bing-style services</li>
- *   <li>{@code {switch:a,b,c}} — picks one of the alternatives (typically server subdomains),
- *       spread over tiles so requests do not all hit the same host</li>
+ *   <li>{@code {zoom}} / {@code {z}}, {@code {x}}, {@code {y}} — tile coordinates</li>
+ *   <li>{@code {-y}} / {@code {ty}} — flipped, TMS-style row</li>
+ *   <li>{@code {switch:a,b,c}} / {@code {sw:a,b,c}} — DNS server multiplexing</li>
+ *   <li>{@code {u}} — quadtile (Bing) scheme</li>
+ *   <li>{@code {@2x}} / {@code {r}} — resolution scale factor</li>
  * </ul>
+ *
+ * <p>WMS tokens:
+ * <ul>
+ *   <li>{@code {proj}} — requested projection, always {@code EPSG:3857}</li>
+ *   <li>{@code {wkid}} — the same without the {@code EPSG:} prefix</li>
+ *   <li>{@code {width}}, {@code {height}} — requested image size, always 256</li>
+ *   <li>{@code {bbox}} — the tile's bounding box as {@code minX,minY,maxX,maxY}</li>
+ * </ul>
+ *
+ * <p>{@code {quadkey}} and {@code {subdomain}} are accepted too. They are not iD tokens, but
+ * Bing-style URLs are commonly published using them, and rejecting a URL that is otherwise
+ * perfectly usable helps nobody.
  *
  * <p>The template is tokenised once, when the provider is created, rather than re-scanned for
  * every tile. {@link #validate(String)} rejects unknown placeholders up-front: leaving them in
@@ -30,6 +42,29 @@ public final class SatelliteUrlTemplate {
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{([^{}]*)\\}");
 
     private static final String SWITCH_PREFIX = "switch:";
+    private static final String SWITCH_SHORT_PREFIX = "sw:";
+
+    /** The only projection these tokens are defined for. */
+    private static final String PROJECTION = "EPSG:3857";
+    private static final String PROJECTION_WKID = "3857";
+
+    /** Tile edge in pixels; {width}/{height} are documented as 256 only. */
+    private static final int TILE_SIZE = 256;
+
+    /** Half the circumference of the earth in Web Mercator metres. */
+    private static final double ORIGIN_SHIFT = 20037508.342789244;
+
+    /**
+     * Values used for a bare {@code {subdomain}}. Services that use it (Bing / Virtual Earth and
+     * friends) shard over numbered hosts, e.g. {@code ecn.t0..t3}. A URL on its own carries no
+     * list of subdomains, so when they are letters rather than digits use {@code {switch:a,b,c}}
+     * instead, which states them explicitly.
+     */
+    private static final String[] DEFAULT_SUBDOMAINS = {"0", "1", "2", "3"};
+
+    private static final String SUPPORTED_PLACEHOLDERS =
+            "TMS: {zoom} {z} {x} {y} {-y} {ty} {switch:a,b,c} {u} {@2x} {r} | "
+                    + "WMS: {proj} {wkid} {width} {height} {bbox}";
 
     private interface Part {
         void append(StringBuilder out, int z, int x, int y);
@@ -76,6 +111,12 @@ public final class SatelliteUrlTemplate {
         }
     }
 
+    private static final class BboxPart implements Part {
+        public void append(StringBuilder out, int z, int x, int y) {
+            appendBbox(out, z, x, y);
+        }
+    }
+
     private final String template;
     private final List<Part> parts;
 
@@ -93,7 +134,7 @@ public final class SatelliteUrlTemplate {
     }
 
     public String expand(int z, int x, int y) {
-        StringBuilder out = new StringBuilder(template.length() + 16);
+        StringBuilder out = new StringBuilder(template.length() + 32);
         for (int i = 0; i < parts.size(); i++) {
             parts.get(i).append(out, z, x, y);
         }
@@ -112,12 +153,12 @@ public final class SatelliteUrlTemplate {
             return "The URL template must start with http:// or https://";
         }
 
-        boolean hasX = false, hasY = false, hasZ = false, hasQuadKey = false;
+        boolean hasX = false, hasY = false, hasZ = false, hasQuadKey = false, hasBbox = false;
 
         Matcher matcher = PLACEHOLDER.matcher(trimmed);
         while (matcher.find()) {
             String name = matcher.group(1);
-            if (name.startsWith(SWITCH_PREFIX)) {
+            if (isSwitch(name)) {
                 if (splitSwitchOptions(name) == null) {
                     return "{" + name + "} needs at least one alternative, e.g. {switch:a,b,c}";
                 }
@@ -125,25 +166,39 @@ public final class SatelliteUrlTemplate {
             }
             if ("x".equals(name)) { hasX = true; continue; }
             if ("y".equals(name)) { hasY = true; continue; }
-            if ("-y".equals(name)) { hasY = true; continue; }
+            if ("-y".equals(name) || "ty".equals(name)) { hasY = true; continue; }
             if ("z".equals(name) || "zoom".equals(name)) { hasZ = true; continue; }
-            if ("u".equals(name)) { hasQuadKey = true; continue; }
-            return "Unsupported placeholder {" + name + "}. "
-                    + "Supported: {x} {y} {-y} {z} {zoom} {u} {switch:a,b,c}";
+            if ("u".equals(name) || "quadkey".equals(name)) { hasQuadKey = true; continue; }
+            if ("bbox".equals(name)) { hasBbox = true; continue; }
+            // Tokens that expand to a fixed value and so place no requirement on the template.
+            if ("subdomain".equals(name)
+                    || "proj".equals(name) || "wkid".equals(name)
+                    || "width".equals(name) || "height".equals(name)
+                    || "@2x".equals(name) || "r".equals(name)) {
+                continue;
+            }
+            return "Unsupported placeholder {" + name + "}. Supported: " + SUPPORTED_PLACEHOLDERS;
         }
 
-        if (hasQuadKey) {
+        if (hasQuadKey || hasBbox) {
+            // Quadkey and WMS bbox each already identify the tile on their own.
             return null;
         }
         if (!hasX || !hasY || !hasZ) {
-            return "The URL template needs {x}, {y} and {z} (or {u} for a quadkey service).";
+            return "The URL template needs {x}, {y} and {z}, or {u}, or {bbox}.";
         }
         return null;
     }
 
+    private static boolean isSwitch(String name) {
+        return name.startsWith(SWITCH_PREFIX) || name.startsWith(SWITCH_SHORT_PREFIX);
+    }
+
     /** @return the alternatives of a {@code switch:...} placeholder, or null when malformed. */
     private static String[] splitSwitchOptions(String placeholderName) {
-        String list = placeholderName.substring(SWITCH_PREFIX.length());
+        int prefixLength = placeholderName.startsWith(SWITCH_PREFIX)
+                ? SWITCH_PREFIX.length() : SWITCH_SHORT_PREFIX.length();
+        String list = placeholderName.substring(prefixLength);
         if (list.isEmpty()) {
             return null;
         }
@@ -165,16 +220,29 @@ public final class SatelliteUrlTemplate {
                 parts.add(new Literal(template.substring(last, matcher.start())));
             }
             String name = matcher.group(1);
-            if (name.startsWith(SWITCH_PREFIX)) {
+            if (isSwitch(name)) {
                 parts.add(new SwitchPart(splitSwitchOptions(name)));
+            } else if ("subdomain".equals(name)) {
+                parts.add(new SwitchPart(DEFAULT_SUBDOMAINS));
             } else if ("x".equals(name)) {
                 parts.add(new XPart());
             } else if ("y".equals(name)) {
                 parts.add(new YPart());
-            } else if ("-y".equals(name)) {
+            } else if ("-y".equals(name) || "ty".equals(name)) {
                 parts.add(new FlippedYPart());
-            } else if ("u".equals(name)) {
+            } else if ("u".equals(name) || "quadkey".equals(name)) {
                 parts.add(new QuadKeyPart());
+            } else if ("bbox".equals(name)) {
+                parts.add(new BboxPart());
+            } else if ("proj".equals(name)) {
+                parts.add(new Literal(PROJECTION));
+            } else if ("wkid".equals(name)) {
+                parts.add(new Literal(PROJECTION_WKID));
+            } else if ("width".equals(name) || "height".equals(name)) {
+                parts.add(new Literal(Integer.toString(TILE_SIZE)));
+            } else if ("@2x".equals(name) || "r".equals(name)) {
+                // Tiles are always fetched at standard resolution, so the scale factor drops out.
+                parts.add(new Literal(""));
             } else {
                 // {z} and {zoom}; validate() has already rejected anything else.
                 parts.add(new ZPart());
@@ -200,12 +268,45 @@ public final class SatelliteUrlTemplate {
     }
 
     /**
+     * Appends the tile's bounding box in Web Mercator metres as {@code minX,minY,maxX,maxY}.
+     *
+     * <p>Formatted with {@link Locale#ROOT} on purpose: under a locale that writes decimals with a
+     * comma this would otherwise emit "11,25" and quietly corrupt the bbox parameter.
+     */
+    static void appendBbox(StringBuilder out, int z, int x, int y) {
+        double span = 2.0 * ORIGIN_SHIFT / (double) (1 << z);
+        double minX = -ORIGIN_SHIFT + x * span;
+        double maxX = minX + span;
+        double maxY = ORIGIN_SHIFT - y * span;
+        double minY = maxY - span;
+
+        appendMetres(out, minX);
+        out.append(',');
+        appendMetres(out, minY);
+        out.append(',');
+        appendMetres(out, maxX);
+        out.append(',');
+        appendMetres(out, maxY);
+    }
+
+    private static void appendMetres(StringBuilder out, double value) {
+        out.append(String.format(Locale.ROOT, "%.6f", value));
+    }
+
+    /**
      * Best-effort image extension for a template, used to name cache files. Falls back to jpg:
      * plenty of perfectly good tile URLs carry no extension at all (the format is in the
      * response headers), and a custom provider must not be rejected just for that.
      */
     public static String guessImageExtension(String template) {
-        String lower = template.toLowerCase();
+        String lower = template.toLowerCase(Locale.ROOT);
+        // WMS states the format as a parameter rather than in the path.
+        if (lower.contains("image/png")) {
+            return "png";
+        }
+        if (lower.contains("image/jpeg") || lower.contains("image/jpg")) {
+            return "jpg";
+        }
         // Look at the path only; query strings often mention formats they do not return.
         int queryStart = lower.indexOf('?');
         String path = queryStart >= 0 ? lower.substring(0, queryStart) : lower;

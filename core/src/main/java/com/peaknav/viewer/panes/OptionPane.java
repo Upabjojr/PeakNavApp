@@ -13,6 +13,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Cell;
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.peaknav.viewer.MapApp;
 import com.peaknav.viewer.MapViewerSingleton;
@@ -57,6 +58,11 @@ public class OptionPane {
     private static final float REMOVE_BUTTON_WIDTH_FRACTION = 0.18f;
     /** The source list scrolls rather than growing past this share of the screen height. */
     private static final float MAX_PROVIDER_LIST_SCREEN_FRACTION = 0.55f;
+    /** Scrollbar width, and the gap between it and the buttons, relative to a round button. */
+    private static final float SCROLLBAR_WIDTH_FRACTION = 0.55f;
+    private static final float SCROLLBAR_GAP_FRACTION = 0.35f;
+    private static final Color SCROLLBAR_TRACK_COLOR = new Color(1f, 1f, 1f, 0.30f);
+    private static final Color SCROLLBAR_KNOB_COLOR = new Color(0.25f, 0.25f, 0.25f, 0.9f);
 
     /** Keyed by provider id, since custom providers are not enum constants. */
     private final Map<String, TextButton> selectBoxSatSrcMap = new LinkedHashMap<>();
@@ -272,7 +278,22 @@ public class OptionPane {
             }
         }
         float removeWidth = anyCustom ? buttonWidth * REMOVE_BUTTON_WIDTH_FRACTION : 0f;
-        float nameWidth = buttonWidth - removeWidth;
+
+        // The scrollbar only appears once the list actually overflows, so reserve a lane for it
+        // only then. Otherwise every source button would be permanently narrowed to make room for
+        // a bar that is not there.
+        float scrollBarWidth = SCROLLBAR_WIDTH_FRACTION * roundButtonSize;
+        float rowHeight = height + padHeight;
+        float wantedHeight = providers.size() * rowHeight;
+        float maxHeight = Gdx.graphics.getHeight() * MAX_PROVIDER_LIST_SCREEN_FRACTION;
+        // Show a whole number of rows: a row clipped through the middle at the bottom edge reads
+        // as a rendering glitch rather than as "there is more below".
+        int visibleRows = Math.max(1, (int) (maxHeight / rowHeight));
+        float listHeight = Math.min(wantedHeight, visibleRows * rowHeight);
+        boolean scrolls = wantedHeight > listHeight;
+        float scrollBarLane = scrolls ? scrollBarWidth + SCROLLBAR_GAP_FRACTION * roundButtonSize : 0f;
+
+        float nameWidth = buttonWidth - removeWidth - scrollBarLane;
 
         Table providerList = new Table();
         providerList.top();
@@ -339,20 +360,28 @@ public class OptionPane {
         // The list can grow without limit as the user adds sources, so it scrolls once it no
         // longer fits. "Add" and "Back" stay outside the scroll area and are always reachable.
         ScrollPane.ScrollPaneStyle scrollPaneStyle = new ScrollPane.ScrollPaneStyle();
-        scrollPaneStyle.vScrollKnob = getC().widgetTextures.getUniformDrawable(Color.LIGHT_GRAY);
+        if (scrolls) {
+            // The default drawables are a bare 10px texture, which renders as a hairline. Size
+            // both track and knob explicitly so the bar is wide enough to see and to drag.
+            TextureRegionDrawable track = getC().widgetTextures.getUniformDrawable(SCROLLBAR_TRACK_COLOR);
+            track.setMinWidth(scrollBarWidth);
+            TextureRegionDrawable knob = getC().widgetTextures.getUniformDrawable(SCROLLBAR_KNOB_COLOR);
+            knob.setMinWidth(scrollBarWidth);
+            scrollPaneStyle.vScroll = track;
+            scrollPaneStyle.vScrollKnob = knob;
+        }
         ScrollPane scrollPane = new ScrollPane(providerList, scrollPaneStyle);
         scrollPane.setScrollingDisabled(true, false);
         scrollPane.setFadeScrollBars(false);
-        // Overlay the scrollbar instead of letting it steal width from the buttons.
+        // Draw the bar over the widget rather than letting ScrollPane carve width out of it: the
+        // lane it sits in has already been reserved above, so it lands beside the buttons with a
+        // gap rather than on top of them.
         scrollPane.setScrollbarsOnTop(true);
         scrollPane.setOverscroll(false, false);
 
-        int providerCount = selectBoxSatSrcMap.size();
-        float wantedHeight = providerCount * (height + padHeight);
-        float maxHeight = Gdx.graphics.getHeight() * MAX_PROVIDER_LIST_SCREEN_FRACTION;
         table.add(scrollPane)
                 .width(buttonWidth)
-                .height(Math.min(wantedHeight, maxHeight))
+                .height(listHeight)
                 .padBottom(padHeight)
                 .row();
 
