@@ -10,12 +10,10 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
-import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Polygon;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Align;
 
-import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 import com.peaknav.viewer.screens.MapViewerScreen;
@@ -110,9 +108,6 @@ public class DrawLabel {
     }
 
     public void updateHiddenByMountains() {
-        if (poiObject.name.equals("Doss del Sabion")) {
-                System.err.println("a");
-        }
         hiddenByMountains = !getC().visibility.checkVisible(
                 poiObject.getPosition3D(tempVec1), mapViewerScreen.impactPixmap);
     }
@@ -161,25 +156,11 @@ public class DrawLabel {
         return Gdx.graphics.getHeight()*0.4f;
     }
 
-    public void updateGlyphData(final List<Polygon> polygonsFront, final List<Polygon> polygonsBack) {
-        List<Polygon> polygons;
-        if (this.hiddenBehind) {
-            polygons = polygonsBack;
-        } else {
-            polygons = polygonsFront;
-        }
-
-        // updatePositionExtra();
-
-        for (Polygon previousRect : polygons) {
-            if (Intersector.overlapConvexPolygons(polygon, previousRect)) {
-                this.hiddenByLabel = true;
-                return;
-            }
-        }
-        hiddenByLabel = false;
-        polygons.add(polygon);
-
+    public void updateGlyphData(final LabelOverlapIndex indexFront, final LabelOverlapIndex indexBack) {
+        // Labels behind the camera are kept in their own index: they are never on screen at the
+        // same time as the ones in front, so they must not hide each other across that split.
+        LabelOverlapIndex index = this.hiddenBehind ? indexBack : indexFront;
+        hiddenByLabel = !index.tryPlace(polygon);
     }
 
     public void updateLabelPolygonCoordinates() {

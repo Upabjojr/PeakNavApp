@@ -4,7 +4,7 @@ import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.viewer.labels.PoiObject.getComparatorPeaks;
 import static com.peaknav.viewer.labels.PoiObject.getComparatorPois;
 
-import com.badlogic.gdx.math.Polygon;
+import com.badlogic.gdx.Gdx;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,6 +18,7 @@ import com.peaknav.viewer.DataRetrieveThreadManager;
 import com.peaknav.viewer.labels.DrawLabel;
 import com.peaknav.viewer.controller.MapController;
 import com.peaknav.viewer.labels.DrawLabelCategory;
+import com.peaknav.viewer.labels.LabelOverlapIndex;
 import com.peaknav.viewer.labels.PoiObject;
 import com.peaknav.viewer.screens.MapViewerScreen;
 
@@ -29,8 +30,8 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
     private final Set<DataRetrieveThreadManager.MapDataUpdateRequest> updateRequests;
 
 
-    private final static List<Polygon> tempPolygonsFront = new ArrayList<>(2048);
-    private final static List<Polygon> tempPolygonsBack = new ArrayList<>(2048);
+    private final static LabelOverlapIndex overlapIndexFront = new LabelOverlapIndex();
+    private final static LabelOverlapIndex overlapIndexBack = new LabelOverlapIndex();
     private final static List<PoiObject> newDisplayablePois = new ArrayList<>(2048);
 
     private final static List<PoiObject> newVisiblePeaks = new ArrayList<>(8*2048);
@@ -61,8 +62,7 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
     }
 
     private void clearEverything() {
-        tempPolygonsFront.clear();
-        tempPolygonsBack.clear();
+        resetOverlapIndexes();
         newDisplayablePois.clear();
         newVisiblePois.clear();
         newVisiblePeaks.clear();
@@ -122,6 +122,13 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
         }
     }
 
+    private void resetOverlapIndexes() {
+        int width = Gdx.graphics.getWidth();
+        int height = Gdx.graphics.getHeight();
+        overlapIndexFront.reset(width, height);
+        overlapIndexBack.reset(width, height);
+    }
+
     private void sortListsOfPOIs() {
         double lat = C.L.getCurrentLatitude();
         double lon = C.L.getCurrentLongitude();
@@ -139,13 +146,12 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
 
     private void updateDisplayablePOIs() {
 
-        tempPolygonsFront.clear();
-        tempPolygonsBack.clear();
+        resetOverlapIndexes();
         newDisplayablePois.clear();
 
         C.O.iterateOverVisiblePoisUnstoppable(poiObject -> {
             poiObject.drawLabel.updatePosition();
-            poiObject.drawLabel.updateGlyphData(tempPolygonsFront, tempPolygonsBack);
+            poiObject.drawLabel.updateGlyphData(overlapIndexFront, overlapIndexBack);
             if (poiObject.drawLabel.isVisibleIgnoreCameraOrientation())
                 newDisplayablePois.add(poiObject);
         });
