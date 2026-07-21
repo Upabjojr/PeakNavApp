@@ -6,9 +6,11 @@ import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.utils.PreferencesManager.P;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.ui.Button;
 import com.badlogic.gdx.scenes.scene2d.ui.Cell;
+import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
@@ -51,6 +53,11 @@ public class OptionPane {
     private final float height;
     private final float padHeight;
     private final float roundButtonSize;
+    /** Share of a row taken by a custom source's delete button; reserved on every row. */
+    private static final float REMOVE_BUTTON_WIDTH_FRACTION = 0.18f;
+    /** The source list scrolls rather than growing past this share of the screen height. */
+    private static final float MAX_PROVIDER_LIST_SCREEN_FRACTION = 0.55f;
+
     /** Keyed by provider id, since custom providers are not enum constants. */
     private final Map<String, TextButton> selectBoxSatSrcMap = new LinkedHashMap<>();
 
@@ -238,6 +245,9 @@ public class OptionPane {
         table.center();
         table.setFillParent(true);
         populateSatelliteSourceSelectBox(table);
+        // Hidden until the user opens it. Rebuilds must not touch visibility, otherwise adding
+        // or deleting a source would close the menu the user is still working in.
+        table.setVisible(false);
         return table;
     }
 
@@ -249,11 +259,27 @@ public class OptionPane {
         table.clearChildren();
         selectBoxSatSrcMap.clear();
 
-        List<Table> buttons = new ArrayList<>(16);
+        List<SatelliteImageProvider> providers = P.getSatelliteProviderRegistry().getAllProviders();
+
+        // Only give up width for the delete column once there is something to delete. When any
+        // custom source exists every row reserves it, including the built-ins that do not show
+        // one, so all source buttons stay exactly the same size as each other.
+        boolean anyCustom = false;
+        for (SatelliteImageProvider provider : providers) {
+            if (provider.isCustom()) {
+                anyCustom = true;
+                break;
+            }
+        }
+        float removeWidth = anyCustom ? buttonWidth * REMOVE_BUTTON_WIDTH_FRACTION : 0f;
+        float nameWidth = buttonWidth - removeWidth;
+
+        Table providerList = new Table();
+        providerList.top();
 
         SatelliteImageProvider selected = P.getUnderlayImageProvider();
 
-        for (SatelliteImageProvider provider : P.getSatelliteProviderRegistry().getAllProviders()) {
+        for (SatelliteImageProvider provider : providers) {
             TextButton button = getC().widgetGetter.getTextButton(
                     provider.getProviderName(), true);
             button.setProgrammaticChangeEvents(false);
@@ -286,10 +312,10 @@ public class OptionPane {
                 }
             });
 
+            providerList.add(button).width(nameWidth).height(height).padBottom(padHeight);
+
             if (provider.isCustom()) {
                 // Custom entries get a delete button next to the name.
-                Table row = new Table();
-                row.add(button).width(buttonWidth*0.8f);
                 TextButton removeButton = getC().widgetGetter.getTextButton("X", false);
                 removeButton.addListener(new ChangeListener() {
                     @Override
@@ -302,12 +328,35 @@ public class OptionPane {
                                 P.getUnderlayImageProvider().getCopyrightNotice());
                     }
                 });
-                row.add(removeButton).width(buttonWidth*0.2f).height(height);
-                buttons.add(row);
-            } else {
-                buttons.add(button);
+                providerList.add(removeButton).width(removeWidth).height(height).padBottom(padHeight);
+            } else if (anyCustom) {
+                // Empty spacer, so built-in and custom name buttons stay the same width.
+                providerList.add().width(removeWidth).height(height).padBottom(padHeight);
             }
+            providerList.row();
         }
+
+        // The list can grow without limit as the user adds sources, so it scrolls once it no
+        // longer fits. "Add" and "Back" stay outside the scroll area and are always reachable.
+        ScrollPane.ScrollPaneStyle scrollPaneStyle = new ScrollPane.ScrollPaneStyle();
+        scrollPaneStyle.vScrollKnob = getC().widgetTextures.getUniformDrawable(Color.LIGHT_GRAY);
+        ScrollPane scrollPane = new ScrollPane(providerList, scrollPaneStyle);
+        scrollPane.setScrollingDisabled(true, false);
+        scrollPane.setFadeScrollBars(false);
+        // Overlay the scrollbar instead of letting it steal width from the buttons.
+        scrollPane.setScrollbarsOnTop(true);
+        scrollPane.setOverscroll(false, false);
+
+        int providerCount = selectBoxSatSrcMap.size();
+        float wantedHeight = providerCount * (height + padHeight);
+        float maxHeight = Gdx.graphics.getHeight() * MAX_PROVIDER_LIST_SCREEN_FRACTION;
+        table.add(scrollPane)
+                .width(buttonWidth)
+                .height(Math.min(wantedHeight, maxHeight))
+                .padBottom(padHeight)
+                .row();
+
+        List<Table> buttons = new ArrayList<>(2);
 
         WidgetGetter.ImageTextButtonOptionPane addCustom = getC().widgetGetter.getImageTextButton(
                 "icons/icon_checkbox_satellite.png", s("Add_custom_provider"), false);
@@ -322,7 +371,6 @@ public class OptionPane {
         buttons.add(back);
 
         addButtonsToTable(table, buttons, true);
-        table.setVisible(false);
     }
 
     /**
@@ -351,7 +399,6 @@ public class OptionPane {
                             }
                             prevChecked = null;
                             populateSatelliteSourceSelectBox(table);
-                            table.setVisible(true);
                         });
                     }
 
