@@ -23,8 +23,19 @@ public class DrawLabel {
     private final MapViewerScreen mapViewerScreen;
     public final DrawLabelCategory drawLabelCategory;
     private volatile float screenLabelY;
-    public final GlyphLayout glyphLayoutSmall;
-    public final GlyphLayout glyphLayoutMedium;
+    /**
+     * Built lazily on the render thread by {@link #drawOnSpriteBatch}, never in the constructor.
+     * GlyphLayout shares one static, non thread safe GlyphRun pool across the whole process, and
+     * labels are constructed on the POI loading thread while the render thread lays out scene2d
+     * widgets; both using that pool at once produced a run full of nulls and crashed the app.
+     * Sizes come from {@link LabelTextMeasure} instead, which is safe from any thread.
+     */
+    private GlyphLayout glyphLayoutSmall;
+    private GlyphLayout glyphLayoutMedium;
+    private final String text;
+    private final Color textColor;
+    private final float textWidthSmall, textHeightSmall;
+    private final float textWidthMedium, textHeightMedium;
     public volatile float invRotUpperLeftGlyphX, invRotUpperLeftGlyphY;
     private volatile float screenPoiX, screenPoiY;
     // public final Vector3 position3D = new Vector3();
@@ -39,17 +50,29 @@ public class DrawLabel {
     private float rectangleHeight = 0f;
     private float rectangleWidth = 0f;
 
+    /** Render thread only: builds the GlyphLayout on first use. */
     public void drawOnSpriteBatch(SpriteBatch spriteBatch) {
         BitmapFont bitmapFont = getDrawLabelFont();
-        bitmapFont.draw(spriteBatch, getCurrentGlyphLayout(), invRotUpperLeftGlyphX, invRotUpperLeftGlyphY);
+        boolean large = P.getViewLargeFonts();
+        GlyphLayout layout = large ? glyphLayoutMedium : glyphLayoutSmall;
+        if (layout == null) {
+            layout = new GlyphLayout(
+                    bitmapFont, text, textColor, mapViewerScreen.targetWidth, Align.left, false);
+            if (large) {
+                glyphLayoutMedium = layout;
+            } else {
+                glyphLayoutSmall = layout;
+            }
+        }
+        bitmapFont.draw(spriteBatch, layout, invRotUpperLeftGlyphX, invRotUpperLeftGlyphY);
     }
 
-    private GlyphLayout getCurrentGlyphLayout() {
-        if (P.getViewLargeFonts()) {
-            return glyphLayoutMedium;
-        } else {
-            return glyphLayoutSmall;
-        }
+    private float getCurrentTextWidth() {
+        return P.getViewLargeFonts() ? textWidthMedium : textWidthSmall;
+    }
+
+    private float getCurrentTextHeight() {
+        return P.getViewLargeFonts() ? textHeightMedium : textHeightSmall;
     }
 
     public boolean isVisible() {
@@ -128,8 +151,13 @@ public class DrawLabel {
         BitmapFont bitmapFontMedium = getC().styleSingleton.getBitmapFontMedium();
         BitmapFont bitmapFontSmall =  getC().styleSingleton.getBitmapFontSmall();
 
-        glyphLayoutMedium = new GlyphLayout(bitmapFontMedium, text, color, mapViewerScreen.targetWidth, Align.left, false);
-        glyphLayoutSmall = new GlyphLayout(bitmapFontSmall, text, color, mapViewerScreen.targetWidth, Align.left, false);
+        this.text = text;
+        this.textColor = color;
+        // Measured rather than laid out: this constructor runs on the POI loading thread.
+        this.textWidthMedium = LabelTextMeasure.width(bitmapFontMedium, text);
+        this.textHeightMedium = LabelTextMeasure.height(bitmapFontMedium);
+        this.textWidthSmall = LabelTextMeasure.width(bitmapFontSmall, text);
+        this.textHeightSmall = LabelTextMeasure.height(bitmapFontSmall);
     }
 
 
@@ -202,12 +230,12 @@ public class DrawLabel {
     }
 
     public void updateLabelPolygonCoordinates() {
-        GlyphLayout glyphLayout = getCurrentGlyphLayout();
+        float textHeight = getCurrentTextHeight();
 
-        rectangleHeight = 1.3f * glyphLayout.height;
-        float deltaW = glyphLayout.height * heightScaleY;
+        rectangleHeight = 1.3f * textHeight;
+        float deltaW = textHeight * heightScaleY;
 
-        rectangleWidth = glyphLayout.width;
+        rectangleWidth = getCurrentTextWidth();
         float rwp2 = rectangleWidth +2*deltaW;
 
         float[] polyVerts = polygon.getVertices();
@@ -228,7 +256,7 @@ public class DrawLabel {
 
         correctionForOutOfScreen();
 
-        float rectUpperLeftX = this.screenPoiX - glyphLayout.height * drawLabelCategory.rotationAngleSin;
+        float rectUpperLeftX = this.screenPoiX - textHeight * drawLabelCategory.rotationAngleSin;
         float rectUpperLeftY = this.screenLabelY + rectangleHeight * drawLabelCategory.rotationAngleCos;
 
         float invRotUpperLeftX = drawLabelCategory.rotationAngleCos * rectUpperLeftX + drawLabelCategory.rotationAngleSin * rectUpperLeftY;
