@@ -88,6 +88,14 @@ public class TileBatchRenderer {
                             }
                         });
 
+                        BaseShader.Uniform u_sunEnabled = new BaseShader.Uniform("u_sunEnabled");
+                        shader.register(u_sunEnabled, new BaseShader.GlobalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                shader.program.setUniformi(u_sunEnabled.alias, P.isSunShading() ? 1 : 0);
+                            }
+                        });
+
                         BaseShader.Uniform u_roadsSet = new BaseShader.Uniform("u_roadsSet");
                         shader.register(u_roadsSet, new BaseShader.LocalSetter() {
                             @Override

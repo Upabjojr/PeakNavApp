@@ -16,6 +16,7 @@ public interface Constants {
         String VIEWER_LARGE_FONTS = "viewerLargeFonts";
         String VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER = "viewerLayerVisibleUnderlayLayer";
         String VIEWER_LAYER_VISIBLE_BASE_ROADS = "viewerLayerVisibleBaseRoads";
+        String VIEWER_SUN_SHADING = "viewerSunShading";
         String UNDERLAY_IMAGE_PROVIDER = "underlayImageProviderChosen";
         String VIEWER_UNIT_SYSTEM = "viewerUnitSystem";
 

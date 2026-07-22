@@ -582,6 +582,15 @@ public class OptionPane {
         tableSatelliteVisible.add(buttonSatelliteOptions).width(buttonWidth*0.2f).height(height);
         buttons.add(tableSatelliteVisible);
 
+        ImageTextButtonOptionPane checkBoxSunShading = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_sun.png", s("Sun_shading"), true);
+        addCheckingStateProperty(checkBoxSunShading, () -> P.isSunShading());
+        // The shader reads the preference every frame, so the terrain updates without a redraw.
+        checkBoxSunShading.addClickListener(() -> changer.execute(
+                () -> P.setSunShading(checkBoxSunShading.isChecked())));
+        checkBoxSunShading.setProgrammaticChangeEvents(false);
+        buttons.add(checkBoxSunShading);
+
         ImageTextButtonOptionPane buttonMapDataDownload = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_download_data.png", s("Download_map_data"), false);
         buttonMapDataDownload.addListener(new ChangeListener() {
             @Override
