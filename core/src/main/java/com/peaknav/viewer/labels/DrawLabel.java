@@ -67,14 +67,52 @@ public class DrawLabel {
         return isVisibleByPreferences() && (!hiddenByMountains);
     }
 
+    /** Border thickness as a share of the label height, so it scales with the font size. */
+    private static final float OUTLINE_HEIGHT_FRACTION = 0.11f;
+    private static final float OUTLINE_MIN_PIXELS = 2f;
+
+    private final float[] outlineVertices = new float[8];
+
     public void drawRectangle(ShapeRenderer shapeRenderer) {
         if (polygon == null)
             return;
-        shapeRenderer.setColor(drawLabelCategory.getBackgroundColor());
         float[] vertices = polygon.getTransformedVertices();
-        shapeRenderer.triangle(vertices[0], vertices[1], vertices[2], vertices[3], vertices[4], vertices[5]);
-        shapeRenderer.triangle(vertices[4], vertices[5], vertices[6], vertices[7], vertices[0], vertices[1]);
+
+        // Border first, as a slightly larger quad behind the fill. Without it a label is only as
+        // visible as its fill, and no fill light enough to carry black text can separate itself
+        // from sky or snow.
+        float width = Math.max(OUTLINE_MIN_PIXELS, rectangleHeight * OUTLINE_HEIGHT_FRACTION);
+        expandQuad(vertices, width, outlineVertices);
+        shapeRenderer.setColor(DrawLabelCategory.getOutlineColor());
+        drawQuad(shapeRenderer, outlineVertices);
+
+        shapeRenderer.setColor(drawLabelCategory.getBackgroundColor());
+        drawQuad(shapeRenderer, vertices);
+
         shapeRenderer.setColor(Color.RED);
+    }
+
+    /**
+     * Pushes each corner of the (rotated) label rectangle outwards by {@code width}, along the
+     * rectangle's own axes so the border comes out an even thickness all the way round.
+     */
+    private void expandQuad(float[] vertices, float width, float[] out) {
+        float ux = drawLabelCategory.rotationAngleCos * width;
+        float uy = drawLabelCategory.rotationAngleSin * width;
+        float vx = -drawLabelCategory.rotationAngleSin * width;
+        float vy = drawLabelCategory.rotationAngleCos * width;
+
+        // Vertex order is (min,min) (max,min) (max,max) (min,max); see
+        // updateLabelPolygonCoordinates.
+        out[0] = vertices[0] - ux - vx;   out[1] = vertices[1] - uy - vy;
+        out[2] = vertices[2] + ux - vx;   out[3] = vertices[3] + uy - vy;
+        out[4] = vertices[4] + ux + vx;   out[5] = vertices[5] + uy + vy;
+        out[6] = vertices[6] - ux + vx;   out[7] = vertices[7] - uy + vy;
+    }
+
+    private static void drawQuad(ShapeRenderer shapeRenderer, float[] v) {
+        shapeRenderer.triangle(v[0], v[1], v[2], v[3], v[4], v[5]);
+        shapeRenderer.triangle(v[4], v[5], v[6], v[7], v[0], v[1]);
     }
 
     public DrawLabel(DrawLabelCategory drawLabelCategory, PoiObject poiObject) {
