@@ -1,5 +1,7 @@
 package com.peaknav.gesture;
 
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.g3d.utils.CameraInputController;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
@@ -19,6 +21,27 @@ public class MountainInputController extends CameraInputController {
 
     public final float rotationFactorBase = 0.2f;
     public float rotationFactor = rotationFactorBase;
+
+    /**
+     * How far the arrow keys sweep the view in one second, measured in screen widths,
+     * which is the unit a mouse drag works in. Because rotationFactor already tracks
+     * the field of view, aiming automatically gets finer as the user zooms in.
+     */
+    public float lookScreensPerSecond = 0.8f;
+    /** Multiplier applied while the modifier key is held, for fine aiming. */
+    public float lookSlowFactor = 0.25f;
+
+    public int lookLeftKey = Input.Keys.LEFT;
+    public int lookRightKey = Input.Keys.RIGHT;
+    public int lookUpKey = Input.Keys.UP;
+    public int lookDownKey = Input.Keys.DOWN;
+    public int lookSlowKey = Input.Keys.SHIFT_LEFT;
+
+    private boolean lookLeftPressed;
+    private boolean lookRightPressed;
+    private boolean lookUpPressed;
+    private boolean lookDownPressed;
+    private boolean lookSlowPressed;
 
     public static class MountainGestureListener extends CameraGestureListener {
         private final Vector2 tmpV1 = new Vector2();
@@ -116,6 +139,72 @@ public class MountainInputController extends CameraInputController {
         return zoom(amountY * scrollFactor * translateUnits);
     }
      */
+
+    /**
+     * Points the camera with the arrow keys, so the view can be aimed without a mouse.
+     * The arrows move the camera rather than the landscape, which is the opposite of
+     * dragging, hence the flipped signs below.
+     */
+    @Override
+    public void update() {
+        super.update();
+
+        float deltaX = (lookLeftPressed ? 1f : 0f) - (lookRightPressed ? 1f : 0f);
+        float deltaY = (lookDownPressed ? 1f : 0f) - (lookUpPressed ? 1f : 0f);
+        if (deltaX == 0f && deltaY == 0f)
+            return;
+
+        float amount = lookScreensPerSecond * Gdx.graphics.getDeltaTime();
+        if (lookSlowPressed)
+            amount *= lookSlowFactor;
+
+        // Reuse the drag path so that the guard against tipping the camera over the
+        // vertical applies to the keyboard exactly as it does to the mouse.
+        process(deltaX * amount, deltaY * amount, rotateButton);
+    }
+
+    private boolean setLookKeyPressed(int keycode, boolean pressed) {
+        if (keycode == lookLeftKey) {
+            lookLeftPressed = pressed;
+        } else if (keycode == lookRightKey) {
+            lookRightPressed = pressed;
+        } else if (keycode == lookUpKey) {
+            lookUpPressed = pressed;
+        } else if (keycode == lookDownKey) {
+            lookDownPressed = pressed;
+        } else if (keycode == lookSlowKey) {
+            lookSlowPressed = pressed;
+            // The modifier alone points nothing, so let it through to the other processors.
+            return false;
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean keyDown(int keycode) {
+        boolean handled = setLookKeyPressed(keycode, true);
+        return super.keyDown(keycode) || handled;
+    }
+
+    @Override
+    public boolean keyUp(int keycode) {
+        boolean handled = setLookKeyPressed(keycode, false);
+        return super.keyUp(keycode) || handled;
+    }
+
+    /**
+     * Releases every held key. A window that loses focus mid-keypress never delivers
+     * the matching keyUp, which would otherwise leave the camera spinning by itself.
+     */
+    public void clearKeyboardLook() {
+        lookLeftPressed = false;
+        lookRightPressed = false;
+        lookUpPressed = false;
+        lookDownPressed = false;
+        lookSlowPressed = false;
+    }
 
     public static final float FIELD_OF_VIEW_MAX = 135.f;
     public static final float FIELD_OF_VIEW_MIN = 5.f;

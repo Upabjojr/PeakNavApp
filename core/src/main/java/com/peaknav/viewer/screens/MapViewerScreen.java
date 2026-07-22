@@ -536,8 +536,8 @@ public class MapViewerScreen implements Screen {
 			moveCameraAction.act(deltaTime);
 		}
 
-		controller.update();
-
+		// updateCameraInputController() ends in controller.update(), so calling it here
+		// too would advance every held key twice per frame.
 		updateCameraInputController();
 
 		boolean flagChange = false;
@@ -704,6 +704,10 @@ public class MapViewerScreen implements Screen {
 	@Override
 	public void pause() {
 		paused = true;
+		if (controller != null) {
+			// No keyUp arrives for a key that was held when the window went away.
+			controller.clearKeyboardLook();
+		}
 	}
 
 	@Override
