@@ -46,6 +46,8 @@ public class TileBatchRenderer {
     private final Environment environment;
     private final ModelBatch modelBatchPseudodistances;
     private FrameBuffer fbo;
+    private boolean pseudodistancesDirty = true;
+    private long pseudodistancesMapTileUpdateTime = Long.MIN_VALUE;
     private final ExecutorService executorStartThreads = Executors.newSingleThreadExecutor();
     private volatile Future<?> futureStartThreads = null;
 
@@ -147,11 +149,18 @@ public class TileBatchRenderer {
                         Gdx.files.internal("fragment_shader_pseudodistances.glsl").readString()),
                 null);
 
-        this.fbo = new FrameBuffer(
-                Pixmap.Format.RGBA8888,
-                Gdx.graphics.getWidth(),
-                Gdx.graphics.getHeight(),
-                true);
+        this.fbo = createPseudodistanceFbo(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+    }
+
+    private static FrameBuffer createPseudodistanceFbo(int width, int height) {
+        FrameBuffer newFbo = new FrameBuffer(Pixmap.Format.RGBA8888, width, height, true);
+        Texture texture = newFbo.getColorBufferTexture();
+        // The color buffer is data, not an image: each texel is a distance encoded in
+        // base 256. Interpolating two of them mixes bytes of different magnitude and
+        // yields a distance that is simply wrong, so it must never be filtered.
+        texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        texture.setWrap(Texture.TextureWrap.ClampToEdge, Texture.TextureWrap.ClampToEdge);
+        return newFbo;
     }
 
     public void startElevationRetrievalAndAssignmentThreads() {
@@ -271,7 +280,28 @@ public class TileBatchRenderer {
         });
     }
 
-    public void renderPseudodistances()  {
+    /** Forces the next frame to redraw the pseudodistance buffer from scratch. */
+    public void invalidatePseudodistances() {
+        pseudodistancesDirty = true;
+    }
+
+    /**
+     * Redraws the pseudodistance buffer only when it can no longer be trusted. Its
+     * contents depend on nothing but the camera and the terrain meshes, so on a frame
+     * where neither moved the buffer of the previous frame is still exact and a whole
+     * extra geometry pass over every visible tile can be skipped.
+     *
+     * @param cameraChanged whether the camera moved or rotated during this frame
+     */
+    public void renderPseudodistancesIfNeeded(boolean cameraChanged) {
+        long mapTileUpdateTime = getAppState().getLastAnyMapTileUpdateTime();
+        if (!pseudodistancesDirty
+                && !cameraChanged
+                && mapTileUpdateTime == pseudodistancesMapTileUpdateTime) {
+            return;
+        }
+        pseudodistancesMapTileUpdateTime = mapTileUpdateTime;
+        pseudodistancesDirty = false;
         renderPseudodistances(camera, false);
     }
 
@@ -347,15 +377,14 @@ public class TileBatchRenderer {
 
             impactPixmap.setPixmapGeographical(pixmapNorth, pixmapEast, pixmapSouth, pixmapWest);
             impactPixmap.impactPixmapNewRequested = false;
+            // These four passes leave the west-facing view in the frame buffer, so the
+            // outlines of the actual view have to be redrawn before they are read.
+            pseudodistancesDirty = true;
         }
     }
 
     public Texture getSobelTexture() {
-        Texture distanceTex = fbo.getColorBufferTexture();
-        distanceTex.bind(0);
-        distanceTex.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-        distanceTex.setWrap(Texture.TextureWrap.ClampToEdge, Texture.TextureWrap.ClampToEdge);
-        return distanceTex;
+        return fbo.getColorBufferTexture();
     }
 
 
@@ -379,11 +408,11 @@ public class TileBatchRenderer {
         camera.update();
     }
     public void resize(int width, int height) {
-        this.fbo = new FrameBuffer(
-                Pixmap.Format.RGBA8888,
-                width,
-                height,
-                true);
+        if (this.fbo != null) {
+            this.fbo.dispose();
+        }
+        this.fbo = createPseudodistanceFbo(width, height);
+        pseudodistancesDirty = true;
 
         resizeCamera(modelBatchPseudodistances.getCamera(), width, height);
         resizeCamera(modelBatch.getCamera(), width, height);

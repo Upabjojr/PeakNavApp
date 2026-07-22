@@ -608,7 +608,7 @@ public class MapViewerScreen implements Screen {
 
 		// The order of these two cannot be changed, otherwise bad outlines will appear!
 		tileBatchRenderer.renderPseudodistancesGeographical(impactPixmap);
-		tileBatchRenderer.renderPseudodistances();
+		tileBatchRenderer.renderPseudodistancesIfNeeded(flagChange);
 
 		// tileBatchRenderer.renderPseudodistancesNoFrameBuffer();
 
@@ -709,6 +709,11 @@ public class MapViewerScreen implements Screen {
 	@Override
 	public void resume() {
 		paused = false;
+		if (tileBatchRenderer != null) {
+			// Android drops the contents of every frame buffer when the GL context goes
+			// away, so the cached pseudodistances cannot be reused across a resume.
+			tileBatchRenderer.invalidatePseudodistances();
+		}
 	}
 
 	@Override

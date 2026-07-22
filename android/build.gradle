@@ -40,7 +40,7 @@ android {
         applicationId 'com.peaknav'
         minSdkVersion 21
         targetSdkVersion 35
-        versionCode 143
+        versionCode 144
         versionName "1.0"
     }
     compileOptions {

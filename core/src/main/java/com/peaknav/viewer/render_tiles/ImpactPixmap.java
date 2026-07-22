@@ -113,7 +113,8 @@ public class ImpactPixmap {
         if (b % 2 == 1) {
             g = 255 - g;
         }
-        return r + 255*g + 255*255*b;
+        // The bytes are base 256, not base 255 (see fragment_shader_pseudodistances.glsl).
+        return r + 256*g + 65536*b;
     }
 
     public static class DistanceRange {
