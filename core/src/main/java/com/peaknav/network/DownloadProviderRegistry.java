@@ -64,10 +64,38 @@ public class DownloadProviderRegistry {
                 // Corrupt file: fall through to seeding the default rather than crashing.
             }
         }
-        if (providers.isEmpty()) {
-            providers.add(new DownloadProvider(DEFAULT_NAME, DEFAULT_ELEVATION_URL, DEFAULT_MAP_DATA_URL));
+        boolean changed = ensureBuiltinPresent();
+        if (json == null || changed) {
             save();
         }
+    }
+
+    /**
+     * Guarantees the non-removable HuggingFace default is present. Adopts an existing entry that
+     * still has the default URLs (e.g. a file written before the builtin flag existed), otherwise
+     * prepends a fresh one so it is tried first.
+     *
+     * @return true if the list was changed and should be persisted
+     */
+    private boolean ensureBuiltinPresent() {
+        for (DownloadProvider provider : providers) {
+            if (provider.builtin) {
+                return false;
+            }
+        }
+        for (DownloadProvider provider : providers) {
+            if (DEFAULT_ELEVATION_URL.equals(provider.elevationBaseUrl)
+                    && DEFAULT_MAP_DATA_URL.equals(provider.mapDataBaseUrl)) {
+                provider.builtin = true;
+                return true;
+            }
+        }
+        providers.add(0, defaultProvider());
+        return true;
+    }
+
+    private static DownloadProvider defaultProvider() {
+        return new DownloadProvider(DEFAULT_NAME, DEFAULT_ELEVATION_URL, DEFAULT_MAP_DATA_URL, true);
     }
 
     private void save() {
@@ -128,22 +156,19 @@ public class DownloadProviderRegistry {
         if (displayName.isEmpty()) {
             displayName = hostOf(map);
         }
-        providers.set(index, new DownloadProvider(displayName, elev, map));
+        // Editing keeps the builtin flag: the default may be renamed or repointed, not demoted.
+        providers.set(index, new DownloadProvider(displayName, elev, map, providers.get(index).builtin));
         save();
         return null;
     }
 
-    /** Removes the provider at the given index (bounds-checked). Removing the last one re-seeds the default. */
+    /** Removes the provider at the given index. The builtin default is protected and never removed. */
     public synchronized void removeProvider(int index) {
         ensureLoaded();
-        if (index < 0 || index >= providers.size()) {
+        if (index < 0 || index >= providers.size() || providers.get(index).builtin) {
             return;
         }
         providers.remove(index);
-        if (providers.isEmpty()) {
-            // Never leave the app with no way to fetch data.
-            providers.add(new DownloadProvider(DEFAULT_NAME, DEFAULT_ELEVATION_URL, DEFAULT_MAP_DATA_URL));
-        }
         save();
     }
 
@@ -189,7 +214,6 @@ public class DownloadProviderRegistry {
     }
 
     public static List<DownloadProvider> defaultProviders() {
-        return Collections.singletonList(
-                new DownloadProvider(DEFAULT_NAME, DEFAULT_ELEVATION_URL, DEFAULT_MAP_DATA_URL));
+        return Collections.singletonList(defaultProvider());
     }
 }

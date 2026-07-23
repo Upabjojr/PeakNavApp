@@ -13,14 +13,24 @@ public class DownloadProvider {
     public String elevationBaseUrl;
     /** Base URL the OpenStreetMap ({@code .tar}) tiles hang off; must end with '/'. */
     public String mapDataBaseUrl;
+    /**
+     * The default HuggingFace source. It can be renamed or have its URLs edited, but not removed,
+     * so the app always keeps a working fallback. Additional providers the user adds are not builtin.
+     */
+    public boolean builtin;
 
     public DownloadProvider() {
     }
 
     public DownloadProvider(String name, String elevationBaseUrl, String mapDataBaseUrl) {
+        this(name, elevationBaseUrl, mapDataBaseUrl, false);
+    }
+
+    public DownloadProvider(String name, String elevationBaseUrl, String mapDataBaseUrl, boolean builtin) {
         this.name = name;
         this.elevationBaseUrl = elevationBaseUrl;
         this.mapDataBaseUrl = mapDataBaseUrl;
+        this.builtin = builtin;
     }
 
     /** The base URL for the given tile kind, or null when this provider has none. */

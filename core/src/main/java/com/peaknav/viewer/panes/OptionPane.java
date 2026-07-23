@@ -463,7 +463,16 @@ public class OptionPane {
 
         List<DownloadProvider> providers = getC().downloadProviderRegistry.getProviders();
 
-        float removeWidth = buttonWidth * REMOVE_BUTTON_WIDTH_FRACTION;
+        // Reserve the delete column only when something is actually removable (the built-in
+        // HuggingFace default is not), so with just the default every row stays full width.
+        boolean anyRemovable = false;
+        for (DownloadProvider provider : providers) {
+            if (!provider.builtin) {
+                anyRemovable = true;
+                break;
+            }
+        }
+        float removeWidth = anyRemovable ? buttonWidth * REMOVE_BUTTON_WIDTH_FRACTION : 0f;
         float scrollBarWidth = SCROLLBAR_WIDTH_FRACTION * roundButtonSize;
         float rowHeight = height + padHeight;
         float wantedHeight = providers.size() * rowHeight;
@@ -490,15 +499,20 @@ public class OptionPane {
             });
             providerList.add(button).width(nameWidth).height(height).padBottom(padHeight);
 
-            TextButton removeButton = getC().widgetGetter.getTextButton("X", false);
-            removeButton.addListener(new ChangeListener() {
-                @Override
-                public void changed(ChangeEvent event, Actor actor) {
-                    getC().downloadProviderRegistry.removeProvider(index);
-                    populateDownloadSourceSelectBox(table);
-                }
-            });
-            providerList.add(removeButton).width(removeWidth).height(height).padBottom(padHeight);
+            if (!provider.builtin) {
+                TextButton removeButton = getC().widgetGetter.getTextButton("X", false);
+                removeButton.addListener(new ChangeListener() {
+                    @Override
+                    public void changed(ChangeEvent event, Actor actor) {
+                        getC().downloadProviderRegistry.removeProvider(index);
+                        populateDownloadSourceSelectBox(table);
+                    }
+                });
+                providerList.add(removeButton).width(removeWidth).height(height).padBottom(padHeight);
+            } else if (anyRemovable) {
+                // Keep built-in and removable rows the same width by reserving the empty column.
+                providerList.add().width(removeWidth).height(height).padBottom(padHeight);
+            }
             providerList.row();
         }
 

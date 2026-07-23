@@ -44,6 +44,7 @@ public class TestDownloadProviderRegistry {
         assertEquals(1, providers.size());
         assertTrue(providers.get(0).elevationBaseUrl.contains("huggingface.co"));
         assertTrue(providers.get(0).mapDataBaseUrl.contains("huggingface.co"));
+        assertTrue(providers.get(0).builtin, "the default is a protected built-in");
         // The default was written back so the file exists and is editable.
         assertNotNull(store.read());
     }
@@ -81,7 +82,7 @@ public class TestDownloadProviderRegistry {
     }
 
     @Test
-    public void editsInPlaceKeepingOrder() {
+    public void editsTheBuiltinInPlaceKeepingItProtected() {
         DownloadProviderRegistry registry = new DownloadProviderRegistry(new InMemoryStore());
         registry.addProvider("Second", ELEV, MAP);
         assertNull(registry.updateProvider(0, "Renamed default",
@@ -90,14 +91,45 @@ public class TestDownloadProviderRegistry {
         List<DownloadProvider> providers = registry.getProviders();
         assertEquals("Renamed default", providers.get(0).name);
         assertEquals("https://new.example.com/e/", providers.get(0).elevationBaseUrl);
+        assertTrue(providers.get(0).builtin, "editing must not demote the built-in");
         assertEquals("Second", providers.get(1).name);
     }
 
     @Test
-    public void removingTheLastOneReseedsTheDefault() {
+    public void builtinDefaultCannotBeRemoved() {
         DownloadProviderRegistry registry = new DownloadProviderRegistry(new InMemoryStore());
+        assertTrue(registry.getProviders().get(0).builtin);
+
         registry.removeProvider(0);
-        assertEquals(1, registry.getProviders().size());
+
+        assertEquals(1, registry.getProviders().size(), "the built-in default is protected");
         assertTrue(registry.getProviders().get(0).elevationBaseUrl.contains("huggingface.co"));
+    }
+
+    @Test
+    public void addedProvidersCanBeRemoved() {
+        DownloadProviderRegistry registry = new DownloadProviderRegistry(new InMemoryStore());
+        registry.addProvider("Mirror", ELEV, MAP);
+        assertEquals(2, registry.getProviders().size());
+
+        registry.removeProvider(1);
+
+        List<DownloadProvider> providers = registry.getProviders();
+        assertEquals(1, providers.size());
+        assertTrue(providers.get(0).builtin);
+    }
+
+    @Test
+    public void adoptsAPreBuiltinFileAsTheBuiltin() {
+        InMemoryStore store = new InMemoryStore();
+        // A file written before the builtin flag existed: the default URLs, no builtin marker.
+        store.write("[{\"name\":\"HuggingFace (PeakNav)\","
+                + "\"elevationBaseUrl\":\"https://huggingface.co/datasets/PeakNav/global-elevation-aster-slippy-tiles-tar-gz/resolve/main/\","
+                + "\"mapDataBaseUrl\":\"https://huggingface.co/datasets/PeakNav/global-openstreetmap-extraction-slippy-tiles-tar/resolve/main/\"}]");
+
+        DownloadProviderRegistry registry = new DownloadProviderRegistry(store);
+        List<DownloadProvider> providers = registry.getProviders();
+        assertEquals(1, providers.size(), "must not duplicate the default");
+        assertTrue(providers.get(0).builtin, "the existing default entry is adopted as the built-in");
     }
 }
