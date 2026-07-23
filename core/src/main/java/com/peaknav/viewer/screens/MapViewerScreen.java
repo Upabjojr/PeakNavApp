@@ -21,12 +21,14 @@ import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Interpolation;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Button;
 import com.badlogic.gdx.scenes.scene2d.ui.ImageButton;
+import com.badlogic.gdx.scenes.scene2d.ui.Slider;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.Window;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
@@ -216,6 +218,20 @@ public class MapViewerScreen implements Screen {
 	public float convertUnitsZ2ElevationBar(float z) {
 		float baseEle = (float)getC().L.getCurrentTerrainEle() + LIFT_ELEV;
 		return Interpolation.exp5Out.apply((z - baseEle)/(MAX_ELEV_BAR_ELEV - baseEle));
+	}
+
+	/**
+	 * Moves the elevation bar by a fraction of its full travel, positive upwards. Goes
+	 * through the slider rather than straight to the camera so that the knob, the
+	 * toast and the elevation itself stay in step, exactly as when the bar is dragged.
+	 *
+	 * @param deltaPercent how far to move, 1.0 being the whole bar
+	 */
+	public void nudgeCameraElevationBar(float deltaPercent) {
+		if (tableTool == null)
+			return;
+		Slider slider = tableTool.sliderElevation;
+		slider.setVisualPercent(MathUtils.clamp(slider.getVisualPercent() + deltaPercent, 0f, 1f));
 	}
 
 	public void setCameraElevationBar(float elevation) {

@@ -15,6 +15,7 @@ public class MountainInputController extends CameraInputController {
 
     public PerspectiveCameraExt perspectiveCamera;
     private final ArrayList<PositionChangeListener> positionChangeListeners;
+    private final MapViewerScreen mapViewerScreen;
 
     private final Vector3 tmpV1 = new Vector3();
     private final Vector3 tmpV2 = new Vector3();
@@ -31,17 +32,28 @@ public class MountainInputController extends CameraInputController {
     /** Multiplier applied while the modifier key is held, for fine aiming. */
     public float lookSlowFactor = 0.25f;
 
+    /**
+     * How much of the elevation bar the altitude keys travel in one second. The bar is
+     * deliberately not linear in metres, so this stays gentle near the ground and
+     * speeds up higher up, the same way dragging it does.
+     */
+    public float altitudeBarsPerSecond = 0.4f;
+
     public int lookLeftKey = Input.Keys.LEFT;
     public int lookRightKey = Input.Keys.RIGHT;
     public int lookUpKey = Input.Keys.UP;
     public int lookDownKey = Input.Keys.DOWN;
     public int lookSlowKey = Input.Keys.SHIFT_LEFT;
+    public int altitudeUpKey = Input.Keys.PAGE_UP;
+    public int altitudeDownKey = Input.Keys.PAGE_DOWN;
 
     private boolean lookLeftPressed;
     private boolean lookRightPressed;
     private boolean lookUpPressed;
     private boolean lookDownPressed;
     private boolean lookSlowPressed;
+    private boolean altitudeUpPressed;
+    private boolean altitudeDownPressed;
 
     public static class MountainGestureListener extends CameraGestureListener {
         private final Vector2 tmpV1 = new Vector2();
@@ -93,6 +105,7 @@ public class MountainInputController extends CameraInputController {
         super(listener, camera);
         this.perspectiveCamera = camera;
         this.positionChangeListeners = positionChangeListeners;
+        this.mapViewerScreen = mapViewerScreen;
     }
 
     public static MountainInputController getInstance(PerspectiveCameraExt camera, ArrayList<PositionChangeListener> positionChangeListeners, MapViewerScreen mapViewerScreen) {
@@ -141,26 +154,39 @@ public class MountainInputController extends CameraInputController {
      */
 
     /**
-     * Points the camera with the arrow keys, so the view can be aimed without a mouse.
-     * The arrows move the camera rather than the landscape, which is the opposite of
-     * dragging, hence the flipped signs below.
+     * Drives the camera from the keyboard, so the view can be aimed and raised without
+     * a mouse. The arrows move the camera rather than the landscape, which is the
+     * opposite of dragging, hence the flipped signs below.
      */
     @Override
     public void update() {
         super.update();
 
+        float slow = lookSlowPressed ? lookSlowFactor : 1f;
+        float deltaTime = Gdx.graphics.getDeltaTime();
+
+        updateKeyboardLook(slow * deltaTime);
+        updateKeyboardAltitude(slow * deltaTime);
+    }
+
+    private void updateKeyboardLook(float scaledDeltaTime) {
         float deltaX = (lookLeftPressed ? 1f : 0f) - (lookRightPressed ? 1f : 0f);
         float deltaY = (lookDownPressed ? 1f : 0f) - (lookUpPressed ? 1f : 0f);
         if (deltaX == 0f && deltaY == 0f)
             return;
 
-        float amount = lookScreensPerSecond * Gdx.graphics.getDeltaTime();
-        if (lookSlowPressed)
-            amount *= lookSlowFactor;
-
+        float amount = lookScreensPerSecond * scaledDeltaTime;
         // Reuse the drag path so that the guard against tipping the camera over the
         // vertical applies to the keyboard exactly as it does to the mouse.
         process(deltaX * amount, deltaY * amount, rotateButton);
+    }
+
+    private void updateKeyboardAltitude(float scaledDeltaTime) {
+        float delta = (altitudeUpPressed ? 1f : 0f) - (altitudeDownPressed ? 1f : 0f);
+        if (delta == 0f || mapViewerScreen == null)
+            return;
+
+        mapViewerScreen.nudgeCameraElevationBar(delta * altitudeBarsPerSecond * scaledDeltaTime);
     }
 
     private boolean setLookKeyPressed(int keycode, boolean pressed) {
@@ -172,6 +198,10 @@ public class MountainInputController extends CameraInputController {
             lookUpPressed = pressed;
         } else if (keycode == lookDownKey) {
             lookDownPressed = pressed;
+        } else if (keycode == altitudeUpKey) {
+            altitudeUpPressed = pressed;
+        } else if (keycode == altitudeDownKey) {
+            altitudeDownPressed = pressed;
         } else if (keycode == lookSlowKey) {
             lookSlowPressed = pressed;
             // The modifier alone points nothing, so let it through to the other processors.
@@ -204,6 +234,8 @@ public class MountainInputController extends CameraInputController {
         lookUpPressed = false;
         lookDownPressed = false;
         lookSlowPressed = false;
+        altitudeUpPressed = false;
+        altitudeDownPressed = false;
     }
 
     public static final float FIELD_OF_VIEW_MAX = 135.f;
