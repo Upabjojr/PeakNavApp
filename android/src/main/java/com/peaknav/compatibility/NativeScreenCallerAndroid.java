@@ -7,6 +7,7 @@ import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.views.AndroidLauncher.CAMERA_PERMISSION;
 import static com.peaknav.views.AndroidLauncher.CAMERA_REQUEST_CODE;
+import static com.peaknav.views.AndroidLauncher.MEDIA_LOCATION_REQUEST_CODE;
 import static com.peaknav.views.AndroidLauncher.PICK_IMAGE;
 
 import android.Manifest;
@@ -23,6 +24,7 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.provider.Settings;
@@ -260,10 +262,42 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
 
     @Override
     public void openGalleryPick() {
+        // On Android 10+ the OS strips GPS EXIF from imported images unless the app holds
+        // ACCESS_MEDIA_LOCATION. Ask for it first, then open the picker either way — the
+        // import warns if the location turns out to be unreadable.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !hasMediaLocationPermission()) {
+            ActivityCompat.requestPermissions(
+                    mainActivity,
+                    new String[]{Manifest.permission.ACCESS_MEDIA_LOCATION},
+                    MEDIA_LOCATION_REQUEST_CODE);
+        } else {
+            launchGalleryPicker();
+        }
+    }
+
+    /** Launches the image chooser. Public so the launcher can call it after the permission prompt. */
+    public void launchGalleryPicker() {
         Intent intent = new Intent();
         intent.setType("image/*");
         intent.setAction(Intent.ACTION_GET_CONTENT);
         startActivityForResultAndPause(Intent.createChooser(intent, "Select Picture"), PICK_IMAGE);
+    }
+
+    private boolean hasMediaLocationPermission() {
+        return ContextCompat.checkSelfPermission(
+                mainActivity,
+                Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    public void warnCannotReadImageLocation() {
+        mainActivity.runOnUiThread(() -> {
+            AlertDialog.Builder alertBuilder = new AlertDialog.Builder(mainActivity);
+            alertBuilder.setTitle(s("Image_location_missing_title"))
+                    .setMessage(s("Image_location_missing"))
+                    .setPositiveButton(android.R.string.ok, null);
+            alertBuilder.create().show();
+        });
     }
 
     @Override

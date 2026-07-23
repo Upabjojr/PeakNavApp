@@ -38,6 +38,13 @@ public abstract class NativeScreenCaller {
      */
     public abstract void promptGoToImageLocation(double lat, double lon);
 
+    /**
+     * Tell the user the imported image carries no readable location, so the map cannot
+     * jump to where it was taken. On Android this also happens when the app lacks the
+     * ACCESS_MEDIA_LOCATION permission, which makes the system strip the GPS EXIF.
+     */
+    public abstract void warnCannotReadImageLocation();
+
     public abstract void openAppInfoScreen();
 
     public abstract void openAppTutorial();

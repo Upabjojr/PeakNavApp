@@ -257,9 +257,17 @@ public class PeakNavUtils {
      * native screen caller) whether to navigate to the place it was taken.
      */
     public static void checkImageGpsAndPrompt(byte[] imageBytes) {
+        NativeScreenCaller nativeScreenCaller = getNativeScreenCaller();
+        if (nativeScreenCaller == null) {
+            return;
+        }
         double[] latLon = ExifGpsExtractor.extractLatLon(imageBytes);
-        if (latLon != null && getNativeScreenCaller() != null) {
-            getNativeScreenCaller().promptGoToImageLocation(latLon[0], latLon[1]);
+        if (latLon != null) {
+            nativeScreenCaller.promptGoToImageLocation(latLon[0], latLon[1]);
+        } else {
+            // No coordinates: either the photo has none, or (Android) the location EXIF
+            // was stripped for lack of the ACCESS_MEDIA_LOCATION permission.
+            nativeScreenCaller.warnCannotReadImageLocation();
         }
     }
 

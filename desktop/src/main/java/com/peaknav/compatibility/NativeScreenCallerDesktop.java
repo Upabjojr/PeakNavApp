@@ -182,6 +182,15 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     }
 
     @Override
+    public void warnCannotReadImageLocation() {
+        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                null,
+                s("Image_location_missing"),
+                s("Image_location_missing_title"),
+                JOptionPane.WARNING_MESSAGE));
+    }
+
+    @Override
     public void openAppInfoScreen() {
         Desktop desktop = Desktop.getDesktop();
         try {

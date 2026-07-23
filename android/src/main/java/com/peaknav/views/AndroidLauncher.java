@@ -13,7 +13,10 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.widget.FrameLayout;
 
 import androidx.annotation.Nullable;
@@ -46,6 +49,7 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 
 	public static final String[] CAMERA_PERMISSION = new String[]{Manifest.permission.CAMERA};
 	public static final int CAMERA_REQUEST_CODE = 10;
+	public static final int MEDIA_LOCATION_REQUEST_CODE = 41;
 
 	@Override
 	public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
@@ -69,6 +73,14 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 					runnable.run();
 				}
 			});
+		} else if (requestCode == MEDIA_LOCATION_REQUEST_CODE) {
+			// Open the picker whether or not media-location access was granted. If it was
+			// denied, the import will simply warn that the image location cannot be read.
+			com.peaknav.compatibility.NativeScreenCallerAndroid nsc =
+					(com.peaknav.compatibility.NativeScreenCallerAndroid) getNativeScreenCaller();
+			if (nsc != null) {
+				nsc.launchGalleryPicker();
+			}
 		}
 	}
 
@@ -143,9 +155,22 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 
 		if (requestCode == PICK_IMAGE && resultCode == RESULT_OK
 				&& data != null && data.getData() != null) {
+
+			// Android 10+ redacts the GPS EXIF from the stream it hands back. Ask for the
+			// original bytes so the location survives; this needs ACCESS_MEDIA_LOCATION and
+			// only works for MediaStore uris, so fall back to the plain uri otherwise.
+			Uri imageUri = data.getData();
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+				try {
+					imageUri = MediaStore.setRequireOriginal(imageUri);
+				} catch (Exception ignored) {
+					imageUri = data.getData();
+				}
+			}
+
 			// A deleted file, revoked permission, or corrupt image must fail
 			// gracefully here rather than crash the app.
-			try (InputStream inputStream = getContentResolver().openInputStream(data.getData())) {
+			try (InputStream inputStream = getContentResolver().openInputStream(imageUri)) {
 				if (inputStream == null) {
 					return;
 				}
