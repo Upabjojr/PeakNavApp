@@ -33,8 +33,12 @@ import com.peaknav.viewer.screens.LabelLoading;
 import com.peaknav.viewer.tiles.MapTile;
 import com.peaknav.viewer.tiles.MapTileWelder;
 
+import org.mapsforge.core.util.MercatorProjection;
+
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -172,12 +176,15 @@ public class TileBatchRenderer {
 
         futureStartThreads = executorStartThreads.submit(() -> {
             boolean flag = true;
+            // Every provider a currently-live tile depends on; kept off the eviction list below.
+            Set<TileAndZoomElevFactor> neededProviders = new HashSet<>();
             for (MapTile mapTile : getC().mapTileStorage.getMapTiles()) {
+                TileAndZoomElevFactor tileZoom = mapTile.getMinZoomTileWithElevFactor();
+                neededProviders.add(tileZoom);
                 if (mapTile.getMapTileState() != ELEVATION_DATA_NOT_LOADED)
                     continue;
                 flag = false;
 
-                TileAndZoomElevFactor tileZoom = mapTile.getMinZoomTileWithElevFactor();
                 ElevationImageProvider provider = getC().elevationImageProviderManager.getProviderOrQueueForLoading(tileZoom);
                 if (provider == null) {
                     continue;
@@ -193,6 +200,15 @@ public class TileBatchRenderer {
                 }
 
             }
+            // Bound the provider cache now that we know which providers the live tiles need.
+            // Safe here: this thread is the only one that starts crops, so a provider at
+            // referenceCount 0 has none in flight and none can begin during the sweep.
+            int targetTileX = MercatorProjection.longitudeToTileX(
+                    getC().L.getTargetLongitude(), MapTile.ZOOM_LEVEL_MIN);
+            int targetTileY = MercatorProjection.latitudeToTileY(
+                    getC().L.getTargetLatitude(), MapTile.ZOOM_LEVEL_MIN);
+            getC().elevationImageProviderManager.evictUnneededProviders(
+                    neededProviders, targetTileX, targetTileY);
             if (flag && MapViewerSingleton.getViewerInstance().labelLoading.getState() == LabelLoading.State.LOADING) {
                 MapViewerSingleton.getViewerInstance().labelLoading.setState(LabelLoading.State.LOADED);
             }

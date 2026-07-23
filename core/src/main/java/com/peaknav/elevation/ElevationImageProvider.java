@@ -52,14 +52,19 @@ public class ElevationImageProvider {
         return loaded;
     }
 
-    // TODO: this is never disposed of, should be handled somehow:
     public void dispose() {
         if (referenceCounter.get() > 0) {
             throw new RuntimeException("referenceCounter value is greater than zero."
                     + " There are still MapTile objects referencing to it");
         }
-        // TODO: add disposal code
-        elevationImage.dispose();
+        // A provider whose elevation files were missing never built a storage image.
+        if (elevationImage != null) {
+            elevationImage.dispose();
+        }
+    }
+
+    public int getReferenceCount() {
+        return referenceCounter.get();
     }
 
     public ElevationImageAbstract getElevationImage() {

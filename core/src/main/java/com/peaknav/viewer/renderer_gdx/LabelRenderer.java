@@ -197,6 +197,9 @@ public class LabelRenderer {
     }
 
     private final TextureRegion compassTextureRegion = new TextureRegion();
+    // Reused identity transform for the compass; never mutated, so a single instance is safe
+    // (setTransformMatrix copies the values into the batch). Avoids a per-frame allocation.
+    private final Matrix4 identityMat = new Matrix4();
 
     private void renderCompass() {
 
@@ -213,7 +216,7 @@ public class LabelRenderer {
         } finally {
             shapeRenderer.end();
         }
-        spriteBatch.setTransformMatrix(new Matrix4());
+        spriteBatch.setTransformMatrix(identityMat);
         spriteBatch.begin();
         try {
             compassTextureRegion.setRegion(compassTexture);
