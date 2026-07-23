@@ -52,25 +52,20 @@ public class LabelRenderer {
 
     private void drawWayLabels(int currentAngle, SpriteBatch spriteBatch) {
         //  TODO: in MapViewerScreen there should be only one for-loop over peak data:
-        getC().O.iterateOverDisplayablePois(poiObject -> {
+        // Bucketed by angle, so every POI here already matches currentAngle.
+        getC().O.iterateOverDisplayablePoisForAngle(currentAngle, poiObject -> {
             DrawLabel drawLabel = poiObject.drawLabel;
             if (!drawLabel.isVisible())
                 return;
-            if (drawLabel.drawLabelCategory.rotationAngle != currentAngle) {
-                return;
-            }
             drawLabel.drawOnSpriteBatch(spriteBatch);
         });
     }
 
     private void drawDisplayablePoiVerticalLines(int currentAngle) {
-        getC().O.iterateOverDisplayablePois(poiObject -> {
+        getC().O.iterateOverDisplayablePoisForAngle(currentAngle, poiObject -> {
             DrawLabel drawLabel = poiObject.drawLabel;
             if (!drawLabel.isVisible())
                 return;
-            if (drawLabel.drawLabelCategory.rotationAngle != currentAngle) {
-                return;
-            }
             float upperPos = drawLabel.getScreenLabelY();
             float screenPoiX = drawLabel.getScreenPoiX();
             float screenPoiY = drawLabel.getScreenPoiY();
@@ -80,10 +75,8 @@ public class LabelRenderer {
     }
 
     private void drawDisplayablePoiRectangles(int angle) {
-        getC().O.iterateOverDisplayablePois(poiObject -> {
+        getC().O.iterateOverDisplayablePoisForAngle(angle, poiObject -> {
             if (!poiObject.drawLabel.isVisible())
-                return;
-            if (poiObject.drawLabelCategory.rotationAngle != angle)
                 return;
             if (poiObject.drawLabel.lock.tryLock()) {
                 try {

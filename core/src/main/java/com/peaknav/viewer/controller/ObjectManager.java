@@ -1,9 +1,11 @@
 package com.peaknav.viewer.controller;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -18,6 +20,13 @@ public class ObjectManager {
     private final Set<PoiObject> setOfVisiblePOIs = new HashSet<>(65536);
     private final List<PoiObject> listOfDisplayablePOIs = new ArrayList<>(2048);
     // private final Set<PoiObject> setOfDisplayablePOIs = new HashSet<>();
+
+    // The label renderer draws displayable POIs one label-rotation-angle at a time (each angle
+    // needs its own sprite-batch transform). Rather than rescanning the whole displayable list
+    // once per angle per pass — 3 passes x ~4 angles = up to 12 full scans per frame — the list
+    // is bucketed by rotation angle whenever it is (re)built, so each pass touches only the POIs
+    // it will actually draw. Guarded by lockDisplayable, exactly like listOfDisplayablePOIs.
+    private final Map<Integer, List<PoiObject>> displayableByAngle = new HashMap<>();
 
     // TODO: can we get rid of locks?
     private final ReentrantLock lockVisible = new ReentrantLock();
@@ -75,6 +84,23 @@ public class ObjectManager {
         }
     }
 
+    // Iterate only the displayable POIs whose label rotation angle equals {@code angle}. See
+    // displayableByAngle: this replaces a full-list scan + per-POI angle test with a walk over
+    // just the matching bucket.
+    public void iterateOverDisplayablePoisForAngle(int angle, RunOnPoiObject runnable) {
+        lockDisplayable.lock();
+        try {
+            List<PoiObject> bucket = displayableByAngle.get(angle);
+            if (bucket != null) {
+                for (int i = 0; i < bucket.size(); i++) {
+                    runnable.run(bucket.get(i));
+                }
+            }
+        } finally {
+            lockDisplayable.unlock();
+        }
+    }
+
     public void iterateOverVisiblePoisUnstoppable(RunOnPoiObject runnable) {
         lockVisible.lock();
         for (PoiObject poiObject : listOfVisiblePOIs) {
@@ -98,9 +124,23 @@ public class ObjectManager {
         lockDisplayable.lock();
         listOfDisplayablePOIs.clear();
         // setOfDisplayablePOIs.clear();
+        // Empty the angle buckets but keep the list objects so we don't reallocate every rebuild.
+        for (List<PoiObject> bucket : displayableByAngle.values()) {
+            bucket.clear();
+        }
         if (displayablePois != null) {
             listOfDisplayablePOIs.addAll(displayablePois);
             // setOfDisplayablePOIs.addAll(displayablePois);
+            for (int i = 0; i < displayablePois.size(); i++) {
+                PoiObject poiObject = displayablePois.get(i);
+                int angle = poiObject.drawLabelCategory.rotationAngle;
+                List<PoiObject> bucket = displayableByAngle.get(angle);
+                if (bucket == null) {
+                    bucket = new ArrayList<>();
+                    displayableByAngle.put(angle, bucket);
+                }
+                bucket.add(poiObject);
+            }
         }
         lockDisplayable.unlock();
     }
