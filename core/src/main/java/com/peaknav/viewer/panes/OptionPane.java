@@ -25,6 +25,7 @@ import static com.peaknav.utils.PreferencesManager.UnitSystem.METRIC;
 import static com.peaknav.viewer.imgmapprovider.SatelliteImageProvider.SatelliteProviderOptions;
 
 import com.peaknav.compatibility.NativeScreenCaller;
+import com.peaknav.network.DownloadProvider;
 import com.peaknav.ui.TextFieldsCallback;
 import com.peaknav.viewer.imgmapprovider.SatelliteImageProvider;
 
@@ -83,7 +84,12 @@ public class OptionPane {
         return selectInfoOpts;
     }
 
+    public Table getSelectBoxDownloadSource() {
+        return selectBoxDownloadSrc;
+    }
+
     private final Table selectBoxUnits;
+    private final Table selectBoxDownloadSrc;
 
     public OptionPane(Button optionsButton, float widgetUnitStep) {
         this.optionsButton = optionsButton;
@@ -96,6 +102,7 @@ public class OptionPane {
         buttonWidth = 6.0f*widgetUnitStep;
 
         selectBoxSatSrc = createSatelliteSourceSelectBox();
+        selectBoxDownloadSrc = createDownloadSourceSelectBox();
         selectBoxUnits = createSelectBoxUnitSystem();
         selectInfoOpts = createInfoOptsMenu();
         // tableAppInfo = createTableAppInfo();
@@ -437,6 +444,162 @@ public class OptionPane {
                 });
     }
 
+    private Table createDownloadSourceSelectBox() {
+        Table table = new Table();
+        table.center();
+        table.setFillParent(true);
+        populateDownloadSourceSelectBox(table);
+        table.setVisible(false);
+        return table;
+    }
+
+    /**
+     * (Re)builds the list of map-data (download) sources. They are fallback mirrors, tried in list
+     * order, so there is no selection: each row is just the provider, tap to edit, with a delete
+     * button. "Add" and "Back" sit below and stay reachable even when the list scrolls.
+     */
+    private void populateDownloadSourceSelectBox(Table table) {
+        table.clearChildren();
+
+        List<DownloadProvider> providers = getC().downloadProviderRegistry.getProviders();
+
+        float removeWidth = buttonWidth * REMOVE_BUTTON_WIDTH_FRACTION;
+        float scrollBarWidth = SCROLLBAR_WIDTH_FRACTION * roundButtonSize;
+        float rowHeight = height + padHeight;
+        float wantedHeight = providers.size() * rowHeight;
+        float maxHeight = Gdx.graphics.getHeight() * MAX_PROVIDER_LIST_SCREEN_FRACTION;
+        int visibleRows = Math.max(1, (int) (maxHeight / rowHeight));
+        float listHeight = Math.min(wantedHeight, visibleRows * rowHeight);
+        boolean scrolls = wantedHeight > listHeight;
+        float scrollBarLane = scrolls ? scrollBarWidth + SCROLLBAR_GAP_FRACTION * roundButtonSize : 0f;
+        float nameWidth = buttonWidth - removeWidth - scrollBarLane;
+
+        Table providerList = new Table();
+        providerList.top();
+
+        for (int i = 0; i < providers.size(); i++) {
+            final int index = i;
+            final DownloadProvider provider = providers.get(i);
+
+            TextButton button = getC().widgetGetter.getTextButton(provider.name, false);
+            button.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    promptForEditDownloadProvider(table, index, provider);
+                }
+            });
+            providerList.add(button).width(nameWidth).height(height).padBottom(padHeight);
+
+            TextButton removeButton = getC().widgetGetter.getTextButton("X", false);
+            removeButton.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    getC().downloadProviderRegistry.removeProvider(index);
+                    populateDownloadSourceSelectBox(table);
+                }
+            });
+            providerList.add(removeButton).width(removeWidth).height(height).padBottom(padHeight);
+            providerList.row();
+        }
+
+        ScrollPane.ScrollPaneStyle scrollPaneStyle = new ScrollPane.ScrollPaneStyle();
+        if (scrolls) {
+            TextureRegionDrawable track = getC().widgetTextures.getUniformDrawable(SCROLLBAR_TRACK_COLOR);
+            track.setMinWidth(scrollBarWidth);
+            TextureRegionDrawable knob = getC().widgetTextures.getUniformDrawable(SCROLLBAR_KNOB_COLOR);
+            knob.setMinWidth(scrollBarWidth);
+            scrollPaneStyle.vScroll = track;
+            scrollPaneStyle.vScrollKnob = knob;
+        }
+        ScrollPane scrollPane = new ScrollPane(providerList, scrollPaneStyle);
+        scrollPane.setScrollingDisabled(true, false);
+        scrollPane.setFadeScrollBars(false);
+        scrollPane.setScrollbarsOnTop(true);
+        scrollPane.setOverscroll(false, false);
+
+        table.add(scrollPane)
+                .width(buttonWidth)
+                .height(listHeight)
+                .padBottom(padHeight)
+                .row();
+
+        List<Table> buttons = new ArrayList<>(2);
+
+        WidgetGetter.ImageTextButtonOptionPane addSource = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_download_data.png", s("Add_map_data_source"), false);
+        addSource.addClickListener(() -> promptForCustomDownloadProvider(table));
+        buttons.add(addSource);
+
+        WidgetGetter.ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton("icons/icon_back.png", s("Back"), false);
+        back.addClickListener(() -> {
+            table.setVisible(false);
+            show();
+        });
+        buttons.add(back);
+
+        addButtonsToTable(table, buttons, true);
+    }
+
+    private void promptForCustomDownloadProvider(Table table) {
+        NativeScreenCaller nativeScreenCaller = getNativeScreenCaller();
+        if (nativeScreenCaller == null) {
+            return;
+        }
+        nativeScreenCaller.promptForTextFields(
+                s("Add_map_data_source"),
+                new String[]{s("Provider_name"), s("Elevation_base_url"), s("Map_data_base_url")},
+                new String[]{"", "", ""},
+                new TextFieldsCallback() {
+                    @Override
+                    public void onEntered(String[] values) {
+                        String error = getC().downloadProviderRegistry.addProvider(values[0], values[1], values[2]);
+                        Gdx.app.postRunnable(() -> {
+                            if (error != null) {
+                                nativeScreenCaller.makeToast(error);
+                                return;
+                            }
+                            populateDownloadSourceSelectBox(table);
+                        });
+                    }
+
+                    @Override
+                    public void onCancelled() {
+                    }
+                });
+    }
+
+    private void promptForEditDownloadProvider(Table table, int index, DownloadProvider provider) {
+        NativeScreenCaller nativeScreenCaller = getNativeScreenCaller();
+        if (nativeScreenCaller == null) {
+            return;
+        }
+        nativeScreenCaller.promptForTextFields(
+                s("Edit_map_data_source"),
+                new String[]{s("Provider_name"), s("Elevation_base_url"), s("Map_data_base_url")},
+                new String[]{
+                        provider.name == null ? "" : provider.name,
+                        provider.elevationBaseUrl == null ? "" : provider.elevationBaseUrl,
+                        provider.mapDataBaseUrl == null ? "" : provider.mapDataBaseUrl},
+                new TextFieldsCallback() {
+                    @Override
+                    public void onEntered(String[] values) {
+                        String error = getC().downloadProviderRegistry
+                                .updateProvider(index, values[0], values[1], values[2]);
+                        Gdx.app.postRunnable(() -> {
+                            if (error != null) {
+                                nativeScreenCaller.makeToast(error);
+                                return;
+                            }
+                            populateDownloadSourceSelectBox(table);
+                        });
+                    }
+
+                    @Override
+                    public void onCancelled() {
+                    }
+                });
+    }
+
     private Table createSelectBoxUnitSystem() {
         Table table = new Table();
         table.center();
@@ -599,7 +762,19 @@ public class OptionPane {
                 mapApp.mapViewerScreen.optionPane.hide();
             }
         });
-        buttons.add(buttonMapDataDownload);
+        Table tableMapData = new Table();
+        tableMapData.add(buttonMapDataDownload).width(buttonWidth * 0.8f);
+        TextButton buttonMapDataSources = getC().widgetGetter.getTextButton("...", false);
+        buttonMapDataSources.addListener(new ChangeListener() {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                populateDownloadSourceSelectBox(selectBoxDownloadSrc);
+                selectBoxDownloadSrc.setVisible(true);
+                table.setVisible(false);
+            }
+        });
+        tableMapData.add(buttonMapDataSources).width(buttonWidth * 0.2f).height(height);
+        buttons.add(tableMapData);
 
         TextButton buttonUnits = getC().widgetGetter.getTextButton(s("Units"), false);
         buttonUnits.addListener(new ChangeListener() {
@@ -718,6 +893,7 @@ public class OptionPane {
             tableOneColumn.setVisible(true);
         }
         selectBoxSatSrc.setVisible(false);
+        selectBoxDownloadSrc.setVisible(false);
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
         // tableAppInfo.setVisible(false);
@@ -729,6 +905,7 @@ public class OptionPane {
         table.setVisible(false);
         tableOneColumn.setVisible(false);
         selectBoxSatSrc.setVisible(false);
+        selectBoxDownloadSrc.setVisible(false);
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
         // tableAppInfo.setVisible(false);

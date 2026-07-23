@@ -363,6 +363,7 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(optionPane.getTable());
 		stage.addActor(optionPane.getTableOneColumn());
 		stage.addActor(optionPane.getSelectBoxSatelliteSource());
+		stage.addActor(optionPane.getSelectBoxDownloadSource());
 		stage.addActor(optionPane.getSelectBoxUnits());
 		stage.addActor(optionPane.getSelectInfoOpts());
 		// stage.addActor(optionPane.getTableAppInfo());

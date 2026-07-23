@@ -1,6 +1,8 @@
 package com.peaknav.viewer.imgmapprovider;
 
-import com.badlogic.gdx.Preferences;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.peaknav.config.ProviderStore;
 import com.peaknav.viewer.imgmapprovider.SatelliteImageProvider.SatelliteProviderOptions;
 
 import java.util.ArrayList;
@@ -9,55 +11,79 @@ import java.util.List;
 /**
  * The satellite sources offered in the options menu: the built-in ones plus any the user added.
  *
- * <p>Custom providers are stored as plain indexed preference keys rather than as one serialised
- * blob, so a URL, name or attribution containing separators or quotes cannot corrupt the list.
+ * <p>The user's custom sources are persisted as JSON (see {@link com.peaknav.config.JsonConfigStore}),
+ * in {@value #CONFIG_FILE} alongside the map-data providers.
  */
 public class SatelliteProviderRegistry {
 
-    private static final String CUSTOM_COUNT = "satellite_custom_count";
-    private static final String CUSTOM_URL = "satellite_custom_url_";
-    private static final String CUSTOM_NAME = "satellite_custom_name_";
-    private static final String CUSTOM_ATTRIBUTION = "satellite_custom_attribution_";
+    public static final String CONFIG_FILE = "imagery_providers.json";
 
     /** Ids of custom providers are prefixed so they can never collide with an enum name. */
     private static final String CUSTOM_ID_PREFIX = "custom:";
 
-    private final Preferences preferences;
+    private final ProviderStore store;
     private final List<SatelliteImageProvider> customProviders = new ArrayList<>();
 
-    public SatelliteProviderRegistry(Preferences preferences) {
-        this.preferences = preferences;
+    public SatelliteProviderRegistry(ProviderStore store) {
+        this.store = store;
         load();
+    }
+
+    /** The plain shape persisted per custom provider. Public no-arg + fields for Gson. */
+    private static class Entry {
+        String url;
+        String name;
+        String attribution;
+
+        Entry() {
+        }
+
+        Entry(String url, String name, String attribution) {
+            this.url = url;
+            this.name = name;
+            this.attribution = attribution;
+        }
     }
 
     private void load() {
         customProviders.clear();
-        int count = preferences.getInteger(CUSTOM_COUNT, 0);
-        for (int i = 0; i < count; i++) {
-            String url = preferences.getString(CUSTOM_URL + i, "");
-            String name = preferences.getString(CUSTOM_NAME + i, "");
-            String attribution = preferences.getString(CUSTOM_ATTRIBUTION + i, "");
-            if (url.isEmpty() || SatelliteUrlTemplate.validate(url) != null) {
-                // Skip anything that no longer parses instead of breaking the whole options menu.
-                continue;
+        String json = store.read();
+        if (json == null) {
+            return;
+        }
+        try {
+            Entry[] entries = new Gson().fromJson(json, Entry[].class);
+            if (entries != null) {
+                for (Entry entry : entries) {
+                    addFromEntry(entry);
+                }
             }
-            if (name.isEmpty()) {
-                name = hostOf(url);
-            }
-            customProviders.add(SatelliteImageProvider.custom(
-                    CUSTOM_ID_PREFIX + url, url, name, attribution));
+        } catch (RuntimeException ignored) {
+            // Corrupt file: start with no custom providers rather than breaking the menu.
         }
     }
 
-    private void save() {
-        preferences.putInteger(CUSTOM_COUNT, customProviders.size());
-        for (int i = 0; i < customProviders.size(); i++) {
-            SatelliteImageProvider provider = customProviders.get(i);
-            preferences.putString(CUSTOM_URL + i, provider.getUrlTemplate());
-            preferences.putString(CUSTOM_NAME + i, provider.getProviderName());
-            preferences.putString(CUSTOM_ATTRIBUTION + i, provider.getRawCopyrightNotice());
+    private void addFromEntry(Entry entry) {
+        if (entry == null || entry.url == null) {
+            return;
         }
-        preferences.flush();
+        String url = entry.url;
+        if (url.isEmpty() || SatelliteUrlTemplate.validate(url) != null) {
+            // Skip anything that no longer parses instead of breaking the whole options menu.
+            return;
+        }
+        String name = (entry.name == null || entry.name.isEmpty()) ? hostOf(url) : entry.name;
+        String attribution = entry.attribution == null ? "" : entry.attribution;
+        customProviders.add(SatelliteImageProvider.custom(CUSTOM_ID_PREFIX + url, url, name, attribution));
+    }
+
+    private void save() {
+        List<Entry> entries = new ArrayList<>();
+        for (SatelliteImageProvider provider : customProviders) {
+            entries.add(new Entry(provider.getUrlTemplate(), provider.getProviderName(),
+                    provider.getRawCopyrightNotice()));
+        }
+        store.write(new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(entries));
     }
 
     /** Built-in providers first, then the user's own, in the order they were added. */
@@ -120,11 +146,34 @@ public class SatelliteProviderRegistry {
                 break;
             }
         }
-        // Indexed keys are rewritten from scratch, so drop the now unused trailing entry.
-        preferences.remove(CUSTOM_URL + customProviders.size());
-        preferences.remove(CUSTOM_NAME + customProviders.size());
-        preferences.remove(CUSTOM_ATTRIBUTION + customProviders.size());
         save();
+    }
+
+    /**
+     * One-time import of custom providers that an older version stored in preferences. The
+     * supplied entries (url, name, attribution triples) are added only when the JSON file has
+     * none yet, so it never clobbers newer data.
+     *
+     * @return true if anything was imported (the caller may then clear the old preference keys)
+     */
+    public boolean importIfEmpty(List<String[]> legacyEntries) {
+        if (!customProviders.isEmpty() || legacyEntries == null || legacyEntries.isEmpty()) {
+            return false;
+        }
+        boolean imported = false;
+        for (String[] entry : legacyEntries) {
+            if (entry == null || entry.length < 1) {
+                continue;
+            }
+            addFromEntry(new Entry(entry[0],
+                    entry.length > 1 ? entry[1] : null,
+                    entry.length > 2 ? entry[2] : null));
+            imported = true;
+        }
+        if (imported) {
+            save();
+        }
+        return imported;
     }
 
     /** Falls back to a readable label when the user does not supply a name. */

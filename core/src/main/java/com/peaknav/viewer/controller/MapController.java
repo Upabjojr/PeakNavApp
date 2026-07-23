@@ -14,6 +14,8 @@ import com.peaknav.database.LuceneGeonameSearch;
 import com.peaknav.database.MapSqlite;
 import com.peaknav.database.MissingDataDownloader;
 import com.peaknav.elevation.ElevationImageProviderManager;
+import com.peaknav.config.JsonConfigStore;
+import com.peaknav.network.DownloadProviderRegistry;
 import com.peaknav.network.OnlineSearch;
 import com.peaknav.network.PeakNavHttpCompressDownloader;
 import com.peaknav.utils.CacheDirManager;
@@ -66,6 +68,7 @@ public class MapController {
     public MapTileStorage mapTileStorage = new MapTileStorage();
 
     public final MissingDataDownloader missingDataDownloader;
+    public final DownloadProviderRegistry downloadProviderRegistry;
     public final StyleSingleton styleSingleton = new StyleSingleton();
     public final WidgetTextures widgetTextures = new WidgetTextures();
 
@@ -96,7 +99,9 @@ public class MapController {
         };
         mapSqlite = loadFactory.getMapSqlite();
 
-        PeakNavHttpCompressDownloader eleDown = new PeakNavHttpCompressDownloader();
+        downloadProviderRegistry = new DownloadProviderRegistry(
+                new JsonConfigStore(DownloadProviderRegistry.CONFIG_FILE));
+        PeakNavHttpCompressDownloader eleDown = new PeakNavHttpCompressDownloader(downloadProviderRegistry);
 
         missingDataDownloader = new MissingDataDownloader(
                 eleDown,

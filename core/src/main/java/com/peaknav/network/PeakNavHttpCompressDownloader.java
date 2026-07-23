@@ -9,55 +9,69 @@ import com.peaknav.utils.PathUtils;
 
 import org.mapsforge.core.model.Tile;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
+/**
+ * Turns queued tiles into the URLs they can be downloaded from. Each tile maps to a
+ * provider-independent relative path (its {@code objectKey}); the actual URLs are that
+ * path appended to each configured {@link DownloadProvider}'s base URL, in order, so the
+ * caller can try one after another (see {@link DownloadProviderRegistry}).
+ */
 public class PeakNavHttpCompressDownloader {
-    String prefixElev = "https://huggingface.co/datasets/PeakNav/global-elevation-aster-slippy-tiles-tar-gz/resolve/main/";
-    String prefixMapFolderData = "https://huggingface.co/datasets/PeakNav/global-openstreetmap-extraction-slippy-tiles-tar/resolve/main/";
 
-    public PeakNavHttpCompressDownloader() {
+    private final DownloadProviderRegistry providerRegistry;
+
+    public PeakNavHttpCompressDownloader(DownloadProviderRegistry providerRegistry) {
+        this.providerRegistry = providerRegistry;
     }
 
-    public List<HfDownloadUrl> getHfDownloadUrlList(List<MapSqlite.QueuedTile> queuedTiles) {
-        List<HfDownloadUrl> objects = new LinkedList<>();
+    public List<DownloadTarget> getDownloadTargets(List<MapSqlite.QueuedTile> queuedTiles) {
+        List<DownloadProvider> providers = providerRegistry.getProviders();
+        List<DownloadTarget> targets = new LinkedList<>();
 
         for (MapSqlite.QueuedTile queuedTile : queuedTiles) {
             Tile tile = queuedTile.toTile();
-            String extension;
-            String relativeFilePath;
-            String prefix;
-            if (queuedTile.layer.equals("elev")) {
-                extension = ".tar.gz";
-                relativeFilePath = joinPaths(getElevTileTarGzPath(queuedTile.toTile()));
-                prefix = prefixElev;
+            boolean elevation = queuedTile.layer.equals("elev");
+
+            String objectKey;
+            if (elevation) {
+                objectKey = joinPaths(getElevTileTarGzPath(tile));
             } else {
-                extension = ".tar";
                 String category = queuedTile.pbfLayer.name();
                 String basePath = joinPaths(getMapFolder(), category);
-                relativeFilePath = PathUtils.createRecurrentPathsForOsmTilesInExternal(basePath, tile, extension, category);
-                prefix = prefixMapFolderData;
+                objectKey = PathUtils.createRecurrentPathsForOsmTilesInExternal(basePath, tile, ".tar", category);
             }
-                objects.add(new HfDownloadUrl(prefix, relativeFilePath, queuedTile));
+
+            List<String> candidateUrls = new ArrayList<>(providers.size());
+            for (DownloadProvider provider : providers) {
+                String base = provider.baseUrlFor(elevation);
+                if (base != null) {
+                    candidateUrls.add(base + objectKey);
+                }
+            }
+
+            targets.add(new DownloadTarget(objectKey, candidateUrls, queuedTile));
         }
-        return objects;
+        return targets;
     }
 
-
-    public static class HfDownloadUrl {
-        public final String prefix;
+    /** A single tile to fetch: its local relative path plus the ordered URLs to try for it. */
+    public static class DownloadTarget {
         public final String objectKey;
+        public final List<String> candidateUrls;
         public final MapSqlite.QueuedTile queuedTile;
 
-        public String getUrl() {
-            return prefix + objectKey;
-        }
-
-        public HfDownloadUrl(String prefix, String objectKey, MapSqlite.QueuedTile queuedTile) {
-            this.prefix = prefix;
+        public DownloadTarget(String objectKey, List<String> candidateUrls, MapSqlite.QueuedTile queuedTile) {
             this.objectKey = objectKey;
+            this.candidateUrls = candidateUrls;
             this.queuedTile = queuedTile;
         }
-    }
 
+        /** The first candidate URL, for logging/messages; null when no provider is configured. */
+        public String getUrl() {
+            return candidateUrls.isEmpty() ? null : candidateUrls.get(0);
+        }
+    }
 }

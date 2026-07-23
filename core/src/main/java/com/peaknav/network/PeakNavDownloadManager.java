@@ -178,6 +178,31 @@ public class PeakNavDownloadManager {
     private static final int DOWNLOAD_READ_TIMEOUT_MILLIS = 60_000;
 
     /**
+     * Tries each configured provider's URL in turn until the tile downloads, so extra
+     * providers act as mirrors: if HuggingFace is unreachable, the next one is tried.
+     *
+     * @throws IOException when no provider is configured or every one failed.
+     */
+    private void downloadFromProviders(List<String> candidateUrls, File localFile) throws IOException {
+        if (candidateUrls == null || candidateUrls.isEmpty()) {
+            throw new IOException("No download provider is configured");
+        }
+        IOException lastFailure = null;
+        for (String url : candidateUrls) {
+            try {
+                downloadWithRetries(url, localFile);
+                return;
+            } catch (IOException ex) {
+                lastFailure = ex;
+                if (candidateUrls.size() > 1) {
+                    getLogger().debug(TAG, "provider failed, trying next: " + url + " -> " + ex);
+                }
+            }
+        }
+        throw lastFailure;
+    }
+
+    /**
      * Downloads {@code urlString} to {@code localFile}, retrying transient failures.
      *
      * @throws IOException when every attempt failed; the caller then drops the tile as before.
@@ -227,14 +252,14 @@ public class PeakNavDownloadManager {
 
         Timestamp now = new Timestamp(Calendar.getInstance().getTimeInMillis());
 
-        List<PeakNavHttpCompressDownloader.HfDownloadUrl> urls = eleDown.getHfDownloadUrlList(queuedTiles);
+        List<PeakNavHttpCompressDownloader.DownloadTarget> targets = eleDown.getDownloadTargets(queuedTiles);
 
         final AtomicInteger counterMapData = new AtomicInteger(0);
 
         List<Future<?>> futures = new LinkedList<>();
-        int downloadSize = urls.size();
+        int downloadSize = targets.size();
 
-        for (PeakNavHttpCompressDownloader.HfDownloadUrl hfDownloadUrl : urls) {
+        for (PeakNavHttpCompressDownloader.DownloadTarget target : targets) {
             Future<?> e = downloadExecutor.submit(
                     () -> {
                         boolean ok = false;
@@ -246,10 +271,10 @@ public class PeakNavDownloadManager {
                                 return;
                             }
 
-                            localFile = Gdx.files.external("peaknav_downloads/" + hfDownloadUrl.objectKey).file();
+                            localFile = Gdx.files.external("peaknav_downloads/" + target.objectKey).file();
 
                             if (!localFile.exists()) {
-                                List<String> dirs = Arrays.asList(hfDownloadUrl.objectKey.split("/"));
+                                List<String> dirs = Arrays.asList(target.objectKey.split("/"));
                                 dirs = dirs.subList(0, dirs.size() - 1);
                                 createRecurrentPathsForOsmTilesInExternal(dirs);
 
@@ -258,7 +283,7 @@ public class PeakNavDownloadManager {
                                     localFile.getParentFile().mkdirs();
                                 }
 
-                                downloadWithRetries(hfDownloadUrl.getUrl(), localFile);
+                                downloadFromProviders(target.candidateUrls, localFile);
                             }
 
                             okDownload = true;
@@ -270,12 +295,12 @@ public class PeakNavDownloadManager {
                             throw new RuntimeException(ex);
                         } finally {
                             if (ok) {
-                                mapSqlite.updateDownloadQueueMapDataTimestamp(hfDownloadUrl.queuedTile, now);
+                                mapSqlite.updateDownloadQueueMapDataTimestamp(target.queuedTile, now);
                             } else {
                                 if (localFile != null && localFile.exists()) {
                                     localFile.delete();
                                 }
-                                mapSqlite.removeDownloadQueueMapData(hfDownloadUrl.queuedTile);
+                                mapSqlite.removeDownloadQueueMapData(target.queuedTile);
                             }
                             updateProgressText(counterMapData.incrementAndGet(), downloadSize);
                         }

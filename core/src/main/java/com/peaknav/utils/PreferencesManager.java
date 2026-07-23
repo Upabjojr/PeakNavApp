@@ -35,6 +35,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.math.Vector3;
+import com.peaknav.config.JsonConfigStore;
 import com.peaknav.viewer.imgmapprovider.SatelliteImageProvider;
 import com.peaknav.viewer.imgmapprovider.SatelliteProviderRegistry;
 import com.peaknav.viewer.render_tiles.PixmapLayerName;
@@ -152,7 +153,9 @@ public class PreferencesManager {
         // collectAnonymousStatsPrompted = preferences.getBoolean(COLLECT_ANONYMOUS_STATS_PROMPTED, false);
         locationPermissionDenied = preferences.getBoolean(LOCATION_PERMISSION_DENIED, false);
 
-        satelliteProviderRegistry = new SatelliteProviderRegistry(preferences);
+        satelliteProviderRegistry = new SatelliteProviderRegistry(
+                new JsonConfigStore(SatelliteProviderRegistry.CONFIG_FILE));
+        migrateCustomSatelliteProvidersFromPreferences();
         String satPrefName = preferences.getString(
                 UNDERLAY_IMAGE_PROVIDER, "");
         // The stored value is a provider id: a built-in enum name, or a custom provider's id.
@@ -274,6 +277,34 @@ public class PreferencesManager {
 
     public SatelliteProviderRegistry getSatelliteProviderRegistry() {
         return satelliteProviderRegistry;
+    }
+
+    /**
+     * Older builds stored custom satellite sources as indexed preference keys. Move them into the
+     * JSON registry once (only when it is still empty), then drop the old keys so we do not import
+     * twice or leave stale data behind.
+     */
+    private void migrateCustomSatelliteProvidersFromPreferences() {
+        int count = preferences.getInteger("satellite_custom_count", 0);
+        if (count <= 0) {
+            return;
+        }
+        java.util.List<String[]> legacy = new java.util.ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            legacy.add(new String[]{
+                    preferences.getString("satellite_custom_url_" + i, ""),
+                    preferences.getString("satellite_custom_name_" + i, ""),
+                    preferences.getString("satellite_custom_attribution_" + i, "")});
+        }
+        satelliteProviderRegistry.importIfEmpty(legacy);
+
+        preferences.remove("satellite_custom_count");
+        for (int i = 0; i < count; i++) {
+            preferences.remove("satellite_custom_url_" + i);
+            preferences.remove("satellite_custom_name_" + i);
+            preferences.remove("satellite_custom_attribution_" + i);
+        }
+        preferences.flush();
     }
 
     public void setUnderlayImageProvider(SatelliteProviderOptions uip) {
