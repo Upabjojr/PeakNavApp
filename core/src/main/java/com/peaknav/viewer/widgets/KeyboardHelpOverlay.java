@@ -13,44 +13,54 @@ import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
- * A full-screen overlay that lists the desktop keyboard controls. It is shown from the
- * "?" button (and the "?" key, which activates that same button); a click anywhere, or
- * pressing "?" again, dismisses it. Purely a stage actor, so it needs no native code.
+ * A centred overlay listing the desktop keyboard controls. It is raised when the user
+ * presses a key that has no binding, and dismissed with Esc or a click. Purely a stage
+ * actor, so it needs no native code.
+ *
+ * <p>Text is sized as a fraction of the stage height every time it is shown, so the
+ * panel stays a modest, consistent size on any window instead of being pinned to the
+ * size the app happened to start at.
  */
 public class KeyboardHelpOverlay {
 
+    /** Row text height as a fraction of the stage height; the panel grows from this. */
+    private static final float ROW_HEIGHT_FRACTION = 1f / 26f;
+
     private final Table root;
-    private final float widgetUnitStep;
-    private final Label.LabelStyle keyStyle;
-    private final Label.LabelStyle descStyle;
+    private final Table panel;
+    private final BitmapFont font;
+    private final Label title;
+    private final Label hint;
+    private final List<Label> bodyLabels = new ArrayList<>();
 
     public KeyboardHelpOverlay(float widgetUnitStep) {
-        this.widgetUnitStep = widgetUnitStep;
-
-        // One shared white font (it carries the arrow glyphs); per-label scaling keeps
-        // the panel compact regardless of the font's on-screen size.
-        BitmapFont font = getC().styleSingleton.getBitmapFont();
+        // One shared white font (it carries the arrow glyphs); relayout() rescales the
+        // labels, so the font's own generated size does not matter.
+        font = getC().styleSingleton.getBitmapFont();
         Label.LabelStyle titleStyle = new Label.LabelStyle(font, Color.WHITE);
-        keyStyle = new Label.LabelStyle(font, Color.WHITE);
-        descStyle = new Label.LabelStyle(font, new Color(0.82f, 0.82f, 0.82f, 1f));
+        Label.LabelStyle keyStyle = new Label.LabelStyle(font, Color.WHITE);
+        Label.LabelStyle descStyle = new Label.LabelStyle(font, new Color(0.82f, 0.82f, 0.82f, 1f));
 
-        Table panel = new Table();
+        panel = new Table();
         panel.setBackground(getC().widgetTextures.getUniformDrawable(new Color(0f, 0f, 0f, 0.85f)));
-        panel.pad(widgetUnitStep * 0.6f);
+        panel.pad(widgetUnitStep * 0.5f);
+        panel.defaults().padBottom(widgetUnitStep * 0.1f);
 
-        Label title = new Label(s("Keyboard_controls"), titleStyle);
-        title.setFontScale(0.9f);
-        panel.add(title).colspan(2).center().padBottom(widgetUnitStep * 0.4f).row();
+        title = new Label(s("Keyboard_controls"), titleStyle);
+        panel.add(title).colspan(2).center().padBottom(widgetUnitStep * 0.35f).row();
 
-        addRow(panel, "← → ↑ ↓", s("Aim_view"));
-        addRow(panel, "Page Up / Page Down", s("Change_altitude"));
-        addRow(panel, "+ / -", s("Zoom_in_out"));
-        addRow(panel, "Shift", s("Fine_adjust"));
+        addRow(panel, "← → ↑ ↓   W A S D", s("Aim_view"), keyStyle, descStyle, widgetUnitStep);
+        addRow(panel, "Page Up / Page Down", s("Change_altitude"), keyStyle, descStyle, widgetUnitStep);
+        addRow(panel, "+ / -", s("Zoom_in_out"), keyStyle, descStyle, widgetUnitStep);
+        addRow(panel, "Shift", s("Fine_adjust"), keyStyle, descStyle, widgetUnitStep);
 
-        Label hint = new Label(s("Close_help_hint"), descStyle);
-        hint.setFontScale(0.6f);
-        panel.add(hint).colspan(2).center().padTop(widgetUnitStep * 0.4f).row();
+        hint = new Label(s("Close_help_hint"), descStyle);
+        panel.add(hint).colspan(2).center().padTop(widgetUnitStep * 0.35f).row();
+        bodyLabels.add(hint);
 
         root = new Table();
         root.setFillParent(true);
@@ -70,13 +80,31 @@ public class KeyboardHelpOverlay {
         });
     }
 
-    private void addRow(Table panel, String keys, String desc) {
+    private void addRow(Table panel, String keys, String desc, Label.LabelStyle keyStyle,
+                        Label.LabelStyle descStyle, float widgetUnitStep) {
         Label keyLabel = new Label(keys, keyStyle);
-        keyLabel.setFontScale(0.72f);
         Label descLabel = new Label(desc, descStyle);
-        descLabel.setFontScale(0.72f);
-        panel.add(keyLabel).right().padRight(widgetUnitStep * 0.6f).padBottom(widgetUnitStep * 0.12f);
-        panel.add(descLabel).left().padBottom(widgetUnitStep * 0.12f).row();
+        panel.add(keyLabel).right().padRight(widgetUnitStep * 0.55f);
+        panel.add(descLabel).left().row();
+        bodyLabels.add(keyLabel);
+        bodyLabels.add(descLabel);
+    }
+
+    /** Rescales the text to the current stage height so the panel is a modest fraction of it. */
+    private void relayout() {
+        if (root.getStage() == null) {
+            return;
+        }
+        float rowHeight = root.getStage().getHeight() * ROW_HEIGHT_FRACTION;
+        float scale = rowHeight / font.getLineHeight();
+        title.setFontScale(scale * 1.35f);
+        hint.setFontScale(scale * 0.78f);
+        for (Label label : bodyLabels) {
+            if (label != hint) {
+                label.setFontScale(scale);
+            }
+        }
+        panel.invalidateHierarchy();
     }
 
     public Table getRoot() {
@@ -101,6 +129,7 @@ public class KeyboardHelpOverlay {
         if (!isKeyboardAvailable()) {
             return;
         }
+        relayout();
         root.toFront();
         root.setVisible(true);
     }

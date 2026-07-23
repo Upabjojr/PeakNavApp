@@ -120,6 +120,15 @@ public class MountainInputController extends CameraInputController {
         this.perspectiveCamera = camera;
         this.positionChangeListeners = positionChangeListeners;
         this.mapViewerScreen = mapViewerScreen;
+
+        // CameraInputController ships W/S = fly forward/back and A/D = rotate. That
+        // behaviour is undocumented here and moves the camera through the terrain, so
+        // disable it (no valid keycode is negative) and instead map W/A/S/D onto the
+        // same "aim the view" action as the arrow keys — see setLookKeyPressed().
+        forwardKey = -1;
+        backwardKey = -1;
+        rotateRightKey = -1;
+        rotateLeftKey = -1;
     }
 
     public static MountainInputController getInstance(PerspectiveCameraExt camera, ArrayList<PositionChangeListener> positionChangeListeners, MapViewerScreen mapViewerScreen) {
@@ -204,13 +213,14 @@ public class MountainInputController extends CameraInputController {
     }
 
     private boolean setLookKeyPressed(int keycode, boolean pressed) {
-        if (keycode == lookLeftKey) {
+        // W/A/S/D mirror the arrow keys (up/left/down/right) so both aim the view.
+        if (keycode == lookLeftKey || keycode == Input.Keys.A) {
             lookLeftPressed = pressed;
-        } else if (keycode == lookRightKey) {
+        } else if (keycode == lookRightKey || keycode == Input.Keys.D) {
             lookRightPressed = pressed;
-        } else if (keycode == lookUpKey) {
+        } else if (keycode == lookUpKey || keycode == Input.Keys.W) {
             lookUpPressed = pressed;
-        } else if (keycode == lookDownKey) {
+        } else if (keycode == lookDownKey || keycode == Input.Keys.S) {
             lookDownPressed = pressed;
         } else if (keycode == altitudeUpKey) {
             altitudeUpPressed = pressed;
@@ -278,14 +288,14 @@ public class MountainInputController extends CameraInputController {
         return false;
     }
 
-    /** Keys that drive the camera: arrows, altitude, the slow modifier and inherited WASD. */
+    /** Keys that drive the camera: arrows, W/A/S/D, altitude and the slow modifier. */
     private boolean isCameraKeyBound(int keycode) {
         return keycode == lookLeftKey || keycode == lookRightKey
                 || keycode == lookUpKey || keycode == lookDownKey
+                || keycode == Input.Keys.W || keycode == Input.Keys.A
+                || keycode == Input.Keys.S || keycode == Input.Keys.D
                 || keycode == altitudeUpKey || keycode == altitudeDownKey
-                || keycode == lookSlowKey
-                || keycode == forwardKey || keycode == backwardKey
-                || keycode == rotateRightKey || keycode == rotateLeftKey;
+                || keycode == lookSlowKey;
     }
 
     /** Modifiers and Escape: pressing them alone should not raise the overlay. */
