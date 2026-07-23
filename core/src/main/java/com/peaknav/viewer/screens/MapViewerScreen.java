@@ -34,6 +34,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Window;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 
+import com.badlogic.gdx.utils.Pools;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 
 import com.badlogic.gdx.utils.viewport.FitViewport;
@@ -57,6 +58,7 @@ import com.peaknav.gesture.MountainInputController;
 import com.peaknav.gesture.PositionChangeListener;
 import com.peaknav.utils.Units;
 import com.peaknav.viewer.tiles.MapTile;
+import com.peaknav.viewer.widgets.KeyboardHelpOverlay;
 import com.peaknav.viewer.widgets.WidgetGetter;
 
 
@@ -69,6 +71,7 @@ public class MapViewerScreen implements Screen {
 	public WidgetGetter.TableLocation tableLocation;
 	public Table tableWatermark;
 	public WidgetGetter.TableTool tableTool;
+	private KeyboardHelpOverlay keyboardHelpOverlay;
 
 	public MountainInputController controller;
 	private final float baseFieldOfView;
@@ -256,6 +259,41 @@ public class MapViewerScreen implements Screen {
 		flagTakeSnapshot = true;
 	}
 
+	/**
+	 * Shows the keyboard-controls overlay. Kept separate from the tutorial: it is
+	 * raised when the user presses a key that has no binding (see
+	 * {@link com.peaknav.gesture.MountainInputController}). The overlay is itself gated
+	 * on a hardware keyboard being present, so this is a no-op on touch-only devices.
+	 */
+	public void showKeyboardControls() {
+		if (keyboardHelpOverlay != null) {
+			keyboardHelpOverlay.show();
+		}
+	}
+
+	public void hideKeyboardControls() {
+		if (keyboardHelpOverlay != null) {
+			keyboardHelpOverlay.hide();
+		}
+	}
+
+	public boolean isKeyboardControlsVisible() {
+		return keyboardHelpOverlay != null && keyboardHelpOverlay.isVisible();
+	}
+
+	/**
+	 * Fires the "?" icon button as if it had been clicked, so a keyboard "?" and the
+	 * on-screen button run the exact same action on every platform.
+	 */
+	public void activateHelpButton() {
+		if (tableLocation == null || tableLocation.helpButton == null) {
+			return;
+		}
+		ChangeListener.ChangeEvent changeEvent = Pools.obtain(ChangeListener.ChangeEvent.class);
+		tableLocation.helpButton.fire(changeEvent);
+		Pools.free(changeEvent);
+	}
+
 	private Stage stage;
 	private Stage stageCopyright;
 	private Stage stageNavigationOverview;
@@ -362,6 +400,10 @@ public class MapViewerScreen implements Screen {
 
 		labelLoading = new LabelLoading(widgetUnitStep);
 		stage.addActor(labelLoading.getTableCenterNoData());
+
+		// Added last so its scrim draws on top of every other widget when shown.
+		keyboardHelpOverlay = new KeyboardHelpOverlay(widgetUnitStep);
+		stage.addActor(keyboardHelpOverlay.getRoot());
 
 		labelRenderer = new LabelRenderer(
 				spriteBatch, shapeRenderer, new Texture(Gdx.files.internal("icons/icon_compass.png")),

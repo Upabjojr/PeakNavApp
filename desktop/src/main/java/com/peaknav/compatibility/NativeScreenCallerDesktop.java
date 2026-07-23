@@ -193,7 +193,14 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void openAppTutorial() {
-
+        // Just the tutorial slideshow; the keyboard-controls overlay is separate (raised
+        // in core when an unbound key is pressed). Desktop has no WebView, so — like
+        // openAppInfoScreen — the tutorial is handed to the system browser.
+        try {
+            Desktop.getDesktop().open(Gdx.files.internal("info/app_tutorial.html").file());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private final CurrentLocationListener currentLocationListener = new CurrentLocationListener() {

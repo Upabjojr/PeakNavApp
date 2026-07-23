@@ -44,7 +44,9 @@ public class StyleSingleton {
 
         freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
 
-        freeTypeFontParameter.characters = FreeTypeFontGenerator.DEFAULT_CHARS;
+        // The arrows are appended so the keyboard-controls overlay can label the aim
+        // keys with real glyphs; DEFAULT_CHARS stops at Latin-1 and has none.
+        freeTypeFontParameter.characters = FreeTypeFontGenerator.DEFAULT_CHARS + "←→↑↓";
 
         // freeTypeFontParameter.incremental = true;
         freeTypeFontParameter.size = Math.round(minSize*0.08f);

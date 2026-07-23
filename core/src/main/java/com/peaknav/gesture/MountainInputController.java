@@ -63,6 +63,11 @@ public class MountainInputController extends CameraInputController {
     private boolean lookSlowPressed;
     private boolean altitudeUpPressed;
     private boolean altitudeDownPressed;
+    // Keycode of a possibly-unbound key from keyDown; the overlay is raised at keyUp,
+    // not keyDown. keyUp always follows keyTyped for a real press, so the character
+    // bindings (+ - = ?) have already cleared this by then — a bound key never even
+    // briefly flashes the overlay. -1 means "no candidate".
+    private int unboundCandidateKeycode = -1;
 
     public static class MountainGestureListener extends CameraGestureListener {
         private final Vector2 tmpV1 = new Vector2();
@@ -224,30 +229,87 @@ public class MountainInputController extends CameraInputController {
     @Override
     public boolean keyDown(int keycode) {
         boolean handled = setLookKeyPressed(keycode, true);
+
+        if (mapViewerScreen != null && mapViewerScreen.isKeyboardControlsVisible()) {
+            // While the overlay is up, Escape or any real control dismisses it; keys
+            // with no binding leave it in place, so a hunt-and-peck user keeps seeing it.
+            if (keycode == Input.Keys.ESCAPE || isCameraKeyBound(keycode)) {
+                mapViewerScreen.hideKeyboardControls();
+            }
+        } else if (mapViewerScreen != null
+                && !isCameraKeyBound(keycode)
+                && !isIgnoredForHelp(keycode)) {
+            // Possibly unbound. keyTyped fires next and clears this for the character
+            // bindings (+ - = ?); if it survives to keyUp, the key had no binding.
+            unboundCandidateKeycode = keycode;
+        }
+
         return super.keyDown(keycode) || handled;
     }
 
     /**
-     * Zoom is bound to the typed CHARACTER rather than a physical key, so it is
-     * independent of the keyboard layout: wherever '+', '=' and '-' sit on the user's
-     * keyboard, the OS translates the key to that character and delivers it here. Each
-     * press is one step; holding a key repeats it through the OS key-repeat.
+     * Zoom and help are bound to the typed CHARACTER rather than a physical key, so they
+     * are independent of the keyboard layout: wherever '+', '=', '-' and '?' sit on the
+     * user's keyboard, the OS translates the key to that character and delivers it here.
+     * A bound character also cancels the unbound-key candidate so the overlay is never
+     * raised for it, and dismisses the overlay if it is already shown.
      */
     @Override
     public boolean keyTyped(char character) {
+        boolean bound = true;
         if (character == '+' || character == '=') {
             zoom(zoomStepAmount);
-            return true;
         } else if (character == '-') {
             zoom(-zoomStepAmount);
+        } else if (character == '?' && mapViewerScreen != null) {
+            // The "?" button opens the tutorial (the keyboard help is separate).
+            mapViewerScreen.activateHelpButton();
+        } else {
+            bound = false;
+        }
+
+        if (bound) {
+            unboundCandidateKeycode = -1;
+            if (mapViewerScreen != null) {
+                mapViewerScreen.hideKeyboardControls();
+            }
             return true;
         }
         return false;
     }
 
+    /** Keys that drive the camera: arrows, altitude, the slow modifier and inherited WASD. */
+    private boolean isCameraKeyBound(int keycode) {
+        return keycode == lookLeftKey || keycode == lookRightKey
+                || keycode == lookUpKey || keycode == lookDownKey
+                || keycode == altitudeUpKey || keycode == altitudeDownKey
+                || keycode == lookSlowKey
+                || keycode == forwardKey || keycode == backwardKey
+                || keycode == rotateRightKey || keycode == rotateLeftKey;
+    }
+
+    /** Modifiers and Escape: pressing them alone should not raise the overlay. */
+    private boolean isIgnoredForHelp(int keycode) {
+        return keycode == Input.Keys.SHIFT_LEFT || keycode == Input.Keys.SHIFT_RIGHT
+                || keycode == Input.Keys.CONTROL_LEFT || keycode == Input.Keys.CONTROL_RIGHT
+                || keycode == Input.Keys.ALT_LEFT || keycode == Input.Keys.ALT_RIGHT
+                || keycode == Input.Keys.SYM || keycode == Input.Keys.ESCAPE
+                || keycode == Input.Keys.UNKNOWN;
+    }
+
     @Override
     public boolean keyUp(int keycode) {
         boolean handled = setLookKeyPressed(keycode, false);
+
+        // A key with no binding was pressed and released (keyTyped did not claim it):
+        // reveal the keyboard-controls overlay so the user discovers what the keys do.
+        if (keycode == unboundCandidateKeycode) {
+            unboundCandidateKeycode = -1;
+            if (mapViewerScreen != null) {
+                mapViewerScreen.showKeyboardControls();
+            }
+        }
+
         return super.keyUp(keycode) || handled;
     }
 
@@ -263,6 +325,7 @@ public class MountainInputController extends CameraInputController {
         lookSlowPressed = false;
         altitudeUpPressed = false;
         altitudeDownPressed = false;
+        unboundCandidateKeycode = -1;
     }
 
     public static final float FIELD_OF_VIEW_MAX = 135.f;

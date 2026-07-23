@@ -374,6 +374,7 @@ public class WidgetGetter {
     public class TableLocation extends TableContainer {
 
         public final Button optionsButton;
+        public final Button helpButton;
         private final Button hereButton;
         private final TextureRegionDrawable icon_here;
         private final TextureRegionDrawable icon_here_gps;
@@ -535,10 +536,12 @@ public class WidgetGetter {
                     P.getUnderlayImageProvider().getCopyrightNotice(), labelStyleVerySmall);
 
             tableBottomRight.add(copyrightLabel).bottom().padRight(0.5f*widgetUnitStep);
-            Button helpButton = getC().widgetTextures.getButtonWithIcon("icons/icon_help.png");
+            helpButton = getC().widgetTextures.getButtonWithIcon("icons/icon_help.png");
             helpButton.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
+                    // The "?" button is the tutorial only. Keyboard controls are a
+                    // separate overlay, shown when an unbound key is pressed.
                     getNativeScreenCaller().openAppTutorial();
                 }
             });
