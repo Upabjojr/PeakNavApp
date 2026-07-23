@@ -479,14 +479,6 @@ public class WidgetGetter {
                     getC().getMapViewerScreen().tableTool.buttonOrientation.setChecked(false);
                     Vector3 impactLifted = mapApp.mapViewerScreen.impact.cpy();
                     impactLifted.z += mapApp.mapViewerScreen.LIFT_ELEV;
-                    mapApp.mapViewerScreen.moveCameraAction.setCameraVectors(
-                            impactLifted,
-                            mapApp.mapViewerScreen.cam.direction,
-                            mapApp.mapViewerScreen.cam.up,
-                            false,
-                            Interpolation.fastSlow,
-                            false
-                    );
                     Vector3 newDir = mapApp.mapViewerScreen.cam.direction.cpy().scl(-1);
                     // Don't watch too high:
                     final float Z_LIMIT = 0.2f;
@@ -498,13 +490,23 @@ public class WidgetGetter {
                         newDir.y *= scl;
                         // newDir.nor();
                     }
+                    // One combined move that flies to the destination and turns to look at it.
+                    //  - directionStartFraction 0.25: the turn begins a quarter of the way in and
+                    //    runs to the very end, so it is spread over most of the move (gentle).
+                    //  - positionEndFraction 0.6: the camera lands at 60% of the move, so the turn
+                    //    keeps going for a while after arrival.
+                    //  - 2s duration (vs the 1s default): stretches that turn out further, so it
+                    //    rotates slowly rather than whipping around.
                     mapApp.mapViewerScreen.moveCameraAction.setCameraVectors(
-                            null,
+                            impactLifted,
                             newDir,
                             mapApp.mapViewerScreen.cam.up,
                             false,
                             Interpolation.fastSlow,
-                            true
+                            true,
+                            0.25f,
+                            0.6f,
+                            2.0f
                     );
 
                     mapApp.mapViewerScreen.removeImpact();

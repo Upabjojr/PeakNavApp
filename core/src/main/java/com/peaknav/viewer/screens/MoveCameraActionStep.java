@@ -23,6 +23,25 @@ public class MoveCameraActionStep extends TemporalAction {
     private final Vector3 startUp = new Vector3();
 
     private final float DURATION_NORMAL = 1.0f;
+
+    // A fly-to used to slide the camera along a straight line to the destination. These give it a
+    // gentle parabolic arc instead — the camera lifts a bit through the middle of the move and
+    // settles back down at the end, reading as flying over the terrain rather than through it. The
+    // peak lift is a fraction of the horizontal travel (so short hops barely arc and long jumps
+    // arc more), capped so a very long jump doesn't fling the camera into space.
+    private static final float ARC_HEIGHT_FRACTION = 0.28f;
+    private static final float ARC_HEIGHT_MAX = Units.convertMetersToLatits(3000);
+
+    // Fraction of the flight at which the camera starts turning to look at the destination. Before
+    // this the camera keeps its heading while it approaches; the turn then runs over the rest of
+    // the move. 0 means the turn tracks the whole move (the default for every other camera step).
+    private final float directionStartFraction;
+
+    // Fraction of the move at which the position reaches the destination. With this below 1 the
+    // camera lands before the step ends, so the heading (which runs until the very end) keeps
+    // turning for a moment after arrival. 1 means the position tracks the whole move.
+    private final float positionEndFraction;
+
     private final PerspectiveCameraExt cam;
     private final ReentrantReadWriteLock camQueueLock;
 
@@ -54,12 +73,19 @@ public class MoveCameraActionStep extends TemporalAction {
             MoveCameraAction moveCameraAction,
             Vector3 targetPosition, Vector3 targetDirection, Vector3 targetUp,
             boolean immediate, Interpolation interpolation,
-            boolean setLocationAtEnd) {
+            boolean setLocationAtEnd, float directionStartFraction,
+            float positionEndFraction, float durationSeconds) {
         this.moveCameraAction = moveCameraAction;
         this.cam = moveCameraAction.cam;
         this.camQueueLock = moveCameraAction.camQueueLock;
+        this.directionStartFraction = directionStartFraction;
+        this.positionEndFraction = positionEndFraction;
 
         readyForRestart(immediate);
+        // A longer move makes the heading turn (which runs over the whole move) slower.
+        if (!immediate && durationSeconds > 0f) {
+            setDuration(durationSeconds);
+        }
         if (targetPosition != null) {
             this.targetPosition.set(targetPosition);
             movingPosition = true;
@@ -84,12 +110,27 @@ public class MoveCameraActionStep extends TemporalAction {
     protected void update(float percent) {
         camQueueLock.writeLock().lock();
         try {
+            // The position can reach the destination before the step ends: remap progress so it
+            // runs 0->1 over [0, positionEndFraction] and then stays put (the heading keeps going).
+            float posPercent = percent;
+            if (positionEndFraction > 0f && positionEndFraction < 1f) {
+                posPercent = percent / positionEndFraction;
+                if (posPercent > 1f) posPercent = 1f;
+            }
             if (movingPosition)
-                cam.position.set(getPercentage(percent, startPosition, targetPosition));
+                cam.position.set(getPercentage(posPercent, startPosition, targetPosition));
+            // The heading (direction + up) can lag the move and then catch up: remap progress so it
+            // stays at 0 until directionStartFraction, then runs 0->1 over the remaining stretch.
+            float dirPercent = percent;
+            if (directionStartFraction > 0f && directionStartFraction < 1f) {
+                dirPercent = (percent - directionStartFraction) / (1f - directionStartFraction);
+                if (dirPercent < 0f) dirPercent = 0f;
+                else if (dirPercent > 1f) dirPercent = 1f;
+            }
             if (movingDirection)
-                cam.direction.set(getPercentageDir(percent, startDirection, targetDirection));
+                cam.direction.set(getPercentageDir(dirPercent, startDirection, targetDirection));
             if (movingUp)
-                cam.up.set(getPercentageDir(percent, startUp, targetUp));
+                cam.up.set(getPercentageDir(dirPercent, startUp, targetUp));
             if (cam.fieldOfView > FIELD_OF_VIEW_MAX || cam.fieldOfView < FIELD_OF_VIEW_MIN) {
                 cam.resizeFieldOfViewToBounds();
             }
@@ -105,7 +146,19 @@ public class MoveCameraActionStep extends TemporalAction {
         Vector3 tmpTarget = targetV.cpy();
         tmpStart.scl(1-percent);
         tmpTarget.scl(percent);
-        return tmpStart.add(tmpTarget);
+        Vector3 result = tmpStart.add(tmpTarget);
+
+        // Add a parabolic lift on top of the straight interpolation: 4*p*(1-p) is 0 at both ends
+        // and peaks at 1 when p == 0.5, so the camera rises through the middle of the flight and
+        // comes back down for the landing. Scaled by the horizontal distance travelled (and
+        // capped), so it grows with how far you go. Immediate moves run with p == 1, where the
+        // term is 0, so they are unaffected.
+        float dx = targetV.x - startV.x;
+        float dy = targetV.y - startV.y;
+        float horizontal = (float) Math.sqrt(dx * dx + dy * dy);
+        float arcHeight = Math.min(ARC_HEIGHT_FRACTION * horizontal, ARC_HEIGHT_MAX);
+        result.z += arcHeight * 4f * percent * (1 - percent);
+        return result;
     }
 
     private Vector3 getPercentageDir(float percent, Vector3 startV, Vector3 targetV) {

@@ -62,12 +62,34 @@ public class MoveCameraAction extends TemporalAction {
     public synchronized void setCameraVectors(
             Vector3 targetPosition, Vector3 targetDirection, Vector3 targetUp,
             boolean immediate, Interpolation interpolation, boolean setLocationAtEnd) {
+        setCameraVectors(targetPosition, targetDirection, targetUp,
+                immediate, interpolation, setLocationAtEnd, 0f);
+    }
+
+    // directionStartFraction delays the heading change until that fraction of the move (0 = track
+    // the whole move); see MoveCameraActionStep.
+    public synchronized void setCameraVectors(
+            Vector3 targetPosition, Vector3 targetDirection, Vector3 targetUp,
+            boolean immediate, Interpolation interpolation, boolean setLocationAtEnd,
+            float directionStartFraction) {
+        setCameraVectors(targetPosition, targetDirection, targetUp,
+                immediate, interpolation, setLocationAtEnd, directionStartFraction, 1f, 0f);
+    }
+
+    // positionEndFraction lets the position finish before the step does (so the heading keeps
+    // turning after arrival); durationSeconds overrides the move length (0 = default). See
+    // MoveCameraActionStep.
+    public synchronized void setCameraVectors(
+            Vector3 targetPosition, Vector3 targetDirection, Vector3 targetUp,
+            boolean immediate, Interpolation interpolation, boolean setLocationAtEnd,
+            float directionStartFraction, float positionEndFraction, float durationSeconds) {
         if (immediate) {
             steps.clear();
         }
         steps.add(new MoveCameraActionStep(this, targetPosition,
                 targetDirection, targetUp,
-                immediate, interpolation, setLocationAtEnd));
+                immediate, interpolation, setLocationAtEnd,
+                directionStartFraction, positionEndFraction, durationSeconds));
     }
 
     /*
