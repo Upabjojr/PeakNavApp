@@ -491,6 +491,9 @@ public class WidgetGetter {
                         // newDir.nor();
                     }
                     // One combined move that flies to the destination and turns to look at it.
+                    //  - Interpolation.linear: progress is raw time; each phase eases itself in and
+                    //    out (see easeWindow), so both the flight and the turn accelerate from rest
+                    //    and glide to a stop rather than starting or stopping abruptly.
                     //  - directionStartFraction 0.25: the turn begins a quarter of the way in and
                     //    runs to the very end, so it is spread over most of the move (gentle).
                     //  - positionEndFraction 0.6: the camera lands at 60% of the move, so the turn
@@ -502,7 +505,7 @@ public class WidgetGetter {
                             newDir,
                             mapApp.mapViewerScreen.cam.up,
                             false,
-                            Interpolation.fastSlow,
+                            Interpolation.linear,
                             true,
                             0.25f,
                             0.6f,

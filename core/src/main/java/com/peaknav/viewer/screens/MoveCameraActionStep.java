@@ -110,27 +110,28 @@ public class MoveCameraActionStep extends TemporalAction {
     protected void update(float percent) {
         camQueueLock.writeLock().lock();
         try {
-            // The position can reach the destination before the step ends: remap progress so it
-            // runs 0->1 over [0, positionEndFraction] and then stays put (the heading keeps going).
-            float posPercent = percent;
-            if (positionEndFraction > 0f && positionEndFraction < 1f) {
-                posPercent = percent / positionEndFraction;
-                if (posPercent > 1f) posPercent = 1f;
-            }
+            // Position finishes at positionEndFraction (< 1) and holds after. It gets its own
+            // ease-in-out over [0, positionEndFraction] rather than sharing the whole-move curve:
+            // that way it accelerates from rest and eases to a stop exactly at the destination,
+            // instead of being cut off while still moving. When positionEndFraction is 1 (every
+            // other camera move) it just follows the caller's own interpolation.
+            float posEased = (positionEndFraction > 0f && positionEndFraction < 1f)
+                    ? easeWindow(percent, 0f, positionEndFraction)
+                    : percent;
             if (movingPosition)
-                cam.position.set(getPercentage(posPercent, startPosition, targetPosition));
-            // The heading (direction + up) can lag the move and then catch up: remap progress so it
-            // stays at 0 until directionStartFraction, then runs 0->1 over the remaining stretch.
-            float dirPercent = percent;
-            if (directionStartFraction > 0f && directionStartFraction < 1f) {
-                dirPercent = (percent - directionStartFraction) / (1f - directionStartFraction);
-                if (dirPercent < 0f) dirPercent = 0f;
-                else if (dirPercent > 1f) dirPercent = 1f;
-            }
+                cam.position.set(getPercentage(posEased, startPosition, targetPosition));
+
+            // Heading waits until directionStartFraction, then turns over the rest of the move. It
+            // gets its own ease-in-out over [directionStartFraction, 1] so the turn accelerates
+            // from rest and eases to a stop instead of snapping into and out of motion. When
+            // directionStartFraction is 0 it just follows the caller's own interpolation.
+            float dirEased = (directionStartFraction > 0f && directionStartFraction < 1f)
+                    ? easeWindow(percent, directionStartFraction, 1f)
+                    : percent;
             if (movingDirection)
-                cam.direction.set(getPercentageDir(dirPercent, startDirection, targetDirection));
+                cam.direction.set(getPercentageDir(dirEased, startDirection, targetDirection));
             if (movingUp)
-                cam.up.set(getPercentageDir(dirPercent, startUp, targetUp));
+                cam.up.set(getPercentageDir(dirEased, startUp, targetUp));
             if (cam.fieldOfView > FIELD_OF_VIEW_MAX || cam.fieldOfView < FIELD_OF_VIEW_MIN) {
                 cam.resizeFieldOfViewToBounds();
             }
@@ -138,6 +139,16 @@ public class MoveCameraActionStep extends TemporalAction {
         } finally {
             camQueueLock.writeLock().unlock();
         }
+    }
+
+    // Ramp a linear time value from 0 to 1 over [start, end] with an ease-in-out that has zero
+    // velocity at both ends (Interpolation.smooth), so anything driven by it accelerates from rest
+    // and eases to a stop. Held at 0 before the window and 1 after, so a phase given a sub-window
+    // sits still until its turn and then comes cleanly to rest — no sudden starts or stops.
+    private static float easeWindow(float percent, float start, float end) {
+        if (percent <= start) return 0f;
+        if (percent >= end) return 1f;
+        return Interpolation.smooth.apply((percent - start) / (end - start));
     }
 
     private Vector3 getPercentage(float percent, Vector3 startV, Vector3 targetV) {
