@@ -421,6 +421,7 @@ public class OptionPane {
         }
         nativeScreenCaller.promptForTextFields(
                 s("Add_custom_provider"),
+                s("Provider_url_help"),
                 new String[]{s("Provider_URL_template"), s("Provider_name"), s("Provider_attribution")},
                 new String[]{"", "", ""},
                 new TextFieldsCallback() {
@@ -561,6 +562,7 @@ public class OptionPane {
         }
         nativeScreenCaller.promptForTextFields(
                 s("Add_map_data_source"),
+                "",
                 new String[]{s("Provider_name"), s("Elevation_base_url"), s("Map_data_base_url")},
                 new String[]{"", "", ""},
                 new TextFieldsCallback() {
@@ -589,6 +591,7 @@ public class OptionPane {
         }
         nativeScreenCaller.promptForTextFields(
                 s("Edit_map_data_source"),
+                "",
                 new String[]{s("Provider_name"), s("Elevation_base_url"), s("Map_data_base_url")},
                 new String[]{
                         provider.name == null ? "" : provider.name,

@@ -108,12 +108,19 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
 
     @Override
     public void promptForTextFields(
-            String title, String[] labels, String[] initialValues, TextFieldsCallback callback) {
+            String title, String message, String[] labels, String[] initialValues, TextFieldsCallback callback) {
         mainActivity.runOnUiThread(() -> {
             android.widget.LinearLayout layout = new android.widget.LinearLayout(mainActivity);
             layout.setOrientation(android.widget.LinearLayout.VERTICAL);
             int padding = Math.round(16 * mainActivity.getResources().getDisplayMetrics().density);
             layout.setPadding(padding, padding, padding, padding);
+
+            if (message != null && !message.isEmpty()) {
+                android.widget.TextView help = new android.widget.TextView(mainActivity);
+                help.setText(message);
+                help.setPadding(0, 0, 0, padding);
+                layout.addView(help);
+            }
 
             android.widget.EditText[] fields = new android.widget.EditText[labels.length];
             for (int i = 0; i < labels.length; i++) {

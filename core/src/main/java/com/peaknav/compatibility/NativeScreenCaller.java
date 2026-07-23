@@ -68,12 +68,13 @@ public abstract class NativeScreenCaller {
      * Asks the user to fill in one or more text fields in a native dialog.
      *
      * @param title         dialog title
+     * @param message       optional explanatory text shown above the fields (null/empty to omit)
      * @param labels        one label per field, shown next to it
      * @param initialValues initial contents, same length as {@code labels} (entries may be null)
      * @param callback      receives the entered values, or a cancellation
      */
     public abstract void promptForTextFields(
-            String title, String[] labels, String[] initialValues, TextFieldsCallback callback);
+            String title, String message, String[] labels, String[] initialValues, TextFieldsCallback callback);
 
     public abstract long getTotalMemory();
 

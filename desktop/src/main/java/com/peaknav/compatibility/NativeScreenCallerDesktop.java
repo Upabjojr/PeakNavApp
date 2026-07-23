@@ -275,18 +275,31 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void promptForTextFields(
-            String title, String[] labels, String[] initialValues, TextFieldsCallback callback) {
+            String title, String message, String[] labels, String[] initialValues, TextFieldsCallback callback) {
         javax.swing.SwingUtilities.invokeLater(() -> {
-            javax.swing.JPanel panel = new javax.swing.JPanel(
+            javax.swing.JPanel fieldsPanel = new javax.swing.JPanel(
                     new java.awt.GridLayout(labels.length * 2, 1, 0, 2));
             javax.swing.JTextField[] fields = new javax.swing.JTextField[labels.length];
             for (int i = 0; i < labels.length; i++) {
                 String initial = (initialValues != null && i < initialValues.length
                         && initialValues[i] != null) ? initialValues[i] : "";
                 fields[i] = new javax.swing.JTextField(initial, 40);
-                panel.add(new javax.swing.JLabel(labels[i]));
-                panel.add(fields[i]);
+                fieldsPanel.add(new javax.swing.JLabel(labels[i]));
+                fieldsPanel.add(fields[i]);
             }
+
+            javax.swing.JPanel panel = new javax.swing.JPanel(new java.awt.BorderLayout(0, 8));
+            if (message != null && !message.isEmpty()) {
+                // A read-only, wrapped area so the (multi-line) token help sits above the fields.
+                javax.swing.JTextArea help = new javax.swing.JTextArea(message);
+                help.setEditable(false);
+                help.setOpaque(false);
+                help.setLineWrap(true);
+                help.setWrapStyleWord(true);
+                help.setBorder(null);
+                panel.add(help, java.awt.BorderLayout.NORTH);
+            }
+            panel.add(fieldsPanel, java.awt.BorderLayout.CENTER);
 
             int result = javax.swing.JOptionPane.showConfirmDialog(
                     null, panel, title,
