@@ -54,14 +54,16 @@ public class GalleryPickDesktop {
     }
 
     private void setAppBackgroundImage(File imageFile) {
-        Pixmap pixmap = new Pixmap(new FileHandle(imageFile));
-        MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(pixmap);
-
         try {
+            // Go through the shared byte path so the background gets EXIF orientation
+            // applied, exactly as it does on Android.
             byte[] bytes = Files.readAllBytes(imageFile.toPath());
+            PeakNavUtils.setBytesAsBackgroundImage(bytes);
             PeakNavUtils.checkImageGpsAndPrompt(bytes);
         } catch (IOException e) {
-            // Reading the image for GPS metadata failed; the background was still set.
+            // Fall back to decoding straight from the file, without orientation/GPS.
+            Pixmap pixmap = new Pixmap(new FileHandle(imageFile));
+            MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(pixmap);
         }
     }
 }

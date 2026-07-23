@@ -1,15 +1,14 @@
 package com.peaknav.utils;
 
 /**
- * Minimal, dependency-free reader for the GPS coordinates stored in the EXIF
- * metadata of a JPEG image. Works from the raw image bytes so it can be shared
- * across all platforms (desktop / android / ios).
+ * Minimal, dependency-free reader for the bits of JPEG EXIF metadata the app needs:
+ * the GPS coordinates a photo was taken at, and its display orientation. Works from the
+ * raw image bytes so it can be shared across all platforms (desktop / android / ios).
  *
- * Only the handful of tags needed to recover a latitude/longitude are parsed;
- * anything unexpected or malformed makes the extractor return {@code null}
- * rather than throw.
+ * Only the handful of tags required are parsed; anything unexpected or malformed makes
+ * a reader return a safe default ({@code null} / orientation 1) rather than throw.
  */
-public final class ExifGpsExtractor {
+public final class ExifReader {
 
     // JPEG markers
     private static final int MARKER_APP1 = 0xE1;
@@ -17,13 +16,17 @@ public final class ExifGpsExtractor {
     private static final int MARKER_EOI = 0xD9;
 
     // EXIF / TIFF tags
+    private static final int TAG_ORIENTATION = 0x0112;
     private static final int TAG_GPS_IFD = 0x8825;
     private static final int TAG_GPS_LAT_REF = 0x0001;
     private static final int TAG_GPS_LAT = 0x0002;
     private static final int TAG_GPS_LON_REF = 0x0003;
     private static final int TAG_GPS_LON = 0x0004;
 
-    private ExifGpsExtractor() {
+    /** The EXIF "normal" orientation: no rotation or flip needed. */
+    public static final int ORIENTATION_NORMAL = 1;
+
+    private ExifReader() {
     }
 
     /**
@@ -34,23 +37,74 @@ public final class ExifGpsExtractor {
      *         if the image carries no (parseable) GPS information
      */
     public static double[] extractLatLon(byte[] jpeg) {
-        if (jpeg == null || jpeg.length < 4) {
+        int tiff = tiffStartOf(jpeg);
+        if (tiff < 0) {
             return null;
         }
         try {
-            // SOI marker
-            if ((jpeg[0] & 0xFF) != 0xFF || (jpeg[1] & 0xFF) != 0xD8) {
-                return null;
-            }
-            int tiffStart = findExifTiffStart(jpeg);
-            if (tiffStart < 0) {
-                return null;
-            }
-            return parseTiff(jpeg, tiffStart);
+            return parseTiff(jpeg, tiff);
         } catch (Throwable t) {
             // Any malformed/truncated metadata just means "no coordinates".
             return null;
         }
+    }
+
+    /**
+     * Reads the EXIF orientation tag, which tells how the stored pixels must be rotated
+     * or flipped to appear upright — phones usually store portrait photos as landscape
+     * pixels plus this tag. STB (libGDX's decoder) ignores it, so callers must apply it.
+     *
+     * @return an EXIF orientation value 1..8; {@link #ORIENTATION_NORMAL} when absent or unreadable
+     */
+    public static int extractOrientation(byte[] jpeg) {
+        int tiff = tiffStartOf(jpeg);
+        if (tiff < 0) {
+            return ORIENTATION_NORMAL;
+        }
+        try {
+            Boolean little = endianness(jpeg, tiff);
+            if (little == null) {
+                return ORIENTATION_NORMAL;
+            }
+            int ifd0 = (int) read32(jpeg, tiff + 4, little);
+            int value = findShortValue(jpeg, tiff + ifd0, TAG_ORIENTATION, little);
+            return (value >= 1 && value <= 8) ? value : ORIENTATION_NORMAL;
+        } catch (Throwable t) {
+            return ORIENTATION_NORMAL;
+        }
+    }
+
+    /** Validates the JPEG/Exif header and returns the TIFF start offset, or -1. */
+    private static int tiffStartOf(byte[] jpeg) {
+        if (jpeg == null || jpeg.length < 4) {
+            return -1;
+        }
+        try {
+            if ((jpeg[0] & 0xFF) != 0xFF || (jpeg[1] & 0xFF) != 0xD8) { // SOI
+                return -1;
+            }
+            return findExifTiffStart(jpeg);
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** Reads the TIFF byte-order mark: TRUE little-endian, FALSE big-endian, null if invalid. */
+    private static Boolean endianness(byte[] d, int tiff) {
+        int b0 = d[tiff] & 0xFF;
+        int b1 = d[tiff + 1] & 0xFF;
+        boolean little;
+        if (b0 == 'I' && b1 == 'I') {
+            little = true;
+        } else if (b0 == 'M' && b1 == 'M') {
+            little = false;
+        } else {
+            return null;
+        }
+        if (read16(d, tiff + 2, little) != 0x2A) {
+            return null;
+        }
+        return little;
     }
 
     /** Locates the start of the TIFF header inside the APP1/Exif segment. */
@@ -89,21 +143,12 @@ public final class ExifGpsExtractor {
     }
 
     private static double[] parseTiff(byte[] d, int tiff) {
-        int b0 = d[tiff] & 0xFF;
-        int b1 = d[tiff + 1] & 0xFF;
-        boolean little;
-        if (b0 == 'I' && b1 == 'I') {
-            little = true;
-        } else if (b0 == 'M' && b1 == 'M') {
-            little = false;
-        } else {
-            return null;
-        }
-        if (read16(d, tiff + 2, little) != 0x2A) {
+        Boolean little = endianness(d, tiff);
+        if (little == null) {
             return null;
         }
         int ifd0 = (int) read32(d, tiff + 4, little);
-        int gpsOffset = findEntryValue(d, tiff, tiff + ifd0, TAG_GPS_IFD, little);
+        int gpsOffset = findEntryValue(d, tiff + ifd0, TAG_GPS_IFD, little);
         if (gpsOffset <= 0) {
             return null;
         }
@@ -111,12 +156,24 @@ public final class ExifGpsExtractor {
     }
 
     /** Returns the inline LONG value of {@code tag} within the given IFD, or -1. */
-    private static int findEntryValue(byte[] d, int tiff, int ifd, int tag, boolean little) {
+    private static int findEntryValue(byte[] d, int ifd, int tag, boolean little) {
         int count = read16(d, ifd, little);
         for (int i = 0; i < count; i++) {
             int entry = ifd + 2 + i * 12;
             if (read16(d, entry, little) == tag) {
                 return (int) read32(d, entry + 8, little);
+            }
+        }
+        return -1;
+    }
+
+    /** Returns the inline SHORT value of {@code tag} within the given IFD, or -1. */
+    private static int findShortValue(byte[] d, int ifd, int tag, boolean little) {
+        int count = read16(d, ifd, little);
+        for (int i = 0; i < count; i++) {
+            int entry = ifd + 2 + i * 12;
+            if (read16(d, entry, little) == tag) {
+                return read16(d, entry + 8, little);
             }
         }
         return -1;

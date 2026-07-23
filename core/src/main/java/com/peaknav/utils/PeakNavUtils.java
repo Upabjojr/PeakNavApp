@@ -249,7 +249,45 @@ public class PeakNavUtils {
 
     public static void setBytesAsBackgroundImage(byte[] bytesJpeg) {
         Pixmap pixmap = new Pixmap(bytesJpeg, 0, bytesJpeg.length);
+        // libGDX's decoder ignores the EXIF orientation tag, so a portrait photo (stored
+        // as landscape pixels + a rotate tag) would come out sideways. Apply it here.
+        pixmap = applyExifOrientation(pixmap, ExifReader.extractOrientation(bytesJpeg));
         MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(pixmap);
+    }
+
+    /**
+     * Returns a pixmap with the EXIF orientation baked in, disposing the source when a new
+     * one is produced. Orientations 5..8 swap width and height (a quarter turn).
+     */
+    static Pixmap applyExifOrientation(Pixmap src, int orientation) {
+        if (orientation <= ExifReader.ORIENTATION_NORMAL || orientation > 8) {
+            return src;
+        }
+        int w = src.getWidth();
+        int h = src.getHeight();
+        boolean quarterTurn = orientation >= 5; // 5,6,7,8 transpose the axes
+        Pixmap dst = new Pixmap(quarterTurn ? h : w, quarterTurn ? w : h, src.getFormat());
+        dst.setBlending(Pixmap.Blending.None);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int color = src.getPixel(x, y);
+                int nx;
+                int ny;
+                switch (orientation) {
+                    case 2: nx = w - 1 - x; ny = y;             break; // flip horizontal
+                    case 3: nx = w - 1 - x; ny = h - 1 - y;     break; // rotate 180
+                    case 4: nx = x;         ny = h - 1 - y;     break; // flip vertical
+                    case 5: nx = y;         ny = x;             break; // transpose
+                    case 6: nx = h - 1 - y; ny = x;             break; // rotate 90 CW
+                    case 7: nx = h - 1 - y; ny = w - 1 - x;     break; // transverse
+                    case 8: nx = y;         ny = w - 1 - x;     break; // rotate 90 CCW
+                    default: nx = x;        ny = y;             break;
+                }
+                dst.drawPixel(nx, ny, color);
+            }
+        }
+        src.dispose();
+        return dst;
     }
 
     /**
@@ -261,7 +299,7 @@ public class PeakNavUtils {
         if (nativeScreenCaller == null) {
             return;
         }
-        double[] latLon = ExifGpsExtractor.extractLatLon(imageBytes);
+        double[] latLon = ExifReader.extractLatLon(imageBytes);
         if (latLon != null) {
             nativeScreenCaller.promptGoToImageLocation(latLon[0], latLon[1]);
         } else {
