@@ -533,6 +533,12 @@ public class MapViewerScreen implements Screen {
 	private final Vector3 prev_position = new Vector3();
 	private final Matrix4 prev_combined = new Matrix4();
 
+	/** When the camera last rotated, and whether a settle-time overlap pass is still owed. */
+	private long lastCameraRotationMillis = 0L;
+	private boolean overlapSettlePending = false;
+	/** How long the camera must sit still after rotating before the overlap pass is re-run. */
+	private static final long OVERLAP_SETTLE_DELAY_MILLIS = 250L;
+
 	private void clearScreen() {
 		// Sky color (not really necessary, will be reset by GLSL script):
 		Gdx.gl.glClearColor(135/255f, 206/255f, 250/255f, 1);
@@ -618,7 +624,18 @@ public class MapViewerScreen implements Screen {
 				});
 			}
 			prev_combined.set(cam.combined);
+			lastCameraRotationMillis = timeNow;
+			overlapSettlePending = true;
 			flagChange = true;
+		}
+
+		// The rotation overlap pass only fires every few degrees, so a final small turn can
+		// leave labels overlapping once the camera stops. When it has been still briefly, run
+		// one more pass to de-overlap the orientation the user actually landed on.
+		if (overlapSettlePending && !flagChange
+				&& System.currentTimeMillis() - lastCameraRotationMillis > OVERLAP_SETTLE_DELAY_MILLIS) {
+			overlapSettlePending = false;
+			getC().dataRetrieveThreadManager.triggerUpdateVisibilityLabelOverlap();
 		}
 
 		/*

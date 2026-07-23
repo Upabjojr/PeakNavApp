@@ -101,6 +101,24 @@ public class DataRetrieveThreadManager {
         execUpdateVisibilityFull.executeStoppableRunnable(new RunnableUpdateVisibility(C, updateRequests));
     }
 
+    /**
+     * Recomputes the label-overlap pass unconditionally (no rotation threshold). Called once the
+     * camera has settled after rotating, so the final orientation — reached with a turn smaller
+     * than {@link #CAMERA_ROTATION_UPDATE_LIMIT}, which would otherwise be skipped — gets its
+     * labels de-overlapped. Resets the rotation baseline so the next turn is measured from here.
+     */
+    public void triggerUpdateVisibilityLabelOverlap() {
+        Vector3 camDir = C.getMapViewerScreen().cam.direction;
+        prevCameraAngle = Math.atan2(camDir.y, camDir.x);
+
+        updateRequests.add(MapDataUpdateRequest.DATA_VISIBILITY_RECOMPUTE_LABEL_OVERLAP);
+        if (execUpdateVisibilityFull.getQueue().size() >= MAX_PENDING_VISIBILITY_UPDATES) {
+            // Already queued work will pick up the request added above.
+            return;
+        }
+        execUpdateVisibilityFull.executeStoppableRunnable(new RunnableUpdateVisibility(C, updateRequests));
+    }
+
     public void stopRunnableUpdateVisibility() {
         execUpdateVisibilityFull.stopLoopByType(RunnableUpdateVisibility.class);
     }
