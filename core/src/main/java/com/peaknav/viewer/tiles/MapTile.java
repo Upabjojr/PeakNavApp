@@ -81,7 +81,83 @@ public class MapTile {
     }
 
     public void reassignVertices() {
-        mesh.setVertices(vertices);
+        uploadMeshVertices();
+    }
+
+    /** Reused scratch for the sanitised copy sent to the GPU while the skirt is still NaN. */
+    private float[] renderVertices = null;
+
+    /**
+     * Uploads the vertices to the GPU, but with any not-yet-welded skirt — the last mesh row and
+     * column, held at {@code NaN} until a neighbour tile fills them — replaced by their nearest
+     * interior neighbour. Welding relies on those {@code NaN} markers in {@link #vertices}, yet the
+     * GPU turns a {@code NaN} position into a black spike (see it over the sea) or a hole at a tile
+     * seam. Sanitising only the uploaded copy keeps welding correct while keeping that garbage off
+     * screen; for flat sea tiles the skirt collapses onto sea level, which is exactly right.
+     */
+    private void uploadMeshVertices() {
+        if (mesh == null || vertices == null) {
+            return;
+        }
+        float[] upload = vertices;
+        if (hasNanElevation(vertices)) {
+            upload = sanitizeSkirt(vertices);
+        }
+        mesh.setVertices(upload);
+    }
+
+    private static boolean hasNanElevation(float[] v) {
+        for (int i = 2; i < v.length; i += numVertAttributes) {
+            if (Float.isNaN(v[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private float[] sanitizeSkirt(float[] v) {
+        if (renderVertices == null || renderVertices.length != v.length) {
+            renderVertices = new float[v.length];
+        }
+        System.arraycopy(v, 0, renderVertices, 0, v.length);
+
+        int count = v.length / numVertAttributes;
+        // The mesh is square, so the grid width is the root of the vertex count. Deriving it from
+        // the array itself (rather than getWidth()) stays correct whatever the tile's resolution.
+        int width = (int) Math.round(Math.sqrt(count));
+        int last = width - 1;
+        for (int s = 0; s < count; s++) {
+            int dst = s * numVertAttributes;
+            if (!Float.isNaN(renderVertices[dst + 2])) {
+                continue;
+            }
+            int x = s % width;
+            int y = s / width;
+
+            // Step direction from the skirt back into the interior (east and/or north edge).
+            int dx = (x >= last) ? -1 : 0;
+            int dy = (y >= last) ? -1 : 0;
+            int nx = x + dx;
+            int ny = y + dy;
+            int inner1 = (nx + ny * width) * numVertAttributes;
+
+            // Extrapolate the elevation from the two innermost rows so the edge continues the
+            // (round-earth curved) surface rather than repeating the interior height — that keeps
+            // adjacent flat sea tiles meeting flush, so the outline pass finds no false step there.
+            int ix2 = nx + dx;
+            int iy2 = ny + dy;
+            if (ix2 >= 0 && ix2 < width && iy2 >= 0 && iy2 < width) {
+                int inner2 = (ix2 + iy2 * width) * numVertAttributes;
+                renderVertices[dst + 2] = 2f * renderVertices[inner1 + 2] - renderVertices[inner2 + 2];
+            } else {
+                renderVertices[dst + 2] = renderVertices[inner1 + 2];
+            }
+            // The normal only affects shading, so the nearest interior one is plenty.
+            renderVertices[dst + 3] = renderVertices[inner1 + 3];
+            renderVertices[dst + 4] = renderVertices[inner1 + 4];
+            renderVertices[dst + 5] = renderVertices[inner1 + 5];
+        }
+        return renderVertices;
     }
 
     public float[] getMapTileVertices() {
@@ -256,7 +332,7 @@ public class MapTile {
         int numIndices = (getWidth() - 1) * (getHeight() - 1) * 6;
         mesh = new Mesh(true, numVertices, numIndices, getC().staticData.mapTileVertexAttributes);
         mesh.setIndices(elevationImage.getMeshIndices());
-        mesh.setVertices(vertices);
+        uploadMeshVertices();
         buildModelInstance();
     }
 
@@ -372,9 +448,7 @@ public class MapTile {
     public void recomputeNormals() {
         future = getC().executorEleLoad.submit(() -> {
             elevationImage.setVertexNormals(vertices);
-            Gdx.app.postRunnable(() -> {
-                mesh.setVertices(vertices);
-            });
+            Gdx.app.postRunnable(this::uploadMeshVertices);
         });
     }
 
