@@ -22,7 +22,7 @@ public enum DrawLabelCategory {
     // Fill alone cannot separate a label from the map: any fill light enough for black text is
     // within about 1.2:1 of sky or snow in luminance. That job is done by OUTLINE_COLOR, which
     // is drawn as a border around every label box (see DrawLabel.drawRectangle).
-    ALPINE_HUT(0, 25, new Color(126/255f, 214/255f, 140/255f, 1f)),
+    ALPINE_HUT(35, 25, new Color(126/255f, 214/255f, 140/255f, 1f)),
     PEAK(45, 100, new Color(240/255f, 176/255f, 74/255f, 1f)),
     PISTE(0, 0, new Color(214/255f, 214/255f, 222/255f, 1f)),
     PLACE(30, 25, new Color(198/255f, 170/255f, 240/255f, 1f)),
