@@ -39,6 +39,13 @@ public class MountainInputController extends CameraInputController {
      */
     public float altitudeBarsPerSecond = 0.4f;
 
+    /**
+     * Field-of-view change per zoom keypress, in the units {@link #zoom(float)} takes.
+     * zoom() multiplies it by 50 internally, so 0.0015 is about a 7% step; holding the
+     * key lets the OS key-repeat stack the steps up into a smooth zoom.
+     */
+    public float zoomStepAmount = 0.0015f;
+
     public int lookLeftKey = Input.Keys.LEFT;
     public int lookRightKey = Input.Keys.RIGHT;
     public int lookUpKey = Input.Keys.UP;
@@ -46,6 +53,8 @@ public class MountainInputController extends CameraInputController {
     public int lookSlowKey = Input.Keys.SHIFT_LEFT;
     public int altitudeUpKey = Input.Keys.PAGE_UP;
     public int altitudeDownKey = Input.Keys.PAGE_DOWN;
+    // Zoom deliberately has no key fields: it is matched on the typed character in
+    // keyTyped(), which is layout-independent, not on a physical keycode.
 
     private boolean lookLeftPressed;
     private boolean lookRightPressed;
@@ -216,6 +225,24 @@ public class MountainInputController extends CameraInputController {
     public boolean keyDown(int keycode) {
         boolean handled = setLookKeyPressed(keycode, true);
         return super.keyDown(keycode) || handled;
+    }
+
+    /**
+     * Zoom is bound to the typed CHARACTER rather than a physical key, so it is
+     * independent of the keyboard layout: wherever '+', '=' and '-' sit on the user's
+     * keyboard, the OS translates the key to that character and delivers it here. Each
+     * press is one step; holding a key repeats it through the OS key-repeat.
+     */
+    @Override
+    public boolean keyTyped(char character) {
+        if (character == '+' || character == '=') {
+            zoom(zoomStepAmount);
+            return true;
+        } else if (character == '-') {
+            zoom(-zoomStepAmount);
+            return true;
+        }
+        return false;
     }
 
     @Override
