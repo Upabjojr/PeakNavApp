@@ -300,13 +300,22 @@ public class PeakNavUtils {
             return;
         }
         double[] latLon = ExifReader.extractLatLon(imageBytes);
-        if (latLon != null) {
+        if (latLon != null && !isNullIsland(latLon[0], latLon[1])) {
             nativeScreenCaller.promptGoToImageLocation(latLon[0], latLon[1]);
         } else {
-            // No coordinates: either the photo has none, or (Android) the location EXIF
-            // was stripped for lack of the ACCESS_MEDIA_LOCATION permission.
+            // No usable coordinates: the photo has none, its location EXIF was stripped (Android,
+            // without ACCESS_MEDIA_LOCATION), or it is tagged at Null Island (see below).
             nativeScreenCaller.warnCannotReadImageLocation();
         }
+    }
+
+    /**
+     * (0,0) in the Gulf of Guinea — "Null Island" — is the placeholder cameras and apps write when
+     * they have no real fix, so an image tagged there was almost never actually taken there. Treat
+     * anything within ~100 m of it as having no location, rather than flying the map to the ocean.
+     */
+    private static boolean isNullIsland(double lat, double lon) {
+        return Math.abs(lat) < 0.001 && Math.abs(lon) < 0.001;
     }
 
     public static String s(String key) {

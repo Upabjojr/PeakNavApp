@@ -17,6 +17,8 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.widget.FrameLayout;
 
@@ -144,6 +146,117 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		trans.replace(R.id.map_container, fragment);
 		trans.commit();
 
+		// A photo or GPX may have launched us via the share sheet.
+		handleIncomingShare(getIntent());
+	}
+
+	@Override
+	protected void onNewIntent(Intent intent) {
+		super.onNewIntent(intent);
+		// singleTask: a share that arrives while we're already running comes in here.
+		setIntent(intent);
+		handleIncomingShare(intent);
+	}
+
+	private final Handler shareHandler = new Handler(Looper.getMainLooper());
+	private byte[] pendingShareData;
+	private boolean pendingShareIsGpx;
+
+	/**
+	 * Handle an ACTION_SEND / ACTION_VIEW of an image or GPX. The content is read straight away
+	 * (the sender may revoke the URI grant soon), then applied once the map is up.
+	 */
+	private void handleIncomingShare(Intent intent) {
+		if (intent == null) {
+			return;
+		}
+		String action = intent.getAction();
+		Uri uri = null;
+		if (Intent.ACTION_SEND.equals(action)) {
+			uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+		} else if (Intent.ACTION_VIEW.equals(action)) {
+			uri = intent.getData();
+		}
+		if (uri == null) {
+			return;
+		}
+		byte[] data = readShareBytes(uri);
+		if (data == null || data.length == 0) {
+			return;
+		}
+		pendingShareData = data;
+		// The bytes themselves are the reliable signal: JPEG/PNG magic means image, anything else
+		// (GPX is XML text) is treated as a track.
+		pendingShareIsGpx = !looksLikeImage(data);
+		processPendingShare(0);
+	}
+
+	/** Applies the pending share once the map controller and its screen exist, retrying briefly. */
+	private void processPendingShare(final int attempt) {
+		if (pendingShareData == null) {
+			return;
+		}
+		if (getC() == null || getC().getMapViewerScreen() == null) {
+			if (attempt < 60) {
+				shareHandler.postDelayed(() -> processPendingShare(attempt + 1), 250);
+			}
+			return;
+		}
+		byte[] data = pendingShareData;
+		boolean isGpx = pendingShareIsGpx;
+		pendingShareData = null;
+		try {
+			if (isGpx) {
+				getC().gpxManager.loadFromXml(new String(data, java.nio.charset.StandardCharsets.UTF_8));
+			} else {
+				setBytesAsBackgroundImage(data);
+				checkImageGpsAndPrompt(data);
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	private static boolean looksLikeImage(byte[] d) {
+		if (d.length >= 3 && (d[0] & 0xFF) == 0xFF && (d[1] & 0xFF) == 0xD8 && (d[2] & 0xFF) == 0xFF) {
+			return true; // JPEG
+		}
+		return d.length >= 4 && (d[0] & 0xFF) == 0x89 && d[1] == 'P' && d[2] == 'N' && d[3] == 'G'; // PNG
+	}
+
+	private byte[] readShareBytes(Uri uri) {
+		Uri readUri = uri;
+		// On Android 10+ ask for the un-redacted original so an image's GPS EXIF survives; harmless
+		// (and reversible) if the URI isn't a MediaStore item.
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && "content".equals(uri.getScheme())) {
+			try {
+				readUri = MediaStore.setRequireOriginal(uri);
+			} catch (Exception ignored) {
+				readUri = uri;
+			}
+		}
+		byte[] bytes = readAllBytes(readUri);
+		if (bytes == null && readUri != uri) {
+			bytes = readAllBytes(uri); // fall back to the plain URI
+		}
+		return bytes;
+	}
+
+	private byte[] readAllBytes(Uri uri) {
+		try (InputStream inputStream = getContentResolver().openInputStream(uri)) {
+			if (inputStream == null) {
+				return null;
+			}
+			ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+			byte[] chunk = new byte[16384];
+			int numRead;
+			while ((numRead = inputStream.read(chunk, 0, chunk.length)) != -1) {
+				buffer.write(chunk, 0, numRead);
+			}
+			return buffer.toByteArray();
+		} catch (Exception e) {
+			return null;
+		}
 	}
 
 	@Override
