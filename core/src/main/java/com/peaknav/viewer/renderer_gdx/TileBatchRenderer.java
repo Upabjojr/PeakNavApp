@@ -142,6 +142,30 @@ public class TileBatchRenderer {
                             }
                         });
 
+                        // GPX path overlay, painted onto the tile surface (see GpxTileRasterizer).
+                        BaseShader.Uniform u_gpxSet = new BaseShader.Uniform("u_gpxSet");
+                        shader.register(u_gpxSet, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                MapTile.RenderableUserData rud = (MapTile.RenderableUserData) renderable.userData;
+                                shader.program.setUniformi(u_gpxSet.alias, rud.textureGpx != null ? 1 : 0);
+                            }
+                        });
+
+                        BaseShader.Uniform u_textureGpx = new BaseShader.Uniform("u_textureGpx");
+                        TextureDescriptor<Texture> textureDescriptor3 = new TextureDescriptor<>();
+                        shader.register(u_textureGpx, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                Texture texture = ((MapTile.RenderableUserData) renderable.userData).textureGpx;
+                                if (texture == null)
+                                    return;
+                                textureDescriptor3.set(texture, null, null, null, null);
+                                final int unit = shader.context.textureBinder.bind(textureDescriptor3);
+                                shader.set(inputID, unit);
+                            }
+                        });
+
                         return shader;
                     }
                 },
@@ -209,6 +233,12 @@ public class TileBatchRenderer {
                     getC().L.getTargetLatitude(), MapTile.ZOOM_LEVEL_MIN);
             getC().elevationImageProviderManager.evictUnneededProviders(
                     neededProviders, targetTileX, targetTileY);
+            // Paint the GPX paths onto the tiles (cheap once a tile is up to date with the current
+            // paths version; draws newly-loaded tiles and redraws all tiles when paths change).
+            com.peaknav.gpx.GpxTileRasterizer.updateTiles(
+                    getC().mapTileStorage.getMapTiles(),
+                    getC().gpxManager.getTracks(),
+                    getC().gpxManager.getVersion());
             if (flag && MapViewerSingleton.getViewerInstance().labelLoading.getState() == LabelLoading.State.LOADING) {
                 MapViewerSingleton.getViewerInstance().labelLoading.setState(LabelLoading.State.LOADED);
             }

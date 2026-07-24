@@ -7,4 +7,5 @@ public enum PixmapLayerName {
     BASE_ROADS,
     SKI_SLOPES,
     NAVIGATION_LAYER,
+    GPX_PATH,
 }

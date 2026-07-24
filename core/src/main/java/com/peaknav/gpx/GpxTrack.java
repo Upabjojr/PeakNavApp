@@ -6,7 +6,7 @@ import java.util.List;
 /**
  * One continuous path parsed from a GPX file: a track segment ({@code trkseg}) or a route
  * ({@code rte}). Points carry latitude/longitude and, when the file provides it, an elevation in
- * metres; {@link GpxPathRenderer} drapes them onto the terrain either way.
+ * metres; {@link GpxTileRasterizer} paints them onto the map tiles either way.
  */
 public class GpxTrack {
 

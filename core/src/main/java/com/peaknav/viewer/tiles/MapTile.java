@@ -197,6 +197,11 @@ public class MapTile {
     private final Queue<DrawingPair> texturePixmapMap = new LinkedBlockingQueue<>();
     private final Set<PixmapLayerName> textureLayerAdded = new HashSet<>();
 
+    // Version of the GPX paths this tile's GPX_PATH texture was drawn for (see GpxTileRasterizer);
+    // -1 means never drawn, so a tile picks the paths up as it loads.
+    public volatile int gpxVersionDrawn = -1;
+    public volatile boolean hasGpxTexture = false;
+
 
     public MapTileState getMapTileState() {
         return mapTileState;
@@ -371,7 +376,8 @@ public class MapTile {
             return;
         instance.userData = new RenderableUserData(this,
                 textureMap.get(PixmapLayerName.BASE_ROADS),
-                textureMap.get(PixmapLayerName.UNDERLAY_LAYER));
+                textureMap.get(PixmapLayerName.UNDERLAY_LAYER),
+                textureMap.get(PixmapLayerName.GPX_PATH));
     }
 
     public void dispose() {
@@ -490,15 +496,18 @@ public class MapTile {
         public final MapTile mapTile;
         public final Texture textureRoads;
         public final Texture textureSatellite;
+        public final Texture textureGpx;
         // public final Texture textureNormals;
 
         public RenderableUserData(MapTile mapTile,
                                   Texture textureRoads,
-                                  Texture textureSatellite
+                                  Texture textureSatellite,
+                                  Texture textureGpx
                                   ) {
             this.mapTile = mapTile;
             this.textureRoads = textureRoads;
             this.textureSatellite = textureSatellite;
+            this.textureGpx = textureGpx;
         }
 
     }

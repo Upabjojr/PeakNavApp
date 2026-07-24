@@ -15,6 +15,8 @@ varying float distance;
 uniform sampler2D u_textureSatellite;
 uniform sampler2D u_textureSatBlock;
 uniform sampler2D u_textureRoads;
+uniform sampler2D u_textureGpx;
+uniform int u_gpxSet;
 uniform vec4 u_cameraDirection;
 
 // Unit vector pointing towards the sun, in terrain space (x east, y north, z up).
@@ -73,6 +75,12 @@ void main() {
         gl_FragColor = vec4(satellite.rgb * relief, satellite.a);
     } else if (u_whiteBackground == 1) {
         gl_FragColor = vec4(vec3(light), 1.0);
+    }
+
+    // GPX path, painted onto the tile surface (over the lit terrain, under the roads).
+    if (u_gpxSet == 1) {
+        vec4 gpx = texture2D(u_textureGpx, v_texCoord0).rgba;
+        gl_FragColor = gl_FragColor * (1.0 - gpx.a) + gpx * gpx.a;
     }
 
     if (u_roadsSet == 1) {
