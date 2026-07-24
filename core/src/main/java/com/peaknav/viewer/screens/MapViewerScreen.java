@@ -193,11 +193,23 @@ public class MapViewerScreen implements Screen {
 
 		if (pendingGpxFrame != null) {
 			// A GPX was just loaded: instead of dropping the camera on the target, frame the whole
-			// track — elevated and a little behind its start, looking along it toward the end.
+			// track from a high vantage and fly there.
 			GpxFrameRequest request = pendingGpxFrame;
 			pendingGpxFrame = null;
 			applyGpxFraming(request);
+			// Hold the framing: as the destination's tiles stream in, this callback re-fires for
+			// the same target; without this those re-fires would snap the camera onto the target
+			// (with its mid-fly heading) and wreck the framing — worst when coming from far, where
+			// more tiles load. Remember the target so a genuine user move still moves the camera.
+			gpxFrameHoldUntilMs = System.currentTimeMillis() + GPX_FRAME_HOLD_MS;
+			gpxFrameLat = latitude;
+			gpxFrameLon = longitude;
+		} else if (System.currentTimeMillis() < gpxFrameHoldUntilMs
+				&& Math.abs(latitude - gpxFrameLat) < 1e-4
+				&& Math.abs(longitude - gpxFrameLon) < 1e-4) {
+			// Same GPX target re-firing during the fly/settle: leave the framing alone.
 		} else {
+			gpxFrameHoldUntilMs = 0L;
 			moveCameraAction.setCameraVectors(
 					// TODO: which latitude? Why not getC().L.getCurrentTargetLatitude() ?
 					new Vector3((float)convertLonitsToLatits(longitude, latitude),
@@ -230,17 +242,23 @@ public class MapViewerScreen implements Screen {
 
 	/** Seconds of the smooth fly-and-rotate into the GPX framing. */
 	private static final float GPX_FLY_SECONDS = 2.6f;
+	/** Minimum camera height above the track's low point, so the whole path is seen from high up. */
+	private static final float GPX_MIN_HEIGHT_METERS = 5000f;
+	/** How long, after a GPX framing, to ignore re-fired location callbacks for the same target. */
+	private static final long GPX_FRAME_HOLD_MS = 9000L;
+
+	private long gpxFrameHoldUntilMs = 0L;
+	private double gpxFrameLat, gpxFrameLon;
 
 	/**
-	 * Frames the loaded track vertically: the low point at the bottom edge of the screen, the high
-	 * point at the top edge, with the camera about one track-length away from the low point. It
-	 * then flies there smoothly, rotating as it goes rather than snapping.
+	 * Frames the loaded track vertically: the low point on the bottom edge of the screen, the high
+	 * point on the top edge, from a camera at least {@link #GPX_MIN_HEIGHT_METERS} above the low
+	 * point (higher for long tracks). It then flies there smoothly, rotating as it goes.
 	 *
-	 * <p>The camera, the low point and the high point are coplanar (the vertical plane through the
-	 * low point along the low->high heading), so the geometry solves exactly in that plane: with
-	 * the camera a distance L from the low point at elevation angle psi behind it, the look
-	 * direction is fixed to put the low point on the bottom frustum edge, and psi is solved so the
-	 * high point lands on the top edge.
+	 * <p>The camera, low point and high point are coplanar (the vertical plane through the low point
+	 * along the low->high heading), so it solves in that plane: the camera sits at height H behind
+	 * the low point; the look pitch is fixed to put the low point on the bottom frustum edge, and
+	 * the back-distance B is solved so the high point lands on the top edge.
 	 */
 	private void applyGpxFraming(GpxFrameRequest r) {
 		gpxWorld(r.lowLat, r.lowLon, r.lowEleMeters, gpxLowW);
@@ -250,19 +268,9 @@ public class MapViewerScreen implements Screen {
 		float dhy = gpxHighW.y - gpxLowW.y;
 		float dh = (float) Math.sqrt(dhx * dhx + dhy * dhy); // horizontal separation
 		float dz = gpxHighW.z - gpxLowW.z;                   // elevation gain (latits)
-		float dist = (float) Math.sqrt(dh * dh + dz * dz);   // low->high 3D distance
+		float len = (float) Math.sqrt(dh * dh + dz * dz);    // low->high 3D distance
 
-		if (dist < Units.convertMetersToLatits(60)) {
-			// Too small to frame: look at it from a little up and to the south.
-			gpxCamPos.set(gpxLowW.x, gpxLowW.y - Units.convertMetersToLatits(500),
-					gpxLowW.z + Units.convertMetersToLatits(350));
-			gpxLookDir.set(gpxLowW).sub(gpxCamPos).nor();
-			flyToGpxFraming();
-			return;
-		}
-
-		// Horizontal unit direction low->high; if the points sit vertically above each other, just
-		// stand off to the south.
+		// Horizontal heading low->high; if the two are vertically stacked, stand off to the south.
 		float ux, uy;
 		if (dh < 1e-7f) {
 			ux = 0f;
@@ -273,17 +281,16 @@ public class MapViewerScreen implements Screen {
 		}
 
 		float theta = (float) Math.toRadians(cam.fieldOfView); // vertical field of view
-		float psi = solveGpxPsi(dh, dz, dist, theta);          // camera elevation angle behind low
-		float cosP = (float) Math.cos(psi);
-		float sinP = (float) Math.sin(psi);
+		// At least 5000 m above the low point, and higher for a long track so it isn't cramped.
+		float height = Math.max(0.5f * len, Units.convertMetersToLatits(GPX_MIN_HEIGHT_METERS));
+		float back = solveGpxBack(dh, dz, height, theta);
 
-		// One track-length from the low point: back along the heading and lifted by the same order.
-		gpxCamPos.set(gpxLowW.x - ux * (dist * cosP),
-				gpxLowW.y - uy * (dist * cosP),
-				gpxLowW.z + dist * sinP);
+		gpxCamPos.set(gpxLowW.x - ux * back, gpxLowW.y - uy * back, gpxLowW.z + height);
 
-		// Look direction pitched so the low point sits exactly on the bottom frustum edge.
-		float af = -psi + theta * 0.5f;
+		// Look pitch: depression down to the low point, raised by half the FOV so the low point sits
+		// exactly on the bottom frustum edge.
+		float depression = (float) Math.atan2(height, back);
+		float af = -depression + theta * 0.5f;
 		float cosF = (float) Math.cos(af);
 		float sinF = (float) Math.sin(af);
 		gpxLookDir.set(ux * cosF, uy * cosF, sinF).nor();
@@ -298,21 +305,21 @@ public class MapViewerScreen implements Screen {
 	}
 
 	/**
-	 * In the vertical plane, low=(0,0), high=(dh,dz), camera at (-L*cos psi, L*sin psi). With the
-	 * look direction pinned so low is on the bottom edge, the high point lands on the top edge when
-	 * its elevation angle from the camera equals theta - psi. Solve that for psi by bisection.
+	 * With the camera at (-B, H) in the vertical plane (low=(0,0), high=(dh,dz)) and the look pitch
+	 * pinned so the low point is on the bottom edge, the high point lands on the top edge when
+	 * atan2(dz-H, dh+B) + atan2(H, B) = theta. Solve that for the back-distance B by bisection.
 	 */
-	private static float solveGpxPsi(float dh, float dz, float dist, float theta) {
-		float lo = 0.01f;
-		float hi = 1.5f;
-		float glo = gpxPsiResidual(lo, dh, dz, dist, theta);
-		float ghi = gpxPsiResidual(hi, dh, dz, dist, theta);
+	private static float solveGpxBack(float dh, float dz, float height, float theta) {
+		float lo = 1e-6f;
+		float hi = 1.0f; // latits; ~100 km, plenty of range
+		float glo = gpxBackResidual(lo, dh, dz, height, theta);
+		float ghi = gpxBackResidual(hi, dh, dz, height, theta);
 		if ((glo < 0f) == (ghi < 0f)) {
-			return 0.6f; // no bracket in range; a reasonable default elevation angle
+			return height; // no bracket (near-vertical/degenerate): fall back to a 45-degree look
 		}
 		for (int i = 0; i < 40; i++) {
 			float mid = 0.5f * (lo + hi);
-			float gm = gpxPsiResidual(mid, dh, dz, dist, theta);
+			float gm = gpxBackResidual(mid, dh, dz, height, theta);
 			if ((gm < 0f) == (glo < 0f)) {
 				lo = mid;
 				glo = gm;
@@ -323,10 +330,9 @@ public class MapViewerScreen implements Screen {
 		return 0.5f * (lo + hi);
 	}
 
-	private static float gpxPsiResidual(float psi, float dh, float dz, float dist, float theta) {
-		float num = dz - dist * (float) Math.sin(psi);
-		float den = dh + dist * (float) Math.cos(psi);
-		return (float) Math.atan2(num, den) + psi - theta;
+	private static float gpxBackResidual(float back, float dh, float dz, float height, float theta) {
+		return (float) Math.atan2(dz - height, dh + back)
+				+ (float) Math.atan2(height, back) - theta;
 	}
 
 	private void gpxWorld(double lat, double lon, float eleMeters, Vector3 out) {
