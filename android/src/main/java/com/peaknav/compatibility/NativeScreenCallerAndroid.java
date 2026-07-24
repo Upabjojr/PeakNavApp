@@ -8,6 +8,7 @@ import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.views.AndroidLauncher.CAMERA_PERMISSION;
 import static com.peaknav.views.AndroidLauncher.CAMERA_REQUEST_CODE;
 import static com.peaknav.views.AndroidLauncher.MEDIA_LOCATION_REQUEST_CODE;
+import static com.peaknav.views.AndroidLauncher.PICK_GPX;
 import static com.peaknav.views.AndroidLauncher.PICK_IMAGE;
 
 import android.Manifest;
@@ -280,6 +281,17 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         } else {
             launchGalleryPicker();
         }
+    }
+
+    @Override
+    public void pickGpxFile() {
+        // GPX has no single agreed MIME type, so accept any openable document and let the user
+        // pick the .gpx. AndroidLauncher.onActivityResult reads the stream and hands it to the
+        // GpxManager.
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        startActivityForResultAndPause(Intent.createChooser(intent, "Select GPX"), PICK_GPX);
     }
 
     /** Launches the image chooser. Public so the launcher can call it after the permission prompt. */

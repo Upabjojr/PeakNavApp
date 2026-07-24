@@ -51,6 +51,7 @@ public class OptionPane {
     private final float widgetUnitStep;
     private final Table selectBoxSatSrc;
     private final Table selectInfoOpts;
+    private final Table selectGpx;
     private final float buttonWidth;
     private final float height;
     private final float padHeight;
@@ -105,6 +106,7 @@ public class OptionPane {
         selectBoxDownloadSrc = createDownloadSourceSelectBox();
         selectBoxUnits = createSelectBoxUnitSystem();
         selectInfoOpts = createInfoOptsMenu();
+        selectGpx = createGpxMenu();
         // tableAppInfo = createTableAppInfo();
         table = getPreferencesTable(false);
         tableOneColumn = getPreferencesTable(true);
@@ -175,6 +177,10 @@ public class OptionPane {
         return selectBoxSatSrc;
     }
 
+    public Table getSelectGpx() {
+        return selectGpx;
+    }
+
     /* private Table createSatelliteSourceSelectBox2() {
 
         Array<String> options = new Array<>();
@@ -220,6 +226,62 @@ public class OptionPane {
      */
 
     private volatile TextButton prevChecked = null;
+
+    private Table createGpxMenu() {
+        Table table = new Table();
+        table.center();
+        table.setFillParent(true);
+
+        float buttonWidth = this.buttonWidth * 1.2f;
+        List<Table> buttons = new ArrayList<>(8);
+
+        ImageTextButtonOptionPane buttonFile = getC().widgetGetter.getImageTextButton(
+                "icons/icon_map.png", s("Load_gpx_file"), false);
+        buttonFile.addClickListener(() -> {
+            getNativeScreenCaller().pickGpxFile();
+            hide();
+        });
+        buttons.add(buttonFile);
+
+        ImageTextButtonOptionPane buttonUrl = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_download_data.png", s("Load_gpx_url"), false);
+        buttonUrl.addClickListener(() -> {
+            getNativeScreenCaller().promptForTextFields(
+                    s("Load_gpx_url"), s("Gpx_url_prompt"),
+                    new String[]{"URL"}, new String[]{""},
+                    new com.peaknav.ui.TextFieldsCallback() {
+                        @Override
+                        public void onEntered(String[] values) {
+                            if (values != null && values.length > 0) {
+                                getC().gpxManager.loadFromUrl(values[0]);
+                            }
+                        }
+
+                        @Override
+                        public void onCancelled() {
+                        }
+                    });
+            hide();
+        });
+        buttons.add(buttonUrl);
+
+        ImageTextButtonOptionPane buttonClear = getC().widgetGetter.getImageTextButton(
+                "icons/icon_x.png", s("Clear_gpx"), false);
+        buttonClear.addClickListener(() -> getC().gpxManager.clear());
+        buttons.add(buttonClear);
+
+        ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
+                "icons/icon_back.png", s("Back"), false);
+        back.addClickListener(() -> {
+            table.setVisible(false);
+            show();
+        });
+        buttons.add(back);
+
+        addButtonsToTable(table, buttons, true, buttonWidth);
+        table.setVisible(false);
+        return table;
+    }
 
     private Table createInfoOptsMenu() {
         Table table = new Table();
@@ -714,6 +776,16 @@ public class OptionPane {
                 () -> P.setHorizonCompass(checkBoxHorizonCompass.isChecked())));
         buttons.add(checkBoxHorizonCompass);
 
+        // GPX paths: a single entry that opens its own submenu (load file / from URL / clear).
+        ImageTextButtonOptionPane buttonGpxMenu = getC().widgetGetter.getImageTextButton(
+                "icons/icon_map.png", s("Gpx_paths"), false);
+        buttonGpxMenu.addClickListener(() -> {
+            selectGpx.setVisible(true);
+            table.setVisible(false);
+            tableOneColumn.setVisible(false);
+        });
+        buttons.add(buttonGpxMenu);
+
         ImageTextButtonOptionPane checkBoxLayerVisibleBaseRoads = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_roads.png", s("Base_Roads"), true);
         addCheckingStateProperty(checkBoxLayerVisibleBaseRoads, () -> P.isViewerLayerVisibleBaseRoads());
         checkBoxLayerVisibleBaseRoads.addClickListener(() -> changer.execute(() -> {
@@ -920,6 +992,7 @@ public class OptionPane {
         selectBoxDownloadSrc.setVisible(false);
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
+        selectGpx.setVisible(false);
         // tableAppInfo.setVisible(false);
 
         optionsButton.setChecked(true);
@@ -932,6 +1005,7 @@ public class OptionPane {
         selectBoxDownloadSrc.setVisible(false);
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
+        selectGpx.setVisible(false);
         // tableAppInfo.setVisible(false);
         optionsButton.setChecked(false);
         changer.submit(() -> getC().widgetGetter.setCopyrightLabel(

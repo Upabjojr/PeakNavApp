@@ -167,6 +167,43 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     }
 
     @Override
+    public void pickGpxFile() {
+        SwingUtilities.invokeLater(() -> {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
+            chooser.setAcceptAllFileFilterUsed(false);
+            chooser.addChoosableFileFilter(new javax.swing.filechooser.FileFilter() {
+                @Override
+                public boolean accept(java.io.File f) {
+                    return f.isDirectory() || f.getName().toLowerCase().endsWith(".gpx");
+                }
+
+                @Override
+                public String getDescription() {
+                    return "GPX tracks (*.gpx)";
+                }
+            });
+            if (chooser.showOpenDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION) {
+                return;
+            }
+            java.io.File file = chooser.getSelectedFile();
+            if (file == null) {
+                return;
+            }
+            getC().submitExecutorGeneric(() -> {
+                try {
+                    String xml = new String(
+                            java.nio.file.Files.readAllBytes(file.toPath()),
+                            java.nio.charset.StandardCharsets.UTF_8);
+                    getC().gpxManager.loadFromXml(xml);
+                } catch (java.io.IOException e) {
+                    System.err.println("[GPX] could not read " + file + ": " + e.getMessage());
+                }
+            });
+        });
+    }
+
+    @Override
     public void promptGoToImageLocation(double lat, double lon) {
         SwingUtilities.invokeLater(() -> {
             int dialogResult = JOptionPane.showConfirmDialog(

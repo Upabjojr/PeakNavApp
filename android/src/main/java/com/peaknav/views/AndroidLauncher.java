@@ -3,6 +3,7 @@ package com.peaknav.views;
 import static com.peaknav.compatibility.NativeScreenCallerAndroid.showCameraSettingsDialog;
 import static com.peaknav.utils.PeakNavPermissions.LOCATION_REQUEST_CODE;
 import static com.peaknav.utils.PeakNavPermissions.handleLocationPermission;
+import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getLoadFactory;
 import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
 import static com.peaknav.utils.PeakNavUtils.checkImageGpsAndPrompt;
@@ -42,6 +43,7 @@ import java.util.Queue;
 public class AndroidLauncher extends FragmentActivity implements AndroidFragmentApplication.Callbacks {
 
 	public static final int PICK_IMAGE = 324;
+	public static final int PICK_GPX = 325;
 	public Queue<Runnable> locationPermissionCallbacks = new LinkedList();
 	// This variable CANNOT be static, otherwise Android will not deserialize
 	// the graphics contents correctly:
@@ -187,6 +189,26 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 
 				setBytesAsBackgroundImage(b);
 				checkImageGpsAndPrompt(b);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+
+		if (requestCode == PICK_GPX && resultCode == RESULT_OK
+				&& data != null && data.getData() != null) {
+			try (InputStream inputStream = getContentResolver().openInputStream(data.getData())) {
+				if (inputStream == null) {
+					return;
+				}
+				ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+				int numRead;
+				byte[] d = new byte[16384];
+				while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
+					buffer.write(d, 0, numRead);
+				}
+				String xml = new String(buffer.toByteArray(),
+						java.nio.charset.StandardCharsets.UTF_8);
+				getC().gpxManager.loadFromXml(xml);
 			} catch (Exception e) {
 				e.printStackTrace();
 			}

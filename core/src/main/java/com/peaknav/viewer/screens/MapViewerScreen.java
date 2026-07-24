@@ -98,6 +98,7 @@ public class MapViewerScreen implements Screen {
 	private WidgetGetter.TableDownloadData tableDownloadData;
 	public LabelRenderer labelRenderer;
 	private TileBatchRenderer tileBatchRenderer;
+	private com.peaknav.viewer.renderer_gdx.GpxPathRenderer gpxPathRenderer;
 
 	public final MoveCameraAction moveCameraAction = new MoveCameraAction();
 	public volatile ImpactPixmap impactPixmap;
@@ -366,6 +367,7 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(optionPane.getSelectBoxDownloadSource());
 		stage.addActor(optionPane.getSelectBoxUnits());
 		stage.addActor(optionPane.getSelectInfoOpts());
+		stage.addActor(optionPane.getSelectGpx());
 		// stage.addActor(optionPane.getTableAppInfo());
 		optionPane.hide();
 
@@ -460,6 +462,7 @@ public class MapViewerScreen implements Screen {
 		environment.set(new ColorAttribute(ColorAttribute.AmbientLight, amL, amL, amL, 1f));
 
 		tileBatchRenderer = new TileBatchRenderer(cam, environment);
+		gpxPathRenderer = new com.peaknav.viewer.renderer_gdx.GpxPathRenderer();
 
 		resetMultiplexerOnce();
 
@@ -682,6 +685,12 @@ public class MapViewerScreen implements Screen {
 			tileBatchRenderer.render();
 		}
 
+		// Drawn right after the terrain, while its depth buffer is intact, so peaks in front
+		// occlude the loaded GPX paths.
+		if (gpxPathRenderer != null) {
+			gpxPathRenderer.render(cam);
+		}
+
 		// The order of these two cannot be changed, otherwise bad outlines will appear!
 		tileBatchRenderer.renderPseudodistancesGeographical(impactPixmap);
 		tileBatchRenderer.renderPseudodistancesIfNeeded(flagChange);
@@ -804,6 +813,9 @@ public class MapViewerScreen implements Screen {
 	@Override
 	public void dispose() {
 		labelRenderer.dispose();
+		if (gpxPathRenderer != null) {
+			gpxPathRenderer.dispose();
+		}
 	}
 
 	public boolean updateImpact() {

@@ -80,6 +80,7 @@ public class MapController {
     public final MapTilePixmapToTexturesHandler mapTilePixmapToTexturesHandler = new MapTilePixmapToTexturesHandler();
     public final Queue<MapTileWelder> weldingQueue = new LinkedBlockingQueue<>();
     public final OnlineSearch onlineSearch = new OnlineSearch();
+    public final com.peaknav.gpx.GpxManager gpxManager = new com.peaknav.gpx.GpxManager();
     public WidgetGetter widgetGetter = null;
     public CacheDirManager cacheDirManager;
     public LuceneGeonameSearch luceneGeonameSearch;

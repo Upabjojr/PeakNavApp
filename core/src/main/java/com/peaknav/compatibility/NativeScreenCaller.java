@@ -33,6 +33,14 @@ public abstract class NativeScreenCaller {
     public abstract void openGalleryPick();
 
     /**
+     * Open a native file picker for a {@code .gpx} file and hand its text to
+     * {@code getC().gpxManager.loadFromXml(...)}. Platforms without a file picker leave this as a
+     * no-op (the GPX-from-URL option still works everywhere).
+     */
+    public void pickGpxFile() {
+    }
+
+    /**
      * Ask the user whether to navigate to the coordinates a background image was
      * taken at (recovered from its EXIF GPS metadata).
      */
