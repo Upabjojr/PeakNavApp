@@ -251,7 +251,13 @@ public class MapTile {
             DrawingPair pair = texturePixmapMap.remove();
             // TODO: check if satellite provider has changed...
             Texture texture = new Texture(pair.pixmap);
-            texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            // The GPX layer stores an along-track phase in a colour channel; linear filtering would
+            // interpolate across its wraps and smear the flow, so it is sampled nearest-neighbour.
+            if (pair.layer == PixmapLayerName.GPX_PATH) {
+                texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+            } else {
+                texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            }
             PixmapLayerName layer = pair.layer;
             Texture previousTexture = textureMap.get(layer);
             textureMap.put(layer, texture);

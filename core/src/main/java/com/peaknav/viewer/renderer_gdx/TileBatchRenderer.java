@@ -57,6 +57,9 @@ public class TileBatchRenderer {
 
     private final ExecutorService executorMapTileFixer = Executors.newSingleThreadExecutor();
 
+    // Ever-increasing animation clock for the GPX flow, wrapped to keep shader fract() precise.
+    private float gpxTime = 0f;
+
     public TileBatchRenderer(PerspectiveCameraExt camera, Environment environment) {
         this.camera = camera;
         this.environment = environment;
@@ -99,6 +102,15 @@ public class TileBatchRenderer {
                             @Override
                             public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
                                 shader.program.setUniformi(u_sunEnabled.alias, P.isSunShading() ? 1 : 0);
+                            }
+                        });
+
+                        // Drives the animated GPX flow (see fragment_shader.glsl).
+                        BaseShader.Uniform u_time = new BaseShader.Uniform("u_time");
+                        shader.register(u_time, new BaseShader.GlobalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                shader.program.setUniformf(u_time.alias, gpxTime);
                             }
                         });
 
@@ -246,6 +258,10 @@ public class TileBatchRenderer {
     }
 
     public void render() {
+        gpxTime += Gdx.graphics.getDeltaTime();
+        if (gpxTime > 3600f) {
+            gpxTime -= 3600f;
+        }
         drawQueuedMapTiles();
 
         if (getC().mapTileStorage.readyToDispose) {

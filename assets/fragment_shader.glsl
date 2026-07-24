@@ -17,6 +17,8 @@ uniform sampler2D u_textureSatBlock;
 uniform sampler2D u_textureRoads;
 uniform sampler2D u_textureGpx;
 uniform int u_gpxSet;
+// Seconds, ever-increasing (wrapped), for the animated GPX flow. Set from TileBatchRenderer.
+uniform float u_time;
 uniform vec4 u_cameraDirection;
 
 // Unit vector pointing towards the sun, in terrain space (x east, y north, z up).
@@ -77,10 +79,17 @@ void main() {
         gl_FragColor = vec4(vec3(light), 1.0);
     }
 
-    // GPX path, painted onto the tile surface (over the lit terrain, under the roads).
+    // GPX path, painted onto the tile surface (over the lit terrain, under the roads). gpx.r holds
+    // the flow phase (fract of along-track distance / pattern length, encoded by GpxTileRasterizer);
+    // sliding it with time marches a bright comet head along the track toward its end.
     if (u_gpxSet == 1) {
-        vec4 gpx = texture2D(u_textureGpx, v_texCoord0).rgba;
-        gl_FragColor = gl_FragColor * (1.0 - gpx.a) + gpx * gpx.a;
+        vec4 gpx = texture2D(u_textureGpx, v_texCoord0);
+        if (gpx.a > 0.5) {
+            float m = fract(gpx.r - u_time * 0.8);
+            float comet = pow(m, 4.0);
+            vec3 gpxCol = mix(vec3(0.10, 0.45, 0.90), vec3(0.85, 1.0, 0.95), comet);
+            gl_FragColor = vec4(gpxCol, 1.0);
+        }
     }
 
     if (u_roadsSet == 1) {
