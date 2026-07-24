@@ -4,7 +4,12 @@ import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.XmlReader;
 
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.GregorianCalendar;
 import java.util.List;
+import java.util.TimeZone;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Minimal GPX reader built on libGDX's {@link XmlReader} (no extra dependency, works on every
@@ -64,16 +69,46 @@ public final class GpxParser {
             if (lat == null || lon == null) {
                 continue;
             }
+            float ele = 0f;
+            boolean hasEle = false;
             String eleText = childText(pt, "ele");
             if (eleText != null) {
                 try {
-                    track.add(lat, lon, Float.parseFloat(eleText.trim()), true);
-                    continue;
+                    ele = Float.parseFloat(eleText.trim());
+                    hasEle = true;
                 } catch (NumberFormatException ignored) {
-                    // fall through to no-elevation
+                    // leave without elevation
                 }
             }
-            track.add(lat, lon, 0f, false);
+            Long millis = parseTime(childText(pt, "time"));
+            track.add(lat, lon, ele, hasEle,
+                    millis != null ? millis : 0L, millis != null);
+        }
+    }
+
+    // ISO-8601 timestamps as GPX writes them, e.g. 2023-05-01T08:30:00Z or ...+02:00. We only ever
+    // use differences within a track, so the zone offset can be ignored: parsing the calendar
+    // fields as UTC gives consistent, monotonic millis.
+    private static final Pattern TIME_PATTERN = Pattern.compile(
+            "(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})");
+
+    private static Long parseTime(String text) {
+        if (text == null) {
+            return null;
+        }
+        Matcher m = TIME_PATTERN.matcher(text);
+        if (!m.find()) {
+            return null;
+        }
+        try {
+            Calendar c = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
+            c.clear();
+            c.set(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)) - 1,
+                    Integer.parseInt(m.group(3)), Integer.parseInt(m.group(4)),
+                    Integer.parseInt(m.group(5)), Integer.parseInt(m.group(6)));
+            return c.getTimeInMillis();
+        } catch (Exception e) {
+            return null;
         }
     }
 

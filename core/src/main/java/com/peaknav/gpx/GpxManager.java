@@ -68,45 +68,35 @@ public class GpxManager {
     }
 
     /**
-     * Move the map to the just-loaded path so the user can actually see it. We aim at the centre of
-     * its bounding box (the whole path sits around that point) but snap to the nearest actual track
-     * point, so on a C-shaped or looping track the camera still lands on the path rather than in a
-     * gap. Navigation is the same call the search uses, so running it off this thread is fine.
+     * Move the map so the user can survey the just-loaded track. The camera is framed (by
+     * MapViewerScreen, once the location settles) to sit lifted and a little behind the track's
+     * start, looking along it toward the end so both ends fall in view. We target the start so the
+     * terrain around the camera loads. Navigation is the same call the search uses, so running it
+     * off this thread is fine.
      */
     private void goToTracks(List<GpxTrack> tracks) {
-        double minLat = Double.POSITIVE_INFINITY, maxLat = Double.NEGATIVE_INFINITY;
-        double minLon = Double.POSITIVE_INFINITY, maxLon = Double.NEGATIVE_INFINITY;
+        GpxTrack.Point begin = null;
+        GpxTrack.Point end = null;
         for (GpxTrack track : tracks) {
-            for (GpxTrack.Point p : track.getPoints()) {
-                minLat = Math.min(minLat, p.lat);
-                maxLat = Math.max(maxLat, p.lat);
-                minLon = Math.min(minLon, p.lon);
-                maxLon = Math.max(maxLon, p.lon);
+            List<GpxTrack.Point> pts = track.getPoints();
+            if (pts.isEmpty()) {
+                continue;
             }
-        }
-        if (minLat > maxLat) {
-            return; // no points
-        }
-        double centerLat = (minLat + maxLat) / 2.0;
-        double centerLon = (minLon + maxLon) / 2.0;
-
-        GpxTrack.Point nearest = null;
-        double best = Double.POSITIVE_INFINITY;
-        for (GpxTrack track : tracks) {
-            for (GpxTrack.Point p : track.getPoints()) {
-                double dLat = p.lat - centerLat;
-                double dLon = p.lon - centerLon;
-                double d = dLat * dLat + dLon * dLon;
-                if (d < best) {
-                    best = d;
-                    nearest = p;
-                }
+            if (begin == null) {
+                begin = pts.get(0);
             }
+            end = pts.get(pts.size() - 1);
         }
-        if (nearest != null) {
-            // false: don't nag about missing downloads just because we're jumping to a track.
-            getC().L.setCurrentTargetCoords(nearest.lat, nearest.lon, false);
+        if (begin == null || end == null) {
+            return;
         }
+        if (getC().getMapViewerScreen() != null) {
+            getC().getMapViewerScreen().requestGpxFraming(
+                    begin.lat, begin.lon, begin.hasElevation ? begin.eleMeters : Float.NaN,
+                    end.lat, end.lon, end.hasElevation ? end.eleMeters : Float.NaN);
+        }
+        // false: don't nag about missing downloads just because we're jumping to a track.
+        getC().L.setCurrentTargetCoords(begin.lat, begin.lon, false);
     }
 
     /** Download a GPX file over HTTP(S) and load it. Runs on libGDX's HTTP callback thread. */

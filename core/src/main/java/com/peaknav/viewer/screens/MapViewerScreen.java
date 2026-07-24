@@ -99,6 +99,28 @@ public class MapViewerScreen implements Screen {
 	public LabelRenderer labelRenderer;
 	private TileBatchRenderer tileBatchRenderer;
 	private com.peaknav.viewer.renderer_gdx.GpxPathRenderer gpxPathRenderer;
+	private volatile GpxFrameRequest pendingGpxFrame;
+
+	/** Begin/end of a just-loaded GPX, so the next location settle can frame the whole track. */
+	private static final class GpxFrameRequest {
+		final double beginLat, beginLon, endLat, endLon;
+		final float beginEleMeters, endEleMeters; // NaN when the GPX had no elevation
+		GpxFrameRequest(double beginLat, double beginLon, float beginEleMeters,
+						double endLat, double endLon, float endEleMeters) {
+			this.beginLat = beginLat;
+			this.beginLon = beginLon;
+			this.beginEleMeters = beginEleMeters;
+			this.endLat = endLat;
+			this.endLon = endLon;
+			this.endEleMeters = endEleMeters;
+		}
+	}
+
+	public void requestGpxFraming(double beginLat, double beginLon, float beginEleMeters,
+								  double endLat, double endLon, float endEleMeters) {
+		pendingGpxFrame = new GpxFrameRequest(beginLat, beginLon, beginEleMeters,
+				endLat, endLon, endEleMeters);
+	}
 
 	public final MoveCameraAction moveCameraAction = new MoveCameraAction();
 	public volatile ImpactPixmap impactPixmap;
@@ -169,15 +191,23 @@ public class MapViewerScreen implements Screen {
 
 		cam.smoothDirection();
 
-		moveCameraAction.setCameraVectors(
-				// TODO: which latitude? Why not getC().L.getCurrentTargetLatitude() ?
-				new Vector3((float)convertLonitsToLatits(longitude, latitude),
-						(float)latitude,
-						(float)(elevation)),
-				cam.direction,
-				Vector3.Z,
-				true
-		);
+		if (pendingGpxFrame != null) {
+			// A GPX was just loaded: instead of dropping the camera on the target, frame the whole
+			// track — elevated and a little behind its start, looking along it toward the end.
+			GpxFrameRequest request = pendingGpxFrame;
+			pendingGpxFrame = null;
+			applyGpxFraming(request);
+		} else {
+			moveCameraAction.setCameraVectors(
+					// TODO: which latitude? Why not getC().L.getCurrentTargetLatitude() ?
+					new Vector3((float)convertLonitsToLatits(longitude, latitude),
+							(float)latitude,
+							(float)(elevation)),
+					cam.direction,
+					Vector3.Z,
+					true
+			);
+		}
 
 		float percz = convertUnitsZ2ElevationBar((float)elevation);
 		tableTool.sliderElevation.setVisualPercent(percz);
@@ -191,6 +221,57 @@ public class MapViewerScreen implements Screen {
 
 		getC().dataRetrieveThreadManager.triggerUpdateVisibilityPositionChanged();
 
+	}
+
+	private final Vector3 gpxCamPos = new Vector3();
+	private final Vector3 gpxLookDir = new Vector3();
+	private final Vector3 gpxBeginW = new Vector3();
+	private final Vector3 gpxEndW = new Vector3();
+
+	/** Places the camera to survey a whole GPX track: lifted, a bit behind the start, aimed along
+	 *  the track toward the end so both ends fall in view (as far as a fixed framing allows). */
+	private void applyGpxFraming(GpxFrameRequest r) {
+		gpxWorld(r.beginLat, r.beginLon, r.beginEleMeters, gpxBeginW);
+		gpxWorld(r.endLat, r.endLon, r.endEleMeters, gpxEndW);
+
+		float dx = gpxEndW.x - gpxBeginW.x;
+		float dy = gpxEndW.y - gpxBeginW.y;
+		float len = (float) Math.sqrt(dx * dx + dy * dy);
+
+		if (len < Units.convertMetersToLatits(60)) {
+			// Too short to have a heading: look at it from a little up and to the south.
+			gpxCamPos.set(gpxBeginW.x, gpxBeginW.y - Units.convertMetersToLatits(400),
+					gpxBeginW.z + Units.convertMetersToLatits(300));
+			gpxLookDir.set(gpxBeginW).sub(gpxCamPos).nor();
+			moveCameraAction.setCameraVectors(gpxCamPos, gpxLookDir, Vector3.Z, true);
+			return;
+		}
+
+		float ux = dx / len;
+		float uy = dy / len; // horizontal begin->end direction
+		// Stand well back from the start (against the travel direction) and moderately high, so the
+		// camera looks at the starting point with the whole path unfolding ahead into the distance.
+		float back = MathUtils.clamp(0.75f * len,
+				Units.convertMetersToLatits(500), Units.convertMetersToLatits(9000));
+		float height = MathUtils.clamp(0.40f * len,
+				Units.convertMetersToLatits(250), Units.convertMetersToLatits(4000));
+
+		gpxCamPos.set(gpxBeginW.x - ux * back, gpxBeginW.y - uy * back, gpxBeginW.z + height);
+		// Look at the start; the track then runs away from the camera toward the end, in full view.
+		gpxLookDir.set(gpxBeginW).sub(gpxCamPos).nor();
+
+		moveCameraAction.setCameraVectors(gpxCamPos, gpxLookDir, Vector3.Z, true);
+	}
+
+	private void gpxWorld(double lat, double lon, float eleMeters, Vector3 out) {
+		float ele = Float.isNaN(eleMeters)
+				? Units.convertLatitsToMeters((float) getC().L.getCurrentTerrainEle())
+				: eleMeters;
+		float corr = com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(
+				(float) lat, (float) lon);
+		out.set((float) convertLonitsToLatits(lon, lat),
+				(float) lat,
+				Units.convertMetersToLatits(ele) - corr);
 	}
 
 	public void pointCameraForGyroscope(float xDir, float yDir, float zDir,
