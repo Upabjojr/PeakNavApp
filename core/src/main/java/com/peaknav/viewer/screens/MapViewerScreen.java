@@ -101,25 +101,25 @@ public class MapViewerScreen implements Screen {
 	private com.peaknav.viewer.renderer_gdx.GpxPathRenderer gpxPathRenderer;
 	private volatile GpxFrameRequest pendingGpxFrame;
 
-	/** Begin/end of a just-loaded GPX, so the next location settle can frame the whole track. */
+	/** Low/high points of a just-loaded GPX, so the next location settle can frame the track. */
 	private static final class GpxFrameRequest {
-		final double beginLat, beginLon, endLat, endLon;
-		final float beginEleMeters, endEleMeters; // NaN when the GPX had no elevation
-		GpxFrameRequest(double beginLat, double beginLon, float beginEleMeters,
-						double endLat, double endLon, float endEleMeters) {
-			this.beginLat = beginLat;
-			this.beginLon = beginLon;
-			this.beginEleMeters = beginEleMeters;
-			this.endLat = endLat;
-			this.endLon = endLon;
-			this.endEleMeters = endEleMeters;
+		final double lowLat, lowLon, highLat, highLon;
+		final float lowEleMeters, highEleMeters; // NaN when the GPX had no elevation
+		GpxFrameRequest(double lowLat, double lowLon, float lowEleMeters,
+						double highLat, double highLon, float highEleMeters) {
+			this.lowLat = lowLat;
+			this.lowLon = lowLon;
+			this.lowEleMeters = lowEleMeters;
+			this.highLat = highLat;
+			this.highLon = highLon;
+			this.highEleMeters = highEleMeters;
 		}
 	}
 
-	public void requestGpxFraming(double beginLat, double beginLon, float beginEleMeters,
-								  double endLat, double endLon, float endEleMeters) {
-		pendingGpxFrame = new GpxFrameRequest(beginLat, beginLon, beginEleMeters,
-				endLat, endLon, endEleMeters);
+	public void requestGpxFraming(double lowLat, double lowLon, float lowEleMeters,
+								  double highLat, double highLon, float highEleMeters) {
+		pendingGpxFrame = new GpxFrameRequest(lowLat, lowLon, lowEleMeters,
+				highLat, highLon, highEleMeters);
 	}
 
 	public final MoveCameraAction moveCameraAction = new MoveCameraAction();
@@ -225,42 +225,108 @@ public class MapViewerScreen implements Screen {
 
 	private final Vector3 gpxCamPos = new Vector3();
 	private final Vector3 gpxLookDir = new Vector3();
-	private final Vector3 gpxBeginW = new Vector3();
-	private final Vector3 gpxEndW = new Vector3();
+	private final Vector3 gpxLowW = new Vector3();
+	private final Vector3 gpxHighW = new Vector3();
 
-	/** Places the camera to survey a whole GPX track: lifted, a bit behind the start, aimed along
-	 *  the track toward the end so both ends fall in view (as far as a fixed framing allows). */
+	/** Seconds of the smooth fly-and-rotate into the GPX framing. */
+	private static final float GPX_FLY_SECONDS = 2.6f;
+
+	/**
+	 * Frames the loaded track vertically: the low point at the bottom edge of the screen, the high
+	 * point at the top edge, with the camera about one track-length away from the low point. It
+	 * then flies there smoothly, rotating as it goes rather than snapping.
+	 *
+	 * <p>The camera, the low point and the high point are coplanar (the vertical plane through the
+	 * low point along the low->high heading), so the geometry solves exactly in that plane: with
+	 * the camera a distance L from the low point at elevation angle psi behind it, the look
+	 * direction is fixed to put the low point on the bottom frustum edge, and psi is solved so the
+	 * high point lands on the top edge.
+	 */
 	private void applyGpxFraming(GpxFrameRequest r) {
-		gpxWorld(r.beginLat, r.beginLon, r.beginEleMeters, gpxBeginW);
-		gpxWorld(r.endLat, r.endLon, r.endEleMeters, gpxEndW);
+		gpxWorld(r.lowLat, r.lowLon, r.lowEleMeters, gpxLowW);
+		gpxWorld(r.highLat, r.highLon, r.highEleMeters, gpxHighW);
 
-		float dx = gpxEndW.x - gpxBeginW.x;
-		float dy = gpxEndW.y - gpxBeginW.y;
-		float len = (float) Math.sqrt(dx * dx + dy * dy);
+		float dhx = gpxHighW.x - gpxLowW.x;
+		float dhy = gpxHighW.y - gpxLowW.y;
+		float dh = (float) Math.sqrt(dhx * dhx + dhy * dhy); // horizontal separation
+		float dz = gpxHighW.z - gpxLowW.z;                   // elevation gain (latits)
+		float dist = (float) Math.sqrt(dh * dh + dz * dz);   // low->high 3D distance
 
-		if (len < Units.convertMetersToLatits(60)) {
-			// Too short to have a heading: look at it from a little up and to the south.
-			gpxCamPos.set(gpxBeginW.x, gpxBeginW.y - Units.convertMetersToLatits(400),
-					gpxBeginW.z + Units.convertMetersToLatits(300));
-			gpxLookDir.set(gpxBeginW).sub(gpxCamPos).nor();
-			moveCameraAction.setCameraVectors(gpxCamPos, gpxLookDir, Vector3.Z, true);
+		if (dist < Units.convertMetersToLatits(60)) {
+			// Too small to frame: look at it from a little up and to the south.
+			gpxCamPos.set(gpxLowW.x, gpxLowW.y - Units.convertMetersToLatits(500),
+					gpxLowW.z + Units.convertMetersToLatits(350));
+			gpxLookDir.set(gpxLowW).sub(gpxCamPos).nor();
+			flyToGpxFraming();
 			return;
 		}
 
-		float ux = dx / len;
-		float uy = dy / len; // horizontal begin->end direction
-		// Stand well back from the start (against the travel direction) and moderately high, so the
-		// camera looks at the starting point with the whole path unfolding ahead into the distance.
-		float back = MathUtils.clamp(0.75f * len,
-				Units.convertMetersToLatits(500), Units.convertMetersToLatits(9000));
-		float height = MathUtils.clamp(0.40f * len,
-				Units.convertMetersToLatits(250), Units.convertMetersToLatits(4000));
+		// Horizontal unit direction low->high; if the points sit vertically above each other, just
+		// stand off to the south.
+		float ux, uy;
+		if (dh < 1e-7f) {
+			ux = 0f;
+			uy = -1f;
+		} else {
+			ux = dhx / dh;
+			uy = dhy / dh;
+		}
 
-		gpxCamPos.set(gpxBeginW.x - ux * back, gpxBeginW.y - uy * back, gpxBeginW.z + height);
-		// Look at the start; the track then runs away from the camera toward the end, in full view.
-		gpxLookDir.set(gpxBeginW).sub(gpxCamPos).nor();
+		float theta = (float) Math.toRadians(cam.fieldOfView); // vertical field of view
+		float psi = solveGpxPsi(dh, dz, dist, theta);          // camera elevation angle behind low
+		float cosP = (float) Math.cos(psi);
+		float sinP = (float) Math.sin(psi);
 
-		moveCameraAction.setCameraVectors(gpxCamPos, gpxLookDir, Vector3.Z, true);
+		// One track-length from the low point: back along the heading and lifted by the same order.
+		gpxCamPos.set(gpxLowW.x - ux * (dist * cosP),
+				gpxLowW.y - uy * (dist * cosP),
+				gpxLowW.z + dist * sinP);
+
+		// Look direction pitched so the low point sits exactly on the bottom frustum edge.
+		float af = -psi + theta * 0.5f;
+		float cosF = (float) Math.cos(af);
+		float sinF = (float) Math.sin(af);
+		gpxLookDir.set(ux * cosF, uy * cosF, sinF).nor();
+
+		flyToGpxFraming();
+	}
+
+	private void flyToGpxFraming() {
+		// Smooth ease-in-out fly, position and heading interpolating together over the whole move.
+		moveCameraAction.setCameraVectors(gpxCamPos, gpxLookDir, Vector3.Z,
+				false, Interpolation.smooth, false, 0f, 1f, GPX_FLY_SECONDS);
+	}
+
+	/**
+	 * In the vertical plane, low=(0,0), high=(dh,dz), camera at (-L*cos psi, L*sin psi). With the
+	 * look direction pinned so low is on the bottom edge, the high point lands on the top edge when
+	 * its elevation angle from the camera equals theta - psi. Solve that for psi by bisection.
+	 */
+	private static float solveGpxPsi(float dh, float dz, float dist, float theta) {
+		float lo = 0.01f;
+		float hi = 1.5f;
+		float glo = gpxPsiResidual(lo, dh, dz, dist, theta);
+		float ghi = gpxPsiResidual(hi, dh, dz, dist, theta);
+		if ((glo < 0f) == (ghi < 0f)) {
+			return 0.6f; // no bracket in range; a reasonable default elevation angle
+		}
+		for (int i = 0; i < 40; i++) {
+			float mid = 0.5f * (lo + hi);
+			float gm = gpxPsiResidual(mid, dh, dz, dist, theta);
+			if ((gm < 0f) == (glo < 0f)) {
+				lo = mid;
+				glo = gm;
+			} else {
+				hi = mid;
+			}
+		}
+		return 0.5f * (lo + hi);
+	}
+
+	private static float gpxPsiResidual(float psi, float dh, float dz, float dist, float theta) {
+		float num = dz - dist * (float) Math.sin(psi);
+		float den = dh + dist * (float) Math.cos(psi);
+		return (float) Math.atan2(num, den) + psi - theta;
 	}
 
 	private void gpxWorld(double lat, double lon, float eleMeters, Vector3 out) {

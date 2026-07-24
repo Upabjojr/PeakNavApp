@@ -68,35 +68,58 @@ public class GpxManager {
     }
 
     /**
-     * Move the map so the user can survey the just-loaded track. The camera is framed (by
-     * MapViewerScreen, once the location settles) to sit lifted and a little behind the track's
-     * start, looking along it toward the end so both ends fall in view. We target the start so the
-     * terrain around the camera loads. Navigation is the same call the search uses, so running it
-     * off this thread is fine.
+     * Move the map so the user can survey the just-loaded track. MapViewerScreen (once the location
+     * settles) flies the camera to frame the track vertically: the low point at the bottom of the
+     * screen, the high point at the top. "Low" and "high" are the lowest- and highest-elevation
+     * points of the track when it has elevation, otherwise its start and end. We target the low
+     * point so the terrain around the camera loads. Navigation is the same call the search uses, so
+     * running it off this thread is fine.
      */
     private void goToTracks(List<GpxTrack> tracks) {
-        GpxTrack.Point begin = null;
-        GpxTrack.Point end = null;
+        GpxTrack.Point first = null;
+        GpxTrack.Point last = null;
+        GpxTrack.Point lowEle = null;
+        GpxTrack.Point highEle = null;
         for (GpxTrack track : tracks) {
             List<GpxTrack.Point> pts = track.getPoints();
             if (pts.isEmpty()) {
                 continue;
             }
-            if (begin == null) {
-                begin = pts.get(0);
+            if (first == null) {
+                first = pts.get(0);
             }
-            end = pts.get(pts.size() - 1);
+            last = pts.get(pts.size() - 1);
+            for (GpxTrack.Point p : pts) {
+                if (!p.hasElevation) {
+                    continue;
+                }
+                if (lowEle == null || p.eleMeters < lowEle.eleMeters) {
+                    lowEle = p;
+                }
+                if (highEle == null || p.eleMeters > highEle.eleMeters) {
+                    highEle = p;
+                }
+            }
         }
-        if (begin == null || end == null) {
+        if (first == null) {
             return;
+        }
+        GpxTrack.Point low;
+        GpxTrack.Point high;
+        if (lowEle != null && highEle != null && lowEle != highEle) {
+            low = lowEle;
+            high = highEle;
+        } else {
+            low = first;
+            high = last;
         }
         if (getC().getMapViewerScreen() != null) {
             getC().getMapViewerScreen().requestGpxFraming(
-                    begin.lat, begin.lon, begin.hasElevation ? begin.eleMeters : Float.NaN,
-                    end.lat, end.lon, end.hasElevation ? end.eleMeters : Float.NaN);
+                    low.lat, low.lon, low.hasElevation ? low.eleMeters : Float.NaN,
+                    high.lat, high.lon, high.hasElevation ? high.eleMeters : Float.NaN);
         }
         // false: don't nag about missing downloads just because we're jumping to a track.
-        getC().L.setCurrentTargetCoords(begin.lat, begin.lon, false);
+        getC().L.setCurrentTargetCoords(low.lat, low.lon, false);
     }
 
     /** Download a GPX file over HTTP(S) and load it. Runs on libGDX's HTTP callback thread. */
