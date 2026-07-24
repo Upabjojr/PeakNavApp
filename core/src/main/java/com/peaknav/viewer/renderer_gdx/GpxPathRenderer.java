@@ -72,9 +72,9 @@ public class GpxPathRenderer {
 
     // Band length + flow speed, per mode. Distance mode works in latits; time mode in seconds.
     private static final float DIST_PATTERN_LATITS = Units.convertMetersToLatits(110f);
-    private static final float DIST_SPEED = 0.30f;           // ~33 m/s of highlight travel
+    private static final float DIST_SPEED = 1.85f;           // ~93 m/s of highlight travel
     private static final float TIME_PATTERN_SECONDS = 10f;
-    private static final float TIME_SPEED = 0.35f;           // ~3.5x realtime replay
+    private static final float TIME_SPEED = 1.00f;           // ~10x realtime replay
 
     private final ShaderProgram shader;
     private Mesh mesh;
