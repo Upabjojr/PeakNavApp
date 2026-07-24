@@ -49,6 +49,17 @@ public class CurrentLocation {
 
     private volatile float currentTerrainEle;
 
+    /**
+     * Sets the ground-elevation reference (used by the elevation bar and the height readout)
+     * without the side effects of {@link #setCurrentTerrainEle} — no re-entrant location callback,
+     * no camera move. Used when the camera is deliberately decoupled from the target, e.g. while
+     * surveying a GPX track from high above it, so the bar's range and readout track where the
+     * camera actually is.
+     */
+    public void setCurrentTerrainEleQuiet(float ele) {
+        this.currentTerrainEle = ele;
+    }
+
     private float targetLatitude;
     private float targetLongitude;
 

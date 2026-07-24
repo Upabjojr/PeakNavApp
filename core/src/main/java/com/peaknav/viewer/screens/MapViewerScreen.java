@@ -191,6 +191,8 @@ public class MapViewerScreen implements Screen {
 
 		cam.smoothDirection();
 
+		boolean gpxFramed = false;        // suppress the default "drop camera on target" bar handling
+		boolean appliedGpxFraming = false; // actually (re)computed the framing on this call
 		if (pendingGpxFrame != null) {
 			// A GPX was just loaded: instead of dropping the camera on the target, frame the whole
 			// track from a high vantage and fly there.
@@ -204,10 +206,14 @@ public class MapViewerScreen implements Screen {
 			gpxFrameHoldUntilMs = System.currentTimeMillis() + GPX_FRAME_HOLD_MS;
 			gpxFrameLat = latitude;
 			gpxFrameLon = longitude;
+			gpxFramed = true;
+			appliedGpxFraming = true;
 		} else if (System.currentTimeMillis() < gpxFrameHoldUntilMs
 				&& Math.abs(latitude - gpxFrameLat) < 1e-4
 				&& Math.abs(longitude - gpxFrameLon) < 1e-4) {
-			// Same GPX target re-firing during the fly/settle: leave the framing alone.
+			// Same GPX target re-firing during the fly/settle: leave the camera and bar alone (the
+			// position listener below keeps the bar synced, preserving any manual elevation change).
+			gpxFramed = true;
 		} else {
 			gpxFrameHoldUntilMs = 0L;
 			moveCameraAction.setCameraVectors(
@@ -221,8 +227,10 @@ public class MapViewerScreen implements Screen {
 			);
 		}
 
-		float percz = convertUnitsZ2ElevationBar((float)elevation);
-		tableTool.sliderElevation.setVisualPercent(percz);
+		if (!gpxFramed) {
+			float percz = convertUnitsZ2ElevationBar((float)elevation);
+			tableTool.sliderElevation.setVisualPercent(percz);
+		}
 
 		for (PositionChangeListener positionChangeListener : positionChangeListeners) {
 			positionChangeListener.onCameraPositionChanged(cam.position.cpy());
@@ -230,6 +238,13 @@ public class MapViewerScreen implements Screen {
 		}
 
 		tableLocation.setButtonHereFromGps();
+
+		if (appliedGpxFraming) {
+			// Align the bar with the framed camera height (the camera is still flying there, so its
+			// current z isn't it yet). Done after the listeners so it is the final word; the ground
+			// reference it measures against was set in applyGpxFraming.
+			tableTool.sliderElevation.setVisualPercent(convertUnitsZ2ElevationBar(gpxCamPos.z));
+		}
 
 		getC().dataRetrieveThreadManager.triggerUpdateVisibilityPositionChanged();
 
@@ -294,6 +309,23 @@ public class MapViewerScreen implements Screen {
 		float cosF = (float) Math.cos(af);
 		float sinF = (float) Math.sin(af);
 		gpxLookDir.set(ux * cosF, uy * cosF, sinF).nor();
+
+		// The elevation bar measures altitude above the ground under the camera, but the camera is
+		// no longer over the map target — so point that ground reference at the camera's own spot.
+		// Read the terrain there if it's loaded; otherwise use the track's high point, a safe floor
+		// that keeps scrolling the bar down from diving underground.
+		float camLat = gpxCamPos.y;
+		float camLon = Units.convertLatitsToLonits(gpxCamPos.x, camLat);
+		Float sampled = com.peaknav.elevation.ElevationUtils.getElevationLatitsFromMaxCoords(
+				camLon, camLat, false);
+		float groundZ;
+		if (sampled != null) {
+			groundZ = sampled - com.peaknav.elevation.ElevationUtils
+					.getElevationCorrectionForRoundEarth(camLat, camLon);
+		} else {
+			groundZ = Math.max(gpxLowW.z, gpxHighW.z);
+		}
+		getC().L.setCurrentTerrainEleQuiet(groundZ);
 
 		flyToGpxFraming();
 	}
