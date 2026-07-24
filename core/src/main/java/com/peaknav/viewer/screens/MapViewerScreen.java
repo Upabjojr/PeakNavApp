@@ -367,13 +367,133 @@ public class MapViewerScreen implements Screen {
 				+ (float) Math.atan2(height, back) - theta;
 	}
 
+	// --- Cinematic GPX tour: fly along the track from above, then orbit its end 360 degrees. ---
+	private static final float GPX_TOUR_HEIGHT_METERS = 700f;   // camera height above the track
+	private static final float GPX_TOUR_BACK_METERS = 500f;     // camera set back behind each point
+	private static final float GPX_TOUR_INTRO_SECONDS = 2.5f;   // ease-in from the current view
+	private static final float GPX_TOUR_SECONDS = 22f;          // total time flying along the track
+	private static final float GPX_ORBIT_RADIUS_METERS = 900f;
+	private static final float GPX_ORBIT_HEIGHT_METERS = 500f;
+	private static final int GPX_ORBIT_STEPS = 24;
+	private static final float GPX_ORBIT_STEP_SECONDS = 0.28f;  // ~6.7 s for the full circle
+
+	/**
+	 * Plays a cinematic tour of the loaded GPX track: the camera flies along it from above (looking
+	 * a little ahead so the mountains around the path show), then circles its end point through a
+	 * full 360 degrees. Queued as a sequence of camera moves, so it plays hands-free.
+	 */
+	public void startGpxFlythrough() {
+		com.peaknav.gpx.GpxTrack track = null;
+		for (com.peaknav.gpx.GpxTrack t : getC().gpxManager.getTracks()) {
+			if (track == null || t.size() > track.size()) {
+				track = t;
+			}
+		}
+		if (track == null || track.size() < 2) {
+			return;
+		}
+		java.util.List<com.peaknav.gpx.GpxTrack.Point> pts = track.getPoints();
+		int n = pts.size();
+
+		// Subsample to at most ~40 waypoints, always keeping the exact last point.
+		int step = Math.max(1, (int) Math.ceil(n / 40.0));
+		java.util.List<Vector3> wp = new java.util.ArrayList<>();
+		for (int i = 0; i < n; i += step) {
+			wp.add(gpxTourWorld(pts.get(i)));
+		}
+		Vector3 lastW = gpxTourWorld(pts.get(n - 1));
+		if (wp.isEmpty() || wp.get(wp.size() - 1).dst(lastW) > 1e-6f) {
+			wp.add(lastW);
+		}
+		int m = wp.size();
+		if (m < 2) {
+			return;
+		}
+
+		float heightAbove = Units.convertMetersToLatits(GPX_TOUR_HEIGHT_METERS);
+		float backDist = Units.convertMetersToLatits(GPX_TOUR_BACK_METERS);
+		float totalLen = 0f;
+		for (int i = 0; i + 1 < m; i++) {
+			totalLen += gpxHoriz(wp.get(i), wp.get(i + 1));
+		}
+		if (totalLen < 1e-9f) {
+			return;
+		}
+
+		// Fly along: above and behind each waypoint, looking a couple of waypoints ahead.
+		Vector3 lastCamPos = new Vector3();
+		for (int i = 0; i < m; i++) {
+			Vector3 cur = wp.get(i);
+			Vector3 fwd = gpxForward(wp, i);
+			Vector3 camPos = new Vector3(cur.x - fwd.x * backDist, cur.y - fwd.y * backDist,
+					cur.z + heightAbove);
+			Vector3 aheadPt = wp.get(Math.min(i + 2, m - 1));
+			Vector3 lookDir = new Vector3(aheadPt).sub(camPos).nor();
+			lastCamPos.set(camPos);
+			if (i == 0) {
+				moveCameraAction.setCameraVectors(camPos, lookDir, Vector3.Z,
+						true, Interpolation.smooth, false, 0f, 1f, GPX_TOUR_INTRO_SECONDS);
+			} else {
+				float segSec = Math.max(0.12f,
+						gpxHoriz(wp.get(i - 1), cur) / totalLen * GPX_TOUR_SECONDS);
+				moveCameraAction.setCameraVectors(camPos, lookDir, Vector3.Z,
+						false, Interpolation.linear, false, 0f, 1f, segSec);
+			}
+		}
+
+		// 360-degree orbit around the end point, starting where the fly-along left off.
+		Vector3 endW = wp.get(m - 1);
+		float orbitR = Units.convertMetersToLatits(GPX_ORBIT_RADIUS_METERS);
+		float orbitH = Units.convertMetersToLatits(GPX_ORBIT_HEIGHT_METERS);
+		Vector3 lookAt = new Vector3(endW.x, endW.y, endW.z + Units.convertMetersToLatits(60f));
+		float startAng = (float) Math.atan2(lastCamPos.y - endW.y, lastCamPos.x - endW.x);
+		for (int s = 1; s <= GPX_ORBIT_STEPS; s++) {
+			float ang = startAng + (float) (2.0 * Math.PI * s / GPX_ORBIT_STEPS);
+			Vector3 op = new Vector3(endW.x + (float) Math.cos(ang) * orbitR,
+					endW.y + (float) Math.sin(ang) * orbitR, endW.z + orbitH);
+			Vector3 od = new Vector3(lookAt).sub(op).nor();
+			moveCameraAction.setCameraVectors(op, od, Vector3.Z,
+					false, Interpolation.linear, false, 0f, 1f, GPX_ORBIT_STEP_SECONDS);
+		}
+
+		// Keep re-fired location callbacks from snapping the camera for the whole tour.
+		float tourSeconds = GPX_TOUR_INTRO_SECONDS + GPX_TOUR_SECONDS
+				+ GPX_ORBIT_STEPS * GPX_ORBIT_STEP_SECONDS + 2f;
+		gpxFrameHoldUntilMs = System.currentTimeMillis() + (long) (tourSeconds * 1000f);
+		gpxFrameLat = getC().L.getTargetLatitude();
+		gpxFrameLon = getC().L.getTargetLongitude();
+	}
+
+	private Vector3 gpxTourWorld(com.peaknav.gpx.GpxTrack.Point p) {
+		Vector3 v = new Vector3();
+		gpxWorld(p.lat, p.lon, p.hasElevation ? p.eleMeters : Float.NaN, v);
+		return v;
+	}
+
+	private static float gpxHoriz(Vector3 a, Vector3 b) {
+		float dx = b.x - a.x;
+		float dy = b.y - a.y;
+		return (float) Math.sqrt(dx * dx + dy * dy);
+	}
+
+	/** Unit horizontal heading of the track at waypoint i. */
+	private static Vector3 gpxForward(java.util.List<Vector3> wp, int i) {
+		int m = wp.size();
+		Vector3 a = (i == m - 1) ? wp.get(i - 1) : wp.get(i);
+		Vector3 b = (i == m - 1) ? wp.get(i) : wp.get(i + 1);
+		Vector3 f = new Vector3(b.x - a.x, b.y - a.y, 0f);
+		return (f.len() < 1e-9f) ? new Vector3(0f, 1f, 0f) : f.nor();
+	}
+
 	private void gpxWorld(double lat, double lon, float eleMeters, Vector3 out) {
 		float ele = Float.isNaN(eleMeters)
 				? Units.convertLatitsToMeters((float) getC().L.getCurrentTerrainEle())
 				: eleMeters;
 		float corr = com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(
 				(float) lat, (float) lon);
-		out.set((float) convertLonitsToLatits(lon, lat),
+		// Scale longitude by cos(targetLat), the single reference the terrain and POIs use, so this
+		// world position lines up with them (not each point's own latitude — see GpxPathRenderer).
+		out.set((float) convertLonitsToLatits(lon, getC().L.getTargetLatitude()),
 				(float) lat,
 				Units.convertMetersToLatits(ele) - corr);
 	}
@@ -750,6 +870,10 @@ public class MapViewerScreen implements Screen {
 
 		if (paused) {
 			return;
+		}
+
+		if (tableLocation != null && tableLocation.buttonGpxFly != null) {
+			tableLocation.buttonGpxFly.setVisible(!getC().gpxManager.isEmpty());
 		}
 
 		float targetLat = getC().L.getTargetLatitude();

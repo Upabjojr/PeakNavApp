@@ -381,6 +381,7 @@ public class WidgetGetter {
         public final Button buttonGoToDest;
         private final Button buttonCancelGoToDest;
         public final Table tableCancelGoToDest;
+        public final Button buttonGpxFly; // cinematic tour of the loaded GPX; shown only when one is loaded
         public final Label copyrightLabel;
         public final Table progressBarTable;
         public final ProgressBar progressBar;
@@ -518,6 +519,20 @@ public class WidgetGetter {
             tableCancelGoToDest.add(buttonGoToDest).width(widgetUnitStep)
                     .height(widgetUnitStep);
             table.add(tableCancelGoToDest).right().expandY()
+                    .padRight(borderPad)
+                    .row();
+
+            // Cinematic GPX tour. Hidden until a track is loaded (MapViewerScreen toggles it).
+            buttonGpxFly = getC().widgetTextures.getButtonWithIcon("icons/icon_camera.png", null);
+            buttonGpxFly.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    mapApp.mapViewerScreen.startGpxFlythrough();
+                }
+            });
+            buttonGpxFly.setVisible(false);
+            table.add(buttonGpxFly).width(widgetUnitStep).height(widgetUnitStep).expandY()
+                    .right()
                     .padRight(borderPad)
                     .row();
 

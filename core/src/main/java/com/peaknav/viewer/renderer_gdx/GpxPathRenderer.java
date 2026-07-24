@@ -177,7 +177,11 @@ public class GpxPathRenderer {
             float[] wz = new float[n];
             for (int i = 0; i < n; i++) {
                 GpxTrack.Point p = pts.get(i);
-                wx[i] = (float) Units.convertLonitsToLatits(p.lon, p.lat);
+                // Longitude is scaled by cos(targetLat) — a single reference latitude — exactly as
+                // the terrain mesh and POIs do (see ElevationImageAbstract / PoiObject). Using each
+                // point's own latitude instead skews x by lon*(cos(pointLat)-cos(targetLat)), a
+                // large error since lon is absolute, which stretched the path away from the start.
+                wx[i] = (float) Units.convertLonitsToLatits(p.lon, targetLat);
                 wy[i] = p.lat;
                 wz[i] = drapeZ(p) + offset;
             }
