@@ -707,6 +707,13 @@ public class OptionPane {
         }));
         buttons.add(checkBoxLargeFonts);
 
+        ImageTextButtonOptionPane checkBoxHorizonCompass = getC().widgetGetter.getImageTextButton(
+                "icons/icon_compass.png", s("Horizon_compass"), true);
+        addCheckingStateProperty(checkBoxHorizonCompass, () -> P.isHorizonCompass());
+        checkBoxHorizonCompass.addClickListener(() -> changer.execute(
+                () -> P.setHorizonCompass(checkBoxHorizonCompass.isChecked())));
+        buttons.add(checkBoxHorizonCompass);
+
         ImageTextButtonOptionPane checkBoxLayerVisibleBaseRoads = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_roads.png", s("Base_Roads"), true);
         addCheckingStateProperty(checkBoxLayerVisibleBaseRoads, () -> P.isViewerLayerVisibleBaseRoads());
         checkBoxLayerVisibleBaseRoads.addClickListener(() -> changer.execute(() -> {

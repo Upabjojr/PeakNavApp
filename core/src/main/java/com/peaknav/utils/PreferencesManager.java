@@ -21,6 +21,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LARGE_FONTS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_BASE_ROADS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SUN_SHADING;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ALPINE_HUTS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PEAKS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PISTES;
@@ -60,6 +61,7 @@ public class PreferencesManager {
     private Map<PixmapLayerName, Long> lastChange = new TreeMap<>();
     private boolean layerVisibleOpenStreetMap;
     private boolean sunShading;
+    private boolean horizonCompass;
     private SatelliteImageProvider underlayImageProvider;
     private SatelliteProviderRegistry satelliteProviderRegistry;
     private boolean locationPermissionDenied;
@@ -144,6 +146,7 @@ public class PreferencesManager {
         pisteVisible = preferences.getBoolean(VIEWER_SHOW_PISTES, true);
         layerVisibleUnderlayLayer = preferences.getBoolean(VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER, true);
         sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
+        horizonCompass = preferences.getBoolean(VIEWER_HORIZON_COMPASS, true);
         // Set to "true" for subscribed users:
         viewerLayerVisibleBaseRoads = preferences.getBoolean(VIEWER_LAYER_VISIBLE_BASE_ROADS, true);
         largeFonts = preferences.getBoolean(VIEWER_LARGE_FONTS, false);
@@ -332,6 +335,17 @@ public class PreferencesManager {
     /** Whether the terrain is lit by the sun; when off it gets flat, non directional light. */
     public boolean isSunShading() {
         return sunShading;
+    }
+
+    /** Whether the cardinal-direction markers (N, NE, E, …) are drawn on the sky horizon. */
+    public boolean isHorizonCompass() {
+        return horizonCompass;
+    }
+
+    public void setHorizonCompass(boolean enabled) {
+        horizonCompass = enabled;
+        preferences.putBoolean(VIEWER_HORIZON_COMPASS, enabled);
+        preferences.flush();
     }
 
     public void setSunShading(boolean enabled) {
