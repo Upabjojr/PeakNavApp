@@ -23,6 +23,9 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_UNDER
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SUN_SHADING;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ALPINE_HUTS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ISLANDS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_CITIES;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_MOUNTAIN_RANGES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PEAKS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PISTES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PLACE_NAMES;
@@ -54,6 +57,9 @@ public class PreferencesManager {
     private boolean peakVisible;
     private boolean visiblePlaceNames;
     private boolean visibleAlpineHuts;
+    private boolean visibleIslands;
+    private boolean visibleCities;
+    private boolean visibleMountainRanges;
     private boolean largeFonts;
     private boolean layerVisibleUnderlayLayer;
     private boolean viewerLayerVisibleBaseRoads;
@@ -143,6 +149,9 @@ public class PreferencesManager {
         peakVisible = preferences.getBoolean(VIEWER_SHOW_PEAKS, true);
         visiblePlaceNames = preferences.getBoolean(VIEWER_SHOW_PLACE_NAMES, true);
         visibleAlpineHuts = preferences.getBoolean(VIEWER_SHOW_ALPINE_HUTS, true);
+        visibleIslands = preferences.getBoolean(VIEWER_SHOW_ISLANDS, true);
+        visibleCities = preferences.getBoolean(VIEWER_SHOW_CITIES, true);
+        visibleMountainRanges = preferences.getBoolean(VIEWER_SHOW_MOUNTAIN_RANGES, true);
         pisteVisible = preferences.getBoolean(VIEWER_SHOW_PISTES, true);
         layerVisibleUnderlayLayer = preferences.getBoolean(VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER, true);
         sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
@@ -251,6 +260,30 @@ public class PreferencesManager {
 
     public boolean isVisibleAlpineHuts() {
         return visibleAlpineHuts;
+    }
+
+    public boolean isVisibleIslands() { return visibleIslands; }
+
+    public void setVisibleIslands(boolean visible) {
+        visibleIslands = visible;
+        preferences.putBoolean(VIEWER_SHOW_ISLANDS, visible);
+        preferences.flush();
+    }
+
+    public boolean isVisibleCities() { return visibleCities; }
+
+    public void setVisibleCities(boolean visible) {
+        visibleCities = visible;
+        preferences.putBoolean(VIEWER_SHOW_CITIES, visible);
+        preferences.flush();
+    }
+
+    public boolean isVisibleMountainRanges() { return visibleMountainRanges; }
+
+    public void setVisibleMountainRanges(boolean visible) {
+        visibleMountainRanges = visible;
+        preferences.putBoolean(VIEWER_SHOW_MOUNTAIN_RANGES, visible);
+        preferences.flush();
     }
 
     public boolean getViewLargeFonts() {

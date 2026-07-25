@@ -249,7 +249,6 @@ public class LabelRenderer {
     // of area read as visually distinct. The peak/town labels alone never say which island or range
     // you are looking at.
     private static final int AREA_SEGMENTS = 48;
-    private static final float AREA_MAX_KM = 260f; // only consider areas near the current view
     private static final float KM_PER_DEG_LAT = 111.32f;
     private final Vector3 areaTmp = new Vector3();
     private final float[] areaBoundaryX = new float[AREA_SEGMENTS];
@@ -286,30 +285,51 @@ public class LabelRenderer {
         return (p != null) ? p : AREA_PALETTE_DEFAULT;
     }
 
+    /** Whether this area type's labels are currently enabled in the label-visibility submenu. */
+    private boolean isTypeVisible(String type) {
+        if (type == null)
+            return true;
+        String t = type.toLowerCase(java.util.Locale.ROOT);
+        if (t.equals("city"))
+            return P.isVisibleCities();
+        if (t.equals("mountain_range") || t.equals("mountain_group"))
+            return P.isVisibleMountainRanges();
+        if (t.equals("island"))
+            return P.isVisibleIslands();
+        return true; // region/unknown types are always shown
+    }
+
     /**
-     * Labels each configured area whose highest point is above the horizon and within
-     * {@link #AREA_MAX_KM} of the current target. The ellipse only locates/sizes the label — it is
-     * not drawn — and the name floats above the area on a type-coloured pill.
+     * Labels each nearby area whose highest point is above the horizon, is not hidden by terrain,
+     * and is within its own relevance range. Areas are pulled tile by tile from {@link AreaRegistry}
+     * around the current target, so only nearby ones are ever loaded. The ellipse only
+     * locates/sizes the label — it is not drawn — and the name floats above the area on a
+     * type-coloured pill.
      */
     private void renderAreas() {
-        List<MapArea> areas = getC().areaRegistry.getAreas();
+        float targetLat = getC().L.getTargetLatitude();
+        float targetLon = (float) getC().L.getTargetLongitude();
+        List<MapArea> areas = getC().areaRegistry.getAreasNear(targetLat, targetLon);
         if (areas.isEmpty())
             return;
         PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
         if (cam == null)
             return;
 
-        float targetLat = getC().L.getTargetLatitude();
-        float targetLon = (float) getC().L.getTargetLongitude();
         float cosTargetLat = (float) Math.cos(Math.toRadians(targetLat));
         int screenW = Gdx.graphics.getWidth();
         int screenH = Gdx.graphics.getHeight();
 
         for (MapArea area : areas) {
-            // Distance cull: keep it to areas you are actually near.
+            // Type toggle: skip whole categories the user has switched off.
+            if (!isTypeVisible(area.type))
+                continue;
+
+            // Relevance cull: each area carries its own visible range, so a small islet only shows
+            // when you are near it while a big range shows from much farther.
             float dLatKm = (area.lat - targetLat) * KM_PER_DEG_LAT;
             float dLonKm = (area.lon - targetLon) * KM_PER_DEG_LAT * cosTargetLat;
-            if (dLatKm * dLatKm + dLonKm * dLonKm > AREA_MAX_KM * AREA_MAX_KM)
+            if (dLatKm * dLatKm + dLonKm * dLonKm > area.visibleRangeKm * area.visibleRangeKm)
                 continue;
 
             // Centre at sea level (elevation 0, round-earth corrected).

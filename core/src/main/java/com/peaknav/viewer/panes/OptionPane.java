@@ -52,6 +52,7 @@ public class OptionPane {
     private final Table selectBoxSatSrc;
     private final Table selectInfoOpts;
     private final Table selectGpx;
+    private final Table selectLabels;
     private final float buttonWidth;
     private final float height;
     private final float padHeight;
@@ -107,6 +108,7 @@ public class OptionPane {
         selectBoxUnits = createSelectBoxUnitSystem();
         selectInfoOpts = createInfoOptsMenu();
         selectGpx = createGpxMenu();
+        selectLabels = createLabelsMenu();
         // tableAppInfo = createTableAppInfo();
         table = getPreferencesTable(false);
         tableOneColumn = getPreferencesTable(true);
@@ -179,6 +181,10 @@ public class OptionPane {
 
     public Table getSelectGpx() {
         return selectGpx;
+    }
+
+    public Table getSelectLabels() {
+        return selectLabels;
     }
 
     /* private Table createSatelliteSourceSelectBox2() {
@@ -281,6 +287,72 @@ public class OptionPane {
                 "icons/icon_x.png", s("Clear_gpx"), false);
         buttonClear.addClickListener(() -> getC().gpxManager.clear());
         buttons.add(buttonClear);
+
+        ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
+                "icons/icon_back.png", s("Back"), false);
+        back.addClickListener(() -> {
+            table.setVisible(false);
+            show();
+        });
+        buttons.add(back);
+
+        addButtonsToTable(table, buttons, true, buttonWidth);
+        table.setVisible(false);
+        return table;
+    }
+
+    /**
+     * Submenu that toggles which labels are shown: the POI labels (peaks, places, alpine huts) and
+     * the ranged-area labels (islands, cities, mountain ranges).
+     */
+    private Table createLabelsMenu() {
+        Table table = new Table();
+        table.center();
+        table.setFillParent(true);
+
+        List<Table> buttons = new ArrayList<>(8);
+
+        ImageTextButtonOptionPane checkBoxShowPeaks = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_peak_names.png", s("Peak_names"), true);
+        addCheckingStateProperty(checkBoxShowPeaks, () -> P.isPeakVisible());
+        checkBoxShowPeaks.addClickListener(() ->
+                changer.execute(() -> P.setPeakVisible(checkBoxShowPeaks.isChecked())));
+        buttons.add(checkBoxShowPeaks);
+
+        ImageTextButtonOptionPane checkBoxShowPlaces = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_place_names.png", s("Place_names"), true);
+        addCheckingStateProperty(checkBoxShowPlaces, () -> P.isVisiblePlaceNames());
+        checkBoxShowPlaces.addClickListener(() ->
+                changer.execute(() -> P.setVisiblePlaceNames(checkBoxShowPlaces.isChecked())));
+        buttons.add(checkBoxShowPlaces);
+
+        ImageTextButtonOptionPane checkBoxShowAlpineHuts = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_alpine_huts.png", s("Alpine_huts"), true);
+        addCheckingStateProperty(checkBoxShowAlpineHuts, () -> P.isVisibleAlpineHuts());
+        checkBoxShowAlpineHuts.addClickListener(() ->
+                changer.execute(() -> P.setVisibleAlpineHuts(checkBoxShowAlpineHuts.isChecked())));
+        buttons.add(checkBoxShowAlpineHuts);
+
+        ImageTextButtonOptionPane checkBoxShowIslands = getC().widgetGetter.getImageTextButton(
+                "icons/icon_loc_pin.png", s("Islands_label"), true);
+        addCheckingStateProperty(checkBoxShowIslands, () -> P.isVisibleIslands());
+        checkBoxShowIslands.addClickListener(() ->
+                changer.execute(() -> P.setVisibleIslands(checkBoxShowIslands.isChecked())));
+        buttons.add(checkBoxShowIslands);
+
+        ImageTextButtonOptionPane checkBoxShowCities = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_place_names.png", s("Cities_label"), true);
+        addCheckingStateProperty(checkBoxShowCities, () -> P.isVisibleCities());
+        checkBoxShowCities.addClickListener(() ->
+                changer.execute(() -> P.setVisibleCities(checkBoxShowCities.isChecked())));
+        buttons.add(checkBoxShowCities);
+
+        ImageTextButtonOptionPane checkBoxShowRanges = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_peak_names.png", s("Mountain_ranges_label"), true);
+        addCheckingStateProperty(checkBoxShowRanges, () -> P.isVisibleMountainRanges());
+        checkBoxShowRanges.addClickListener(() ->
+                changer.execute(() -> P.setVisibleMountainRanges(checkBoxShowRanges.isChecked())));
+        buttons.add(checkBoxShowRanges);
 
         ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
                 "icons/icon_back.png", s("Back"), false);
@@ -749,29 +821,16 @@ public class OptionPane {
 
         List<Table> buttons = new ArrayList<>(16);
 
-        ImageTextButtonOptionPane checkBoxShowPeaks = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_peak_names.png", s("Peak_names"), true);
-        addCheckingStateProperty(checkBoxShowPeaks, ()->P.isPeakVisible());
-        checkBoxShowPeaks.addClickListener(() -> {
-            changer.execute(() -> P.setPeakVisible(checkBoxShowPeaks.isChecked()));
+        // Label visibility toggles live in their own submenu (peaks, places, alpine huts, plus the
+        // ranged labels: islands, cities, mountain ranges).
+        ImageTextButtonOptionPane buttonLabelsMenu = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_peak_names.png", s("Labels_menu"), false);
+        buttonLabelsMenu.addClickListener(() -> {
+            selectLabels.setVisible(true);
+            table.setVisible(false);
+            tableOneColumn.setVisible(false);
         });
-        buttons.add(checkBoxShowPeaks);
-
-        ImageTextButtonOptionPane checkBoxShowPlaces = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_place_names.png", s("Place_names"), true);
-        addCheckingStateProperty(checkBoxShowPlaces, ()->P.isVisiblePlaceNames());
-        checkBoxShowPlaces.addClickListener(() -> changer.execute(() -> {
-            P.setVisiblePlaceNames(checkBoxShowPlaces.isChecked());
-        }));
-        buttons.add(checkBoxShowPlaces);
-
-        ImageTextButtonOptionPane checkBoxShowAlpineHuts = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_alpine_huts.png", s("Alpine_huts"), true);
-        addCheckingStateProperty(checkBoxShowAlpineHuts, ()->P.isVisibleAlpineHuts());
-        checkBoxShowAlpineHuts.addClickListener(() -> changer.execute(() -> {
-            P.setVisibleAlpineHuts(checkBoxShowAlpineHuts.isChecked());
-        }));
-        buttons.add(checkBoxShowAlpineHuts);
+        buttons.add(buttonLabelsMenu);
 
         ImageTextButtonOptionPane checkBoxLargeFonts = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_large_fonts.png", s("Large_fonts"), true);
         addCheckingStateProperty(checkBoxLargeFonts, ()->P.getViewLargeFonts());
@@ -1005,6 +1064,7 @@ public class OptionPane {
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
         selectGpx.setVisible(false);
+        selectLabels.setVisible(false);
         // tableAppInfo.setVisible(false);
 
         optionsButton.setChecked(true);
@@ -1018,6 +1078,7 @@ public class OptionPane {
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
         selectGpx.setVisible(false);
+        selectLabels.setVisible(false);
         // tableAppInfo.setVisible(false);
         optionsButton.setChecked(false);
         changer.submit(() -> getC().widgetGetter.setCopyrightLabel(

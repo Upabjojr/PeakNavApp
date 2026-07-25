@@ -12,6 +12,9 @@ public interface Constants {
         String VIEWER_SHOW_PEAKS = "viewerShowPeaks";
         String VIEWER_SHOW_PLACE_NAMES = "viewerShowPlaceNames";
         String VIEWER_SHOW_ALPINE_HUTS = "viewerShowAlpineHuts";
+        String VIEWER_SHOW_ISLANDS = "viewerShowIslands";
+        String VIEWER_SHOW_CITIES = "viewerShowCities";
+        String VIEWER_SHOW_MOUNTAIN_RANGES = "viewerShowMountainRanges";
         String VIEWER_SHOW_PISTES = "viewerShowPistes";
         String VIEWER_LARGE_FONTS = "viewerLargeFonts";
         String VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER = "viewerLayerVisibleUnderlayLayer";

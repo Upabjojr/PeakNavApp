@@ -1,0 +1,115 @@
+{
+  "_comment": "Area tile (21,5) — 2° tile, lat[42,44) lon[10,12). Loaded by AreaRegistry only when the viewer is nearby.",
+  "areas": [
+    {
+      "name": "Elba",
+      "type": "island",
+      "lat": 42.79,
+      "lon": 10.3,
+      "semiMajorKm": 14.0,
+      "semiMinorKm": 8.0,
+      "rotationDeg": 0,
+      "peakMeters": 1019,
+      "visibleRangeKm": 130
+    },
+    {
+      "name": "Isola del Giglio",
+      "type": "island",
+      "lat": 42.365,
+      "lon": 10.905,
+      "semiMajorKm": 4.3,
+      "semiMinorKm": 2.3,
+      "rotationDeg": 100,
+      "peakMeters": 496,
+      "visibleRangeKm": 70
+    },
+    {
+      "name": "Montecristo",
+      "type": "island",
+      "lat": 42.335,
+      "lon": 10.308,
+      "semiMajorKm": 1.6,
+      "semiMinorKm": 1.4,
+      "rotationDeg": 30,
+      "peakMeters": 645,
+      "visibleRangeKm": 55
+    },
+    {
+      "name": "Pianosa",
+      "type": "island",
+      "lat": 42.585,
+      "lon": 10.088,
+      "semiMajorKm": 2.0,
+      "semiMinorKm": 1.4,
+      "rotationDeg": 30,
+      "peakMeters": 29,
+      "visibleRangeKm": 35
+    },
+    {
+      "name": "Giannutri",
+      "type": "island",
+      "lat": 42.253,
+      "lon": 11.098,
+      "semiMajorKm": 1.5,
+      "semiMinorKm": 0.5,
+      "rotationDeg": 85,
+      "peakMeters": 88,
+      "visibleRangeKm": 40
+    },
+    {
+      "name": "Livorno",
+      "type": "city",
+      "lat": 43.55,
+      "lon": 10.31,
+      "semiMajorKm": 3.5,
+      "semiMinorKm": 2.4,
+      "rotationDeg": 20,
+      "peakMeters": 150,
+      "visibleRangeKm": 60
+    },
+    {
+      "name": "Piombino",
+      "type": "city",
+      "lat": 42.925,
+      "lon": 10.525,
+      "semiMajorKm": 2.2,
+      "semiMinorKm": 1.4,
+      "rotationDeg": 60,
+      "peakMeters": 60,
+      "visibleRangeKm": 45
+    },
+    {
+      "name": "Pisa",
+      "type": "city",
+      "lat": 43.716,
+      "lon": 10.4,
+      "semiMajorKm": 3.5,
+      "semiMinorKm": 2.8,
+      "rotationDeg": 0,
+      "peakMeters": 15,
+      "visibleRangeKm": 45
+    },
+    {
+      "name": "Viareggio",
+      "type": "city",
+      "lat": 43.87,
+      "lon": 10.245,
+      "semiMajorKm": 3.5,
+      "semiMinorKm": 1.3,
+      "rotationDeg": 130,
+      "peakMeters": 10,
+      "visibleRangeKm": 40
+    },
+    {
+      "name": "Monti Pisani",
+      "type": "mountain_range",
+      "lat": 43.77,
+      "lon": 10.55,
+      "semiMajorKm": 9.0,
+      "semiMinorKm": 4.0,
+      "rotationDeg": 25,
+      "peakMeters": 917,
+      "visibleRangeKm": 110
+    }
+  ]
+}
