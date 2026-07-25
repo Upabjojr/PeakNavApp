@@ -265,6 +265,18 @@ public class OptionPane {
         });
         buttons.add(buttonUrl);
 
+        // Reliable way to launch the cinematic tour, in addition to the on-map camera button that
+        // appears once a track is loaded.
+        ImageTextButtonOptionPane buttonFly = getC().widgetGetter.getImageTextButton(
+                "icons/icon_camera.png", s("Gpx_flyover"), false);
+        buttonFly.addClickListener(() -> {
+            if (!getC().gpxManager.isEmpty()) {
+                getC().getMapViewerScreen().startGpxFlythrough();
+                hide();
+            }
+        });
+        buttons.add(buttonFly);
+
         ImageTextButtonOptionPane buttonClear = getC().widgetGetter.getImageTextButton(
                 "icons/icon_x.png", s("Clear_gpx"), false);
         buttonClear.addClickListener(() -> getC().gpxManager.clear());

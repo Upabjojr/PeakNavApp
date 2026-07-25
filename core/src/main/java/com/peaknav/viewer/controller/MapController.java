@@ -81,7 +81,7 @@ public class MapController {
     public final Queue<MapTileWelder> weldingQueue = new LinkedBlockingQueue<>();
     public final OnlineSearch onlineSearch = new OnlineSearch();
     public final com.peaknav.gpx.GpxManager gpxManager = new com.peaknav.gpx.GpxManager();
-    public final com.peaknav.islands.IslandRegistry islandRegistry = new com.peaknav.islands.IslandRegistry();
+    public final com.peaknav.areas.AreaRegistry areaRegistry = new com.peaknav.areas.AreaRegistry();
     public WidgetGetter widgetGetter = null;
     public CacheDirManager cacheDirManager;
     public LuceneGeonameSearch luceneGeonameSearch;
