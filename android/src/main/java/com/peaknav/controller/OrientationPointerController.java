@@ -12,10 +12,12 @@ import android.view.Display;
 import android.view.Surface;
 import android.view.WindowManager;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Quaternion;
 import com.badlogic.gdx.math.Vector3;
 import com.peaknav.singleton.MapViewerAndroidSingleton;
+import com.peaknav.utils.PeakNavUtils;
 import com.peaknav.viewer.screens.MapViewerScreen;
 
 /**
@@ -52,6 +54,12 @@ public class OrientationPointerController implements SensorEventListener {
     /** Angular steps below this (degrees) are treated as pure noise and dropped entirely. */
     private static final float DEADBAND_DEG = 0.20f;
 
+    /** While the compass is uncalibrated, re-show the warning at least this often (ms). Shorter than
+     *  the toast's ~1 s auto-hide so the message stays continuously on screen until it clears. */
+    private static final long WARN_REFRESH_MS = 900L;
+    /** Don't nag during the first moment after start: many devices report UNRELIABLE then settle. */
+    private static final long WARN_GRACE_MS = 1500L;
+
     // Reused scratch objects — onSensorChanged runs on a sensor thread at up to ~game rate.
     private final float[] rotationVector = new float[4];
     private final Quaternion measured = new Quaternion();
@@ -59,6 +67,12 @@ public class OrientationPointerController implements SensorEventListener {
     private final Vector3 axisX = new Vector3();
     private final Vector3 axisZ = new Vector3();
     private boolean haveSmoothed = false;
+
+    // Compass-calibration nagging. A rotation-vector accuracy of UNRELIABLE/LOW means the fused
+    // heading can't be trusted yet and the user should sweep the phone in a figure-8.
+    private volatile int lastAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH;
+    private long startMs = 0L;
+    private long lastWarnMs = 0L;
 
     public OrientationPointerController(Context context) {
         this.context = context;
@@ -68,6 +82,9 @@ public class OrientationPointerController implements SensorEventListener {
 
     public void start() {
         haveSmoothed = false;
+        startMs = System.currentTimeMillis();
+        lastWarnMs = 0L;
+        lastAccuracy = SensorManager.SENSOR_STATUS_ACCURACY_HIGH;
         Sensor rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
         if (rotationVectorSensor != null) {
             // SENSOR_DELAY_GAME (~50 Hz) is smooth without flooding; the OS fusion runs regardless.
@@ -84,6 +101,11 @@ public class OrientationPointerController implements SensorEventListener {
         if (event.sensor.getType() != Sensor.TYPE_ROTATION_VECTOR) {
             return;
         }
+
+        // The per-event accuracy tracks the fused-heading reliability even when onAccuracyChanged
+        // isn't firing (some devices only report it here). Warn the user if the compass drifts.
+        lastAccuracy = event.accuracy;
+        maybeWarnCalibration();
 
         // getQuaternionFromVector fills [w, x, y, z]; libGDX Quaternion is (x, y, z, w).
         SensorManager.getQuaternionFromVector(rotationVector, event.values);
@@ -141,6 +163,33 @@ public class OrientationPointerController implements SensorEventListener {
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        if (sensor != null && sensor.getType() == Sensor.TYPE_ROTATION_VECTOR) {
+            lastAccuracy = accuracy;
+            maybeWarnCalibration();
+        }
+    }
 
+    /**
+     * If the fused compass heading is currently unreliable, ask the user to sweep the phone in a
+     * figure-8 (the standard magnetometer-calibration gesture). Re-shown periodically so the toast
+     * stays visible while the condition persists, and suppressed for a grace period after start so a
+     * momentary startup UNRELIABLE doesn't flash a warning that immediately self-corrects.
+     */
+    private void maybeWarnCalibration() {
+        boolean unreliable = lastAccuracy == SensorManager.SENSOR_STATUS_UNRELIABLE
+                || lastAccuracy == SensorManager.SENSOR_STATUS_ACCURACY_LOW;
+        if (!unreliable) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - startMs < WARN_GRACE_MS) {
+            return;
+        }
+        if (now - lastWarnMs < WARN_REFRESH_MS) {
+            return;
+        }
+        lastWarnMs = now;
+        // toast() mutates stage actors, so it must run on the render thread.
+        Gdx.app.postRunnable(() -> mapViewerScreen.toast(PeakNavUtils.s("Compass_calibrate")));
     }
 }
