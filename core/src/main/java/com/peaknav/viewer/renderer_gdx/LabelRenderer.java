@@ -26,6 +26,7 @@ import com.peaknav.utils.CrashLogger;
 import com.peaknav.utils.Units;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.PerspectiveCameraExt;
+import com.peaknav.viewer.render_tiles.ImpactPixmap;
 import com.peaknav.viewer.labels.DrawLabel;
 import com.peaknav.viewer.labels.DrawLabelCategory;
 import com.peaknav.viewer.screens.BackgroundPicManager;
@@ -269,9 +270,11 @@ public class LabelRenderer {
     // AREA_PALETTE_DEFAULT.
     private static final java.util.Map<String, AreaPalette> AREA_PALETTES = new java.util.HashMap<>();
     static {
-        AREA_PALETTES.put("island", new AreaPalette(new Color(0.06f, 0.20f, 0.34f, 0.72f)));        // deep teal-blue
-        AREA_PALETTES.put("mountain_group", new AreaPalette(new Color(0.28f, 0.17f, 0.05f, 0.74f))); // warm brown
-        AREA_PALETTES.put("region", new AreaPalette(new Color(0.09f, 0.25f, 0.12f, 0.72f)));        // deep green
+        AREA_PALETTES.put("island", new AreaPalette(new Color(0.06f, 0.20f, 0.34f, 0.72f)));         // deep teal-blue
+        AREA_PALETTES.put("mountain_range", new AreaPalette(new Color(0.30f, 0.14f, 0.04f, 0.76f))); // earthy brown
+        AREA_PALETTES.put("mountain_group", new AreaPalette(new Color(0.28f, 0.17f, 0.05f, 0.74f))); // warm amber-brown
+        AREA_PALETTES.put("city", new AreaPalette(new Color(0.24f, 0.07f, 0.30f, 0.76f)));           // violet
+        AREA_PALETTES.put("region", new AreaPalette(new Color(0.09f, 0.25f, 0.12f, 0.72f)));         // deep green
     }
     private static final AreaPalette AREA_PALETTE_DEFAULT =
             new AreaPalette(new Color(0.10f, 0.13f, 0.18f, 0.72f));
@@ -369,6 +372,10 @@ public class LabelRenderer {
             float summitZ = centreZ + Units.convertMetersToLatits(area.peakMeters);
             if (!cam.frustum.pointInFrustum(centreX, centreY, summitZ))
                 continue;
+            // Hidden-by-terrain cull: like the peak/place labels, drop the area when it is entirely
+            // occluded by nearer mountains.
+            if (!areaHasVisiblePoint(area, targetLat, centreX, centreY, centreZ, cam))
+                continue;
             areaTmp.set(centreX, centreY, summitZ);
             cam.project(areaTmp);
             float summitX = areaTmp.x;
@@ -379,6 +386,51 @@ public class LabelRenderer {
             float spanW = Math.min(Math.max(0f, maxX - minX), 1.5f * screenW);
             drawAreaName(area.name, summitX, plateBottom, spanW, paletteFor(area.type));
         }
+    }
+
+    private final Vector3 visSample = new Vector3();
+
+    /**
+     * Terrain-occlusion test, mirroring the peak/place/alpine-hut labels' "hidden by mountains"
+     * check. Samples a few points spread across the area — both at sea level and at its highest
+     * elevation — and reports the area as visible if at least one of them is not hidden behind nearer
+     * terrain. Uses the same depth (impact) pixmap those labels use.
+     */
+    private boolean areaHasVisiblePoint(MapArea area, float targetLat,
+                                        float centreX, float centreY, float centreZ,
+                                        PerspectiveCameraExt cam) {
+        ImpactPixmap ip = MapViewerSingleton.getViewerInstance().impactPixmap;
+        if (ip == null || !ip.isReady())
+            return true; // no depth information yet — don't hide anything
+        float peakZoff = Units.convertMetersToLatits(area.peakMeters);
+        // Centre, at sea level and at the summit.
+        if (checkPointVisible(centreX, centreY, centreZ, cam, ip)) return true;
+        if (checkPointVisible(centreX, centreY, centreZ + peakZoff, cam, ip)) return true;
+        // The four ellipse semi-axis endpoints, again at sea level and at the summit.
+        float kmPerDegLon = KM_PER_DEG_LAT * (float) Math.cos(Math.toRadians(area.lat));
+        float rot = (float) Math.toRadians(area.rotationDeg);
+        float cosR = (float) Math.cos(rot);
+        float sinR = (float) Math.sin(rot);
+        for (int s = 0; s < 4; s++) {
+            float localE = (s == 0) ? area.semiMajorKm : (s == 1) ? -area.semiMajorKm : 0f;
+            float localN = (s == 2) ? area.semiMinorKm : (s == 3) ? -area.semiMinorKm : 0f;
+            float eastKm = localE * cosR - localN * sinR;
+            float northKm = localE * sinR + localN * cosR;
+            float ptLat = area.lat + northKm / KM_PER_DEG_LAT;
+            float ptLon = area.lon + eastKm / kmPerDegLon;
+            float corr = ElevationUtils.getElevationCorrectionForRoundEarth(ptLat, ptLon);
+            float wx = (float) Units.convertLonitsToLatits(ptLon, targetLat);
+            if (checkPointVisible(wx, ptLat, -corr, cam, ip)) return true;
+            if (checkPointVisible(wx, ptLat, -corr + peakZoff, cam, ip)) return true;
+        }
+        return false;
+    }
+
+    private boolean checkPointVisible(float x, float y, float z, PerspectiveCameraExt cam, ImpactPixmap ip) {
+        float dx = x - cam.position.x, dy = y - cam.position.y, dz = z - cam.position.z;
+        float distMeters = Units.convertLatitsToMeters((float) Math.sqrt(dx * dx + dy * dy + dz * dz));
+        visSample.set(x, y, z); // checkIfDistanceIsVisible projects this internally; distance already taken
+        return ip.checkIfDistanceIsVisible(distMeters, visSample);
     }
 
     /**

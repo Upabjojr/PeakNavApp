@@ -157,6 +157,17 @@ public class ImpactPixmap {
 
     private final ImpactPixmap.DistanceRange dr = new ImpactPixmap.DistanceRange(0, 1);
 
+    /** True once all four geographical depth pixmaps have been rendered at least once. */
+    public boolean isReady() {
+        lock.readLock().lock();
+        try {
+            return pixmapNorth != null && pixmapEast != null
+                    && pixmapSouth != null && pixmapWest != null;
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
     public boolean checkIfDistanceIsVisible(float dist, Vector3 destination) {
         lock.readLock().lock();
         try {
