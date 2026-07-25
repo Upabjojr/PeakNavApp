@@ -46,6 +46,9 @@ final class LabelTextMeasure {
 
     /** Height of a single line, which is what GlyphLayout reports for label text. */
     static float height(BitmapFont font) {
+        // BitmapFontData.setScale bakes the scale into capHeight (unlike per-glyph xadvance, which
+        // width() scales explicitly), so this already reads in display units even though the atlas
+        // is generated supersampled.
         return font.getData().capHeight;
     }
 }

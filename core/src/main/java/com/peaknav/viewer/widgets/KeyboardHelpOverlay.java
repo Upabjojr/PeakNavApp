@@ -97,11 +97,15 @@ public class KeyboardHelpOverlay {
         }
         float rowHeight = root.getStage().getHeight() * ROW_HEIGHT_FRACTION;
         float scale = rowHeight / font.getLineHeight();
-        title.setFontScale(scale * 1.35f);
-        hint.setFontScale(scale * 0.78f);
+        // Label.setFontScale is absolute — it replaces the font's own data scale — but the shared
+        // font is baked supersampled and carries a base scale (< 1) that maps the high-res atlas back
+        // to display size. Fold that base in so these labels stay the intended on-screen size.
+        float base = font.getScaleY();
+        title.setFontScale(scale * 1.35f * base);
+        hint.setFontScale(scale * 0.78f * base);
         for (Label label : bodyLabels) {
             if (label != hint) {
-                label.setFontScale(scale);
+                label.setFontScale(scale * base);
             }
         }
         panel.invalidateHierarchy();
