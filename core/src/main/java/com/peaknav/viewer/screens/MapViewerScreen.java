@@ -766,18 +766,6 @@ public class MapViewerScreen implements Screen {
 		environment.set(new ColorAttribute(ColorAttribute.AmbientLight, amL, amL, amL, 1f));
 
 		tileBatchRenderer = new TileBatchRenderer(cam, environment);
-		// TEMP flow smoke test — remove.
-		com.badlogic.gdx.utils.Timer.schedule(new com.badlogic.gdx.utils.Timer.Task() {
-			public void run() {
-				double la = getC().L.getCurrentLatitude();
-				double lo = getC().L.getCurrentLongitude();
-				getC().gpxManager.loadFromXml(String.format(java.util.Locale.US,
-						"<gpx><trk><trkseg><trkpt lat=\"%.6f\" lon=\"%.6f\"><ele>1200</ele></trkpt>"
-						+ "<trkpt lat=\"%.6f\" lon=\"%.6f\"><ele>1600</ele></trkpt>"
-						+ "<trkpt lat=\"%.6f\" lon=\"%.6f\"><ele>2000</ele></trkpt></trkseg></trk></gpx>",
-						la, lo, la + 0.004, lo + 0.004, la + 0.008, lo + 0.002));
-			}
-		}, 9f);
 
 		resetMultiplexerOnce();
 

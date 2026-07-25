@@ -9,6 +9,7 @@ import static com.peaknav.utils.Units.deg2rad;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
@@ -19,12 +20,17 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Interpolation;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
+import com.peaknav.elevation.ElevationUtils;
+import com.peaknav.islands.Island;
 import com.peaknav.utils.CrashLogger;
+import com.peaknav.utils.Units;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.PerspectiveCameraExt;
 import com.peaknav.viewer.labels.DrawLabel;
 import com.peaknav.viewer.labels.DrawLabelCategory;
 import com.peaknav.viewer.screens.BackgroundPicManager;
+
+import java.util.List;
 
 public class LabelRenderer {
 
@@ -94,6 +100,7 @@ public class LabelRenderer {
 
     public void render(float deltaTime) {
         // renderBackgroundPixmap();
+        renderIslands();
         renderLabelLines();
         renderLabelTexts();
         renderHorizonCompass();
@@ -231,6 +238,183 @@ public class LabelRenderer {
             // crashLogger.logToFile();
         } finally {
             spriteBatch.end();
+        }
+    }
+
+    // ---- Island area overlay -------------------------------------------------------------------
+    // Islands (from islands.json) are drawn as a translucent ellipse hovering over the water they
+    // occupy, with the island name spanning the ellipse. This marks the extent of an island the way
+    // an atlas stretches a region's name across it — the peak/town labels alone never say which
+    // island you are looking at.
+    private static final int ISLAND_SEGMENTS = 48;
+    private static final float ISLAND_MAX_KM = 260f; // only draw islands near the current view
+    private static final float KM_PER_DEG_LAT = 111.32f;
+    private final Vector3 islandTmp = new Vector3();
+    private final float[] islandBoundaryX = new float[ISLAND_SEGMENTS];
+    private final float[] islandBoundaryY = new float[ISLAND_SEGMENTS];
+    private final GlyphLayout islandGlyph = new GlyphLayout();
+    private static final Color ISLAND_FILL = new Color(0.30f, 0.68f, 0.95f, 0.18f);
+    private static final Color ISLAND_OUTLINE = new Color(0.55f, 0.86f, 1.0f, 0.85f);
+    private static final Color ISLAND_TEXT = new Color(0.98f, 0.99f, 1.0f, 1f);
+    private static final Color ISLAND_TEXT_SHADOW = new Color(0.03f, 0.10f, 0.18f, 0.9f);
+
+    /**
+     * Draws each configured island as a translucent ellipse over the sea it occupies, with the
+     * island name spanning it. The ellipse sits at sea level (so it hugs the coastline footprint)
+     * and the name floats a little above the centre so it stays legible over the terrain. Only
+     * islands within {@link #ISLAND_MAX_KM} of the current target are drawn.
+     */
+    private void renderIslands() {
+        List<Island> islands = getC().islandRegistry.getIslands();
+        if (islands.isEmpty())
+            return;
+        PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
+        if (cam == null)
+            return;
+
+        float targetLat = getC().L.getTargetLatitude();
+        float targetLon = (float) getC().L.getTargetLongitude();
+        float cosTargetLat = (float) Math.cos(Math.toRadians(targetLat));
+        int screenW = Gdx.graphics.getWidth();
+        int screenH = Gdx.graphics.getHeight();
+
+        for (Island island : islands) {
+            // Distance cull: keep it to the archipelago you are actually near.
+            float dLatKm = (island.lat - targetLat) * KM_PER_DEG_LAT;
+            float dLonKm = (island.lon - targetLon) * KM_PER_DEG_LAT * cosTargetLat;
+            if (dLatKm * dLatKm + dLonKm * dLonKm > ISLAND_MAX_KM * ISLAND_MAX_KM)
+                continue;
+
+            // Footprint centre at sea level (elevation 0, round-earth corrected).
+            float centreCorr = ElevationUtils.getElevationCorrectionForRoundEarth(island.lat, island.lon);
+            float centreX = (float) Units.convertLonitsToLatits(island.lon, targetLat);
+            float centreY = island.lat;
+            float centreZ = -centreCorr;
+            // Skip islands behind the camera.
+            float toX = centreX - cam.position.x;
+            float toY = centreY - cam.position.y;
+            float toZ = centreZ - cam.position.z;
+            if (toX * cam.direction.x + toY * cam.direction.y + toZ * cam.direction.z <= 0f)
+                continue;
+
+            // Ellipse boundary. Local (east, north) km, major axis rotated CCW from East.
+            float kmPerDegLon = KM_PER_DEG_LAT * (float) Math.cos(Math.toRadians(island.lat));
+            float rot = (float) Math.toRadians(island.rotationDeg);
+            float cosR = (float) Math.cos(rot);
+            float sinR = (float) Math.sin(rot);
+            float minX = Float.MAX_VALUE, maxX = -Float.MAX_VALUE;
+            float minY = Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
+            for (int k = 0; k < ISLAND_SEGMENTS; k++) {
+                float t = (float) (2.0 * Math.PI * k / ISLAND_SEGMENTS);
+                float localE = island.semiMajorKm * (float) Math.cos(t);
+                float localN = island.semiMinorKm * (float) Math.sin(t);
+                float eastKm = localE * cosR - localN * sinR;
+                float northKm = localE * sinR + localN * cosR;
+                float ptLat = island.lat + northKm / KM_PER_DEG_LAT;
+                float ptLon = island.lon + eastKm / kmPerDegLon;
+                float corr = ElevationUtils.getElevationCorrectionForRoundEarth(ptLat, ptLon);
+                islandTmp.set((float) Units.convertLonitsToLatits(ptLon, targetLat), ptLat, -corr);
+                cam.project(islandTmp);
+                islandBoundaryX[k] = islandTmp.x;
+                islandBoundaryY[k] = islandTmp.y;
+                if (islandTmp.x < minX) minX = islandTmp.x;
+                if (islandTmp.x > maxX) maxX = islandTmp.x;
+                if (islandTmp.y < minY) minY = islandTmp.y;
+                if (islandTmp.y > maxY) maxY = islandTmp.y;
+            }
+            // Off-screen cull (with a margin so a partially visible island still draws).
+            if (maxX < -0.1f * screenW || minX > 1.1f * screenW
+                    || maxY < -0.1f * screenH || minY > 1.1f * screenH)
+                continue;
+
+            // Footprint centre and the (slightly raised) name anchor, in screen space.
+            islandTmp.set(centreX, centreY, centreZ);
+            cam.project(islandTmp);
+            float fanX = islandTmp.x;
+            float fanY = islandTmp.y;
+            islandTmp.set(centreX, centreY, centreZ + Units.convertMetersToLatits(nameLiftMeters(island)));
+            cam.project(islandTmp);
+            float nameX = islandTmp.x;
+            float nameY = islandTmp.y;
+
+            drawIslandShape(fanX, fanY);
+            drawIslandName(island.name, nameX, nameY, maxX - minX);
+        }
+    }
+
+    /** How high above the sea the island name floats, so it clears the terrain and stays readable. */
+    private float nameLiftMeters(Island island) {
+        float lift = island.semiMajorKm * 60f;
+        return Math.max(300f, Math.min(1500f, lift));
+    }
+
+    private void drawIslandShape(float fanX, float fanY) {
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        try {
+            shapeRenderer.setColor(ISLAND_FILL);
+            for (int k = 0; k < ISLAND_SEGMENTS; k++) {
+                int k2 = (k + 1) % ISLAND_SEGMENTS;
+                shapeRenderer.triangle(
+                        fanX, fanY,
+                        islandBoundaryX[k], islandBoundaryY[k],
+                        islandBoundaryX[k2], islandBoundaryY[k2]);
+            }
+        } finally {
+            shapeRenderer.end();
+        }
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        try {
+            shapeRenderer.setColor(ISLAND_OUTLINE);
+            for (int k = 0; k < ISLAND_SEGMENTS; k++) {
+                int k2 = (k + 1) % ISLAND_SEGMENTS;
+                shapeRenderer.line(
+                        islandBoundaryX[k], islandBoundaryY[k],
+                        islandBoundaryX[k2], islandBoundaryY[k2]);
+            }
+        } finally {
+            shapeRenderer.end();
+        }
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void drawIslandName(String name, float centerX, float centerY, float ellipseScreenW) {
+        if (name == null || name.isEmpty())
+            return;
+        BitmapFont font = getC().styleSingleton.getBitmapFont();
+        float prevScaleX = font.getScaleX();
+        float prevScaleY = font.getScaleY();
+        font.getData().setScale(1f);
+        float baseLineHeight = font.getLineHeight();
+        islandGlyph.setText(font, name);
+        float naturalW = Math.max(1f, islandGlyph.width);
+
+        // Scale the name to span most of the ellipse's on-screen width, clamped so it stays a
+        // sensible, readable size for both tiny and large islands.
+        float targetW = 0.82f * ellipseScreenW;
+        float scale = targetW / naturalW;
+        float minScale = (0.30f * widgetUnitStep) / baseLineHeight;
+        float maxScale = (0.75f * widgetUnitStep) / baseLineHeight;
+        if (scale < minScale) scale = minScale;
+        if (scale > maxScale) scale = maxScale;
+        font.getData().setScale(scale);
+        islandGlyph.setText(font, name);
+        float tx = centerX - islandGlyph.width * 0.5f;
+        float ty = centerY + islandGlyph.height * 0.5f;
+
+        spriteBatch.setTransformMatrix(identityMat);
+        spriteBatch.begin();
+        try {
+            float sh = Math.max(1f, 0.02f * widgetUnitStep);
+            font.setColor(ISLAND_TEXT_SHADOW);
+            font.draw(spriteBatch, name, tx + sh, ty - sh);
+            font.setColor(ISLAND_TEXT);
+            font.draw(spriteBatch, name, tx, ty);
+        } finally {
+            spriteBatch.end();
+            font.getData().setScale(prevScaleX, prevScaleY);
+            font.setColor(Color.WHITE);
         }
     }
 
