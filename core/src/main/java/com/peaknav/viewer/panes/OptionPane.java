@@ -334,21 +334,21 @@ public class OptionPane {
         buttons.add(checkBoxShowAlpineHuts);
 
         ImageTextButtonOptionPane checkBoxShowIslands = getC().widgetGetter.getImageTextButton(
-                "icons/icon_loc_pin.png", s("Islands_label"), true);
+                "icons/icon_checkbox_islands.png", s("Islands_label"), true);
         addCheckingStateProperty(checkBoxShowIslands, () -> P.isVisibleIslands());
         checkBoxShowIslands.addClickListener(() ->
                 changer.execute(() -> P.setVisibleIslands(checkBoxShowIslands.isChecked())));
         buttons.add(checkBoxShowIslands);
 
         ImageTextButtonOptionPane checkBoxShowCities = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_place_names.png", s("Cities_label"), true);
+                "icons/icon_checkbox_large_towns.png", s("Cities_label"), true);
         addCheckingStateProperty(checkBoxShowCities, () -> P.isVisibleCities());
         checkBoxShowCities.addClickListener(() ->
                 changer.execute(() -> P.setVisibleCities(checkBoxShowCities.isChecked())));
         buttons.add(checkBoxShowCities);
 
         ImageTextButtonOptionPane checkBoxShowRanges = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_peak_names.png", s("Mountain_ranges_label"), true);
+                "icons/icon_checkbox_mountain_ranges.png", s("Mountain_ranges_label"), true);
         addCheckingStateProperty(checkBoxShowRanges, () -> P.isVisibleMountainRanges());
         checkBoxShowRanges.addClickListener(() ->
                 changer.execute(() -> P.setVisibleMountainRanges(checkBoxShowRanges.isChecked())));
