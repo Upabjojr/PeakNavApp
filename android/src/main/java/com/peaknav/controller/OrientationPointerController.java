@@ -12,35 +12,53 @@ import android.view.Display;
 import android.view.Surface;
 import android.view.WindowManager;
 
+import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Quaternion;
+import com.badlogic.gdx.math.Vector3;
 import com.peaknav.singleton.MapViewerAndroidSingleton;
 import com.peaknav.viewer.screens.MapViewerScreen;
 
+/**
+ * Feeds the camera a device orientation derived from the platform's <em>fused</em> rotation-vector
+ * sensor ({@link Sensor#TYPE_ROTATION_VECTOR}), available since API 9 and present on every device we
+ * target. The OS fuses gyroscope + accelerometer + magnetometer internally, which is dramatically
+ * steadier than fusing raw accelerometer + magnetometer ourselves (the magnetometer alone is very
+ * noisy). On top of that we apply an adaptive quaternion SLERP low-pass:
+ *
+ * <ul>
+ *   <li>When the phone is (nearly) still we blend only a small fraction of each new reading in, so
+ *       residual sensor noise is heavily damped and the view stops wiggling.</li>
+ *   <li>When the phone turns quickly we blend in most of the new reading, so tracking stays snappy
+ *       and lag-free.</li>
+ *   <li>Sub-{@link #DEADBAND_DEG} jitter is ignored outright, freezing the view rock-steady while
+ *       the user holds the phone against a mountain.</li>
+ * </ul>
+ *
+ * The same tuning works across old and new Android versions because it operates on the OS-fused
+ * orientation, not on the raw sensor hardware whose noise characteristics vary between devices.
+ */
 public class OrientationPointerController implements SensorEventListener {
 
     private final SensorManager sensorManager;
-    private Context context;
-
+    private final Context context;
     private final MapViewerScreen mapViewerScreen;
 
-    final float smoothingAccAlpha = 0.7f;
-    final int smoothingAccExp = 3;
+    /** Per-event blend factor when the phone is essentially still: heavy smoothing, kills jitter. */
+    private static final float ALPHA_MIN = 0.06f;
+    /** Per-event blend factor when the phone is turning fast: light smoothing, stays responsive. */
+    private static final float ALPHA_MAX = 0.65f;
+    /** At or above this angular step (degrees) between consecutive readings we use ALPHA_MAX. */
+    private static final float FAST_STEP_DEG = 6.0f;
+    /** Angular steps below this (degrees) are treated as pure noise and dropped entirely. */
+    private static final float DEADBAND_DEG = 0.20f;
 
-    final float smoothingMagAlpha = 0.0001f;
-    final int smoothingMagExp = 5;
-
-    final float smoothingRotationMatrixAlpha = 0.5f;
-    final int smoothingRotationMatrixExp = 3;
-
-    private final float[] accelerometerReadingCurrent = new float[3];
-    private final float[] magnetometerReadingCurrent = new float[3];
-
-    private final float[] accelerometerReadingPrev = new float[3];
-    private final float[] magnetometerReadingPrev = new float[3];
-
-    private final float[] rotationMatrix = new float[9];
-    private final float[] orientationAngles = new float[3];
-
-    private final float[] rotationMatrixPrev = new float[9];
+    // Reused scratch objects — onSensorChanged runs on a sensor thread at up to ~game rate.
+    private final float[] rotationVector = new float[4];
+    private final Quaternion measured = new Quaternion();
+    private final Quaternion smoothed = new Quaternion();
+    private final Vector3 axisX = new Vector3();
+    private final Vector3 axisZ = new Vector3();
+    private boolean haveSmoothed = false;
 
     public OrientationPointerController(Context context) {
         this.context = context;
@@ -49,68 +67,59 @@ public class OrientationPointerController implements SensorEventListener {
     }
 
     public void start() {
-        Sensor accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-        if (accelerometer != null) {
-            sensorManager.registerListener(this, accelerometer,
-                    SensorManager.SENSOR_DELAY_NORMAL, SensorManager.SENSOR_DELAY_UI);
+        haveSmoothed = false;
+        Sensor rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+        if (rotationVectorSensor != null) {
+            // SENSOR_DELAY_GAME (~50 Hz) is smooth without flooding; the OS fusion runs regardless.
+            sensorManager.registerListener(this, rotationVectorSensor, SensorManager.SENSOR_DELAY_GAME);
         }
-        Sensor magneticField = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-        if (magneticField != null) {
-            sensorManager.registerListener(this, magneticField,
-                    SensorManager.SENSOR_DELAY_NORMAL, SensorManager.SENSOR_DELAY_UI);
-        }
-
     }
 
     public void stop() {
         sensorManager.unregisterListener(this);
     }
 
-    private void getDiff(float[] prev, float[] current, float smoothingAlpha, int smoothingExp) {
-        for (int i = 0; i < current.length; i++) {
-            float difference = current[i] - prev[i];
-            float posDiff = Math.abs(difference);
-            float cor = (float) (smoothingAlpha * ((difference > 0)? 1.f : -1.f) * Math.pow(posDiff, smoothingExp));
-            cor = (cor > posDiff || cor < -posDiff)? difference : cor;
-            current[i] = prev[i] + cor;
-        }
-    }
-
-    private void updateValues(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            System.arraycopy(accelerometerReadingCurrent, 0, accelerometerReadingPrev,
-                    0, accelerometerReadingCurrent.length);
-            System.arraycopy(event.values, 0, accelerometerReadingCurrent,
-                    0, accelerometerReadingCurrent.length);
-            getDiff(accelerometerReadingPrev, accelerometerReadingCurrent, smoothingAccAlpha, smoothingAccExp);
-        } else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
-            System.arraycopy(magnetometerReadingCurrent, 0, magnetometerReadingPrev,
-                    0, magnetometerReadingCurrent.length);
-            System.arraycopy(event.values, 0, magnetometerReadingCurrent,
-                    0, magnetometerReadingCurrent.length);
-            getDiff(magnetometerReadingPrev, magnetometerReadingCurrent, smoothingMagAlpha, smoothingMagExp);
-        }
-    }
-
     @Override
     public void onSensorChanged(SensorEvent event) {
-        updateValues(event);
+        if (event.sensor.getType() != Sensor.TYPE_ROTATION_VECTOR) {
+            return;
+        }
 
-        SensorManager.getRotationMatrix(rotationMatrix, null,
-                accelerometerReadingCurrent, magnetometerReadingCurrent);
+        // getQuaternionFromVector fills [w, x, y, z]; libGDX Quaternion is (x, y, z, w).
+        SensorManager.getQuaternionFromVector(rotationVector, event.values);
+        measured.set(rotationVector[1], rotationVector[2], rotationVector[3], rotationVector[0]);
 
-        // TODO: remove?
-        SensorManager.getOrientation(rotationMatrix, orientationAngles);
+        if (!haveSmoothed) {
+            smoothed.set(measured);
+            haveSmoothed = true;
+        } else {
+            // Angle between the current filtered orientation and the fresh reading, in degrees.
+            float dot = Math.abs(smoothed.dot(measured));
+            if (dot > 1f) dot = 1f;
+            float stepDeg = 2f * MathUtils.acos(dot) * MathUtils.radiansToDegrees;
 
-        getDiff(rotationMatrixPrev, rotationMatrix, smoothingRotationMatrixAlpha, smoothingRotationMatrixExp);
+            if (stepDeg < DEADBAND_DEG) {
+                return; // Pure noise while held still: leave the view exactly where it is.
+            }
 
-        System.out.println("onSensorChanged finished.");
+            // Ramp the blend factor from heavy smoothing (still) to light smoothing (fast turn).
+            float t = MathUtils.clamp(stepDeg / FAST_STEP_DEG, 0f, 1f);
+            float alpha = ALPHA_MIN + (ALPHA_MAX - ALPHA_MIN) * t;
+            smoothed.slerp(measured, alpha);
+        }
+
+        // Columns of the device->world rotation, matching the previous rotation-matrix convention:
+        //   up  = R * (1,0,0)  (device X in world)     dir = -(R * (0,0,1))  (device -Z in world)
+        axisX.set(1f, 0f, 0f);
+        smoothed.transform(axisX);
+        axisZ.set(0f, 0f, 1f);
+        smoothed.transform(axisZ);
 
         boolean landscape = isOrientationLandscape();
         boolean upsideDown = isOrientationUpsideDown();
         mapViewerScreen.pointCameraForGyroscope(
-                -rotationMatrix[2], -rotationMatrix[5], -rotationMatrix[8],
-                rotationMatrix[0], rotationMatrix[3], rotationMatrix[6],
+                -axisZ.x, -axisZ.y, -axisZ.z,
+                axisX.x, axisX.y, axisX.z,
                 landscape, upsideDown);
     }
 
