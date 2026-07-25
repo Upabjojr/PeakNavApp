@@ -287,7 +287,110 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void shareSnapshot(Pixmap pixmap) {
+        if (pixmap == null) {
+            return;
+        }
+        // Default file name carries a timestamp so successive shots don't collide.
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+        final String defaultName = "PeakNav_" + stamp + ".png";
+        SwingUtilities.invokeLater(() -> {
+            try {
+                javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+                chooser.setDialogTitle("Save snapshot");
+                chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
+                chooser.setSelectedFile(new java.io.File(defaultName));
+                javax.swing.filechooser.FileNameExtensionFilter pngFilter =
+                        new javax.swing.filechooser.FileNameExtensionFilter("PNG image (*.png)", "png");
+                javax.swing.filechooser.FileNameExtensionFilter jpgFilter =
+                        new javax.swing.filechooser.FileNameExtensionFilter("JPEG image (*.jpg, *.jpeg)", "jpg", "jpeg");
+                chooser.setAcceptAllFileFilterUsed(false);
+                chooser.addChoosableFileFilter(pngFilter);
+                chooser.addChoosableFileFilter(jpgFilter);
+                chooser.setFileFilter(pngFilter);
 
+                if (chooser.showSaveDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION) {
+                    pixmap.dispose();
+                    return;
+                }
+                java.io.File file = chooser.getSelectedFile();
+                if (file == null) {
+                    pixmap.dispose();
+                    return;
+                }
+                // Pick the format from the file extension; JPEG for .jpg/.jpeg, PNG otherwise. When
+                // no known extension is typed, fall back to the selected filter and append it.
+                String lower = file.getName().toLowerCase(java.util.Locale.ROOT);
+                boolean jpeg;
+                if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+                    jpeg = true;
+                } else if (lower.endsWith(".png")) {
+                    jpeg = false;
+                } else {
+                    jpeg = chooser.getFileFilter() == jpgFilter;
+                    file = new java.io.File(file.getParentFile(), file.getName() + (jpeg ? ".jpg" : ".png"));
+                }
+                if (file.exists()) {
+                    int overwrite = javax.swing.JOptionPane.showConfirmDialog(null,
+                            "Overwrite " + file.getName() + "?", "File exists",
+                            javax.swing.JOptionPane.YES_NO_OPTION);
+                    if (overwrite != javax.swing.JOptionPane.YES_OPTION) {
+                        pixmap.dispose();
+                        return;
+                    }
+                }
+                final java.io.File target = file;
+                final boolean asJpeg = jpeg;
+                Thread saver = new Thread(() -> {
+                    try {
+                        savePixmapToFile(pixmap, target, asJpeg);
+                        SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
+                                null, "Saved to " + target.getAbsolutePath()));
+                    } catch (Exception e) {
+                        SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
+                                null, "Could not save the snapshot:\n" + e.getMessage(),
+                                "Save failed", javax.swing.JOptionPane.ERROR_MESSAGE));
+                    } finally {
+                        pixmap.dispose();
+                    }
+                }, "snapshot-save");
+                saver.setDaemon(true);
+                saver.start();
+            } catch (Throwable t) {
+                pixmap.dispose();
+            }
+        });
+    }
+
+    /**
+     * Writes a libGDX {@link Pixmap} to disk as PNG or JPEG via ImageIO. The pixmap comes straight
+     * from {@code glReadPixels} and is therefore bottom-up, so rows are flipped here (PNG output on
+     * other platforms relies on PixmapIO's own flip). JPEG has no alpha channel, so it is written as
+     * opaque RGB.
+     */
+    private static void savePixmapToFile(Pixmap pixmap, java.io.File file, boolean jpeg)
+            throws java.io.IOException {
+        int w = pixmap.getWidth(), h = pixmap.getHeight();
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(
+                w, h, jpeg ? java.awt.image.BufferedImage.TYPE_INT_RGB
+                           : java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < h; y++) {
+            int srcY = h - 1 - y; // flip: glReadPixels rows go bottom-to-top
+            for (int x = 0; x < w; x++) {
+                int rgba = pixmap.getPixel(x, srcY); // 0xRRGGBBAA
+                int r = (rgba >>> 24) & 0xFF;
+                int g = (rgba >>> 16) & 0xFF;
+                int b = (rgba >>> 8) & 0xFF;
+                int a = rgba & 0xFF;
+                image.setRGB(x, y, (a << 24) | (r << 16) | (g << 8) | b); // RGB type ignores alpha
+            }
+        }
+        java.io.File parent = file.getParentFile();
+        if (parent != null) {
+            parent.mkdirs();
+        }
+        if (!javax.imageio.ImageIO.write(image, jpeg ? "jpg" : "png", file)) {
+            throw new java.io.IOException("no ImageIO writer for " + (jpeg ? "JPEG" : "PNG"));
+        }
     }
 
     @Override
