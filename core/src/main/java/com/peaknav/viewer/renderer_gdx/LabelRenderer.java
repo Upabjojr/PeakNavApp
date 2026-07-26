@@ -361,7 +361,8 @@ public class LabelRenderer {
     private static final class PendingArea {
         String name;
         AreaPalette palette;
-        float rx, ry, rw, rh;      // plate rectangle on screen
+        float rx, ry, rw, rh;      // plate rectangle on screen (what is drawn)
+        float crx, cry, crw, crh;  // tighter text rectangle used for collisions
         float scale, textW, textH; // for drawing the name at the same size it was measured
         int priority;              // higher wins a collision (islands/ranges over towns)
         float importance;          // tie-break within a priority (visible range)
@@ -392,8 +393,10 @@ public class LabelRenderer {
     }
 
     private static boolean areaLabelsOverlap(PendingArea a, PendingArea b) {
-        return a.rx < b.rx + b.rw && a.rx + a.rw > b.rx
-                && a.ry < b.ry + b.rh && a.ry + a.rh > b.ry;
+        // Compared on the tight text rectangles, not the wide plates, so a big area's pill does not
+        // suppress neighbours whose names sit well clear of it.
+        return a.crx < b.crx + b.crw && a.crx + a.crw > b.crx
+                && a.cry < b.cry + b.crh && a.cry + a.crh > b.cry;
     }
 
     private void renderAreas() {
@@ -630,6 +633,15 @@ public class LabelRenderer {
         out.ry = bottomY;
         out.rw = plateW;
         out.rh = plateH;
+
+        // Collision rectangle: the actual text extent (centred on the plate) plus a small margin, so
+        // labels are only dropped when their names would genuinely overlap — not when their wide
+        // background pills happen to touch.
+        float cpad = 0.15f * widgetUnitStep;
+        out.crw = textW + 2f * cpad;
+        out.crh = textH + 2f * padY;
+        out.crx = centerX - out.crw * 0.5f;
+        out.cry = bottomY + (plateH - out.crh) * 0.5f;
     }
 
     /** Draws a measured area label: one uniform rounded pill with the name centred on it. */
