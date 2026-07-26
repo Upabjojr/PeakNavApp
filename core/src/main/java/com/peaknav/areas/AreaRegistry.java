@@ -7,7 +7,7 @@ import com.badlogic.gdx.utils.JsonValue;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -26,13 +26,38 @@ public class AreaRegistry {
     private static final int ZOOM = 9;
 
     /**
-     * How far around the viewer to load tiles, in degrees. It must comfortably exceed the farthest
-     * area relevance range (~190 km ≈ 1.7°) plus a tile's own extent, so an area whose tile is near
-     * the edge but whose visible range reaches the viewer is still loaded before the relevance cull.
+     * How far around the viewer to load tiles, in degrees. Sized to cover
+     * {@link MapArea#MAX_RANGE_KM} (250 km ≈ 2.25°) plus a tile's own extent (~0.7°), so an area
+     * whose tile is near the edge but whose visible range reaches the viewer is loaded before the
+     * relevance cull. (The no-op cache below can erode the margin by up to one more tile while the
+     * viewer crosses the centre tile; at that extreme edge a label may appear one rescan late.)
      */
-    private static final double COVERAGE_DEG = 2.2;
+    private static final double COVERAGE_DEG = 3.0;
 
-    private final Map<Long, List<MapArea>> tileCache = new HashMap<>();
+    /**
+     * At most this many tiles are parsed per {@link #getAreasNear} call. The call runs on the
+     * render thread, so an unbounded first scan (or a high-latitude one, where mercator rows
+     * shrink in degrees and the fixed window spans many more tiles) would hitch a frame badly;
+     * instead the neighbourhood fills in over a few frames.
+     */
+    private static final int TILE_LOADS_PER_CALL = 12;
+
+    /** Mercator rows shrink towards the poles; clamp the scan so it cannot explode there. */
+    private static final int MAX_TILE_ROWS = 48;
+
+    /**
+     * Loaded tiles are kept in an access-ordered LRU, so memory no longer grows without bound as
+     * the viewer travels (each entry is one parsed tile, or an empty list for an ocean tile).
+     */
+    private static final int MAX_CACHED_TILES = 1024;
+
+    private final Map<Long, List<MapArea>> tileCache =
+            new LinkedHashMap<Long, List<MapArea>>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<Long, List<MapArea>> eldest) {
+                    return size() > MAX_CACHED_TILES;
+                }
+            };
 
     // Cache the last neighbourhood so a per-frame call is a no-op until the viewer crosses a tile.
     private long lastCentreKey = Long.MIN_VALUE;
@@ -52,16 +77,33 @@ public class AreaRegistry {
         int xMax = lon2tileX(lon + COVERAGE_DEG);
         int yTop = lat2tileY(lat + COVERAGE_DEG); // higher latitude -> smaller Y
         int yBot = lat2tileY(lat - COVERAGE_DEG);
+        if (yBot - yTop > MAX_TILE_ROWS) {
+            yTop = Math.max(yTop, centreY - MAX_TILE_ROWS / 2);
+            yBot = Math.min(yBot, centreY + MAX_TILE_ROWS / 2);
+        }
 
         List<MapArea> result = new ArrayList<>();
+        int loads = 0;
+        boolean complete = true;
         for (int x = xMin; x <= xMax; x++) {
             int xx = ((x % n) + n) % n; // wrap around the antimeridian
             for (int y = yTop; y <= yBot; y++) {
                 if (y < 0 || y >= n) continue; // no tiles past the poles
-                result.addAll(loadTile(xx, y));
+                List<MapArea> tile = tileCache.get(tileKey(xx, y));
+                if (tile == null) {
+                    if (loads >= TILE_LOADS_PER_CALL) {
+                        complete = false; // budget spent — pick this tile up next frame
+                        continue;
+                    }
+                    loads++;
+                    tile = loadTile(xx, y);
+                }
+                result.addAll(tile);
             }
         }
-        lastCentreKey = centreKey;
+        // Only remember the neighbourhood once every tile in it has been loaded; until then the
+        // next frame re-enters (all cache hits plus the next budget's worth of loads).
+        lastCentreKey = complete ? centreKey : Long.MIN_VALUE;
         lastResult = result;
         return result;
     }
@@ -82,17 +124,25 @@ public class AreaRegistry {
                 JsonValue array = (root != null) ? root.get("areas") : null;
                 if (array != null) {
                     for (JsonValue jo = array.child; jo != null; jo = jo.next) {
-                        list.add(new MapArea(
-                                jo.getString("name", ""),
-                                jo.getString("type", "island"),
-                                jo.getFloat("lat"),
-                                jo.getFloat("lon"),
-                                jo.getFloat("semiMajorKm"),
-                                jo.getFloat("semiMinorKm"),
-                                jo.getFloat("rotationDeg", 0f),
-                                jo.getFloat("peakMeters", 0f),
-                                jo.getFloat("visibleRangeKm", 0f),
-                                jo.getInt("population", 0)));
+                        // Per-entry, so one malformed area (e.g. a missing "lon") skips only
+                        // itself — previously it aborted the loop and the truncated list was
+                        // cached for the whole session.
+                        try {
+                            list.add(new MapArea(
+                                    jo.getString("name", ""),
+                                    jo.getString("type", "island"),
+                                    jo.getFloat("lat"),
+                                    jo.getFloat("lon"),
+                                    jo.getFloat("semiMajorKm"),
+                                    jo.getFloat("semiMinorKm"),
+                                    jo.getFloat("rotationDeg", 0f),
+                                    jo.getFloat("peakMeters", 0f),
+                                    jo.getFloat("visibleRangeKm", 0f),
+                                    jo.getInt("population", 0)));
+                        } catch (RuntimeException e) {
+                            System.err.println("[Areas] skipped bad entry in tile "
+                                    + tileX + "," + tileY + ": " + e.getMessage());
+                        }
                     }
                 }
             }

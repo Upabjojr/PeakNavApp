@@ -76,84 +76,100 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         getAppState().setMapDataDownloaded(true);
     }
 
+    /**
+     * Distinguishes the latest search from earlier ones, so a slow online (Nominatim) response
+     * arriving after the user has already searched again cannot interleave stale rows into the
+     * list (clicking a row would then navigate to the wrong place). Only touched on the EDT.
+     */
+    private int searchGeneration = 0;
+
     @Override
     public void openScreenSearchLocation(ClickCallback callback) {
-        // mapApp.pause();
-        JFrame searchFrame = new JFrame();
-        searchFrame.setLayout(null);
-        searchFrame.setSize(800, 600);
-        searchFrame.setVisible(true);
-        searchFrame.setTitle(s("Search"));
-        JPanel panel = new JPanel();
-        panel.setVisible(true);
-        BoxLayout layout = new BoxLayout(panel, BoxLayout.PAGE_AXIS);
-        panel.setLayout(layout);
-        panel.setBounds(0, 0, 800, 600);
-        searchFrame.add(panel);
+        // The whole window is built on the EDT (this method is called from the GL render thread;
+        // constructing Swing UI there is undefined behaviour and deadlock-prone on macOS).
+        SwingUtilities.invokeLater(() -> {
+            JFrame searchFrame = new JFrame();
+            searchFrame.setLayout(null);
+            searchFrame.setSize(800, 600);
+            searchFrame.setTitle(s("Search"));
+            JPanel panel = new JPanel();
+            BoxLayout layout = new BoxLayout(panel, BoxLayout.PAGE_AXIS);
+            panel.setLayout(layout);
+            panel.setBounds(0, 0, 800, 600);
+            searchFrame.add(panel);
 
-        JTextField textField = new JTextField("", 1);
-        textField.setMaximumSize(new Dimension(300, 65));
-        panel.add(textField, BorderLayout.CENTER);
-        JButton searchButton = new JButton();
-        searchButton.setText(s("Search"));
-        searchButton.setSize(new Dimension(150, 50));
-        panel.add(searchButton);
-        panel.add(Box.createVerticalGlue());
+            JTextField textField = new JTextField("", 1);
+            textField.setMaximumSize(new Dimension(300, 65));
+            panel.add(textField, BorderLayout.CENTER);
+            JButton searchButton = new JButton();
+            searchButton.setText(s("Search"));
+            searchButton.setSize(new Dimension(150, 50));
+            panel.add(searchButton);
+            panel.add(Box.createVerticalGlue());
 
-        textField.requestFocus();
-        SwingUtilities.getRootPane(searchButton).setDefaultButton(searchButton);
+            SwingUtilities.getRootPane(searchButton).setDefaultButton(searchButton);
 
-        DefaultListModel<String> model = new DefaultListModel<>();
+            DefaultListModel<String> model = new DefaultListModel<>();
 
-        JList<String> list = new JList<>(model);
-        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        list.setVisibleRowCount(10);
-        list.setFixedCellHeight(28);
-        list.setBorder(new EmptyBorder(6, 6, 6, 6));
+            JList<String> list = new JList<>(model);
+            list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            list.setVisibleRowCount(10);
+            list.setFixedCellHeight(28);
+            list.setBorder(new EmptyBorder(6, 6, 6, 6));
 
-        list.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                int idx = list.locationToIndex(e.getPoint());
-                if (idx != -1) {
-                    Rectangle cellBounds = list.getCellBounds(idx, idx);
-                    if (cellBounds != null && cellBounds.contains(e.getPoint())) {
-                        // String item = model.getElementAt(idx);
-                        // System.err.println(item);
-                        LuceneGeonameSearch.GeonameResult result = jGeonameResults.get(idx);
-                        getC().L.setCurrentTargetCoords(result.lat, result.lon);
-                        searchFrame.dispose();
+            list.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    int idx = list.locationToIndex(e.getPoint());
+                    if (idx != -1) {
+                        Rectangle cellBounds = list.getCellBounds(idx, idx);
+                        if (cellBounds != null && cellBounds.contains(e.getPoint())
+                                && idx < jGeonameResults.size()) {
+                            LuceneGeonameSearch.GeonameResult result = jGeonameResults.get(idx);
+                            // Core-state mutation (tile updates, missing-data checks) belongs on
+                            // the GL thread, not the EDT.
+                            Gdx.app.postRunnable(
+                                    () -> getC().L.setCurrentTargetCoords(result.lat, result.lon));
+                            searchFrame.dispose();
+                        }
                     }
                 }
-            }
-        });
-
-        panel.add(new JScrollPane(list), BorderLayout.CENTER);
-
-        searchButton.addActionListener(actionEvent -> {
-            String searchText = textField.getText();
-            List<LuceneGeonameSearch.GeonameResult> geonameResults = getC().luceneGeonameSearch.searchGeoName(searchText);
-            model.clear();
-            for (LuceneGeonameSearch.GeonameResult gr : geonameResults) {
-                model.addElement(gr.getFullName());
-            }
-            jGeonameResults.clear();
-            jGeonameResults.addAll(geonameResults);
-
-            getC().onlineSearch.parseDestinationText(searchText, nominatimResponses -> {
-                for (NominatimResponse nominatimResponse : nominatimResponses) {
-                    LuceneGeonameSearch.GeonameResult geonameResult = new LuceneGeonameSearch.GeonameResult(
-                            nominatimResponse.displayName, nominatimResponse.displayName,
-                            nominatimResponse.lat, nominatimResponse.lon, -1
-                    );
-                    model.addElement(geonameResult.getFullName());
-                    jGeonameResults.add(geonameResult);
-                }
             });
-            MapViewerSingleton.getAppInstance().resume();
-            // searchFrame.dispose();
+
+            panel.add(new JScrollPane(list), BorderLayout.CENTER);
+
+            searchButton.addActionListener(actionEvent -> {
+                final int generation = ++searchGeneration;
+                String searchText = textField.getText();
+                List<LuceneGeonameSearch.GeonameResult> geonameResults = getC().luceneGeonameSearch.searchGeoName(searchText);
+                model.clear();
+                for (LuceneGeonameSearch.GeonameResult gr : geonameResults) {
+                    model.addElement(gr.getFullName());
+                }
+                jGeonameResults.clear();
+                jGeonameResults.addAll(geonameResults);
+
+                // The callback arrives on a network thread: the list model and the shared result
+                // list may only be touched on the EDT, and only if no newer search superseded us.
+                getC().onlineSearch.parseDestinationText(searchText,
+                        nominatimResponses -> SwingUtilities.invokeLater(() -> {
+                    if (generation != searchGeneration) {
+                        return; // stale response of an earlier search
+                    }
+                    for (NominatimResponse nominatimResponse : nominatimResponses) {
+                        LuceneGeonameSearch.GeonameResult geonameResult = new LuceneGeonameSearch.GeonameResult(
+                                nominatimResponse.displayName, nominatimResponse.displayName,
+                                nominatimResponse.lat, nominatimResponse.lon, -1
+                        );
+                        model.addElement(geonameResult.getFullName());
+                        jGeonameResults.add(geonameResult);
+                    }
+                }));
+                MapViewerSingleton.getAppInstance().resume();
+            });
+            searchFrame.setVisible(true);
+            textField.requestFocus();
         });
-        searchFrame.show();
     }
 
     @Override
@@ -213,7 +229,8 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                     JOptionPane.YES_NO_OPTION
             );
             if (dialogResult == JOptionPane.YES_OPTION) {
-                getC().L.setCurrentTargetCoords(lat, lon);
+                // Runs on the EDT; hop to the GL thread for the core-state mutation.
+                Gdx.app.postRunnable(() -> getC().L.setCurrentTargetCoords(lat, lon));
             }
         });
     }
@@ -229,12 +246,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void openAppInfoScreen() {
-        Desktop desktop = Desktop.getDesktop();
-        try {
-            desktop.open(Gdx.files.internal("info/app_info.html").file());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        openBundledHtml("info/app_info.html");
     }
 
     @Override
@@ -242,10 +254,27 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         // Just the tutorial slideshow; the keyboard-controls overlay is separate (raised
         // in core when an unbound key is pressed). Desktop has no WebView, so — like
         // openAppInfoScreen — the tutorial is handed to the system browser.
+        openBundledHtml("info/app_tutorial.html");
+    }
+
+    /**
+     * Opens a bundled HTML page in the system browser. When the app runs from a packaged jar,
+     * {@code Gdx.files.internal(...).file()} is not a real file, so the page is extracted to a
+     * temp file first. Failures surface as an alert instead of a RuntimeException on the GL
+     * thread (which used to kill the action silently).
+     */
+    private void openBundledHtml(String internalPath) {
         try {
-            Desktop.getDesktop().open(Gdx.files.internal("info/app_tutorial.html").file());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            java.io.File file = Gdx.files.internal(internalPath).file();
+            if (!file.exists()) {
+                java.io.File tmp = java.io.File.createTempFile("peaknav-", ".html");
+                tmp.deleteOnExit();
+                Gdx.files.internal(internalPath).copyTo(new com.badlogic.gdx.files.FileHandle(tmp));
+                file = tmp;
+            }
+            Desktop.getDesktop().open(file);
+        } catch (Exception e) {
+            alertMessage(internalPath + ": " + e.getMessage());
         }
     }
 
@@ -283,26 +312,30 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void askForDownloadScreen(double lat, double lon) {
-        // System.err.println("Download screen?");
-
-        int dialogResult = JOptionPane.showConfirmDialog(
-                null,
-                s("Missing_data_prompt"), // message
-                s("Missing_data_prompt"), // title
-                JOptionPane.YES_NO_OPTION
-        );
-
-        if (dialogResult == JOptionPane.YES_OPTION) {
-            this.openMapDataDownloadChooser();
-        } else if (dialogResult == JOptionPane.NO_OPTION) {
-            // Go back to where we were, without re-running the missing-data check: doing that
-            // here would pop this very dialog straight back up when the old spot lacks data too.
-            getC().L.setCurrentTargetCoords(
-                    getC().L.getCurrentLatitude(),
-                    getC().L.getCurrentLongitude(),
-                    false
+        // Marshalled to the EDT: this is reached from inside MapViewerScreen.render (a camera fly
+        // ending over missing data), and a synchronous JOptionPane there both violates Swing
+        // threading and freezes the whole render loop until the user answers.
+        SwingUtilities.invokeLater(() -> {
+            int dialogResult = JOptionPane.showConfirmDialog(
+                    null,
+                    s("Missing_data_prompt"), // message
+                    s("Missing_data_prompt"), // title
+                    JOptionPane.YES_NO_OPTION
             );
-        }
+
+            if (dialogResult == JOptionPane.YES_OPTION) {
+                this.openMapDataDownloadChooser();
+            } else if (dialogResult == JOptionPane.NO_OPTION) {
+                // Go back to where we were, without re-running the missing-data check: doing that
+                // here would pop this very dialog straight back up when the old spot lacks data
+                // too. Target mutation belongs on the GL thread, not the EDT.
+                Gdx.app.postRunnable(() -> getC().L.setCurrentTargetCoords(
+                        getC().L.getCurrentLatitude(),
+                        getC().L.getCurrentLongitude(),
+                        false
+                ));
+            }
+        });
     }
 
     @Override
@@ -413,13 +446,27 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         }
     }
 
+    /** The toast currently on screen, if any. Only touched on the EDT. */
+    private javax.swing.JWindow currentToast;
+
     @Override
     public void makeToast(String message) {
         if (message == null || message.isEmpty()) {
             return;
         }
         javax.swing.SwingUtilities.invokeLater(() -> {
+            if (java.awt.GraphicsEnvironment.isHeadless()) {
+                System.err.println("[Toast] " + message);
+                return;
+            }
+            // A burst of toasts (e.g. several provider errors) replaces the previous one instead
+            // of stacking identical always-on-top windows on the same spot.
+            if (currentToast != null) {
+                currentToast.dispose();
+                currentToast = null;
+            }
             javax.swing.JWindow toast = new javax.swing.JWindow();
+            currentToast = toast;
             toast.setAlwaysOnTop(true);
             javax.swing.JLabel label = new javax.swing.JLabel(
                     "<html><body style='width:360px'>" + escapeHtml(message) + "</body></html>");
@@ -442,6 +489,9 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
             javax.swing.Timer timer = new javax.swing.Timer(3500, e -> {
                 toast.setVisible(false);
                 toast.dispose();
+                if (currentToast == toast) {
+                    currentToast = null;
+                }
             });
             timer.setRepeats(false);
             timer.start();

@@ -813,6 +813,10 @@ public class MapViewerScreen implements Screen {
 			cam.viewportHeight = height;
 			cam.update();
 			cam.resizeFieldOfViewToBounds();
+			// The four 180° depth cameras must follow, or the depth pixmaps rebuilt below are
+			// rendered/sampled with the old aspect and every occlusion lookup lands on the
+			// wrong pixel from here on.
+			cam.resizeGeographicCameras(width, height);
 
 			stageViewport.update(width, height, true);
 			stageNavigationViewport.update(width, height, true);
@@ -1165,7 +1169,33 @@ public class MapViewerScreen implements Screen {
 
 	@Override
 	public void dispose() {
-		labelRenderer.dispose();
+		// Everything the screen owns; previously only the label renderer (i.e. the compass
+		// texture) was freed and all other GL/native resources leaked per screen lifecycle.
+		if (labelRenderer != null)
+			labelRenderer.dispose();
+		if (skyRenderer != null)
+			skyRenderer.dispose();
+		if (tileBatchRenderer != null)
+			tileBatchRenderer.dispose();
+		if (impactPixmap != null)
+			impactPixmap.dispose();
+		if (stage != null)
+			stage.dispose();
+		if (stageCopyright != null)
+			stageCopyright.dispose();
+		if (stageNavigationOverview != null)
+			stageNavigationOverview.dispose();
+		if (spriteBatch != null)
+			spriteBatch.dispose();
+		if (spriteBatchOutlines != null) {
+			// The outline shader was set with setShader(), so the batch does not own it.
+			ShaderProgram outlineShader = spriteBatchOutlines.getShader();
+			spriteBatchOutlines.dispose();
+			if (outlineShader != null)
+				outlineShader.dispose();
+		}
+		if (shapeRenderer != null)
+			shapeRenderer.dispose();
 	}
 
 	public boolean updateImpact() {

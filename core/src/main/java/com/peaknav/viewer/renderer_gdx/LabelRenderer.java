@@ -116,6 +116,15 @@ public class LabelRenderer {
 
     private final GlyphLayout clockGlyph = new GlyphLayout();
 
+    // The clock text is rebuilt only when the minute changes: constructing a SimpleDateFormat is
+    // expensive (pattern compile + Calendar + locale data) and doing it every frame at 60 fps was
+    // significant steady-state garbage while a custom sky time was set.
+    private final java.text.SimpleDateFormat clockFormat =
+            new java.text.SimpleDateFormat("yyyy-MM-dd  HH:mm", java.util.Locale.getDefault());
+    private final java.util.Date clockDate = new java.util.Date();
+    private long clockCachedMinute = Long.MIN_VALUE;
+    private String clockText = "";
+
     /**
      * When the sky is frozen at a user-chosen time (via "..." → Set time), shows that date and time
      * on a small pill near the top of the screen, so it is clear the sky is not the live one. Nothing
@@ -125,8 +134,14 @@ public class LabelRenderer {
         com.peaknav.sky.SkyModel sky = getC().skyModel;
         if (sky == null || !sky.hasCustomTime())
             return;
-        String text = new java.text.SimpleDateFormat("yyyy-MM-dd  HH:mm", java.util.Locale.getDefault())
-                .format(new java.util.Date(sky.currentTimeMillis()));
+        long millis = sky.currentTimeMillis();
+        long minute = millis / 60000L;
+        if (minute != clockCachedMinute) {
+            clockCachedMinute = minute;
+            clockDate.setTime(millis);
+            clockText = clockFormat.format(clockDate);
+        }
+        String text = clockText;
         // A white font (the small font is baked black, so tinting it can't lighten it).
         BitmapFont font = getC().styleSingleton.getBitmapFontSmallWhite();
         clockGlyph.setText(font, text);
@@ -302,8 +317,6 @@ public class LabelRenderer {
     private static final int AREA_SEGMENTS = 48;
     private static final float KM_PER_DEG_LAT = 111.32f;
     private final Vector3 areaTmp = new Vector3();
-    private final float[] areaBoundaryX = new float[AREA_SEGMENTS];
-    private final float[] areaBoundaryY = new float[AREA_SEGMENTS];
     private final GlyphLayout areaGlyph = new GlyphLayout();
     private static final Color AREA_TEXT = new Color(0.99f, 0.99f, 1.0f, 1f);
     private static final Color AREA_TEXT_SHADOW = new Color(0.0f, 0.04f, 0.09f, 0.95f);
@@ -433,15 +446,26 @@ public class LabelRenderer {
 
             // Relevance cull: each area carries its own visible range (small islet: only near; big
             // range: from far), stretched by the camera's elevation so climbing reveals more.
+            // Δlon is wrapped across the antimeridian, so an island at lon −179.9° is 22 km from a
+            // viewer at 179.9°, not 40 000 km (the registry already loads wrapped tiles there).
+            float dLonDeg = area.lon - targetLon;
+            if (dLonDeg > 180f) dLonDeg -= 360f;
+            else if (dLonDeg < -180f) dLonDeg += 360f;
+            // The area's longitude unwrapped next to the viewer: keeps the distance maths AND the
+            // world-X projection continuous across the date line.
+            float areaLon = targetLon + dLonDeg;
             float dLatKm = (area.lat - targetLat) * KM_PER_DEG_LAT;
-            float dLonKm = (area.lon - targetLon) * KM_PER_DEG_LAT * cosTargetLat;
-            float effRangeKm = area.visibleRangeKm * altitudeRangeFactor;
+            float dLonKm = dLonDeg * KM_PER_DEG_LAT * cosTargetLat;
+            // Capped at the registry's tile-loading reach: past it the area's tile would not even
+            // be loaded, so a larger effective range only promises labels that cannot appear.
+            float effRangeKm = Math.min(area.visibleRangeKm * altitudeRangeFactor,
+                    MapArea.MAX_RANGE_KM);
             if (dLatKm * dLatKm + dLonKm * dLonKm > effRangeKm * effRangeKm)
                 continue;
 
             // Centre at sea level (elevation 0, round-earth corrected).
-            float centreCorr = ElevationUtils.getElevationCorrectionForRoundEarth(area.lat, area.lon);
-            float centreX = (float) Units.convertLonitsToLatits(area.lon, targetLat);
+            float centreCorr = ElevationUtils.getElevationCorrectionForRoundEarth(area.lat, areaLon);
+            float centreX = (float) Units.convertLonitsToLatits(areaLon, targetLat);
             float centreY = area.lat;
             float centreZ = -centreCorr;
             float toX = centreX - cam.position.x;
@@ -464,13 +488,16 @@ public class LabelRenderer {
                 continue;
 
             // Ellipse boundary (used only to locate and size the area on screen — never drawn).
-            // Local (east, north) km, major axis rotated CCW from East.
-            float kmPerDegLon = KM_PER_DEG_LAT * (float) Math.cos(Math.toRadians(area.lat));
+            // Local (east, north) km, major axis rotated CCW from East. The cosine is clamped so
+            // an area at the poles cannot divide by ~zero into NaN longitudes.
+            float kmPerDegLon = KM_PER_DEG_LAT
+                    * Math.max(1e-3f, (float) Math.cos(Math.toRadians(area.lat)));
             float rot = (float) Math.toRadians(area.rotationDeg);
             float cosR = (float) Math.cos(rot);
             float sinR = (float) Math.sin(rot);
             float minX = Float.MAX_VALUE, maxX = -Float.MAX_VALUE;
             float minY = Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
+            int inFront = 0;
             for (int k = 0; k < AREA_SEGMENTS; k++) {
                 float t = (float) (2.0 * Math.PI * k / AREA_SEGMENTS);
                 float localE = area.semiMajorKm * (float) Math.cos(t);
@@ -478,20 +505,31 @@ public class LabelRenderer {
                 float eastKm = localE * cosR - localN * sinR;
                 float northKm = localE * sinR + localN * cosR;
                 float ptLat = area.lat + northKm / KM_PER_DEG_LAT;
-                float ptLon = area.lon + eastKm / kmPerDegLon;
+                float ptLon = areaLon + eastKm / kmPerDegLon;
                 float corr = ElevationUtils.getElevationCorrectionForRoundEarth(ptLat, ptLon);
-                areaTmp.set((float) Units.convertLonitsToLatits(ptLon, targetLat), ptLat, -corr);
+                float wx = (float) Units.convertLonitsToLatits(ptLon, targetLat);
+                // Skip boundary points behind the camera: projecting them divides by a negative w
+                // and mirrors the screen coordinates, which used to blow the silhouette box up
+                // (huge or misplaced pills when standing on/inside a large area).
+                float rx = wx - cam.position.x;
+                float ry = ptLat - cam.position.y;
+                float rz = -corr - cam.position.z;
+                if (rx * cam.direction.x + ry * cam.direction.y + rz * cam.direction.z <= 0f)
+                    continue;
+                inFront++;
+                areaTmp.set(wx, ptLat, -corr);
                 cam.project(areaTmp);
-                areaBoundaryX[k] = areaTmp.x;
-                areaBoundaryY[k] = areaTmp.y;
                 if (areaTmp.x < minX) minX = areaTmp.x;
                 if (areaTmp.x > maxX) maxX = areaTmp.x;
                 if (areaTmp.y < minY) minY = areaTmp.y;
                 if (areaTmp.y > maxY) maxY = areaTmp.y;
             }
-            // Off-screen cull (with a margin so a partially visible area still labels).
-            if (maxX < -0.1f * screenW || minX > 1.1f * screenW
-                    || maxY < -0.1f * screenH || minY > 1.1f * screenH)
+            // Off-screen cull (with a margin so a partially visible area still labels). With no
+            // boundary point in front (camera inside/right on top of the area) the box is empty,
+            // so the cull is skipped and the label is placed from the summit alone below.
+            if (inFront > 0
+                    && (maxX < -0.1f * screenW || minX > 1.1f * screenW
+                    || maxY < -0.1f * screenH || minY > 1.1f * screenH))
                 continue;
 
             // Place the label just above the area's on-screen silhouette, so it never covers the
@@ -505,16 +543,18 @@ public class LabelRenderer {
                 continue;
             // Hidden-by-terrain cull: like the peak/place labels, drop the area when it is entirely
             // occluded by nearer mountains.
-            if (!areaHasVisiblePoint(area, targetLat, centreX, centreY, centreZ, cam))
+            if (!areaHasVisiblePoint(area, areaLon, targetLat, centreX, centreY, centreZ, cam))
                 continue;
             areaTmp.set(centreX, centreY, summitZ);
             cam.project(areaTmp);
             float summitX = areaTmp.x;
             float summitY = areaTmp.y;
 
-            float silhouetteTop = Math.max(maxY, summitY);      // top of the area on screen (y-up)
+            // top of the area on screen (y-up); summit-only when the footprint is behind the camera
+            float silhouetteTop = (inFront > 0) ? Math.max(maxY, summitY) : summitY;
             float plateBottom = silhouetteTop + 0.30f * widgetUnitStep; // fixed pixel clearance
-            float spanW = Math.min(Math.max(0f, maxX - minX), 1.5f * screenW);
+            float spanW = (inFront > 0)
+                    ? Math.min(Math.max(0f, maxX - minX), 1.5f * screenW) : 0f;
 
             PendingArea p = obtainPending();
             measureAreaLabel(p, area.name, summitX, plateBottom, spanW);
@@ -555,7 +595,7 @@ public class LabelRenderer {
      * elevation — and reports the area as visible if at least one of them is not hidden behind nearer
      * terrain. Uses the same depth (impact) pixmap those labels use.
      */
-    private boolean areaHasVisiblePoint(MapArea area, float targetLat,
+    private boolean areaHasVisiblePoint(MapArea area, float areaLon, float targetLat,
                                         float centreX, float centreY, float centreZ,
                                         PerspectiveCameraExt cam) {
         ImpactPixmap ip = MapViewerSingleton.getViewerInstance().impactPixmap;
@@ -566,7 +606,8 @@ public class LabelRenderer {
         if (checkPointVisible(centreX, centreY, centreZ, cam, ip)) return true;
         if (checkPointVisible(centreX, centreY, centreZ + peakZoff, cam, ip)) return true;
         // The four ellipse semi-axis endpoints, again at sea level and at the summit.
-        float kmPerDegLon = KM_PER_DEG_LAT * (float) Math.cos(Math.toRadians(area.lat));
+        float kmPerDegLon = KM_PER_DEG_LAT
+                * Math.max(1e-3f, (float) Math.cos(Math.toRadians(area.lat)));
         float rot = (float) Math.toRadians(area.rotationDeg);
         float cosR = (float) Math.cos(rot);
         float sinR = (float) Math.sin(rot);
@@ -576,7 +617,7 @@ public class LabelRenderer {
             float eastKm = localE * cosR - localN * sinR;
             float northKm = localE * sinR + localN * cosR;
             float ptLat = area.lat + northKm / KM_PER_DEG_LAT;
-            float ptLon = area.lon + eastKm / kmPerDegLon;
+            float ptLon = areaLon + eastKm / kmPerDegLon;
             float corr = ElevationUtils.getElevationCorrectionForRoundEarth(ptLat, ptLon);
             float wx = (float) Units.convertLonitsToLatits(ptLon, targetLat);
             if (checkPointVisible(wx, ptLat, -corr, cam, ip)) return true;

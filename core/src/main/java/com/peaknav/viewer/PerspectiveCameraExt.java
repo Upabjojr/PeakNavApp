@@ -131,6 +131,35 @@ public class PerspectiveCameraExt extends PerspectiveCamera {
         return camera;
     }
     
+    /**
+     * Keeps the four 180° geographic cameras in step with a viewport resize. They receive their
+     * viewport and field of view only in the constructor otherwise, so after a window resize the
+     * depth pixmaps would be rendered and sampled with the old aspect/FOV — every projected sample
+     * lands on the wrong pixel and labels read as occluded (or wrong) until restart.
+     */
+    public void resizeGeographicCameras(int width, int height) {
+        if (width <= 0 || height <= 0 || camera180degPointNorth == null)
+            return;
+        float fieldOfViewY = 90f / width * height + 5f; // same formula as the constructor
+
+        camera180degPointNorth.fieldOfView = fieldOfViewY;
+        camera180degPointEast.fieldOfView = fieldOfViewY;
+        camera180degPointSouth.fieldOfView = fieldOfViewY;
+        camera180degPointWest.fieldOfView = fieldOfViewY;
+
+        camera180degPointNorth.viewportWidth = width;
+        camera180degPointEast.viewportWidth = width;
+        camera180degPointSouth.viewportWidth = width;
+        camera180degPointWest.viewportWidth = width;
+
+        camera180degPointNorth.viewportHeight = height;
+        camera180degPointEast.viewportHeight = height;
+        camera180degPointSouth.viewportHeight = height;
+        camera180degPointWest.viewportHeight = height;
+
+        updateGeographicCameras(true);
+    }
+
     private void updateGeographicCameras(boolean updateFrustum) {
         if (camera180degPointNorth == null)
             return;

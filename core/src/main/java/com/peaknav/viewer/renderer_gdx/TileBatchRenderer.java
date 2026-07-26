@@ -462,22 +462,28 @@ public class TileBatchRenderer {
         }
     }
 
-    private void resizeCamera(Camera camera, int width, int height) {
-        if (camera == null)
-            return;
-        camera.viewportWidth = width;
-        camera.viewportHeight = height;
-        camera.update();
-    }
     public void resize(int width, int height) {
         if (this.fbo != null) {
             this.fbo.dispose();
         }
         this.fbo = createPseudodistanceFbo(width, height);
         pseudodistancesDirty = true;
+        // The main camera and the four geographic depth cameras are resized by
+        // MapViewerScreen.resize (ModelBatch.getCamera() is null outside begin/end,
+        // so resizing "the batch's camera" here was a guaranteed no-op).
+    }
 
-        resizeCamera(modelBatchPseudodistances.getCamera(), width, height);
-        resizeCamera(modelBatch.getCamera(), width, height);
+    public void dispose() {
+        // Non-daemon single-thread executors: without shutdown they keep the desktop JVM
+        // alive after the window closes.
+        executorStartThreads.shutdown();
+        executorMapTileFixer.shutdown();
+        if (fbo != null) {
+            fbo.dispose();
+            fbo = null;
+        }
+        modelBatch.dispose();
+        modelBatchPseudodistances.dispose();
     }
 
 }

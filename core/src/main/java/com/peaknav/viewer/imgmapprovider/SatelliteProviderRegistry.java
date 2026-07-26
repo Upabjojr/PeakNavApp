@@ -63,18 +63,20 @@ public class SatelliteProviderRegistry {
         }
     }
 
-    private void addFromEntry(Entry entry) {
+    /** @return true when the entry was valid and actually added */
+    private boolean addFromEntry(Entry entry) {
         if (entry == null || entry.url == null) {
-            return;
+            return false;
         }
         String url = entry.url;
         if (url.isEmpty() || SatelliteUrlTemplate.validate(url) != null) {
             // Skip anything that no longer parses instead of breaking the whole options menu.
-            return;
+            return false;
         }
         String name = (entry.name == null || entry.name.isEmpty()) ? hostOf(url) : entry.name;
         String attribution = entry.attribution == null ? "" : entry.attribution;
         customProviders.add(SatelliteImageProvider.custom(CUSTOM_ID_PREFIX + url, url, name, attribution));
+        return true;
     }
 
     private void save() {
@@ -165,10 +167,11 @@ public class SatelliteProviderRegistry {
             if (entry == null || entry.length < 1) {
                 continue;
             }
-            addFromEntry(new Entry(entry[0],
+            // Only count entries that were really added: reporting true for a batch of invalid
+            // entries would let the caller clear the legacy keys without having migrated anything.
+            imported |= addFromEntry(new Entry(entry[0],
                     entry.length > 1 ? entry[1] : null,
                     entry.length > 2 ? entry[2] : null));
-            imported = true;
         }
         if (imported) {
             save();

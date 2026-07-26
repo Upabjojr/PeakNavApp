@@ -27,6 +27,13 @@ public class MapArea {
     public final float visibleRangeKm;
     public final int population;
 
+    /**
+     * Hard cap on the relevance radius. It must stay inside {@link AreaRegistry}'s tile-loading
+     * reach ({@code COVERAGE_DEG}): a range larger than the distance at which the area's tile is
+     * even loaded would promise labels that can never appear (they would just pop in late).
+     */
+    public static final float MAX_RANGE_KM = 250f;
+
     public MapArea(String name, String type, float lat, float lon,
                    float semiMajorKm, float semiMinorKm, float rotationDeg, float peakMeters,
                    float visibleRangeKm, int population) {
@@ -39,17 +46,19 @@ public class MapArea {
         this.rotationDeg = rotationDeg;
         this.peakMeters = peakMeters;
         this.population = Math.max(0, population);
-        float base = (visibleRangeKm > 0f) ? visibleRangeKm : defaultRangeKm(semiMajorKm, peakMeters);
+        boolean explicit = visibleRangeKm > 0f;
+        float base = explicit ? visibleRangeKm : defaultRangeKm(semiMajorKm, peakMeters);
         // A populous place must stay readable from far off regardless of terrain prominence: a flat
         // coastal city (small prominence range) would otherwise be culled long before a tiny hill
         // village. Take whichever radius is larger so nothing that used to show is lost.
         float range = Math.max(base, populationRangeKm(this.population));
         // Islands are wanted from far away — e.g. to name what you can see while sailing — so they
-        // get a much bigger relevance radius (and a generous floor for the tiny ones).
+        // get a much bigger relevance radius (and a generous floor for the tiny ones). A range the
+        // pipeline supplied explicitly is trusted as final and only floored, not multiplied again.
         if ("island".equals(this.type)) {
-            range = Math.max(range * 2.5f, 60f);
+            range = explicit ? Math.max(range, 60f) : Math.max(range * 2.5f, 60f);
         }
-        this.visibleRangeKm = range;
+        this.visibleRangeKm = Math.min(range, MAX_RANGE_KM);
     }
 
     /**

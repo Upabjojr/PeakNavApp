@@ -54,18 +54,35 @@ public class ImpactPixmap {
         lock.writeLock().unlock();
     }
 
-    private int getPseudometerPixelDistance(int x, int y) {
-        return getPseudometerPixelDistance(x, y, false);
+    /**
+     * Per-thread scratch state. This class is queried concurrently by the render thread (area
+     * labels, every frame) and the visibility worker (POI sweep) under a shared READ lock, so
+     * shared mutable temporaries would let one thread sample the depth pixmaps at the other
+     * thread's coordinates (labels randomly flickering hidden/visible).
+     */
+    private static final class Scratch {
+        final Vector3 unproj = new Vector3();
+        final DistanceRange dr = new DistanceRange(0, 1);
     }
 
-    private int getPseudometerPixelDistance(int x, int y, boolean flipY) {
+    // Anonymous subclass rather than ThreadLocal.withInitial: that is an API 26+ method on
+    // Android and this project's minSdk is 21.
+    private final ThreadLocal<Scratch> scratch = new ThreadLocal<Scratch>() {
+        @Override
+        protected Scratch initialValue() {
+            return new Scratch();
+        }
+    };
 
+    private int getPseudometerPixelDistance(int x, int y, boolean flipY) {
+        Vector3 tempUnproj = scratch.get().unproj;
         tempUnproj.set(x, y, 0.99999f);
         this.cam.unproject(tempUnproj);
         return getPseudometerCoordinateDistance(tempUnproj, flipY, 0);
     }
 
     private int getPseudometerCoordinateDistance(Vector3 coordPos, boolean flipY, int deltaY) {
+        Vector3 tempUnproj = scratch.get().unproj;
         tempUnproj.set(coordPos);
 
         Vector3 camPos = this.cam.position;
@@ -135,11 +152,8 @@ public class ImpactPixmap {
     }
 
     public DistanceRange getPseudoDistanceRangeForDirection(Vector3 position) {
-        // cam.project(position);
         int distMax = Integer.MIN_VALUE;
         int distMin = Integer.MAX_VALUE;
-        // int x = (int) position.x;
-        // int y = (int) position.y;
         // TODO: only return first distance found... useless to have such long loop:
         for (int i = 4; (i > -4 || distMax < 0) && (i > -22); i -= 1) {
             int dist = getPseudometerCoordinateDistance(position, false, i);
@@ -150,12 +164,11 @@ public class ImpactPixmap {
             if (dist > distMax)
                 distMax = dist;
         }
+        DistanceRange dr = scratch.get().dr;
         dr.min = distMin;
         dr.max = distMax;
         return dr;
     }
-
-    private final ImpactPixmap.DistanceRange dr = new ImpactPixmap.DistanceRange(0, 1);
 
     /** True once all four geographical depth pixmaps have been rendered at least once. */
     public boolean isReady() {
@@ -171,15 +184,21 @@ public class ImpactPixmap {
     public boolean checkIfDistanceIsVisible(float dist, Vector3 destination) {
         lock.readLock().lock();
         try {
-            getPseudoDistanceRangeForDirection(destination);
+            if (pixmapNorth == null || pixmapEast == null || pixmapSouth == null || pixmapWest == null)
+                return true; // no depth information yet — don't hide anything
+            DistanceRange dr = getPseudoDistanceRangeForDirection(destination);
+            if (dr.min > dr.max) {
+                // No terrain sample at all in the column: the point is silhouetted against open
+                // sky, so nothing can be in front of it. (Previously the inverted empty range
+                // reported such points — e.g. an island seen from a boat — as occluded.)
+                return true;
+            }
             dr.addMargin();
             return dr.min < dist && dist < dr.max;
         } finally {
             lock.readLock().unlock();
         }
     }
-
-    private final Vector3 tempUnproj = new Vector3();
 
     public Vector3 findPointOfImpactForScreenCoords(int screenX, int screenY) {
         lock.readLock().lock();
@@ -203,20 +222,31 @@ public class ImpactPixmap {
     }
      */
 
+    /** How long a worker will wait for the render thread to service a depth-pixmap request. */
+    private static final long REQUEST_TIMEOUT_MILLIS = 4000;
+
     public void requestUpdatedImpactPixmap() {
-        try {
-            Thread.sleep(25);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
         impactPixmapNewRequested = true;
-        do {
+        // Wait (bounded) for the render thread to clear the flag. When rendering is paused or a
+        // different screen is up, no frame will ever service the request — without the deadline
+        // this spun at 40 Hz forever. On timeout the caller just works with the previous depth
+        // data, which is the best available anyway.
+        long deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MILLIS;
+        while (impactPixmapNewRequested && System.currentTimeMillis() < deadline) {
             try {
                 Thread.sleep(25);
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                // Preserve the stop request instead of blowing up the worker with a
+                // RuntimeException (which defeated the StoppableRunnable interruption path).
+                Thread.currentThread().interrupt();
+                return;
             }
-        } while (impactPixmapNewRequested);
+        }
+    }
+
+    /** Frees the four native depth pixmaps. Safe to call more than once. */
+    public void dispose() {
+        setPixmapGeographical(null, null, null, null);
     }
 
 }

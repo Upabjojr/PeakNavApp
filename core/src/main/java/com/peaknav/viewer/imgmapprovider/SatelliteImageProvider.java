@@ -166,27 +166,57 @@ public class SatelliteImageProvider {
             int factor = (1 << (tile.zoomLevel - maxZoom));
             Tile zoutTile = new Tile(tile.tileX/factor, tile.tileY/factor, maxZoom, MF_ZOOM);
             File zoImagePath = downloadTileToFileIfNotExists(zoutTile);
+            if (zoImagePath == null) {
+                return; // download failed; the tile pass simply retries later
+            }
             File imagePath = getImageFileHandle(tile.zoomLevel, tile.tileX, tile.tileY);
             Pixmap zoPixmap = PeakNavUtils.readImageCached(zoImagePath);
-            int w = zoPixmap.getWidth()/factor;
-            int h = zoPixmap.getHeight()/factor;
-            Pixmap pixmap = new Pixmap(w, h, zoPixmap.getFormat());
-            int srcx = (tile.tileX - factor*zoutTile.tileX)*w;
-            int srcy = (tile.tileY - factor*zoutTile.tileY)*h;
-            pixmap.drawPixmap(zoPixmap, srcx, srcy, w, h, 0, 0, w, h);
-            PixmapIO.writePNG(new FileHandle(imagePath), pixmap);
-            pixmap.dispose();
+            if (zoPixmap == null) {
+                // Unreadable (e.g. an old truncated download): remove it so it is re-downloaded
+                // on the next pass instead of failing on every visit to this area forever.
+                zoImagePath.delete();
+                return;
+            }
+            try {
+                int w = zoPixmap.getWidth()/factor;
+                int h = zoPixmap.getHeight()/factor;
+                Pixmap pixmap = new Pixmap(w, h, zoPixmap.getFormat());
+                // Write via a per-thread temp file + rename, so a concurrent worker producing the
+                // same tile can never interleave bytes into one file.
+                File tmp = new File(imagePath.getPath() + ".part-" + Thread.currentThread().getId());
+                try {
+                    int srcx = (tile.tileX - factor*zoutTile.tileX)*w;
+                    int srcy = (tile.tileY - factor*zoutTile.tileY)*h;
+                    pixmap.drawPixmap(zoPixmap, srcx, srcy, w, h, 0, 0, w, h);
+                    PixmapIO.writePNG(new FileHandle(tmp), pixmap);
+                } catch (RuntimeException e) {
+                    tmp.delete(); // never leave a partial file behind
+                    throw e;
+                } finally {
+                    pixmap.dispose();
+                }
+                if (!tmp.renameTo(imagePath)) {
+                    tmp.delete(); // another worker won the race; its file is just as good
+                }
+            } finally {
+                PeakNavUtils.decrementReferenceCounter(zoPixmap);
+            }
         } else {
             downloadTileToFileIfNotExists(tile);
         }
     }
 
+    /**
+     * @return the tile's image file, or null when it is not on disk and could not be downloaded.
+     *         The download goes to a per-thread temp file first and is renamed into place only
+     *         when complete, so a dropped connection can never leave a truncated file that
+     *         {@code file.exists()} would then trust forever.
+     */
     private File downloadTileToFileIfNotExists(Tile tile) {
-        File imagePath = getImageFileHandle(tile.zoomLevel, tile.tileX, tile.tileY);
-        String tilePath = imagePath.getAbsolutePath();
-        File file = new File(tilePath);
+        File file = getImageFileHandle(tile.zoomLevel, tile.tileX, tile.tileY);
         if (file.exists())
-            return imagePath;
+            return file;
+        File tmp = new File(file.getPath() + ".part-" + Thread.currentThread().getId());
         try {
             URL url = new URL(getURL(tile.zoomLevel, tile.tileX, tile.tileY));
 
@@ -194,12 +224,20 @@ public class SatelliteImageProvider {
             URLConnection con = url.openConnection();
             con.setRequestProperty("User-Agent", user_agent);
 
-            InputStream inputStream = con.getInputStream();
-            PeakNavUtils.copyFile(inputStream, file);
-        } catch (IOException malformedURLException) {
-            malformedURLException.printStackTrace();
+            PeakNavUtils.copyFile(con.getInputStream(), tmp); // closes both streams
+            if (!tmp.renameTo(file)) {
+                tmp.delete(); // concurrent download of the same tile finished first
+                if (!file.exists()) {
+                    return null;
+                }
+            }
+            return file;
+        } catch (IOException e) {
+            tmp.delete();
+            System.err.println("[Satellite] download failed for "
+                    + tile.zoomLevel + "/" + tile.tileX + "/" + tile.tileY + ": " + e);
+            return null;
         }
-        return imagePath;
     }
 
 }

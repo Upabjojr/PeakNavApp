@@ -165,7 +165,7 @@ public final class SolarSystem {
         cosElong = Math.max(-1.0, Math.min(1.0, cosElong));
         double elong = Math.acos(cosElong) * RAD2DEG;
         moon.phase = (1 - cosd(elong)) / 2.0;
-        moon.phaseAngleDeg = elong;
+        moon.elongationDeg = elong;
     }
 
     private void computePlanet(SkyBody body, double d, double oblecl,

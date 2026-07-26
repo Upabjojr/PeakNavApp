@@ -77,6 +77,15 @@ public final class SkyRenderer {
         this.shapeRenderer = shapeRenderer;
     }
 
+    /** Frees the lazily created moon texture (the batches are owned by the screen). */
+    public void dispose() {
+        if (moonTexture != null) {
+            moonTexture.dispose();
+            moonTexture = null;
+        }
+        moonTextureTried = false;
+    }
+
     /** Sky background colour for the GL clear, given the Sun altitude. Writes r,g,b into {@code out}. */
     public static void skyColor(double sunAltDeg, float[] out) {
         float[] hi = SKY_COLORS[0], lo = SKY_COLORS[SKY_COLORS.length - 1];
@@ -222,16 +231,23 @@ public final class SkyRenderer {
             }
         }
         // Sun label always; Moon/planet labels only when sky objects are on and dark enough
+        if (bodyNameCache == null || bodyNameCache.length != bodies.size()) {
+            bodyNameCache = new String[bodies.size()];
+        }
         for (int i = 0; i < bodies.size(); i++) {
             SkyBody b = bodies.get(i);
             if (b.kind != SkyBody.Kind.SUN && !objects) continue;
             int o = i * 3;
             if (!project(cam, benu[o], benu[o + 1], benu[o + 2])) continue;
             if (b.kind == SkyBody.Kind.PLANET && starNight < 0.15f) continue;
-            String name = localizedBodyName(b);
-            String label = b.kind == SkyBody.Kind.MOON
-                    ? String.format(java.util.Locale.getDefault(), "%s %d%%", name, Math.round(b.phase * 100))
-                    : name;
+            // The names (and the Moon's "name NN%" label) are constant per body/percent, so they
+            // are cached instead of rebuilding strings every frame for ~10 bodies.
+            String name = bodyNameCache[i];
+            if (name == null) {
+                name = localizedBodyName(b);
+                bodyNameCache[i] = name;
+            }
+            String label = b.kind == SkyBody.Kind.MOON ? moonLabel(name, b) : name;
             font.setColor(b.r, b.g, b.b, 0.9f);
             font.draw(spriteBatch, label, tmp.x + 6 * px, tmp.y + 6 * px);
         }
@@ -247,6 +263,20 @@ public final class SkyRenderer {
     /** Localised label for a Sun/Moon/planet, e.g. {@code Sky_sun} → "Sole" in Italian. */
     private static String localizedBodyName(SkyBody b) {
         return s("Sky_" + b.name.toLowerCase(java.util.Locale.ENGLISH));
+    }
+
+    // Per-frame-garbage caches for the body labels (the language cannot change mid-session).
+    private String[] bodyNameCache;
+    private String moonLabelCache;
+    private int moonLabelPct = -1;
+
+    private String moonLabel(String name, SkyBody moon) {
+        int pct = (int) Math.round(moon.phase * 100.0);
+        if (moonLabelCache == null || pct != moonLabelPct) {
+            moonLabelPct = pct;
+            moonLabelCache = String.format(java.util.Locale.getDefault(), "%s %d%%", name, pct);
+        }
+        return moonLabelCache;
     }
 
     private void drawBodyDisc(SkyBody b, float x, float y, float px, float night) {
@@ -323,6 +353,10 @@ public final class SkyRenderer {
         // Phase shadow: a lune between the dark limb (u = -L) and the terminator (u = c·L), with the
         // bright axis u along `ang`. c = 1 - 2k: full (k=1) → no shadow, new (k=0) → whole disc.
         float k = MathUtils.clamp((float) sky.getSolarSystem().moon.phase, 0f, 1f);
+        // At (nearly) full moon the shadow is zero-area anyway, and the Sun sits almost antipodal
+        // so `ang` above is atan2(≈0, ≈0) noise — skip drawing rather than jitter the terminator.
+        if (k > 0.995f)
+            return;
         float c = 1f - 2f * k;
         float ux = (float) Math.cos(ang), uy = (float) Math.sin(ang);
         float vx = -uy, vy = ux;

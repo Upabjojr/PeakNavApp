@@ -84,21 +84,34 @@ public class PeakNavUtils {
         return readImageCached(new FileHandle(imageFile));
     }
 
+    /**
+     * Returns the cached pixmap for the file, or null when the file is missing or unreadable.
+     * Every successful call takes one reference: the caller must hand it back with
+     * {@link #decrementReferenceCounter(Pixmap)} once done drawing from it, so a pixmap evicted
+     * from the cache is only natively disposed when nobody is using it any more.
+     */
     public static Pixmap readImageCached(FileHandle imageFileHandle) {
         try {
-            return cachedImages.get(imageFileHandle, () -> {
+            Pixmap pixmap = cachedImages.get(imageFileHandle, () -> {
                 if (!imageFileHandle.exists()) {
-                    return null;
+                    // Cache.get forbids a null result; signal the miss with an exception instead
+                    // (returning null used to throw Guava's unchecked InvalidCacheLoadException
+                    // past our catch and up into the tile worker).
+                    throw new IOException("missing image file: " + imageFileHandle);
                 }
-                Pixmap pixmap;
-
-                pixmap = readImage(imageFileHandle.file());
-                pixmapReferenceCounter.put(pixmap, new AtomicInteger(1));
+                Pixmap loaded = readImage(imageFileHandle.file());
+                pixmapReferenceCounter.put(loaded, new AtomicInteger(0));
                 freePixmapCache();
-                return pixmap;
+                return loaded;
             });
-        } catch (ExecutionException e) {
-            e.printStackTrace();
+            AtomicInteger counter = pixmapReferenceCounter.get(pixmap);
+            if (counter != null) {
+                counter.incrementAndGet();
+            }
+            return pixmap;
+        } catch (ExecutionException | RuntimeException e) {
+            // ExecutionException: missing file; RuntimeException: Guava's unchecked wrapper
+            // around a decode failure (e.g. a truncated download). Both mean "no image".
             return null;
         }
     }
@@ -171,9 +184,15 @@ public class PeakNavUtils {
         PeakNavUtils.loadFactory = loadFactory;
     }
 
+    /**
+     * Copies the stream into the file, closing BOTH streams even on failure — the download paths
+     * call this once per tile, so anything left open here leaks a socket and a file descriptor.
+     */
     public static long copyFile(InputStream source, File destination) throws IOException {
-        FileOutputStream outputStream = new FileOutputStream(destination);
-        return copyFile(source, outputStream);
+        try (InputStream in = source;
+             FileOutputStream outputStream = new FileOutputStream(destination)) {
+            return copyFile(in, outputStream);
+        }
     }
 
     public static long copyFile(InputStream source, OutputStream sink)
@@ -206,15 +225,26 @@ public class PeakNavUtils {
 
     private final static ConcurrentMap<String, Lock> blockedImages = new ConcurrentHashMap<>();
 
+    /** Hands back a reference taken by {@link #readImageCached}; null-safe. */
     public static void decrementReferenceCounter(Pixmap pixmap) {
-        pixmapReferenceCounter.get(pixmap).decrementAndGet();
+        if (pixmap == null) {
+            return;
+        }
+        AtomicInteger counter = pixmapReferenceCounter.get(pixmap);
+        if (counter != null) {
+            counter.decrementAndGet();
+        }
+        // An evicted pixmap whose last user just finished can be disposed right away instead of
+        // waiting for the next cache load.
+        freePixmapCache();
     }
 
     public static synchronized void freePixmapCache() {
         Queue<Pixmap> requeue = new LinkedList<>();
         while (!disposalQueue.isEmpty()) {
             Pixmap pixmap = disposalQueue.poll();
-            if (pixmapReferenceCounter.get(pixmap).get() == 0) {
+            AtomicInteger counter = pixmapReferenceCounter.get(pixmap);
+            if (counter == null || counter.get() <= 0) {
                 pixmap.dispose();
                 pixmapReferenceCounter.remove(pixmap);
             } else {
