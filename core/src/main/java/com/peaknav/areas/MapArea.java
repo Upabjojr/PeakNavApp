@@ -43,7 +43,13 @@ public class MapArea {
         // A populous place must stay readable from far off regardless of terrain prominence: a flat
         // coastal city (small prominence range) would otherwise be culled long before a tiny hill
         // village. Take whichever radius is larger so nothing that used to show is lost.
-        this.visibleRangeKm = Math.max(base, populationRangeKm(this.population));
+        float range = Math.max(base, populationRangeKm(this.population));
+        // Islands are wanted from far away — e.g. to name what you can see while sailing — so they
+        // get a much bigger relevance radius (and a generous floor for the tiny ones).
+        if ("island".equals(this.type)) {
+            range = Math.max(range * 2.5f, 60f);
+        }
+        this.visibleRangeKm = range;
     }
 
     /**

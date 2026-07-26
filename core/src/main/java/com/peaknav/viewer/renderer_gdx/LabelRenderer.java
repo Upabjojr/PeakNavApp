@@ -413,6 +413,12 @@ public class LabelRenderer {
         int screenW = Gdx.graphics.getWidth();
         int screenH = Gdx.graphics.getHeight();
 
+        // Elevation opens up the view: the higher the camera, the farther the relevance ranges reach,
+        // so lifting your viewpoint progressively reveals more distant area labels. At ground level
+        // the factor is ~1; it roughly doubles a few km up.
+        float camHeightMeters = Math.max(0f, Units.convertLatitsToMeters(cam.position.z));
+        float altitudeRangeFactor = Math.min(8f, 1f + camHeightMeters / 3500f);
+
         // Pass 1: measure every label that survives the culls; the actual drawing happens after the
         // de-overlap pass so a label hidden behind a higher-priority one is dropped, not stacked.
         areaPending.clear();
@@ -425,11 +431,12 @@ public class LabelRenderer {
             if (area.name == null || area.name.isEmpty())
                 continue;
 
-            // Relevance cull: each area carries its own visible range, so a small islet only shows
-            // when you are near it while a big range shows from much farther.
+            // Relevance cull: each area carries its own visible range (small islet: only near; big
+            // range: from far), stretched by the camera's elevation so climbing reveals more.
             float dLatKm = (area.lat - targetLat) * KM_PER_DEG_LAT;
             float dLonKm = (area.lon - targetLon) * KM_PER_DEG_LAT * cosTargetLat;
-            if (dLatKm * dLatKm + dLonKm * dLonKm > area.visibleRangeKm * area.visibleRangeKm)
+            float effRangeKm = area.visibleRangeKm * altitudeRangeFactor;
+            if (dLatKm * dLatKm + dLonKm * dLonKm > effRangeKm * effRangeKm)
                 continue;
 
             // Centre at sea level (elevation 0, round-earth corrected).
@@ -446,9 +453,13 @@ public class LabelRenderer {
             // camera's horizon reach plus the peak's.
             float distMeters = Units.convertLatitsToMeters(
                     (float) Math.sqrt(toX * toX + toY * toY));
-            float camHeightMeters = Math.max(0f, Units.convertLatitsToMeters(cam.position.z));
+            // Islands are visible landmasses; when the data lacks a peak height, assume a modest one
+            // so a low island is still spotted from a boat well out to sea, not only within the
+            // sea-level horizon of its (missing) elevation.
+            float effPeakMeters = "island".equals(area.type)
+                    ? Math.max(area.peakMeters, 200f) : area.peakMeters;
             float horizonReach = (float) (Math.sqrt(2.0 * Units.radiusOfEarth * camHeightMeters)
-                    + Math.sqrt(2.0 * Units.radiusOfEarth * area.peakMeters));
+                    + Math.sqrt(2.0 * Units.radiusOfEarth * effPeakMeters));
             if (distMeters > horizonReach)
                 continue;
 
