@@ -415,7 +415,37 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void makeToast(String message) {
+        if (message == null || message.isEmpty()) {
+            return;
+        }
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            javax.swing.JWindow toast = new javax.swing.JWindow();
+            toast.setAlwaysOnTop(true);
+            javax.swing.JLabel label = new javax.swing.JLabel(
+                    "<html><body style='width:360px'>" + escapeHtml(message) + "</body></html>");
+            label.setForeground(java.awt.Color.WHITE);
+            label.setBorder(javax.swing.BorderFactory.createEmptyBorder(12, 16, 12, 16));
+            javax.swing.JPanel panel = new javax.swing.JPanel(new java.awt.BorderLayout());
+            panel.setBackground(new java.awt.Color(32, 32, 32));
+            panel.add(label, java.awt.BorderLayout.CENTER);
+            toast.setContentPane(panel);
+            toast.pack();
 
+            java.awt.Rectangle screen = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getDefaultScreenDevice().getDefaultConfiguration().getBounds();
+            int x = screen.x + (screen.width - toast.getWidth()) / 2;
+            int y = screen.y + screen.height - toast.getHeight() - 80;
+            toast.setLocation(x, y);
+            toast.setVisible(true);
+
+            // Auto-dismiss so it behaves like an Android toast rather than a dialog to click away.
+            javax.swing.Timer timer = new javax.swing.Timer(3500, e -> {
+                toast.setVisible(false);
+                toast.dispose();
+            });
+            timer.setRepeats(false);
+            timer.start();
+        });
     }
 
     @Override
@@ -430,7 +460,15 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void alertMessage(String message) {
+        if (message == null || message.isEmpty()) {
+            return;
+        }
+        javax.swing.SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
+                null, message, "PeakNav", javax.swing.JOptionPane.WARNING_MESSAGE));
+    }
 
+    private static String escapeHtml(String s) {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     @Override
