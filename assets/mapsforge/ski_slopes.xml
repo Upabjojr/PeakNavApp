@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<rendertheme xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" map-background="#F8F8F8"
+<!-- TEMPLATE: the placeholder token BASE_STROKE_WIDTH is substituted at load time by
+     TileRenderer.getMapsforgeXmlRenderTheme; stroke widths scale with the tile supersample.
+     Not a standalone-parseable theme. -->
+<rendertheme base-stroke-width="${BASE_STROKE_WIDTH}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" map-background="#F8F8F8"
     map-background-outside="#DDDDDD" version="5" xmlns="http://mapsforge.org/renderTheme"
     xsi:schemaLocation="http://mapsforge.org/renderTheme https://raw.githubusercontent.com/mapsforge/mapsforge/master/resources/renderTheme.xsd">
 

@@ -104,9 +104,9 @@ public class TileRenderer {
      * absolute pixels tuned for a 256px tile, so on our {@code SUPERSAMPLE*256}px tiles they came out
      * hairline-thin (a ~1.6px road on a 2048px tile), which foreshortening then broke up. Mapsforge
      * has no runtime stroke multiplier (unlike text's {@code textScale}), but the theme-level
-     * {@code base-stroke-width} attribute multiplies every line stroke — so we inject it, scaled to
-     * the supersample factor, to restore standard-map thickness. {@code ROAD_STROKE_BOLDNESS} is the
-     * dial: 1.0 ≈ a standard map at this resolution.
+     * {@code base-stroke-width} attribute multiplies every line stroke — so the templates carry a
+     * {@code ${BASE_STROKE_WIDTH}} placeholder we fill, scaled to the supersample, to restore
+     * standard-map thickness. {@code ROAD_STROKE_BOLDNESS} is the dial: 1.0 ≈ a standard map here.
      */
     private static final float ROAD_STROKE_BOLDNESS = 1.0f;
 
@@ -114,26 +114,28 @@ public class TileRenderer {
      * Label border (white halo) prominence. Mapsforge scales label <em>text</em> by {@code textScale}
      * but leaves the halo {@code stroke-width} unscaled (Caption/PathText {@code scaleStrokeWidth} is a
      * no-op), so on our supersampled tiles the border became a hairline around big glyphs — hence the
-     * poor legibility. We scale the white text halos by the supersample too (× this boldness) to keep
-     * the border a constant fraction (~15%) of the glyph height. Raise for a heavier outline.
+     * poor legibility. The template's {@code ${TEXT_HALO_MAIN/MINOR}} placeholders are filled with the
+     * halo widths scaled by the supersample (× this boldness) so the border stays a constant fraction
+     * (~15%) of the glyph height. Raise for a heavier outline.
      */
     private static final float TEXT_HALO_BOLDNESS = 1.5f;
 
+    // Base halo widths (in the original theme) for the two label tiers; scaled up when the template
+    // is filled. Main = road/place names, minor = the small track labels.
+    private static final float MAIN_HALO_BASE = 2.0f;
+    private static final float MINOR_HALO_BASE = 1.0f;
+
     public XmlRenderTheme getMapsforgeXmlRenderTheme(String assetName) {
         FileHandle asset = Gdx.files.internal(assetName);
-        float baseStrokeWidth = TileRendererRunner.ROAD_TILE_SUPERSAMPLE * ROAD_STROKE_BOLDNESS;
-        String xml = asset.readString("UTF-8");
-        if (!xml.contains("base-stroke-width")) {
-            xml = xml.replaceFirst("<rendertheme ",
-                    "<rendertheme base-stroke-width=\"" + baseStrokeWidth + "\" ");
-        }
-        // Scale the white text halos (unique to captions/pathText — the only white *line* casing is
-        // 0.7, left alone and handled by base-stroke-width) so the label border tracks the text size.
-        float haloScale = TileRendererRunner.ROAD_TILE_SUPERSAMPLE * TEXT_HALO_BOLDNESS;
-        xml = xml.replace("stroke=\"#FFFFFF\" stroke-width=\"2.0\"",
-                "stroke=\"#FFFFFF\" stroke-width=\"" + (2.0f * haloScale) + "\"");
-        xml = xml.replace("stroke=\"#FFFFFF\" stroke-width=\"1.0\"",
-                "stroke=\"#FFFFFF\" stroke-width=\"" + (1.0f * haloScale) + "\"");
+        float supersample = TileRendererRunner.ROAD_TILE_SUPERSAMPLE;
+        float haloScale = supersample * TEXT_HALO_BOLDNESS;
+
+        java.util.Map<String, String> vars = new java.util.HashMap<>();
+        vars.put("BASE_STROKE_WIDTH", String.valueOf(supersample * ROAD_STROKE_BOLDNESS));
+        vars.put("TEXT_HALO_MAIN", String.valueOf(MAIN_HALO_BASE * haloScale));
+        vars.put("TEXT_HALO_MINOR", String.valueOf(MINOR_HALO_BASE * haloScale));
+
+        String xml = fillTemplate(asset.readString("UTF-8"), vars);
         java.io.InputStream themeStream = new java.io.ByteArrayInputStream(
                 xml.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         XmlRenderTheme xmlRenderTheme = new StreamRenderTheme("", themeStream, new XmlRenderThemeMenuCallback() {
@@ -152,6 +154,24 @@ public class TileRenderer {
         xmlRenderTheme.setResourceProvider(new CustomResourceProvider());
 
         return xmlRenderTheme;
+    }
+
+    /**
+     * Substitutes {@code ${KEY}} placeholders in a render-theme template with the given values, and
+     * fails fast if any placeholder was left unfilled (a typo'd token would otherwise surface as an
+     * obscure Mapsforge parse error).
+     */
+    private static String fillTemplate(String template, java.util.Map<String, String> vars) {
+        String result = template;
+        for (java.util.Map.Entry<String, String> entry : vars.entrySet()) {
+            result = result.replace("${" + entry.getKey() + "}", entry.getValue());
+        }
+        int unfilled = result.indexOf("${");
+        if (unfilled >= 0) {
+            throw new IllegalStateException("Unfilled render-theme placeholder near: "
+                    + result.substring(unfilled, Math.min(unfilled + 40, result.length())));
+        }
+        return result;
     }
 
     public List<Tile> getTileZoomScaledPositions(LatLong center, double maxDistance, byte zoomLevel,
