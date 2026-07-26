@@ -296,13 +296,13 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         SwingUtilities.invokeLater(() -> {
             try {
                 javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
-                chooser.setDialogTitle("Save snapshot");
+                chooser.setDialogTitle(s("Save_image"));
                 chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
                 chooser.setSelectedFile(new java.io.File(defaultName));
                 javax.swing.filechooser.FileNameExtensionFilter pngFilter =
-                        new javax.swing.filechooser.FileNameExtensionFilter("PNG image (*.png)", "png");
+                        new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_png"), "png");
                 javax.swing.filechooser.FileNameExtensionFilter jpgFilter =
-                        new javax.swing.filechooser.FileNameExtensionFilter("JPEG image (*.jpg, *.jpeg)", "jpg", "jpeg");
+                        new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_jpeg"), "jpg", "jpeg");
                 chooser.setAcceptAllFileFilterUsed(false);
                 chooser.addChoosableFileFilter(pngFilter);
                 chooser.addChoosableFileFilter(jpgFilter);
@@ -331,7 +331,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                 }
                 if (file.exists()) {
                     int overwrite = javax.swing.JOptionPane.showConfirmDialog(null,
-                            "Overwrite " + file.getName() + "?", "File exists",
+                            s("Overwrite_prompt"), s("File_exists"),
                             javax.swing.JOptionPane.YES_NO_OPTION);
                     if (overwrite != javax.swing.JOptionPane.YES_OPTION) {
                         pixmap.dispose();
@@ -344,11 +344,11 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                     try {
                         savePixmapToFile(pixmap, target, asJpeg);
                         SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
-                                null, "Saved to " + target.getAbsolutePath()));
+                                null, s("Image_saved") + ":\n" + target.getAbsolutePath()));
                     } catch (Exception e) {
                         SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
-                                null, "Could not save the snapshot:\n" + e.getMessage(),
-                                "Save failed", javax.swing.JOptionPane.ERROR_MESSAGE));
+                                null, s("Save_failed_msg") + "\n" + e.getMessage(),
+                                s("Save_failed"), javax.swing.JOptionPane.ERROR_MESSAGE));
                     } finally {
                         pixmap.dispose();
                     }

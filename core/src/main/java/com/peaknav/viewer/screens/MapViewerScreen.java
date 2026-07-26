@@ -679,6 +679,7 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(optionPane.getSelectInfoOpts());
 		stage.addActor(optionPane.getSelectGpx());
 		stage.addActor(optionPane.getSelectLabels());
+		stage.addActor(optionPane.getSelectSky());
 		// stage.addActor(optionPane.getTableAppInfo());
 		optionPane.hide();
 

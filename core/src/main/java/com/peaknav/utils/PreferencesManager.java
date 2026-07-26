@@ -23,6 +23,8 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_UNDER
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SUN_SHADING;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_STARS_ALWAYS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_CONSTELLATIONS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ALPINE_HUTS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ISLANDS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_CITIES;
@@ -70,6 +72,8 @@ public class PreferencesManager {
     private boolean sunShading;
     private boolean horizonCompass;
     private boolean skyView;
+    private boolean skyStarsAlways;
+    private boolean skyConstellations;
     private SatelliteImageProvider underlayImageProvider;
     private SatelliteProviderRegistry satelliteProviderRegistry;
     private boolean locationPermissionDenied;
@@ -159,6 +163,8 @@ public class PreferencesManager {
         sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
         horizonCompass = preferences.getBoolean(VIEWER_HORIZON_COMPASS, true);
         skyView = preferences.getBoolean(VIEWER_SKY, false);
+        skyStarsAlways = preferences.getBoolean(VIEWER_SKY_STARS_ALWAYS, false);
+        skyConstellations = preferences.getBoolean(VIEWER_SKY_CONSTELLATIONS, true);
         // Set to "true" for subscribed users:
         viewerLayerVisibleBaseRoads = preferences.getBoolean(VIEWER_LAYER_VISIBLE_BASE_ROADS, true);
         largeFonts = preferences.getBoolean(VIEWER_LARGE_FONTS, false);
@@ -391,6 +397,26 @@ public class PreferencesManager {
     public void setSkyView(boolean enabled) {
         skyView = enabled;
         preferences.putBoolean(VIEWER_SKY, enabled);
+        preferences.flush();
+    }
+
+    public boolean isSkyStarsAlways() {
+        return skyStarsAlways;
+    }
+
+    public void setSkyStarsAlways(boolean enabled) {
+        skyStarsAlways = enabled;
+        preferences.putBoolean(VIEWER_SKY_STARS_ALWAYS, enabled);
+        preferences.flush();
+    }
+
+    public boolean isSkyConstellations() {
+        return skyConstellations;
+    }
+
+    public void setSkyConstellations(boolean enabled) {
+        skyConstellations = enabled;
+        preferences.putBoolean(VIEWER_SKY_CONSTELLATIONS, enabled);
         preferences.flush();
     }
 

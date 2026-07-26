@@ -1,6 +1,8 @@
 package com.peaknav.viewer.renderer_gdx;
 
 import static com.peaknav.utils.PeakNavUtils.getC;
+import static com.peaknav.utils.PeakNavUtils.s;
+import static com.peaknav.utils.PreferencesManager.P;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
@@ -79,16 +81,19 @@ public final class SkyRenderer {
         if (cam == null) return;
 
         float night = nightFactor(sky.getSunAltitudeDeg());
+        // "Stars always visible" overrides the day/night fade; otherwise stars follow the Sun.
+        float starNight = P.isSkyStarsAlways() ? 1f : night;
+        boolean showConstellations = P.isSkyConstellations();
         float px = Math.max(1f, Gdx.graphics.getHeight() / 900f); // pixel scale for hi-dpi
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());
 
-        // 1) Constellation lines (faint, night only)
-        if (night > 0.05f) {
+        // 1) Constellation lines (faint)
+        if (showConstellations && starNight > 0.05f) {
             shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
-            shapeRenderer.setColor(0.45f, 0.55f, 0.75f, 0.28f * night);
+            shapeRenderer.setColor(0.45f, 0.55f, 0.75f, 0.28f * starNight);
             for (float[] enu : sky.getConstellationEnu()) {
                 for (int i = 0; i + 5 < enu.length; i += 3) {
                     if (project(cam, enu[i], enu[i + 1], enu[i + 2])) {
@@ -104,7 +109,7 @@ public final class SkyRenderer {
 
         // 2) Stars + solar-system discs
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        if (night > 0.05f) {
+        if (starNight > 0.05f) {
             StarCatalog stars = sky.getStars();
             float[] senu = sky.getStarEnu();
             for (int i = 0; i < stars.count; i++) {
@@ -112,7 +117,7 @@ public final class SkyRenderer {
                 if (!project(cam, senu[o], senu[o + 1], senu[o + 2])) continue;
                 float mag = stars.mag[i];
                 float radius = MathUtils.clamp((6.5f - mag) * 0.45f + 0.5f, 0.5f, 4.0f) * px;
-                float alpha = MathUtils.clamp(0.35f + (6.5f - mag) * 0.11f, 0.35f, 1.0f) * night;
+                float alpha = MathUtils.clamp(0.35f + (6.5f - mag) * 0.11f, 0.35f, 1.0f) * starNight;
                 shapeRenderer.setColor(0.95f, 0.96f, 1.0f, alpha);
                 shapeRenderer.circle(tmp.x, tmp.y, radius, 8);
             }
@@ -124,7 +129,7 @@ public final class SkyRenderer {
             SkyBody b = bodies.get(i);
             int o = i * 3;
             if (!project(cam, benu[o], benu[o + 1], benu[o + 2])) continue;
-            drawBodyDisc(b, tmp.x, tmp.y, px, night);
+            drawBodyDisc(b, tmp.x, tmp.y, px, starNight);
         }
         shapeRenderer.end();
 
@@ -132,8 +137,8 @@ public final class SkyRenderer {
         BitmapFont font = getC().styleSingleton.getBitmapFont();
         spriteBatch.begin();
         // constellation names
-        if (night > 0.15f) {
-            font.setColor(0.6f, 0.7f, 0.9f, 0.5f * night);
+        if (showConstellations && starNight > 0.15f) {
+            font.setColor(0.6f, 0.7f, 0.9f, 0.5f * starNight);
             java.util.List<ConstellationData.Label> labs = sky.getConstellations().labels;
             float[] lenu = sky.getLabelEnu();
             for (int i = 0; i < labs.size(); i++) {
@@ -142,8 +147,10 @@ public final class SkyRenderer {
                     font.draw(spriteBatch, labs.get(i).name, tmp.x + 4 * px, tmp.y);
                 }
             }
-            // bright star names
-            font.setColor(0.85f, 0.9f, 1.0f, 0.75f * night);
+        }
+        // bright star names
+        if (starNight > 0.15f) {
+            font.setColor(0.85f, 0.9f, 1.0f, 0.75f * starNight);
             float[] nenu = sky.getNamedStarEnu();
             for (int i = 0; i < SkyModel.NAMED_STARS.length; i++) {
                 int o = i * 3;
@@ -152,15 +159,16 @@ public final class SkyRenderer {
                 }
             }
         }
-        // Sun/Moon/planet names (always, so they read in daylight too)
+        // Sun/Moon/planet names (Sun/Moon always; planets when the sky is dark enough)
         for (int i = 0; i < bodies.size(); i++) {
             SkyBody b = bodies.get(i);
             int o = i * 3;
             if (!project(cam, benu[o], benu[o + 1], benu[o + 2])) continue;
-            if (b.kind == SkyBody.Kind.PLANET && night < 0.15f) continue; // planets only show at dusk
+            if (b.kind == SkyBody.Kind.PLANET && starNight < 0.15f) continue;
+            String name = localizedBodyName(b);
             String label = b.kind == SkyBody.Kind.MOON
-                    ? String.format(java.util.Locale.ENGLISH, "%s %d%%", b.name, Math.round(b.phase * 100))
-                    : b.name;
+                    ? String.format(java.util.Locale.getDefault(), "%s %d%%", name, Math.round(b.phase * 100))
+                    : name;
             font.setColor(b.r, b.g, b.b, 0.9f);
             font.draw(spriteBatch, label, tmp.x + 6 * px, tmp.y + 6 * px);
         }
@@ -168,6 +176,11 @@ public final class SkyRenderer {
         spriteBatch.end();
 
         Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    /** Localised label for a Sun/Moon/planet, e.g. {@code Sky_sun} → "Sole" in Italian. */
+    private static String localizedBodyName(SkyBody b) {
+        return s("Sky_" + b.name.toLowerCase(java.util.Locale.ENGLISH));
     }
 
     private void drawBodyDisc(SkyBody b, float x, float y, float px, float night) {
