@@ -7,9 +7,9 @@ package com.peaknav.areas;
  * {@code peakMeters} — the elevation of the area's highest point, used to drop the label once the
  * whole area falls below the horizon — and {@code visibleRangeKm}, the relevance radius: the label
  * only appears while the viewer is within this distance, so tiny areas show only when you are near
- * and large ones from much farther. Loaded tile by tile from
- * {@code areas/areas_<latIdx>_<lonIdx>.json} by {@link AreaRegistry}; the ellipse only locates/sizes
- * the area on screen — it is not drawn.
+ * and large ones from much farther. Loaded tile by tile from the slippy-map tree
+ * {@code areas/AREAS/<zoom>/<x/100>/<x%100>/<y/100>/<y%100>.json} by {@link AreaRegistry}; the
+ * ellipse only locates/sizes the area on screen — it is not drawn.
  */
 public class MapArea {
 
