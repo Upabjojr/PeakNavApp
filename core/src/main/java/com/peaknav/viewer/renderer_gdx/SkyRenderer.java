@@ -69,11 +69,6 @@ public final class SkyRenderer {
         }
     }
 
-    /** 0 by day, 1 in astronomical darkness — how strongly stars/constellations show. */
-    private static float nightFactor(double sunAltDeg) {
-        return MathUtils.clamp((float) (-sunAltDeg / 12.0), 0f, 1f);
-    }
-
     public static final int MODE_LOCAL = 0, MODE_DAY = 1, MODE_NIGHT = 2;
 
     /**
@@ -96,9 +91,10 @@ public final class SkyRenderer {
         PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
         if (cam == null) return;
 
-        // Day/night ambiance follows the sky mode (local time / forced day / forced night).
-        float night = nightFactor(ambianceSunAltitude(sky.getSunAltitudeDeg()));
-        float starNight = night;
+        // When the sky view is on the objects are always visible — they no longer fade out during the
+        // day. The sky mode (local time / forced day / forced night) only tints the background sky
+        // colour (see clearScreen) and the terrain light, not whether the stars show.
+        float starNight = 1f;
         // The Sun is always drawn; the Moon, planets, stars and constellations are the "sky objects"
         // that the on/off checkbox toggles.
         boolean objects = P.isSkyView();

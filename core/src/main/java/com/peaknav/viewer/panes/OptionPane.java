@@ -397,6 +397,7 @@ public class OptionPane {
         buttonSkyMode.addClickListener(() -> {
             P.setSkyMode(P.getSkyMode() + 1);
             buttonSkyMode.getLabel().setText(skyModeLabel());
+            P.setSkyView(true); // touching a sky option turns the sky on
         });
         buttons.add(buttonSkyMode);
 
@@ -404,6 +405,7 @@ public class OptionPane {
         ImageTextButtonOptionPane buttonSkyTime = getC().widgetGetter.getImageTextButton(
                 "icons/icon_sky_time.png", s("Sky_time"), false);
         buttonSkyTime.addClickListener(() -> {
+            P.setSkyView(true); // setting a custom sky time turns the sky on
             hide();
             getNativeScreenCaller().chooseSkyTime();
         });
@@ -413,7 +415,10 @@ public class OptionPane {
                 "icons/icon_sky_constellations.png", s("Sky_constellations"), true);
         addCheckingStateProperty(checkBoxConstellations, () -> P.isSkyConstellations());
         checkBoxConstellations.addClickListener(() ->
-                changer.execute(() -> P.setSkyConstellations(checkBoxConstellations.isChecked())));
+                changer.execute(() -> {
+                    P.setSkyConstellations(checkBoxConstellations.isChecked());
+                    P.setSkyView(true); // touching a sky option turns the sky on
+                }));
         buttons.add(checkBoxConstellations);
 
         ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
