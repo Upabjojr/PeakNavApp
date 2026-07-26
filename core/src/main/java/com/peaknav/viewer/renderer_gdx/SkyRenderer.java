@@ -91,6 +91,12 @@ public final class SkyRenderer {
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        // Draw the sky to the colour buffer ONLY — no depth writes, no depth test. Otherwise the 2D
+        // star pixels stamp a near depth and the terrain drawn afterwards fails the depth test
+        // against them, showing stars through the mountains. With depth writes off, the opaque
+        // terrain simply paints over any sky pixel it covers → mountains occlude the stars.
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glDepthMask(false);
         shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());
 
         // 1) Constellation lines (faint)
@@ -186,6 +192,9 @@ public final class SkyRenderer {
         spriteBatch.end();
 
         Gdx.gl.glDisable(GL20.GL_BLEND);
+        // Restore depth state so the terrain (drawn next) depth-tests and writes normally.
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glDepthMask(true);
     }
 
     /** Localised label for a Sun/Moon/planet, e.g. {@code Sky_sun} → "Sole" in Italian. */

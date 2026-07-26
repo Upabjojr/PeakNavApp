@@ -887,22 +887,26 @@ public class OptionPane {
                 () -> P.setHorizonCompass(checkBoxHorizonCompass.isChecked())));
         buttons.add(checkBoxHorizonCompass);
 
-        // Sky & stars: a direct on/off checkbox, plus a "..." button opening the sky options submenu.
+        // Sky & stars: a shortened on/off checkbox with a "..." options button in the same row
+        // (same scheme as the satellite and map-data rows above).
         ImageTextButtonOptionPane checkBoxSky = getC().widgetGetter.getImageTextButton(
                 "icons/icon_checkbox_sky.png", s("Sky_view"), true);
         addCheckingStateProperty(checkBoxSky, () -> P.isSkyView());
         checkBoxSky.addClickListener(() -> changer.execute(
                 () -> P.setSkyView(checkBoxSky.isChecked())));
-        buttons.add(checkBoxSky);
-
-        ImageTextButtonOptionPane buttonSkyOptions = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_sky.png", "...", false);
-        buttonSkyOptions.addClickListener(() -> {
-            selectSky.setVisible(true);
-            table.setVisible(false);
-            tableOneColumn.setVisible(false);
+        checkBoxSky.setProgrammaticChangeEvents(false);
+        Table tableSky = new Table();
+        tableSky.add(checkBoxSky).width(buttonWidth * 0.8f);
+        TextButton buttonSkyOptions = getC().widgetGetter.getTextButton("...", false);
+        buttonSkyOptions.addListener(new ChangeListener() {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                selectSky.setVisible(true);
+                table.setVisible(false);
+            }
         });
-        buttons.add(buttonSkyOptions);
+        tableSky.add(buttonSkyOptions).width(buttonWidth * 0.2f).height(height);
+        buttons.add(tableSky);
 
         // GPX paths: a single entry that opens its own submenu (load file / from URL / clear).
         ImageTextButtonOptionPane buttonGpxMenu = getC().widgetGetter.getImageTextButton(
