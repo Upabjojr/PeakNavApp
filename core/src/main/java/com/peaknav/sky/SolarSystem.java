@@ -157,10 +157,13 @@ public final class SolarSystem {
         moon.decDeg = atan2d(ze, Math.sqrt(xe * xe + ye * ye));
         moon.magnitude = -11.0;
 
-        // Illuminated fraction from the Sun-Moon elongation seen from Earth.
-        double elong = Math.acos(
-                sind(sun.decDeg) * sind(moon.decDeg)
-                        + cosd(sun.decDeg) * cosd(moon.decDeg) * cosd(sun.raDeg - moon.raDeg)) * RAD2DEG;
+        // Illuminated fraction from the Sun-Moon elongation seen from Earth. Clamp the cosine to
+        // [-1, 1] before acos: at (and very near) new moon floating-point error can nudge it just
+        // past 1.0, which would make acos return NaN and the phase read as a spurious 0%/100%.
+        double cosElong = sind(sun.decDeg) * sind(moon.decDeg)
+                + cosd(sun.decDeg) * cosd(moon.decDeg) * cosd(sun.raDeg - moon.raDeg);
+        cosElong = Math.max(-1.0, Math.min(1.0, cosElong));
+        double elong = Math.acos(cosElong) * RAD2DEG;
         moon.phase = (1 - cosd(elong)) / 2.0;
         moon.phaseAngleDeg = elong;
     }

@@ -133,6 +133,11 @@ public final class SkyModel {
 
         double d = SkyMath.dayNumber(year, month, day, utHours);
         solarSystem.compute(d);
+
+        // TEMP DIAGNOSTIC: the time and Moon phase the sky is actually computed for.
+        System.out.printf("[Sky] compute %04d-%02d-%02d %05.2fh UTC custom=%b moonPhase=%.3f (%d%%)%n",
+                year, month, day, utHours, customTimeMillis != null,
+                solarSystem.moon.phase, Math.round(solarSystem.moon.phase * 100));
         double lst = SkyMath.localSiderealTimeDeg(solarSystem.getSunMeanLongitude(), utHours, longitudeDeg);
 
         // Bodies
