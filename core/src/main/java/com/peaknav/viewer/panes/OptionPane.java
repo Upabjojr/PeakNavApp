@@ -438,7 +438,8 @@ public class OptionPane {
 
         List<Table> buttons = new ArrayList<>(16);
 
-        TextButton buttonAppInfo = getC().widgetGetter.getTextButton(s("App_info"), false);
+        ImageTextButtonOptionPane buttonAppInfo = getC().widgetGetter.getImageTextButton(
+                "icons/icon_info.png", s("App_info"), false);
         buttonAppInfo.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
@@ -1039,11 +1040,11 @@ public class OptionPane {
 
         Table tableInfo = new Table();
         String textInfo = s("App_info");
-        TextButton buttonAppInfo = getC().widgetGetter.getTextButton(
-                textInfo, false);
+        ImageTextButtonOptionPane buttonAppInfo = getC().widgetGetter.getImageTextButton(
+                "icons/icon_info.png", textInfo, false);
         addCheckingStateProperty(
                 buttonAppInfo, () -> {
-                    buttonAppInfo.setText(textInfo);
+                    buttonAppInfo.getLabel().setText(textInfo);
                     return true;
                 }
         );
@@ -1051,7 +1052,7 @@ public class OptionPane {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
                 // tableAppInfo.setVisible(true);
-                buttonAppInfo.setText(textInfo);
+                buttonAppInfo.getLabel().setText(textInfo);
                 getNativeScreenCaller().openAppInfoScreen();
                 hide();
             }

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <!-- a ruler, tilted -->
+  <g transform="rotate(-30 120 120)">
+    <rect x="34" y="98" width="172" height="44" rx="6" fill="#ffd77a" stroke="#7a5a1e" stroke-width="4"/>
+    <!-- graduations: alternating tall/short ticks -->
+    <g stroke="#7a5a1e" stroke-width="4" stroke-linecap="round">
+      <line x1="52" y1="98" x2="52" y2="126"/>
+      <line x1="72" y1="98" x2="72" y2="114"/>
+      <line x1="92" y1="98" x2="92" y2="126"/>
+      <line x1="112" y1="98" x2="112" y2="114"/>
+      <line x1="132" y1="98" x2="132" y2="126"/>
+      <line x1="152" y1="98" x2="152" y2="114"/>
+      <line x1="172" y1="98" x2="172" y2="126"/>
+      <line x1="192" y1="98" x2="192" y2="114"/>
+    </g>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#5a4416" stroke-width="3"/>
+</svg>
