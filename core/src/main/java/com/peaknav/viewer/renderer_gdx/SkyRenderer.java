@@ -39,12 +39,16 @@ public final class SkyRenderer {
     private final Vector3 tmp = new Vector3();
 
     // Sky background colour keyframes by Sun altitude (deg): {alt, r, g, b}. Interpolated in between.
+    // This palette is used only while the sky view is on (stars are always shown then), so the day
+    // sky is a deeper blue than a plain daytime sky — dark enough for white stars to stay visible —
+    // and it passes through a distinct dusky twilight so dawn and after-sunset visibly darken.
     private static final float[][] SKY_COLORS = {
-            {  10f, 0.53f, 0.81f, 0.98f}, // full day
-            {   0f, 0.42f, 0.52f, 0.62f}, // sunset at the horizon
-            {  -6f, 0.12f, 0.14f, 0.26f}, // civil dusk
-            { -12f, 0.04f, 0.05f, 0.12f}, // nautical
-            { -18f, 0.02f, 0.02f, 0.06f}, // astronomical night
+            {  15f, 0.26f, 0.40f, 0.64f}, // day: deep blue (stars still read against it)
+            {   4f, 0.20f, 0.28f, 0.48f}, // Sun just above the horizon
+            {   0f, 0.24f, 0.19f, 0.30f}, // sunrise / sunset: dusky violet
+            {  -5f, 0.10f, 0.10f, 0.20f}, // civil twilight — clear darkening
+            { -10f, 0.05f, 0.05f, 0.12f}, // nautical twilight
+            { -16f, 0.02f, 0.02f, 0.06f}, // astronomical night
     };
 
     public SkyRenderer(SpriteBatch spriteBatch, ShapeRenderer shapeRenderer) {
@@ -114,7 +118,7 @@ public final class SkyRenderer {
         // 1) Constellation lines (faint)
         if (showConstellations && starNight > 0.05f) {
             shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
-            shapeRenderer.setColor(0.50f, 0.62f, 0.85f, 0.42f * starNight);
+            shapeRenderer.setColor(0.62f, 0.74f, 1.0f, 0.5f * starNight);
             for (float[] enu : sky.getConstellationEnu()) {
                 for (int i = 0; i + 5 < enu.length; i += 3) {
                     if (project(cam, enu[i], enu[i + 1], enu[i + 2])) {
@@ -139,6 +143,10 @@ public final class SkyRenderer {
                 float mag = stars.mag[i];
                 float radius = MathUtils.clamp((6.5f - mag) * 0.6f + 1.3f, 1.3f, 6.0f) * px;
                 float alpha = MathUtils.clamp(0.6f + (6.5f - mag) * 0.12f, 0.6f, 1.0f) * starNight;
+                // Dark contrast ring: invisible over the near-black night sky, but darkens the blue
+                // daytime sky just around each star so the white dot still stands out.
+                shapeRenderer.setColor(0f, 0.02f, 0.06f, 0.4f);
+                shapeRenderer.circle(tmp.x, tmp.y, radius * 1.7f, 10);
                 // Soft glow so the brighter stars read against any sky.
                 if (mag < 2.5f) {
                     shapeRenderer.setColor(0.75f, 0.83f, 1.0f, 0.22f * starNight);
