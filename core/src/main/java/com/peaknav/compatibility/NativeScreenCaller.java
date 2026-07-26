@@ -73,6 +73,12 @@ public abstract class NativeScreenCaller {
     public abstract void alertMessage(String message);
 
     /**
+     * Opens a native picker to freeze the sky at a chosen date/time (in the device's local zone), or
+     * reset it to the live device clock. Concrete no-op default so platforms without one still build.
+     */
+    public void chooseSkyTime() { }
+
+    /**
      * Asks the user to fill in one or more text fields in a native dialog.
      *
      * @param title         dialog title

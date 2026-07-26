@@ -373,19 +373,41 @@ public class OptionPane {
         return table;
     }
 
+    /** Label for the sky-mode cycle button: 0 = local time, 1 = day, 2 = night (see PreferencesManager). */
+    private String skyModeLabel() {
+        String mode;
+        switch (P.getSkyMode()) {
+            case 1: mode = s("Sky_mode_day"); break;
+            case 2: mode = s("Sky_mode_night"); break;
+            default: mode = s("Sky_mode_local"); break;
+        }
+        return s("Sky_mode") + ": " + mode;
+    }
+
     private Table createSkyMenu() {
         Table table = new Table();
         table.center();
         table.setFillParent(true);
 
-        List<Table> buttons = new ArrayList<>(4);
+        List<Table> buttons = new ArrayList<>(5);
 
-        ImageTextButtonOptionPane checkBoxStarsAlways = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_sky.png", s("Sky_stars_always"), true);
-        addCheckingStateProperty(checkBoxStarsAlways, () -> P.isSkyStarsAlways());
-        checkBoxStarsAlways.addClickListener(() ->
-                changer.execute(() -> P.setSkyStarsAlways(checkBoxStarsAlways.isChecked())));
-        buttons.add(checkBoxStarsAlways);
+        // Sky mode: cycles local time / forced day / forced night.
+        ImageTextButtonOptionPane buttonSkyMode = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_sky.png", skyModeLabel(), false);
+        buttonSkyMode.addClickListener(() -> {
+            P.setSkyMode(P.getSkyMode() + 1);
+            buttonSkyMode.getLabel().setText(skyModeLabel());
+        });
+        buttons.add(buttonSkyMode);
+
+        // Custom time: opens the native date/time picker (or reset to the device clock).
+        ImageTextButtonOptionPane buttonSkyTime = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_sky.png", s("Sky_time"), false);
+        buttonSkyTime.addClickListener(() -> {
+            hide();
+            getNativeScreenCaller().chooseSkyTime();
+        });
+        buttons.add(buttonSkyTime);
 
         ImageTextButtonOptionPane checkBoxConstellations = getC().widgetGetter.getImageTextButton(
                 "icons/icon_checkbox_sky.png", s("Sky_constellations"), true);

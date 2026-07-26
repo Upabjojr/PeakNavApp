@@ -74,15 +74,31 @@ public final class SkyRenderer {
         return MathUtils.clamp((float) (-sunAltDeg / 12.0), 0f, 1f);
     }
 
+    public static final int MODE_LOCAL = 0, MODE_DAY = 1, MODE_NIGHT = 2;
+
+    /**
+     * The Sun altitude that drives the sky <em>ambiance</em> (background colour + star fade). In the
+     * default LOCAL mode this is the real Sun altitude; DAY forces a bright daytime sky and NIGHT a
+     * dark starry one, regardless of the actual time (the objects themselves still sit at their real
+     * positions for the current/custom time).
+     */
+    public static double ambianceSunAltitude(double realSunAltDeg) {
+        switch (P.getSkyMode()) {
+            case MODE_DAY: return 20.0;
+            case MODE_NIGHT: return -18.0;
+            default: return realSunAltDeg;
+        }
+    }
+
     public void render() {
         SkyModel sky = getC().skyModel;
         if (sky == null || !sky.isLoaded()) return;
         PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
         if (cam == null) return;
 
-        float night = nightFactor(sky.getSunAltitudeDeg());
-        // "Stars always visible" overrides the day/night fade; otherwise stars follow the Sun.
-        float starNight = P.isSkyStarsAlways() ? 1f : night;
+        // Day/night ambiance follows the sky mode (local time / forced day / forced night).
+        float night = nightFactor(ambianceSunAltitude(sky.getSunAltitudeDeg()));
+        float starNight = night;
         // The Sun is always drawn; the Moon, planets, stars and constellations are the "sky objects"
         // that the on/off checkbox toggles.
         boolean objects = P.isSkyView();

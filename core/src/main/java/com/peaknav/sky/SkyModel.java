@@ -97,6 +97,30 @@ public final class SkyModel {
         everComputed = false;
     }
 
+    // Optional frozen "custom" time. Null means follow the device clock.
+    private Long customTimeMillis = null;
+
+    /** The time the sky should be computed for: a user-set custom instant, or the live device clock. */
+    public long currentTimeMillis() {
+        return customTimeMillis != null ? customTimeMillis : System.currentTimeMillis();
+    }
+
+    /** Freezes the sky at a specific instant (UTC millis since the epoch). */
+    public void setCustomTimeMillis(long millis) {
+        customTimeMillis = millis;
+        invalidate();
+    }
+
+    /** Returns to the live device clock. */
+    public void clearCustomTime() {
+        customTimeMillis = null;
+        invalidate();
+    }
+
+    public boolean hasCustomTime() {
+        return customTimeMillis != null;
+    }
+
     private void recompute(double latitudeDeg, double longitudeDeg, long utcMillis) {
         GregorianCalendar cal = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
         cal.setTimeInMillis(utcMillis);

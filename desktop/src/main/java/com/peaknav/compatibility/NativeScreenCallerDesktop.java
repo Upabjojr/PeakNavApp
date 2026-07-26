@@ -262,6 +262,26 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     }
 
     @Override
+    public void chooseSkyTime() {
+        SwingUtilities.invokeLater(() -> {
+            com.peaknav.sky.SkyModel sky = getC().skyModel;
+            long init = sky.currentTimeMillis();
+            javax.swing.JSpinner spinner = new javax.swing.JSpinner(new javax.swing.SpinnerDateModel(
+                    new java.util.Date(init), null, null, java.util.Calendar.MINUTE));
+            spinner.setEditor(new javax.swing.JSpinner.DateEditor(spinner, "yyyy-MM-dd HH:mm"));
+            Object[] options = { s("OK"), s("Sky_time_device_clock"), s("Cancel") };
+            int result = JOptionPane.showOptionDialog(null, spinner, s("Sky_time"),
+                    JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
+            if (result == 0) {
+                java.util.Date d = (java.util.Date) spinner.getValue();
+                sky.setCustomTimeMillis(d.getTime());
+            } else if (result == 1) {
+                sky.clearCustomTime();
+            }
+        });
+    }
+
+    @Override
     public void askForDownloadScreen(double lat, double lon) {
         // System.err.println("Download screen?");
 

@@ -528,6 +528,32 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
     }
 
     @Override
+    public void chooseSkyTime() {
+        mainActivity.runOnUiThread(() -> {
+            com.peaknav.sky.SkyModel sky = com.peaknav.utils.PeakNavUtils.getC().skyModel;
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            cal.setTimeInMillis(sky.currentTimeMillis());
+            android.app.DatePickerDialog dateDlg = new android.app.DatePickerDialog(mainActivity,
+                    (view, year, month, day) -> {
+                        android.app.TimePickerDialog timeDlg = new android.app.TimePickerDialog(mainActivity,
+                                (tv, hour, minute) -> {
+                                    java.util.Calendar c = java.util.Calendar.getInstance();
+                                    c.set(year, month, day, hour, minute, 0);
+                                    c.set(java.util.Calendar.MILLISECOND, 0);
+                                    sky.setCustomTimeMillis(c.getTimeInMillis());
+                                },
+                                cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE), true);
+                        timeDlg.show();
+                    },
+                    cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH),
+                    cal.get(java.util.Calendar.DAY_OF_MONTH));
+            dateDlg.setButton(android.app.DatePickerDialog.BUTTON_NEUTRAL,
+                    s("Sky_time_device_clock"), (dialog, which) -> sky.clearCustomTime());
+            dateDlg.show();
+        });
+    }
+
+    @Override
     public void makeToast(String message) {
         mainActivity.runOnUiThread(() -> Toast.makeText(context, message, Toast.LENGTH_LONG).show());
     }

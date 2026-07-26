@@ -864,7 +864,7 @@ public class MapViewerScreen implements Screen {
 		// is on do we light the terrain from the real Sun (and tint the sky day/night in clearScreen);
 		// otherwise the map keeps its plain sky and the legible NW/45° relief light.
 		getC().skyModel.update(getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude(),
-				System.currentTimeMillis());
+				getC().skyModel.currentTimeMillis());
 		if (P.isSkyView()) {
 			getC().skyModel.getSunDirection(skySunDir);
 			getC().sunLight.setDirection(skySunDir[0], skySunDir[1], skySunDir[2]);
@@ -880,7 +880,8 @@ public class MapViewerScreen implements Screen {
 		// night, dusk in between) driven by the computed Sun altitude when the sky view is on.
 		if (P.isSkyView()) {
 			com.peaknav.viewer.renderer_gdx.SkyRenderer.skyColor(
-					getC().skyModel.getSunAltitudeDeg(), skyColorTmp);
+					com.peaknav.viewer.renderer_gdx.SkyRenderer.ambianceSunAltitude(
+							getC().skyModel.getSunAltitudeDeg()), skyColorTmp);
 			Gdx.gl.glClearColor(skyColorTmp[0], skyColorTmp[1], skyColorTmp[2], 1);
 		} else {
 			Gdx.gl.glClearColor(135/255f, 206/255f, 250/255f, 1);
