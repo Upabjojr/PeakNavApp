@@ -91,7 +91,8 @@ public class AreaRegistry {
                                 jo.getFloat("semiMinorKm"),
                                 jo.getFloat("rotationDeg", 0f),
                                 jo.getFloat("peakMeters", 0f),
-                                jo.getFloat("visibleRangeKm", 0f)));
+                                jo.getFloat("visibleRangeKm", 0f),
+                                jo.getInt("population", 0)));
                     }
                 }
             }
