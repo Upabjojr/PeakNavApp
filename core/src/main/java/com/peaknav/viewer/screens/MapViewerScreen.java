@@ -1167,6 +1167,40 @@ public class MapViewerScreen implements Screen {
 
 	}
 
+	/**
+	 * Ends any 2D batch a mid-frame Throwable left open. {@link com.peaknav.viewer.MapApp#render}
+	 * catches such errors, but a batch stuck in "drawing" state made every following frame's
+	 * {@code begin()} throw as well — the loop then failed before drawing anything, and the app
+	 * sat on a blank screen until force-closed. After this cleanup the next frame starts clean.
+	 */
+	public void recoverFromRenderError() {
+		endBatchQuietly(spriteBatch);
+		endBatchQuietly(spriteBatchOutlines);
+		try {
+			if (shapeRenderer != null && shapeRenderer.isDrawing()) {
+				shapeRenderer.end();
+			}
+		} catch (Throwable ignored) {
+		}
+		if (stage != null)
+			endBatchQuietly(stage.getBatch());
+		if (stageCopyright != null)
+			endBatchQuietly(stageCopyright.getBatch());
+		if (stageNavigationOverview != null)
+			endBatchQuietly(stageNavigationOverview.getBatch());
+		// The sky pass disables depth writes; restore the default in case it blew up mid-way.
+		Gdx.gl.glDepthMask(true);
+	}
+
+	static void endBatchQuietly(com.badlogic.gdx.graphics.g2d.Batch batch) {
+		try {
+			if (batch != null && batch.isDrawing()) {
+				batch.end();
+			}
+		} catch (Throwable ignored) {
+		}
+	}
+
 	@Override
 	public void dispose() {
 		// Everything the screen owns; previously only the label renderer (i.e. the compass

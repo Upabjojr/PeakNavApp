@@ -61,19 +61,30 @@ public class MapApp extends Game {
 
     @Override
     public void render () {
-        // TODO: this is a temporary throwable-catcher used to detect when the main thread crashes:
         if (screen != null) {
             try {
                 screen.render(Gdx.graphics.getDeltaTime());
             } catch (Throwable throwable) {
-                if (firstOccurrence) {
-                    firstOccurrence = false;
-                    // CrashLogger crashLogger = loadFactory.getCrashLogger(throwable, "render");
-                    // crashLogger.logToFile();
-                }
                 throwable.printStackTrace();
-                // TODO: reset all renders otherwise .begin() will raise an error as .end()
-                // has not been called.
+                if (firstOccurrence) {
+                    // Keep a trace of the first failure so a field report is diagnosable.
+                    firstOccurrence = false;
+                    try {
+                        loadFactory.getCrashLogger(throwable, "render").logToFile();
+                    } catch (Throwable ignored) {
+                    }
+                }
+                // End whatever batch the failed frame left open. Without this, one transient
+                // render error poisoned every following frame (begin() throws "already drawing"),
+                // nothing was ever drawn again, and the app sat on a blank screen until killed.
+                try {
+                    if (screen == mapViewerScreen) {
+                        mapViewerScreen.recoverFromRenderError();
+                    } else if (screen == introScreen) {
+                        introScreen.recoverFromRenderError();
+                    }
+                } catch (Throwable ignored) {
+                }
             }
         }
     }

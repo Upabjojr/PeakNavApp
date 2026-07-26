@@ -36,7 +36,6 @@ import com.peaknav.utils.StopThreadException;
 import com.peaknav.viewer.MapApp;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.LinkedList;
 import java.util.Queue;
@@ -94,27 +93,33 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 
 		setContentView(R.layout.activity_main);
 
-		Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler()
-		{
-
-			@Override
-			public void uncaughtException(Thread thread, Throwable e) {
-				if (e instanceof StopThreadException) {
-					return;
-				}
-				try {
-					handleUncaughtException(thread, e);
-				} catch (IOException ex) {
-					ex.printStackTrace();
-				}
+		// The previous handler silently System.exit(1)'d on ANY uncaught exception on ANY thread,
+		// without logging: a transient worker-thread failure during startup closed the app
+		// immediately with no trace. Now every crash is written to a log file, main/GL-thread
+		// crashes are handed to the platform's own handler (proper crash dialog + system report),
+		// and a background worker's exception only kills that worker, not the whole app.
+		final Thread.UncaughtExceptionHandler previousHandler =
+				Thread.getDefaultUncaughtExceptionHandler();
+		Thread.setDefaultUncaughtExceptionHandler((thread, e) -> {
+			if (e instanceof StopThreadException) {
+				return;
 			}
-
-			public void handleUncaughtException(Thread thread, Throwable e) throws IOException {
-				if (e instanceof StopThreadException) {
-					return;
+			e.printStackTrace();
+			try {
+				if (getLoadFactory() != null) {
+					getLoadFactory().getCrashLogger(e, "crash").logToFile();
 				}
-				// CrashLogger crashLogger = getLoadFactory().getCrashLogger(e, "crash");
-				System.exit(1);
+			} catch (Throwable ignored) {
+				// Logging must never turn a survivable crash into a fatal one.
+			}
+			boolean fatalThread = thread == Looper.getMainLooper().getThread()
+					|| thread.getName().startsWith("GLThread");
+			if (fatalThread) {
+				if (previousHandler != null) {
+					previousHandler.uncaughtException(thread, e);
+				} else {
+					System.exit(1);
+				}
 			}
 		});
 
