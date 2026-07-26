@@ -306,6 +306,45 @@ public class LabelRenderer {
      * locates/sizes the label — it is not drawn — and the name floats above the area on a
      * type-coloured pill.
      */
+    /** A measured area label awaiting the de-overlap pass. */
+    private static final class PendingArea {
+        String name;
+        AreaPalette palette;
+        float rx, ry, rw, rh;      // plate rectangle on screen
+        float scale, textW, textH; // for drawing the name at the same size it was measured
+        int priority;              // higher wins a collision (islands/ranges over towns)
+        float importance;          // tie-break within a priority (visible range)
+    }
+
+    private final java.util.List<PendingArea> areaPool = new java.util.ArrayList<>();
+    private final java.util.List<PendingArea> areaPending = new java.util.ArrayList<>();
+    private final java.util.List<PendingArea> areaAccepted = new java.util.ArrayList<>();
+    private int areaPoolUsed = 0;
+
+    private PendingArea obtainPending() {
+        PendingArea p;
+        if (areaPoolUsed < areaPool.size()) {
+            p = areaPool.get(areaPoolUsed);
+        } else {
+            p = new PendingArea();
+            areaPool.add(p);
+        }
+        areaPoolUsed++;
+        return p;
+    }
+
+    /** Collision priority: islands and mountain ranges prevail over towns. */
+    private static int areaPriority(String type) {
+        if ("island".equals(type) || "mountain_range".equals(type)) return 3;
+        if ("mountain_group".equals(type) || "region".equals(type)) return 2;
+        return 1; // city / default
+    }
+
+    private static boolean areaLabelsOverlap(PendingArea a, PendingArea b) {
+        return a.rx < b.rx + b.rw && a.rx + a.rw > b.rx
+                && a.ry < b.ry + b.rh && a.ry + a.rh > b.ry;
+    }
+
     private void renderAreas() {
         float targetLat = getC().L.getTargetLatitude();
         float targetLon = (float) getC().L.getTargetLongitude();
@@ -320,9 +359,16 @@ public class LabelRenderer {
         int screenW = Gdx.graphics.getWidth();
         int screenH = Gdx.graphics.getHeight();
 
+        // Pass 1: measure every label that survives the culls; the actual drawing happens after the
+        // de-overlap pass so a label hidden behind a higher-priority one is dropped, not stacked.
+        areaPending.clear();
+        areaPoolUsed = 0;
+
         for (MapArea area : areas) {
             // Type toggle: skip whole categories the user has switched off.
             if (!isTypeVisible(area.type))
+                continue;
+            if (area.name == null || area.name.isEmpty())
                 continue;
 
             // Relevance cull: each area carries its own visible range, so a small islet only shows
@@ -404,7 +450,35 @@ public class LabelRenderer {
             float silhouetteTop = Math.max(maxY, summitY);      // top of the area on screen (y-up)
             float plateBottom = silhouetteTop + 0.30f * widgetUnitStep; // fixed pixel clearance
             float spanW = Math.min(Math.max(0f, maxX - minX), 1.5f * screenW);
-            drawAreaName(area.name, summitX, plateBottom, spanW, paletteFor(area.type));
+
+            PendingArea p = obtainPending();
+            measureAreaLabel(p, area.name, summitX, plateBottom, spanW);
+            p.palette = paletteFor(area.type);
+            p.priority = areaPriority(area.type);
+            p.importance = area.visibleRangeKm;
+            areaPending.add(p);
+        }
+
+        // Pass 2: draw in priority order (islands/ranges before towns, larger range first within a
+        // tier) and skip any label whose plate overlaps one already drawn — so nothing is hidden
+        // behind another label.
+        areaPending.sort((a, b) -> a.priority != b.priority
+                ? Integer.compare(b.priority, a.priority)
+                : Float.compare(b.importance, a.importance));
+        areaAccepted.clear();
+        for (int i = 0; i < areaPending.size(); i++) {
+            PendingArea p = areaPending.get(i);
+            boolean blocked = false;
+            for (int j = 0; j < areaAccepted.size(); j++) {
+                if (areaLabelsOverlap(p, areaAccepted.get(j))) {
+                    blocked = true;
+                    break;
+                }
+            }
+            if (!blocked) {
+                areaAccepted.add(p);
+                drawAreaName(p);
+            }
         }
     }
 
@@ -466,10 +540,13 @@ public class LabelRenderer {
         shapeRenderer.arc(x + w - r, cy, r, 270f, 180f, 24); // right cap (flat edge at x+w-r)
     }
 
-    private void drawAreaName(String name, float centerX, float bottomY, float ellipseScreenW,
-                              AreaPalette palette) {
-        if (name == null || name.isEmpty())
-            return;
+    /**
+     * Measures the label into {@code out}: scales the name to span the area's on-screen width
+     * (clamped to a readable range) and computes the pill rectangle. Fills the rect/scale/text so the
+     * de-overlap pass can test it and {@link #drawAreaName(PendingArea)} can draw it at the same size.
+     */
+    private void measureAreaLabel(PendingArea out, String name, float centerX, float bottomY,
+                                  float ellipseScreenW) {
         BitmapFont font = getC().styleSingleton.getBitmapFont();
         float prevScaleX = font.getScaleX();
         float prevScaleY = font.getScaleY();
@@ -478,8 +555,6 @@ public class LabelRenderer {
         areaGlyph.setText(font, name);
         float naturalW = Math.max(1f, areaGlyph.width);
 
-        // Scale the name to span most of the ellipse's on-screen width, clamped so it stays a
-        // sensible, readable size for both tiny and large areas.
         float targetW = 0.78f * ellipseScreenW;
         float scale = targetW / naturalW;
         float minScale = (0.30f * widgetUnitStep) / baseLineHeight;
@@ -490,42 +565,54 @@ public class LabelRenderer {
         areaGlyph.setText(font, name);
         float textW = areaGlyph.width;
         float textH = areaGlyph.height;
+        font.getData().setScale(prevScaleX, prevScaleY);
 
-        // One uniform pill behind the name, with fully rounded ends (a stadium shape). Single flat
-        // colour drawn in one pass — no second layer, so no circular knobs at the corners. It spans
-        // the area's on-screen range (at least the text width) and rests with its bottom edge at
-        // `bottomY`, just above the area silhouette.
         float padX = 0.32f * widgetUnitStep;
         float padY = 0.16f * widgetUnitStep;
         float plateW = Math.max(textW + 2f * padX, 0.94f * ellipseScreenW);
         float plateH = textH + 2f * padY;
-        float plateX = centerX - plateW * 0.5f;
-        float plateY = bottomY;
+        out.name = name;
+        out.scale = scale;
+        out.textW = textW;
+        out.textH = textH;
+        out.rx = centerX - plateW * 0.5f;
+        out.ry = bottomY;
+        out.rw = plateW;
+        out.rh = plateH;
+    }
+
+    /** Draws a measured area label: one uniform rounded pill with the name centred on it. */
+    private void drawAreaName(PendingArea p) {
+        float plateX = p.rx, plateY = p.ry, plateW = p.rw, plateH = p.rh;
         float radius = plateH * 0.5f; // fully rounded ends
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         try {
-            shapeRenderer.setColor(palette.fill);
+            shapeRenderer.setColor(p.palette.fill);
             fillPill(plateX, plateY, plateW, plateH, radius);
         } finally {
             shapeRenderer.end();
         }
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
+        BitmapFont font = getC().styleSingleton.getBitmapFont();
+        float prevScaleX = font.getScaleX();
+        float prevScaleY = font.getScaleY();
+        font.getData().setScale(p.scale);
         // Name centred on the plate, with a crisp dark shadow for extra contrast.
-        float tx = centerX - textW * 0.5f;
-        float ty = plateY + plateH * 0.5f + textH * 0.5f;
+        float tx = (plateX + plateW * 0.5f) - p.textW * 0.5f;
+        float ty = plateY + plateH * 0.5f + p.textH * 0.5f;
         spriteBatch.setTransformMatrix(identityMat);
         spriteBatch.begin();
         try {
             float sh = Math.max(1.2f, 0.022f * widgetUnitStep);
             font.setColor(AREA_TEXT_SHADOW);
-            font.draw(spriteBatch, name, tx + sh, ty - sh);
-            font.draw(spriteBatch, name, tx - sh, ty - sh);
+            font.draw(spriteBatch, p.name, tx + sh, ty - sh);
+            font.draw(spriteBatch, p.name, tx - sh, ty - sh);
             font.setColor(AREA_TEXT);
-            font.draw(spriteBatch, name, tx, ty);
+            font.draw(spriteBatch, p.name, tx, ty);
         } finally {
             spriteBatch.end();
             font.getData().setScale(prevScaleX, prevScaleY);
