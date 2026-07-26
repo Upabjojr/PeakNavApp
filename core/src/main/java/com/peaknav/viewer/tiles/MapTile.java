@@ -16,6 +16,7 @@ import com.badlogic.gdx.graphics.g3d.Model;
 import com.badlogic.gdx.graphics.g3d.ModelInstance;
 import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute;
 import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder;
+import com.badlogic.gdx.math.MathUtils;
 
 import java.io.DataOutputStream;
 import java.io.File;
@@ -250,14 +251,7 @@ public class MapTile {
         while (!texturePixmapMap.isEmpty()) {
             DrawingPair pair = texturePixmapMap.remove();
             // TODO: check if satellite provider has changed...
-            Texture texture = new Texture(pair.pixmap);
-            // The GPX layer stores an along-track phase in a colour channel; linear filtering would
-            // interpolate across its wraps and smear the flow, so it is sampled nearest-neighbour.
-            if (pair.layer == PixmapLayerName.GPX_PATH) {
-                texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-            } else {
-                texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-            }
+            Texture texture = createLayerTexture(pair.layer, pair.pixmap);
             PixmapLayerName layer = pair.layer;
             Texture previousTexture = textureMap.get(layer);
             textureMap.put(layer, texture);
@@ -267,6 +261,44 @@ public class MapTile {
             pair.pixmap.dispose();
             refreshUserData();
         }
+    }
+
+    /**
+     * Builds the GL texture for one tile layer, choosing the sampling that keeps it sharp on the 3D
+     * terrain.
+     *
+     * <p>The tiles are draped over terrain and almost always seen at a grazing angle, where plain
+     * bilinear filtering aliases into a jagged, shimmering "pixelated" mess — no amount of tile
+     * resolution fixes that, because the problem is minification along the view direction, not a lack
+     * of texels. Mip-maps plus anisotropic filtering are the actual fix: mip-maps supply pre-filtered
+     * lower levels for the minified axis, and anisotropy keeps the other axis crisp so roads do not
+     * turn to mush. Mip-map generation needs a power-of-two texture on GL ES 2 (this app's context),
+     * which is why the road tiles are sized to a power of two; anything non-POT (or the GPX layer)
+     * falls back to the previous filtering.
+     */
+    private Texture createLayerTexture(PixmapLayerName layer, Pixmap pixmap) {
+        // The GPX layer stores an along-track phase in a colour channel; any interpolation would
+        // smear across its wraps, so it stays nearest-neighbour.
+        if (layer == PixmapLayerName.GPX_PATH) {
+            Texture texture = new Texture(pixmap);
+            texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+            return texture;
+        }
+        boolean powerOfTwo = MathUtils.isPowerOfTwo(pixmap.getWidth())
+                && MathUtils.isPowerOfTwo(pixmap.getHeight());
+        if (powerOfTwo) {
+            Texture texture = new Texture(pixmap, true); // generate mip-maps
+            texture.setFilter(Texture.TextureFilter.MipMapLinearLinear,
+                    Texture.TextureFilter.Linear);
+            float maxAniso = Texture.getMaxAnisotropicFilterLevel();
+            if (maxAniso > 1f) {
+                texture.setAnisotropicFilter(Math.min(maxAniso, 8f));
+            }
+            return texture;
+        }
+        Texture texture = new Texture(pixmap);
+        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        return texture;
     }
 
     public void setTexturePixmap(PixmapLayerName layer, Pixmap pixmap) {

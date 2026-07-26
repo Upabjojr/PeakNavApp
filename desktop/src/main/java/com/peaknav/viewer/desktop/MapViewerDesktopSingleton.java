@@ -35,7 +35,6 @@ import com.peaknav.utils.PeakNavLogger;
 import com.peaknav.utils.UtilsOSDep;
 import com.peaknav.utils.UtilsOSDesktop;
 import com.peaknav.viewer.MapViewerSingleton;
-import com.peaknav.viewer.map_data.GetMapsforgeMapView;
 
 public class MapViewerDesktopSingleton extends MapViewerSingleton {
 

@@ -99,9 +99,44 @@ public class TileRenderer {
         databaseRenderer = new DatabaseRenderer(pbfMapDataStore, graphicFactory, tileCache, tileBasedLabelStore, true, false, null);
     }
 
+    /**
+     * Roads draped on the 3D terrain looked "pixelated" because the render theme's stroke widths are
+     * absolute pixels tuned for a 256px tile, so on our {@code SUPERSAMPLE*256}px tiles they came out
+     * hairline-thin (a ~1.6px road on a 2048px tile), which foreshortening then broke up. Mapsforge
+     * has no runtime stroke multiplier (unlike text's {@code textScale}), but the theme-level
+     * {@code base-stroke-width} attribute multiplies every line stroke — so we inject it, scaled to
+     * the supersample factor, to restore standard-map thickness. {@code ROAD_STROKE_BOLDNESS} is the
+     * dial: 1.0 ≈ a standard map at this resolution.
+     */
+    private static final float ROAD_STROKE_BOLDNESS = 1.0f;
+
+    /**
+     * Label border (white halo) prominence. Mapsforge scales label <em>text</em> by {@code textScale}
+     * but leaves the halo {@code stroke-width} unscaled (Caption/PathText {@code scaleStrokeWidth} is a
+     * no-op), so on our supersampled tiles the border became a hairline around big glyphs — hence the
+     * poor legibility. We scale the white text halos by the supersample too (× this boldness) to keep
+     * the border a constant fraction (~15%) of the glyph height. Raise for a heavier outline.
+     */
+    private static final float TEXT_HALO_BOLDNESS = 1.5f;
+
     public XmlRenderTheme getMapsforgeXmlRenderTheme(String assetName) {
         FileHandle asset = Gdx.files.internal(assetName);
-        XmlRenderTheme xmlRenderTheme = new StreamRenderTheme("", asset.read(), new XmlRenderThemeMenuCallback() {
+        float baseStrokeWidth = TileRendererRunner.ROAD_TILE_SUPERSAMPLE * ROAD_STROKE_BOLDNESS;
+        String xml = asset.readString("UTF-8");
+        if (!xml.contains("base-stroke-width")) {
+            xml = xml.replaceFirst("<rendertheme ",
+                    "<rendertheme base-stroke-width=\"" + baseStrokeWidth + "\" ");
+        }
+        // Scale the white text halos (unique to captions/pathText — the only white *line* casing is
+        // 0.7, left alone and handled by base-stroke-width) so the label border tracks the text size.
+        float haloScale = TileRendererRunner.ROAD_TILE_SUPERSAMPLE * TEXT_HALO_BOLDNESS;
+        xml = xml.replace("stroke=\"#FFFFFF\" stroke-width=\"2.0\"",
+                "stroke=\"#FFFFFF\" stroke-width=\"" + (2.0f * haloScale) + "\"");
+        xml = xml.replace("stroke=\"#FFFFFF\" stroke-width=\"1.0\"",
+                "stroke=\"#FFFFFF\" stroke-width=\"" + (1.0f * haloScale) + "\"");
+        java.io.InputStream themeStream = new java.io.ByteArrayInputStream(
+                xml.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        XmlRenderTheme xmlRenderTheme = new StreamRenderTheme("", themeStream, new XmlRenderThemeMenuCallback() {
             @Override
             public Set<String> getCategories(XmlRenderThemeStyleMenu style) {
                 Set<String> visibleLayerNames = new HashSet<>();

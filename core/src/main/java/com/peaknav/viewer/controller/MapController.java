@@ -36,7 +36,6 @@ import com.peaknav.viewer.widgets.StyleSingleton;
 import com.peaknav.viewer.widgets.WidgetGetter;
 import com.peaknav.viewer.widgets.WidgetTextures;
 
-import org.mapsforge.core.graphics.Bitmap;
 import org.mapsforge.core.graphics.GraphicFactory;
 
 public class MapController {
@@ -89,11 +88,6 @@ public class MapController {
     public MapController(LoadFactory loadFactory) {
         GraphicFactory graphicFactory = loadFactory.getGraphicFactory();
         this.mapsforgeConnector = new MapsforgeConnector() {
-            @Override
-            public Bitmap getBitmap() {
-                return graphicFactory.createBitmap(8*256, 8*256, true);
-            }
-
             @Override
             public GraphicFactory getGraphicFactory() {
                 return graphicFactory;
