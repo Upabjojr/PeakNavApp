@@ -1026,7 +1026,8 @@ public class OptionPane {
         tableMapData.add(buttonMapDataSources).width(buttonWidth * 0.2f).height(height);
         buttons.add(tableMapData);
 
-        TextButton buttonUnits = getC().widgetGetter.getTextButton(s("Units"), false);
+        ImageTextButtonOptionPane buttonUnits = getC().widgetGetter.getImageTextButton(
+                "icons/icon_units.png", s("Units"), false);
         buttonUnits.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {

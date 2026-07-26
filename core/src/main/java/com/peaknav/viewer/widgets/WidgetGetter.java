@@ -7,6 +7,8 @@ import static com.peaknav.utils.PreferencesManager.P;
 import static com.peaknav.utils.Units.formatDistanceToUnitSystem;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.utils.Align;
+import com.badlogic.gdx.utils.Scaling;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
@@ -168,7 +170,17 @@ public class WidgetGetter {
         drawable.setMinHeight(widgetUnitStep);
         style.imageChecked = drawable;
         style.imageUp = drawable;
-        return new ImageTextButtonOptionPane(text, style);
+        ImageTextButtonOptionPane button = new ImageTextButtonOptionPane(text, style);
+        // Consistent layout across every menu button: content hugs the left edge, the icon sits in a
+        // fixed square cell (scaled to fit so non-square icons are not stretched), and the label is
+        // left-aligned in the remaining width — so icons line up in one column and text in another,
+        // regardless of icon shape or label length.
+        button.left();
+        button.getImage().setScaling(Scaling.fit);
+        button.getImageCell().size(widgetUnitStep);
+        button.getLabelCell().padLeft(0.3f * widgetUnitStep).expandX().left();
+        button.getLabel().setAlignment(Align.left);
+        return button;
     }
 
     public TextButton getTextButton(String text, boolean toggable) {
