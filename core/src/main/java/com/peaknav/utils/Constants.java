@@ -22,7 +22,6 @@ public interface Constants {
         String VIEWER_SUN_SHADING = "viewerSunShading";
         String VIEWER_HORIZON_COMPASS = "viewerHorizonCompass";
         String VIEWER_SKY = "viewerSky";
-        String VIEWER_SKY_STARS_ALWAYS = "viewerSkyStarsAlways";
         String VIEWER_SKY_CONSTELLATIONS = "viewerSkyConstellations";
         String VIEWER_SKY_MODE = "viewerSkyMode";
         String UNDERLAY_IMAGE_PROVIDER = "underlayImageProviderChosen";

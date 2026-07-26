@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <!-- clock face -->
+  <circle cx="120" cy="126" r="84" fill="#eef3f7" stroke="#2b333c" stroke-width="8"/>
+  <!-- hour ticks -->
+  <g stroke="#2b333c" stroke-width="6" stroke-linecap="round">
+    <line x1="120" y1="50" x2="120" y2="64"/>
+    <line x1="120" y1="188" x2="120" y2="202"/>
+    <line x1="44" y1="126" x2="58" y2="126"/>
+    <line x1="182" y1="126" x2="196" y2="126"/>
+  </g>
+  <!-- hands -->
+  <line x1="120" y1="126" x2="120" y2="74" stroke="#2b333c" stroke-width="8" stroke-linecap="round"/>
+  <line x1="120" y1="126" x2="158" y2="140" stroke="#2b7fb8" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="120" cy="126" r="9" fill="#2b333c"/>
+  <!-- little top button/stem -->
+  <rect x="112" y="20" width="16" height="14" rx="3" fill="#2b333c"/>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#2b333c" stroke-width="3"/>
+</svg>

@@ -393,7 +393,7 @@ public class OptionPane {
 
         // Sky mode: cycles local time / forced day / forced night.
         ImageTextButtonOptionPane buttonSkyMode = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_sky.png", skyModeLabel(), false);
+                "icons/icon_sky_mode.png", skyModeLabel(), false);
         buttonSkyMode.addClickListener(() -> {
             P.setSkyMode(P.getSkyMode() + 1);
             buttonSkyMode.getLabel().setText(skyModeLabel());
@@ -402,7 +402,7 @@ public class OptionPane {
 
         // Custom time: opens the native date/time picker (or reset to the device clock).
         ImageTextButtonOptionPane buttonSkyTime = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_sky.png", s("Sky_time"), false);
+                "icons/icon_sky_time.png", s("Sky_time"), false);
         buttonSkyTime.addClickListener(() -> {
             hide();
             getNativeScreenCaller().chooseSkyTime();
@@ -410,7 +410,7 @@ public class OptionPane {
         buttons.add(buttonSkyTime);
 
         ImageTextButtonOptionPane checkBoxConstellations = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_sky.png", s("Sky_constellations"), true);
+                "icons/icon_sky_constellations.png", s("Sky_constellations"), true);
         addCheckingStateProperty(checkBoxConstellations, () -> P.isSkyConstellations());
         checkBoxConstellations.addClickListener(() ->
                 changer.execute(() -> P.setSkyConstellations(checkBoxConstellations.isChecked())));

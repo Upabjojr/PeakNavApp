@@ -23,7 +23,6 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_UNDER
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SUN_SHADING;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY;
-import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_STARS_ALWAYS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_CONSTELLATIONS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_MODE;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ALPINE_HUTS;
@@ -73,7 +72,6 @@ public class PreferencesManager {
     private boolean sunShading;
     private boolean horizonCompass;
     private boolean skyView;
-    private boolean skyStarsAlways;
     private boolean skyConstellations;
     /** 0 = follow local time, 1 = force day, 2 = force night. */
     private int skyMode;
@@ -166,7 +164,6 @@ public class PreferencesManager {
         sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
         horizonCompass = preferences.getBoolean(VIEWER_HORIZON_COMPASS, true);
         skyView = preferences.getBoolean(VIEWER_SKY, false);
-        skyStarsAlways = preferences.getBoolean(VIEWER_SKY_STARS_ALWAYS, false);
         skyConstellations = preferences.getBoolean(VIEWER_SKY_CONSTELLATIONS, true);
         skyMode = preferences.getInteger(VIEWER_SKY_MODE, 0);
         // Set to "true" for subscribed users:
@@ -401,16 +398,6 @@ public class PreferencesManager {
     public void setSkyView(boolean enabled) {
         skyView = enabled;
         preferences.putBoolean(VIEWER_SKY, enabled);
-        preferences.flush();
-    }
-
-    public boolean isSkyStarsAlways() {
-        return skyStarsAlways;
-    }
-
-    public void setSkyStarsAlways(boolean enabled) {
-        skyStarsAlways = enabled;
-        preferences.putBoolean(VIEWER_SKY_STARS_ALWAYS, enabled);
         preferences.flush();
     }
 
