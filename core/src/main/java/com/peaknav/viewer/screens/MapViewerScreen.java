@@ -825,6 +825,14 @@ public class MapViewerScreen implements Screen {
 			Gdx.gl.glViewport(0, 0, width, height);
 			tileBatchRenderer.resize(width, height);
 
+			// The geographical depth pixmaps used for label/area occlusion are sized to the viewport.
+			// A resize invalidates them: sampling now projects with the new viewport but reads the
+			// old-size pixmaps out of bounds, so every area reads as occluded and all labels vanish
+			// until the camera next moves. Request a fresh render so they are rebuilt at the new size.
+			if (impactPixmap != null) {
+				impactPixmap.impactPixmapNewRequested = true;
+			}
+
 			getC().dataRetrieveThreadManager.triggerUpdateVisibilityByZooming();
 
 			if (optionPane.isVisible()) {
