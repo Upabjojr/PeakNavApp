@@ -97,6 +97,9 @@ public class MapViewerScreen implements Screen {
 	private ShapeRenderer shapeRenderer;
 	private WidgetGetter.TableDownloadData tableDownloadData;
 	public LabelRenderer labelRenderer;
+	public com.peaknav.viewer.renderer_gdx.SkyRenderer skyRenderer;
+	private final float[] skyColorTmp = new float[3];
+	private final float[] skySunDir = new float[3];
 	private TileBatchRenderer tileBatchRenderer;
 	private volatile GpxFrameRequest pendingGpxFrame;
 
@@ -172,6 +175,9 @@ public class MapViewerScreen implements Screen {
 	// TODO: this should only be called from ElevationImageProviderManager:
 	public void setCurrentCoordLocation(double longitude, double latitude, double elevation) {
 		elevation += LIFT_ELEV;
+
+		// The observer moved: recompute Sun/Moon/planet/star positions for the new location.
+		getC().skyModel.invalidate();
 
 		tableTool.setRefreshNeeded(true);
 
@@ -716,6 +722,7 @@ public class MapViewerScreen implements Screen {
 		labelRenderer = new LabelRenderer(
 				spriteBatch, shapeRenderer, new Texture(Gdx.files.internal("icons/icon_compass.png")),
 				widgetUnitStep);
+		skyRenderer = new com.peaknav.viewer.renderer_gdx.SkyRenderer(spriteBatch, shapeRenderer);
 		labelRenderer.setBackgroundAlpha(
 				tableTool.sliderCameraAlpha.getVisualPercent()
 		);
@@ -846,9 +853,34 @@ public class MapViewerScreen implements Screen {
 	/** How long the camera must sit still after rotating before the overlap pass is re-run. */
 	private static final long OVERLAP_SETTLE_DELAY_MILLIS = 250L;
 
+	/**
+	 * Keeps the sky model and the terrain relief light in step with the observer and the clock.
+	 * When the sky view is on, the terrain is lit from the real Sun (dim ambient at night); when it
+	 * is off, the fixed NW/45° cartographic light is restored for legibility.
+	 */
+	private void updateSky() {
+		if (!P.isSkyView()) {
+			getC().sunLight.setFromAzimuthAltitude(
+					com.peaknav.viewer.SunLight.DEFAULT_AZIMUTH_DEGREES,
+					com.peaknav.viewer.SunLight.DEFAULT_ALTITUDE_DEGREES);
+			return;
+		}
+		getC().skyModel.update(getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude(),
+				System.currentTimeMillis());
+		getC().skyModel.getSunDirection(skySunDir);
+		getC().sunLight.setDirection(skySunDir[0], skySunDir[1], skySunDir[2]);
+	}
+
 	private void clearScreen() {
-		// Sky color (not really necessary, will be reset by GLSL script):
-		Gdx.gl.glClearColor(135/255f, 206/255f, 250/255f, 1);
+		// Sky color: day-blue by default, or the astronomically-tinted sky (blue by day, dark at
+		// night, dusk in between) driven by the computed Sun altitude when the sky view is on.
+		if (P.isSkyView()) {
+			com.peaknav.viewer.renderer_gdx.SkyRenderer.skyColor(
+					getC().skyModel.getSunAltitudeDeg(), skyColorTmp);
+			Gdx.gl.glClearColor(skyColorTmp[0], skyColorTmp[1], skyColorTmp[2], 1);
+		} else {
+			Gdx.gl.glClearColor(135/255f, 206/255f, 250/255f, 1);
+		}
 		Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
 		Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
 
@@ -901,6 +933,8 @@ public class MapViewerScreen implements Screen {
 		}
 
 		tileBatchRenderer.startElevationRetrievalAndAssignmentThreads();
+
+		updateSky();
 
 		clearScreen();
 
@@ -989,6 +1023,11 @@ public class MapViewerScreen implements Screen {
 			}
 			labelRenderer.renderBackgroundPixmap();
 		} else {
+			// Sky objects are drawn before the terrain so opaque terrain occludes anything below a
+			// ridge (correct horizon hiding for free).
+			if (P.isSkyView()) {
+				skyRenderer.render();
+			}
 			// TODO: this prevents roads from being displayed in snapshot mode!
 			tileBatchRenderer.render();
 		}

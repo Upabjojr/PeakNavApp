@@ -847,6 +847,13 @@ public class OptionPane {
                 () -> P.setHorizonCompass(checkBoxHorizonCompass.isChecked())));
         buttons.add(checkBoxHorizonCompass);
 
+        ImageTextButtonOptionPane checkBoxSky = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_sky.png", s("Sky_view"), true);
+        addCheckingStateProperty(checkBoxSky, () -> P.isSkyView());
+        checkBoxSky.addClickListener(() -> changer.execute(
+                () -> P.setSkyView(checkBoxSky.isChecked())));
+        buttons.add(checkBoxSky);
+
         // GPX paths: a single entry that opens its own submenu (load file / from URL / clear).
         ImageTextButtonOptionPane buttonGpxMenu = getC().widgetGetter.getImageTextButton(
                 "icons/icon_map.png", s("Gpx_paths"), false);

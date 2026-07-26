@@ -22,6 +22,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_BASE_
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SUN_SHADING;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ALPINE_HUTS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ISLANDS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_CITIES;
@@ -68,6 +69,7 @@ public class PreferencesManager {
     private boolean layerVisibleOpenStreetMap;
     private boolean sunShading;
     private boolean horizonCompass;
+    private boolean skyView;
     private SatelliteImageProvider underlayImageProvider;
     private SatelliteProviderRegistry satelliteProviderRegistry;
     private boolean locationPermissionDenied;
@@ -156,6 +158,7 @@ public class PreferencesManager {
         layerVisibleUnderlayLayer = preferences.getBoolean(VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER, true);
         sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
         horizonCompass = preferences.getBoolean(VIEWER_HORIZON_COMPASS, true);
+        skyView = preferences.getBoolean(VIEWER_SKY, false);
         // Set to "true" for subscribed users:
         viewerLayerVisibleBaseRoads = preferences.getBoolean(VIEWER_LAYER_VISIBLE_BASE_ROADS, true);
         largeFonts = preferences.getBoolean(VIEWER_LARGE_FONTS, false);
@@ -378,6 +381,16 @@ public class PreferencesManager {
     public void setHorizonCompass(boolean enabled) {
         horizonCompass = enabled;
         preferences.putBoolean(VIEWER_HORIZON_COMPASS, enabled);
+        preferences.flush();
+    }
+
+    public boolean isSkyView() {
+        return skyView;
+    }
+
+    public void setSkyView(boolean enabled) {
+        skyView = enabled;
+        preferences.putBoolean(VIEWER_SKY, enabled);
         preferences.flush();
     }
 

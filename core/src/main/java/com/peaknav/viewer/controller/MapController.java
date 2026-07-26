@@ -60,6 +60,9 @@ public class MapController {
 
     /** Direction the terrain is lit from; fed to the terrain shader as u_sunDirection. */
     public final SunLight sunLight = new SunLight();
+
+    /** Astronomically-correct sky (Sun, Moon, planets, stars) for the observer's location and time. */
+    public final com.peaknav.sky.SkyModel skyModel = new com.peaknav.sky.SkyModel();
     public final TileManager tileManager;
 
     public final ObjectManager O;
