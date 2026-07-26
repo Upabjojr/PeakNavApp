@@ -860,16 +860,19 @@ public class MapViewerScreen implements Screen {
 	 * is off, the fixed NW/45° cartographic light is restored for legibility.
 	 */
 	private void updateSky() {
-		if (!P.isSkyView()) {
+		// Always compute the sky so the Sun is always positioned and drawn. Only when the sky view
+		// is on do we light the terrain from the real Sun (and tint the sky day/night in clearScreen);
+		// otherwise the map keeps its plain sky and the legible NW/45° relief light.
+		getC().skyModel.update(getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude(),
+				System.currentTimeMillis());
+		if (P.isSkyView()) {
+			getC().skyModel.getSunDirection(skySunDir);
+			getC().sunLight.setDirection(skySunDir[0], skySunDir[1], skySunDir[2]);
+		} else {
 			getC().sunLight.setFromAzimuthAltitude(
 					com.peaknav.viewer.SunLight.DEFAULT_AZIMUTH_DEGREES,
 					com.peaknav.viewer.SunLight.DEFAULT_ALTITUDE_DEGREES);
-			return;
 		}
-		getC().skyModel.update(getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude(),
-				System.currentTimeMillis());
-		getC().skyModel.getSunDirection(skySunDir);
-		getC().sunLight.setDirection(skySunDir[0], skySunDir[1], skySunDir[2]);
 	}
 
 	private void clearScreen() {
@@ -1025,10 +1028,9 @@ public class MapViewerScreen implements Screen {
 			labelRenderer.renderBackgroundPixmap();
 		} else {
 			// Sky objects are drawn before the terrain so opaque terrain occludes anything below a
-			// ridge (correct horizon hiding for free).
-			if (P.isSkyView()) {
-				skyRenderer.render();
-			}
+			// ridge (correct horizon hiding for free). The Sun is always drawn; the other objects are
+			// gated inside the renderer by the sky-view toggle.
+			skyRenderer.render();
 			// TODO: this prevents roads from being displayed in snapshot mode!
 			tileBatchRenderer.render();
 		}

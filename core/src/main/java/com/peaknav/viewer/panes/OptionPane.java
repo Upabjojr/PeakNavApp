@@ -380,13 +380,6 @@ public class OptionPane {
 
         List<Table> buttons = new ArrayList<>(4);
 
-        ImageTextButtonOptionPane checkBoxSky = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_sky.png", s("Sky_view"), true);
-        addCheckingStateProperty(checkBoxSky, () -> P.isSkyView());
-        checkBoxSky.addClickListener(() ->
-                changer.execute(() -> P.setSkyView(checkBoxSky.isChecked())));
-        buttons.add(checkBoxSky);
-
         ImageTextButtonOptionPane checkBoxStarsAlways = getC().widgetGetter.getImageTextButton(
                 "icons/icon_checkbox_sky.png", s("Sky_stars_always"), true);
         addCheckingStateProperty(checkBoxStarsAlways, () -> P.isSkyStarsAlways());
@@ -894,15 +887,22 @@ public class OptionPane {
                 () -> P.setHorizonCompass(checkBoxHorizonCompass.isChecked())));
         buttons.add(checkBoxHorizonCompass);
 
-        // Sky & stars: opens its own submenu (on/off, stars always vs day-night, constellations).
-        ImageTextButtonOptionPane buttonSkyMenu = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_sky.png", s("Sky_view"), false);
-        buttonSkyMenu.addClickListener(() -> {
+        // Sky & stars: a direct on/off checkbox, plus a "..." button opening the sky options submenu.
+        ImageTextButtonOptionPane checkBoxSky = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_sky.png", s("Sky_view"), true);
+        addCheckingStateProperty(checkBoxSky, () -> P.isSkyView());
+        checkBoxSky.addClickListener(() -> changer.execute(
+                () -> P.setSkyView(checkBoxSky.isChecked())));
+        buttons.add(checkBoxSky);
+
+        ImageTextButtonOptionPane buttonSkyOptions = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_sky.png", "...", false);
+        buttonSkyOptions.addClickListener(() -> {
             selectSky.setVisible(true);
             table.setVisible(false);
             tableOneColumn.setVisible(false);
         });
-        buttons.add(buttonSkyMenu);
+        buttons.add(buttonSkyOptions);
 
         // GPX paths: a single entry that opens its own submenu (load file / from URL / clear).
         ImageTextButtonOptionPane buttonGpxMenu = getC().widgetGetter.getImageTextButton(

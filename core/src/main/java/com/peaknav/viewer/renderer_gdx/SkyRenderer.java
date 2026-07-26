@@ -83,7 +83,10 @@ public final class SkyRenderer {
         float night = nightFactor(sky.getSunAltitudeDeg());
         // "Stars always visible" overrides the day/night fade; otherwise stars follow the Sun.
         float starNight = P.isSkyStarsAlways() ? 1f : night;
-        boolean showConstellations = P.isSkyConstellations();
+        // The Sun is always drawn; the Moon, planets, stars and constellations are the "sky objects"
+        // that the on/off checkbox toggles.
+        boolean objects = P.isSkyView();
+        boolean showConstellations = objects && P.isSkyConstellations();
         float px = Math.max(1f, Gdx.graphics.getHeight() / 900f); // pixel scale for hi-dpi
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
@@ -93,7 +96,7 @@ public final class SkyRenderer {
         // 1) Constellation lines (faint)
         if (showConstellations && starNight > 0.05f) {
             shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
-            shapeRenderer.setColor(0.45f, 0.55f, 0.75f, 0.28f * starNight);
+            shapeRenderer.setColor(0.50f, 0.62f, 0.85f, 0.42f * starNight);
             for (float[] enu : sky.getConstellationEnu()) {
                 for (int i = 0; i + 5 < enu.length; i += 3) {
                     if (project(cam, enu[i], enu[i + 1], enu[i + 2])) {
@@ -109,17 +112,22 @@ public final class SkyRenderer {
 
         // 2) Stars + solar-system discs
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        if (starNight > 0.05f) {
+        if (objects && starNight > 0.05f) {
             StarCatalog stars = sky.getStars();
             float[] senu = sky.getStarEnu();
             for (int i = 0; i < stars.count; i++) {
                 int o = i * 3;
                 if (!project(cam, senu[o], senu[o + 1], senu[o + 2])) continue;
                 float mag = stars.mag[i];
-                float radius = MathUtils.clamp((6.5f - mag) * 0.45f + 0.5f, 0.5f, 4.0f) * px;
-                float alpha = MathUtils.clamp(0.35f + (6.5f - mag) * 0.11f, 0.35f, 1.0f) * starNight;
-                shapeRenderer.setColor(0.95f, 0.96f, 1.0f, alpha);
-                shapeRenderer.circle(tmp.x, tmp.y, radius, 8);
+                float radius = MathUtils.clamp((6.5f - mag) * 0.6f + 1.3f, 1.3f, 6.0f) * px;
+                float alpha = MathUtils.clamp(0.6f + (6.5f - mag) * 0.12f, 0.6f, 1.0f) * starNight;
+                // Soft glow so the brighter stars read against any sky.
+                if (mag < 2.5f) {
+                    shapeRenderer.setColor(0.75f, 0.83f, 1.0f, 0.22f * starNight);
+                    shapeRenderer.circle(tmp.x, tmp.y, radius * 2.4f, 12);
+                }
+                shapeRenderer.setColor(1.0f, 1.0f, 1.0f, alpha);
+                shapeRenderer.circle(tmp.x, tmp.y, radius, 10);
             }
         }
         // planets / sun / moon
@@ -127,6 +135,7 @@ public final class SkyRenderer {
         java.util.List<SkyBody> bodies = sky.getSolarSystem().bodies;
         for (int i = 0; i < bodies.size(); i++) {
             SkyBody b = bodies.get(i);
+            if (b.kind != SkyBody.Kind.SUN && !objects) continue; // Sun always; the rest gated
             int o = i * 3;
             if (!project(cam, benu[o], benu[o + 1], benu[o + 2])) continue;
             drawBodyDisc(b, tmp.x, tmp.y, px, starNight);
@@ -149,7 +158,7 @@ public final class SkyRenderer {
             }
         }
         // bright star names
-        if (starNight > 0.15f) {
+        if (objects && starNight > 0.15f) {
             font.setColor(0.85f, 0.9f, 1.0f, 0.75f * starNight);
             float[] nenu = sky.getNamedStarEnu();
             for (int i = 0; i < SkyModel.NAMED_STARS.length; i++) {
@@ -159,9 +168,10 @@ public final class SkyRenderer {
                 }
             }
         }
-        // Sun/Moon/planet names (Sun/Moon always; planets when the sky is dark enough)
+        // Sun label always; Moon/planet labels only when sky objects are on and dark enough
         for (int i = 0; i < bodies.size(); i++) {
             SkyBody b = bodies.get(i);
+            if (b.kind != SkyBody.Kind.SUN && !objects) continue;
             int o = i * 3;
             if (!project(cam, benu[o], benu[o + 1], benu[o + 2])) continue;
             if (b.kind == SkyBody.Kind.PLANET && starNight < 0.15f) continue;
@@ -186,23 +196,36 @@ public final class SkyRenderer {
     private void drawBodyDisc(SkyBody b, float x, float y, float px, float night) {
         if (b.kind == SkyBody.Kind.PLANET) {
             if (night < 0.05f) return; // planets fade in at dusk
-            float radius = MathUtils.clamp((2.0f - (float) b.magnitude) * 0.7f + 1.2f, 1.2f, 5.0f) * px;
-            shapeRenderer.setColor(b.r, b.g, b.b, MathUtils.clamp(0.6f + night, 0.6f, 1f));
-            shapeRenderer.circle(x, y, radius, 12);
+            float radius = MathUtils.clamp((2.0f - (float) b.magnitude) * 1.0f + 3.0f, 3.0f, 9.0f) * px;
+            // coloured glow
+            shapeRenderer.setColor(b.r, b.g, b.b, 0.28f * MathUtils.clamp(night, 0.5f, 1f));
+            shapeRenderer.circle(x, y, radius * 2.2f, 18);
+            // dark contrast ring so the dot pops against a bright or dark sky
+            shapeRenderer.setColor(0.04f, 0.05f, 0.09f, 0.75f);
+            shapeRenderer.circle(x, y, radius * 1.28f, 22);
+            // coloured body + bright core
+            shapeRenderer.setColor(b.r, b.g, b.b, 1f);
+            shapeRenderer.circle(x, y, radius, 22);
+            shapeRenderer.setColor(1f, 1f, 1f, 0.85f);
+            shapeRenderer.circle(x, y, radius * 0.38f, 12);
             return;
         }
-        // Sun and Moon: a disc of a roughly realistic apparent size (~0.5°), with a soft glow.
-        float radius = Math.max(3f, Gdx.graphics.getHeight() / 70f);
+        // Sun and Moon: a disc a bit larger than life so it reads clearly, with a soft glow/rim.
+        float radius = Math.max(6f, Gdx.graphics.getHeight() / 55f);
         if (b.kind == SkyBody.Kind.SUN) {
-            shapeRenderer.setColor(1f, 0.85f, 0.4f, 0.25f);
-            shapeRenderer.circle(x, y, radius * 2.2f, 24);
-            shapeRenderer.setColor(1f, 0.95f, 0.7f, 1f);
-            shapeRenderer.circle(x, y, radius, 24);
-        } else { // MOON — plain disc; the illuminated percentage is shown in its label.
-            shapeRenderer.setColor(0.20f, 0.22f, 0.28f, 0.9f);
-            shapeRenderer.circle(x, y, radius * 1.06f, 24); // faint dark rim
-            shapeRenderer.setColor(0.86f, 0.87f, 0.83f, 0.95f);
-            shapeRenderer.circle(x, y, radius, 24);
+            shapeRenderer.setColor(1f, 0.82f, 0.35f, 0.30f);
+            shapeRenderer.circle(x, y, radius * 2.6f, 28);
+            shapeRenderer.setColor(1f, 0.88f, 0.5f, 0.55f);
+            shapeRenderer.circle(x, y, radius * 1.5f, 28);
+            shapeRenderer.setColor(1f, 0.96f, 0.75f, 1f);
+            shapeRenderer.circle(x, y, radius, 28);
+        } else { // MOON — bright disc with a dark rim; the illuminated % is shown in its label.
+            shapeRenderer.setColor(0.75f, 0.78f, 0.9f, 0.25f);
+            shapeRenderer.circle(x, y, radius * 1.8f, 28); // faint halo
+            shapeRenderer.setColor(0.10f, 0.11f, 0.16f, 0.85f);
+            shapeRenderer.circle(x, y, radius * 1.12f, 28); // dark rim
+            shapeRenderer.setColor(0.93f, 0.94f, 0.9f, 1f);
+            shapeRenderer.circle(x, y, radius, 28);
         }
     }
 
