@@ -533,9 +533,19 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             com.peaknav.sky.SkyModel sky = com.peaknav.utils.PeakNavUtils.getC().skyModel;
             java.util.Calendar cal = java.util.Calendar.getInstance();
             cal.setTimeInMillis(sky.currentTimeMillis());
-            android.app.DatePickerDialog dateDlg = new android.app.DatePickerDialog(mainActivity,
+            // Force the OS Material dialog theme so the pickers render as the modern calendar and
+            // clock-face widgets, not the spinner "buttons" the app's GdxTheme falls back to. Follow
+            // the device's dark/light setting on Android 10+ (Q); a light dialog before that.
+            int pickerTheme = (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
+                    && (mainActivity.getResources().getConfiguration().uiMode
+                        & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                        == android.content.res.Configuration.UI_MODE_NIGHT_YES)
+                    ? android.R.style.Theme_Material_Dialog
+                    : android.R.style.Theme_Material_Light_Dialog;
+            android.app.DatePickerDialog dateDlg = new android.app.DatePickerDialog(mainActivity, pickerTheme,
                     (view, year, month, day) -> {
                         android.app.TimePickerDialog timeDlg = new android.app.TimePickerDialog(mainActivity,
+                                pickerTheme,
                                 (tv, hour, minute) -> {
                                     java.util.Calendar c = java.util.Calendar.getInstance();
                                     c.set(year, month, day, hour, minute, 0);

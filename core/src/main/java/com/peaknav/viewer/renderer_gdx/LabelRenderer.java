@@ -111,6 +111,57 @@ public class LabelRenderer {
             angle = 0;
         }
         renderCompass();
+        renderSkyClock();
+    }
+
+    private final GlyphLayout clockGlyph = new GlyphLayout();
+
+    /**
+     * When the sky is frozen at a user-chosen time (via "..." → Set time), shows that date and time
+     * on a small pill near the top of the screen, so it is clear the sky is not the live one. Nothing
+     * is drawn while the sky follows the device clock.
+     */
+    private void renderSkyClock() {
+        com.peaknav.sky.SkyModel sky = getC().skyModel;
+        if (sky == null || !sky.hasCustomTime())
+            return;
+        String text = new java.text.SimpleDateFormat("yyyy-MM-dd  HH:mm", java.util.Locale.getDefault())
+                .format(new java.util.Date(sky.currentTimeMillis()));
+        // A white font (the small font is baked black, so tinting it can't lighten it).
+        BitmapFont font = getC().styleSingleton.getBitmapFontSmallWhite();
+        clockGlyph.setText(font, text);
+        float tw = clockGlyph.width;
+        float th = clockGlyph.height;
+        float padX = 0.4f * widgetUnitStep;
+        float padY = 0.18f * widgetUnitStep;
+        float pw = tw + 2f * padX;
+        float ph = th + 2f * padY;
+        float cx = Gdx.graphics.getWidth() * 0.5f;
+        float px = cx - pw * 0.5f;
+        // Sit below the top button row (camera/gallery live top-left) so nothing covers it, in both
+        // portrait and landscape.
+        float py = Gdx.graphics.getHeight() - ph - 1.6f * widgetUnitStep;
+
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        try {
+            // Stadium via fillPill (non-overlapping pieces) — no double-blended "knobs" at the ends.
+            shapeRenderer.setColor(0.05f, 0.06f, 0.13f, 0.78f);
+            fillPill(px, py, pw, ph, ph * 0.5f);
+        } finally {
+            shapeRenderer.end();
+        }
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        spriteBatch.setTransformMatrix(identityMat);
+        spriteBatch.begin();
+        try {
+            font.setColor(Color.WHITE);
+            font.draw(spriteBatch, text, cx - tw * 0.5f, py + ph * 0.5f + th * 0.5f);
+        } finally {
+            spriteBatch.end();
+        }
     }
 
     private static final int D = 2;
