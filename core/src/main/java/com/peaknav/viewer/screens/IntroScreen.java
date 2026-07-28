@@ -95,6 +95,9 @@ public class IntroScreen implements Screen {
         tableCentral.add(label).padTop(2*widgetUnitStep).height(0.5f*widgetUnitStep).row();
         if (ic_launcher_texture == null) {
             ic_launcher_texture = new Texture(Gdx.files.internal("icons/ic_launcher.png"));
+            // Drawn into a fixed cell well below the texture's own size, so without filtering
+            // the medallion's ring and tick marks alias into a jagged mess.
+            ic_launcher_texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
         }
         Image image = new Image(ic_launcher_texture);
         tableCentral.add(image).width(3*widgetUnitStep).height(3*widgetUnitStep).padTop(0.5f*widgetUnitStep).row();

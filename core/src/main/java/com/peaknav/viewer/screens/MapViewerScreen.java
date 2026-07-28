@@ -191,7 +191,16 @@ public class MapViewerScreen implements Screen {
 			labelLoading.setState(LOADING);
 		}
 
-		if (P.getCoordinatesFirstTime())
+		// Nothing below this point makes sense before the user has a location at all: it would fly
+		// the camera to the null island the app starts on. But the preference alone is the wrong
+		// test for that. It is cleared on a background thread by saveCoordinatesToPreferences,
+		// from inside the very call that then asks for the camera to be placed
+		// (CurrentLocation.setCurrentFinalCoords), and it is read straight off disk with no cache
+		// — so on a first run this still read "true" when the freshly downloaded elevation
+		// arrived, the camera was never lowered onto the terrain, and it stayed off the ground
+		// until the user next moved. currentLocationNotSet is cleared synchronously just before,
+		// so requiring both closes that window while still holding for a genuinely fresh install.
+		if (P.getCoordinatesFirstTime() && getC().L.isCurrentLocationNotSet())
 			return;
 
 		cam.smoothDirection();

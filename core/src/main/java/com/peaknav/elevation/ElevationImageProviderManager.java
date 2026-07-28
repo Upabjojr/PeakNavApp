@@ -33,9 +33,13 @@ public class ElevationImageProviderManager {
         Tile cb = cbr.tile;
         synchronized (providers) {
             if (targetQueueBlock != null && targetQueueBlock.equals(cb)) {
-                setCurrentPositionFromProvider(
-                        getC().L.getTargetLatitude(), getC().L.getTargetLongitude(), provider);
-                targetQueueBlock = null;
+                // Cleared only once a provider actually supplied the elevation, so a block whose
+                // files were still missing leaves the request standing for the reload that follows
+                // a download.
+                if (setCurrentPositionFromProvider(
+                        getC().L.getTargetLatitude(), getC().L.getTargetLongitude(), provider)) {
+                    targetQueueBlock = null;
+                }
             }
         }
     }
@@ -82,8 +86,19 @@ public class ElevationImageProviderManager {
         return null;
     }
 
-    private void setCurrentPositionFromProvider(float targetLat, float targetLon, ElevationImageProvider provider) {
-        assert provider.getElevationImage() != null;
+    /**
+     * Reports the ground elevation under the target, which is what puts the camera on the terrain.
+     *
+     * @return false when this provider has no elevation to give, so the caller can leave the
+     *         request pending for one that has. A provider whose files were missing carries a null
+     *         image, and the assert that used to stand for this check is compiled out of release
+     *         builds — so on a first run, before any data is downloaded, this threw NullPointer
+     *         inside the loading thread instead of simply waiting for the data.
+     */
+    private boolean setCurrentPositionFromProvider(float targetLat, float targetLon, ElevationImageProvider provider) {
+        if (provider == null || provider.getElevationImage() == null) {
+            return false;
+        }
         List<MapTile> mapTiles  = getC().mapTileStorage.getMapTiles();
         ElevationImageAbstract elevationImage = null;
         if (mapTiles.size() > 0) {
@@ -98,6 +113,7 @@ public class ElevationImageProviderManager {
         }
         float ele = elevationImage.getTileElevationLatitsFromMaxCoords(targetLon, targetLat);
         getC().L.setCurrentFinalCoords(targetLat, targetLon, ele);
+        return true;
     }
 
     private boolean addToLoadInProgress(TileAndZoomElevFactor cbr) {

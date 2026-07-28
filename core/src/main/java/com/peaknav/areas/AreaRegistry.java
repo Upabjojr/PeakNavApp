@@ -76,6 +76,21 @@ public class AreaRegistry {
     private long lastCentreKey = Long.MIN_VALUE;
     private List<MapArea> lastResult = Collections.emptyList();
 
+    /**
+     * Forgets everything read so far, so the next look-up goes back to disk.
+     *
+     * <p>Needed after a download. A tile that was not on disk is remembered as "no areas here",
+     * which is what stops a region without area data costing a failed lookup every frame — but it
+     * also means a tile that arrives later is never noticed. Together with the neighbourhood
+     * cache below, that left freshly downloaded labels invisible until the app was restarted or
+     * the viewer moved far enough to cross into tiles that had never been looked up.
+     */
+    public synchronized void invalidateCache() {
+        tileCache.clear();
+        lastCentreKey = Long.MIN_VALUE;
+        lastResult = Collections.emptyList();
+    }
+
     /** All areas whose tile lies within {@link #COVERAGE_DEG} of (lat, lon). */
     public synchronized List<MapArea> getAreasNear(double lat, double lon) {
         int centreX = lon2tileX(lon);

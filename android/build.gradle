@@ -11,8 +11,8 @@ apply plugin: 'com.android.application'
 android {
     namespace "com.peaknav"
     // 36 is required by androidx.core 1.17.0, which gdx-backend-android 1.14.2 pulls in.
-    // Raising compileSdk only affects which APIs can be compiled against; targetSdk (the
-    // runtime behaviour opt-in) and minSdk are deliberately left alone.
+    // Raising compileSdk only affects which APIs can be compiled against; minSdk is deliberately
+    // left alone so the app still installs on Android 5.
     compileSdk 36
     sourceSets {
         main {
@@ -39,8 +39,19 @@ android {
     defaultConfig {
         applicationId 'com.peaknav'
         minSdkVersion 21
-        targetSdkVersion 35
-        versionCode 144
+        // Google Play requires the target to stay within a year of the newest Android release:
+        // from 31 Aug 2026 an app targeting below 36 (Android 16) can no longer be updated.
+        //
+        // Raising this also opts the app in to Android 16's runtime behaviour. Three changes could
+        // have reached this app and none of them does: edge-to-edge is enforced without the old
+        // opt-out, which this app never set (it is fullscreen anyway, see GdxTheme and the
+        // activity's Theme.NoTitleBar.Fullscreen); orientation restrictions are ignored on large
+        // screens, and the activity asks for fullSensor, so it restricts nothing; and predictive
+        // back is on by default, which only animates the ordinary finish here since the back key
+        // is left to the system (MapViewerScreen calls setCatchKey(BACK, false)) and nothing
+        // overrides onBackPressed.
+        targetSdkVersion 36
+        versionCode 149
         versionName "1.0"
     }
     compileOptions {
@@ -51,8 +62,18 @@ android {
     buildTypes {
         release {
             debuggable false
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // R8, which Play Console asks for. The default file is the -optimize variant:
+            // plain proguard-android.txt turns optimisation off, which would leave the build
+            // doing the shrinking half of the job Play is asking about.
+            //
+            // Resource shrinking is deliberately not enabled alongside it. The app's resources
+            // are a handful of layouts and icons, so there is nothing to win there, while the
+            // assets folder - which is where the size actually is - is not touched by it.
+            //
+            // See proguard-rules.pro for what has to be kept, and note android.enableR8.fullMode
+            // is already false in gradle.properties, so keep rules retain their ProGuard meaning.
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             resValue "drawable", "ic_launcher_app", "@mipmap/ic_launcher"
             resValue "string", "app_name", "@string/app_name_releaseBundle"
         }
@@ -83,10 +104,20 @@ dependencies {
     natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86"
     natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86_64"
 
-    implementation "androidx.fragment:fragment:1.1.0"
-    implementation "androidx.core:core:1.1.0"
-    implementation "androidx.annotation:annotation:1.1.0"
-    implementation "androidx.appcompat:appcompat:1.1.0"
+    // Play Console reports fragment 1.1.0, and the activity 1.0.0 it drags in, as outdated.
+    // activity is declared explicitly even though fragment already pulls a current one, so the
+    // version that ends up in the bundle is the one written here rather than a transitive
+    // accident. core was declared at 1.1.0 but has long resolved to 1.17.0 via
+    // gdx-backend-android; the declaration now says what is actually shipped.
+    implementation "androidx.fragment:fragment:1.8.9"
+    implementation "androidx.activity:activity:1.9.3"
+    implementation "androidx.core:core:1.17.0"
+    implementation "androidx.annotation:annotation:1.9.1"
+    // appcompat is gone: nothing imports it, no layout uses its widgets, and the app's theme
+    // descends from android:Theme, not Theme.AppCompat. Nothing else asked for it either — it
+    // appeared in the tree only through this line, and osmdroid, the one plausible candidate,
+    // has no transitive dependencies at all. Keeping it would have meant shipping a second
+    // outdated AndroidX artifact for no reason.
 
     implementation "com.google.guava:guava:33.6.0-android"
 
