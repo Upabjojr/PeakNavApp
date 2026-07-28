@@ -66,6 +66,9 @@ public class MissingDataDownloader {
         // This should be able to redraw the missing tiles after downloading
         // more data from the internet:
         getC().elevationImageProviderManager.clearProviders();
+        // Area labels are cached by tile, including the "there is nothing here" answer, so the
+        // tiles that just arrived would stay invisible until a restart without this.
+        getC().areaRegistry.invalidateCache();
 
         if (goToLocation) {
             getC().L.setCurrentTargetCoordsAfterTileUpdates(lat, lon);

@@ -11,8 +11,8 @@ apply plugin: 'com.android.application'
 android {
     namespace "com.peaknav"
     // 36 is required by androidx.core 1.17.0, which gdx-backend-android 1.14.2 pulls in.
-    // Raising compileSdk only affects which APIs can be compiled against; targetSdk (the
-    // runtime behaviour opt-in) and minSdk are deliberately left alone.
+    // Raising compileSdk only affects which APIs can be compiled against; minSdk is deliberately
+    // left alone so the app still installs on Android 5.
     compileSdk 36
     sourceSets {
         main {
@@ -39,8 +39,19 @@ android {
     defaultConfig {
         applicationId 'com.peaknav'
         minSdkVersion 21
-        targetSdkVersion 35
-        versionCode 144
+        // Google Play requires the target to stay within a year of the newest Android release:
+        // from 31 Aug 2026 an app targeting below 36 (Android 16) can no longer be updated.
+        //
+        // Raising this also opts the app in to Android 16's runtime behaviour. Three changes could
+        // have reached this app and none of them does: edge-to-edge is enforced without the old
+        // opt-out, which this app never set (it is fullscreen anyway, see GdxTheme and the
+        // activity's Theme.NoTitleBar.Fullscreen); orientation restrictions are ignored on large
+        // screens, and the activity asks for fullSensor, so it restricts nothing; and predictive
+        // back is on by default, which only animates the ordinary finish here since the back key
+        // is left to the system (MapViewerScreen calls setCatchKey(BACK, false)) and nothing
+        // overrides onBackPressed.
+        targetSdkVersion 36
+        versionCode 148
         versionName "1.0"
     }
     compileOptions {
