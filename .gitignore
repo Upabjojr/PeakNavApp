@@ -4,6 +4,12 @@
 *.pem
 *.jks
 
+# ...but the desktop launcher icons are source, not generated output: construo reads
+# logo.png to set the icon on the Windows executable and the linux/ sizes go into
+# the .deb, so a fresh clone cannot build an installer without them.
+!desktop/icons/*.png
+!desktop/icons/linux/*.png
+
 LICENSE.html
 privacy_statement.html
 THIRD_PARTY_LICENSES.html

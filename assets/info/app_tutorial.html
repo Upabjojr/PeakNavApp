@@ -4,73 +4,105 @@
 
 <meta charset="UTF-8">
 <title>PeakNav tutorial</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
 <style>
-body, html {
+:root {
+    /* Height reserved under the image for the caption bar. The image is sized against
+       this, so the two never overlap and the page never scrolls. */
+    --caption-height: 104px;
+    --page-padding: 14px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
     height: 100%;
     margin: 0;
+}
+
+body {
+    /* A dark page, so the bars either side of a screenshot that does not match the
+       window's aspect read as a deliberate frame rather than as blank space. */
+    background: #14181d;
+    color: #e8ecf1;
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
     display: flex;
+    flex-direction: column;
+    /* The image and its caption are centred *as a group*. Letting the stage stretch
+       instead pinned the caption to the bottom edge, which on a portrait phone left
+       it stranded a long way below the landscape screenshot it belongs to. */
     justify-content: center;
+    overflow: hidden;
+}
+
+.stage {
+    flex: 0 1 auto;
+    min-height: 0;
+    display: flex;
     align-items: center;
+    justify-content: center;
+    padding: var(--page-padding);
 }
 
+/* Hugs the image exactly. Everything positioned as a percentage - the highlight
+   circle in particular - is measured against this box, so it must stay the size of
+   the screenshot and not of the window. */
 .slideshow-container {
-    max-width: 100%;
     position: relative;
-    margin: auto;
+    display: inline-block;
+    line-height: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
 }
 
-.slideshow-container img {
-    width: 100%;
+#backgroundImg {
+    display: block;
+    line-height: 0;
+}
+
+#backgroundImg img {
+    display: block;
+    /* Bounded on both axes, so a wide window no longer blows the screenshot up past
+       the viewport height and leaves thick white bands above and below it. */
+    max-width: calc(100vw - (2 * var(--page-padding)));
+    max-height: calc(100vh - var(--caption-height) - (2 * var(--page-padding)));
+    width: auto;
     height: auto;
 }
 
-.prev, .next {
-    cursor: pointer;
+/* Previous / next. Circular and inside the image, rather than full-height slabs that
+   used to spill onto the page background either side of it. */
+.nav {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    width: auto;
-    /* Scale the chevrons and their hit area with the image instead of a fixed 18px,
-       which is tiny on a wide desktop window. */
-    padding: 0.6em 0.7em;
-    color: white;
-    font-weight: bold;
-    font-size: clamp(20px, 3.2vw, 48px);
-    transition: 0.3s ease;
-    border-radius: 0 6px 6px 0;
+    width: clamp(38px, 6vw, 62px);
+    aspect-ratio: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: rgba(12, 16, 20, 0.55);
+    color: #fff;
+    font-size: clamp(17px, 2.4vw, 28px);
+    line-height: 1;
+    cursor: pointer;
     user-select: none;
-    background-color: rgba(0, 0, 0, 0.5);
+    transition: background 0.2s ease, opacity 0.2s ease;
 }
 
-.prev:hover, .next:hover {
-    background-color: rgba(0, 0, 0, 0.8);
+.nav:hover:not(:disabled) { background: rgba(12, 16, 20, 0.85); }
+
+.nav:disabled {
+    opacity: 0.25;
+    cursor: default;
 }
 
-.next {
-    right: 0;
-    border-radius: 6px 0 0 6px;
-}
-
-#captionText {
-    color: black;
-    font-family: sans-serif;
-    font-weight: bold;
-    /* Was a fixed 15px — far too small over a large desktop image. clamp() keeps it
-       readable on a phone (min) and proportionate on desktop (scales with width). */
-    font-size: clamp(16px, 2.8vw, 40px);
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    max-width: 74%;
-    text-align: center;
-    padding: 0.5em 0.9em;
-    border-radius: 0.35em;
-    background-color: #ffffffdd;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-}
+.prev { left: clamp(8px, 1.4vw, 18px); }
+.next { right: clamp(8px, 1.4vw, 18px); }
 
 #circle {
     position: absolute;
@@ -90,26 +122,87 @@ body, html {
     display: block;
     overflow: visible;
 }
+
+/* The caption sits under the screenshot, not on top of it. It used to be centred in
+   the middle of the image, where it covered the very thing it was describing. */
+.caption-bar {
+    flex: 0 0 auto;
+    height: var(--caption-height);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 0 16px 14px;
+    text-align: center;
+}
+
+#captionText {
+    font-size: clamp(17px, 2.1vw, 26px);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.25;
+}
+
+.dots {
+    display: flex;
+    gap: 7px;
+    line-height: 0;
+}
+
+/* A row of dots rather than a "4 / 11" counter: it shows how long the tutorial is and
+   how far along it is at a glance, and each one is clickable. */
+.dot {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #4a5563;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.dot:hover { background: #6f7d8f; }
+
+.dot.active {
+    background: #e8ecf1;
+    transform: scale(1.35);
+}
+
+@media (max-width: 620px) {
+    :root {
+        --caption-height: 84px;
+        --page-padding: 8px;
+    }
+    .dot { width: 7px; height: 7px; }
+}
 </style>
 
 </head>
 
 <body>
 
-<div class="slideshow-container">
+<div class="stage">
+    <div class="slideshow-container">
 
-    <div id="backgroundImg" class="mySlides"></div>
-    <div id="captionText">Caption Text</div>
+        <div id="backgroundImg" class="mySlides"></div>
 
-    <div id="circle">
-        <svg viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="20" stroke="darkgreen" stroke-width="4" fill="none" />
-        </svg>
+        <div id="circle">
+            <svg viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="20" stroke="darkgreen" stroke-width="4" fill="none" />
+            </svg>
+        </div>
+
+        <button class="nav prev" id="prevButton" onclick="plusSlides(-1)" aria-label="Previous">❮</button>
+        <button class="nav next" id="nextButton" onclick="plusSlides(1)" aria-label="Next">❯</button>
+
     </div>
+</div>
 
-    <a class="prev" onclick="plusSlides(-1)">❮</a>
-    <a class="next" onclick="plusSlides(1)">❯</a>
-
+<div class="caption-bar">
+    <div id="captionText">Caption Text</div>
+    <div class="dots" id="dots"></div>
 </div>
 
 <script>
@@ -187,6 +280,18 @@ let slideData = [
     },
 ];
 
+function buildDots() {
+    let dots = document.querySelector("#dots");
+    dots.innerHTML = "";
+    for (let i = 0; i < slideData.length; i++) {
+        let dot = document.createElement("button");
+        dot.className = "dot";
+        dot.setAttribute("aria-label", "Slide " + (i + 1));
+        dot.onclick = function () { goToSlide(i); };
+        dots.appendChild(dot);
+    }
+}
+
 function showSlides() {
     var backgroundImg = document.querySelector("#backgroundImg");
     var captionText = document.querySelector("#captionText");
@@ -196,6 +301,7 @@ function showSlides() {
     backgroundImg.appendChild(slide.background);
     captionText.innerText = slide.text;
 
+    let circle = document.querySelector("#circle");
     let pointing = slide.pointing;
     if (pointing == null) {
         circle.style.display = "none";
@@ -204,10 +310,23 @@ function showSlides() {
         circle.style.top = pointing["top"];
         circle.style.left = pointing["left"];
     }
-    // timer = setTimeout(showSlides, 2000);
+
+    // Greyed out at the ends, so a click that does nothing looks intentional rather
+    // than broken.
+    document.querySelector("#prevButton").disabled = (slideIndex === 0);
+    document.querySelector("#nextButton").disabled = (slideIndex === slideData.length - 1);
+
+    let dots = document.querySelectorAll(".dot");
+    for (let i = 0; i < dots.length; i++) {
+        dots[i].classList.toggle("active", i === slideIndex);
+    }
 }
 
-showSlides();
+function goToSlide(n) {
+    clearTimeout(timer);
+    slideIndex = n;
+    showSlides();
+}
 
 function plusSlides(n) {
     clearTimeout(timer);
@@ -220,6 +339,9 @@ function plusSlides(n) {
     showSlides();
 }
 
+buildDots();
+showSlides();
+
 var radius = 10;
 var circIndex = 0;
 
@@ -230,7 +352,7 @@ function rgb(r, g, b) {
 }
 
 function changeCircle() {
-    let circle = document.querySelector("circle");
+    let circle = document.querySelector("#circle circle");
     circIndex++;
     if (circIndex > 5) {
         circIndex = 0;
@@ -245,10 +367,8 @@ setInterval(changeCircle, 100);
 document.addEventListener("keydown", function(event) {
     if (event.keyCode === 37) {
         plusSlides(-1);
-        console.log("Left arrow key pressed");
     } else if (event.keyCode === 39) {
         plusSlides(1);
-        console.log("Right arrow key pressed");
     }
 });
 </script>

@@ -74,6 +74,20 @@ gradle :core:test                   # JUnit 5 tests (core/src/test/java)
 - Full asset/data setup (fonts, icons, Lucene geonames index) is described in
   `README.md`; a plain `:core`/`:desktop` compile does **not** need it.
 
+### Desktop installers
+
+```bash
+./gradlew :desktop:installers       # Windows .exe, macOS .dmg (x2), Linux .deb + .AppImage
+```
+
+Built with construo (application image + bundled JRE 17) wrapped by NSIS,
+genisoimage, dpkg-deb and mksquashfs — all of which cross-compile, so every artefact
+is produced from one machine whichever OS it runs. `jpackage` deliberately is not
+used: it only emits an installer for the OS it runs on. Needs `nsis`,
+`genisoimage` and `squashfs-tools` installed. See `desktop/packaging/README.md`,
+especially the signing section — nothing is code-signed for Windows or macOS, and
+that is not something the build can fix.
+
 ## Conventions
 
 - **Java 8** source/target across non-Android modules. No records, `var`, switch

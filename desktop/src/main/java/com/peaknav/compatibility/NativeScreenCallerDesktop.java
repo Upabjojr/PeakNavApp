@@ -254,25 +254,50 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         // Just the tutorial slideshow; the keyboard-controls overlay is separate (raised
         // in core when an unbound key is pressed). Desktop has no WebView, so — like
         // openAppInfoScreen — the tutorial is handed to the system browser.
-        openBundledHtml("info/app_tutorial.html");
+        //
+        // The screenshots have to be named explicitly: the page references them with
+        // relative URLs, and a FileHandle inside a jar cannot list its own directory,
+        // so there is no way to discover them at runtime.
+        openBundledHtml("info/app_tutorial.html",
+                "imageBase.jpg", "imageOptions.jpg", "imageOptionsSat.jpg", "imageBaseSat.jpg");
     }
 
     /**
-     * Opens a bundled HTML page in the system browser. When the app runs from a packaged jar,
-     * {@code Gdx.files.internal(...).file()} is not a real file, so the page is extracted to a
-     * temp file first. Failures surface as an alert instead of a RuntimeException on the GL
-     * thread (which used to kill the action silently).
+     * Opens a bundled HTML page in the system browser, together with any files it references
+     * relatively.
+     *
+     * <p>Everything is extracted into one temp directory and opened from there, in every build.
+     * Running from a jar it has to be — {@code Gdx.files.internal(...).file()} is not a real
+     * file then — and doing the same when the assets happen to be on disk means the packaged
+     * app behaves like the one being developed against, rather than only breaking once shipped.
+     *
+     * <p>That is what went wrong before: the page alone was copied to a temp file, so the
+     * tutorial's four screenshots resolved next to it and were not there. In the IDE the assets
+     * folder was real and the page opened in place, looking perfect; every installed build
+     * showed a blank page.
+     *
+     * <p>Failures surface as an alert instead of a RuntimeException on the GL thread (which
+     * used to kill the action silently).
      */
-    private void openBundledHtml(String internalPath) {
+    private void openBundledHtml(String internalPath, String... relatedFiles) {
         try {
-            java.io.File file = Gdx.files.internal(internalPath).file();
-            if (!file.exists()) {
-                java.io.File tmp = java.io.File.createTempFile("peaknav-", ".html");
-                tmp.deleteOnExit();
-                Gdx.files.internal(internalPath).copyTo(new com.badlogic.gdx.files.FileHandle(tmp));
-                file = tmp;
+            java.io.File dir = java.nio.file.Files.createTempDirectory("peaknav-help").toFile();
+            dir.deleteOnExit();
+
+            String pageName = internalPath.substring(internalPath.lastIndexOf('/') + 1);
+            String parent = internalPath.substring(0, internalPath.lastIndexOf('/') + 1);
+
+            java.io.File page = new java.io.File(dir, pageName);
+            page.deleteOnExit();
+            Gdx.files.internal(internalPath).copyTo(new com.badlogic.gdx.files.FileHandle(page));
+
+            for (String related : relatedFiles) {
+                java.io.File target = new java.io.File(dir, related);
+                target.deleteOnExit();
+                Gdx.files.internal(parent + related)
+                        .copyTo(new com.badlogic.gdx.files.FileHandle(target));
             }
-            Desktop.getDesktop().open(file);
+            Desktop.getDesktop().open(page);
         } catch (Exception e) {
             alertMessage(internalPath + ": " + e.getMessage());
         }

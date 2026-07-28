@@ -146,8 +146,11 @@ tasks.register("jarWin") {
 construo {
     // name of the executable
     name.set(appName)
-    // human-readable name, used for example in the `.app` name for macOS
-    humanName.set(appName)
+    // human-readable name, used for example in the `.app` name for macOS.
+    // Capitalised rather than the lower-case `appName`: this is what macOS shows
+    // in the Dock, the menu bar and Finder, so "peaknav" would be the one place
+    // the app spelled its own name in lower case.
+    humanName.set("PeakNav")
     // Optional, defaults to project version property
     version.set("$projectVersion")
 
@@ -182,6 +185,347 @@ construo {
             //useConsole.set(true)
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Installers
+//
+// construo (above) produces a self-contained *application image* per platform - the
+// fat jar, the native libraries and a bundled JRE 17 - which runs from any folder
+// but is not something to hand a user. These tasks wrap those images into the
+// artefact each platform expects: a setup .exe on Windows, a .dmg on macOS.
+//
+// Both are built with cross-platform tools on purpose. The obvious choice, the
+// JDK's own jpackage, only emits an installer for the OS it is running on, so it
+// cannot produce a Windows or macOS installer from this Linux machine; makensis
+// and genisoimage can. See desktop/packaging/README.md for the signing caveats,
+// which no build tool can work around.
+// ---------------------------------------------------------------------------
+
+/** True if `tool` is an executable absolute path or is found on PATH. */
+def hasTool = { String tool ->
+    if (new File(tool).isAbsolute()) {
+        return new File(tool).canExecute()
+    }
+    return (System.getenv('PATH') ?: '').split(File.pathSeparator).any {
+        new File(it, tool).canExecute()
+    }
+}
+
+def installersDir = layout.buildDirectory.dir('installers')
+
+tasks.register('installerWindows', Exec) {
+    group = 'distribution'
+    description = 'Builds the Windows setup .exe (needs makensis; apt install nsis).'
+    dependsOn 'packageWinX64'
+
+    def imageDir = layout.buildDirectory.dir('construo/winX64/roast').get().asFile
+    def outFile = installersDir.get().file("${appName}-${projectVersion}-windows-x64-setup.exe").asFile
+    def script = project.file('packaging/windows/installer.nsi')
+    def icon = project.file('icons/logo.ico')
+    def license = rootProject.file('LICENSE')
+
+    inputs.dir(imageDir)
+    inputs.files(script, icon, license)
+    outputs.file(outFile)
+
+    // Overridable for a machine where nsis is not on PATH: -Pmakensis=/path/to/makensis
+    executable = (project.findProperty('makensis') ?: 'makensis').toString()
+    args '-V2',
+         "-DAPP_SOURCE=${imageDir.absolutePath}",
+         "-DAPP_VERSION=${projectVersion}",
+         "-DAPP_EXE=${appName}.exe",
+         "-DAPP_ICON=${icon.absolutePath}",
+         "-DAPP_LICENSE=${license.absolutePath}",
+         "-DOUT_FILE=${outFile.absolutePath}",
+         script.absolutePath
+
+    doFirst {
+        if (!hasTool(executable)) {
+            throw new GradleException(
+                    "makensis was not found (looked for '${executable}').\n" +
+                    "  Debian/Ubuntu: sudo apt install nsis\n" +
+                    "  macOS:         brew install makensis\n" +
+                    "  Or point at one: ./gradlew :desktop:installerWindows -Pmakensis=/path/to/makensis")
+        }
+        outFile.parentFile.mkdirs()
+    }
+    doLast {
+        logger.lifecycle("Windows installer: ${outFile} (${outFile.length().intdiv(1024 * 1024)} MB)")
+    }
+}
+
+// One task pair per macOS architecture. They are separate downloads rather than a
+// universal binary because construo bundles a per-architecture JRE, and a
+// universal image would carry both (~180 MB of JRE for a ~90 MB download).
+['M1': 'aarch64', 'X64': 'x86_64'].each { target, arch ->
+    def bundleName = "${construo.humanName.get()}.app"
+    def appDir = layout.buildDirectory.dir("construo/mac${target}/${bundleName}").get().asFile
+    // Two source trees, merged into one image root by genisoimage. The alternative,
+    // -graft-points, segfaults when a graft is a symlink, and keeping the symlink out
+    // of the copied tree also keeps `Sync` from ever walking into /Applications when
+    // this runs on a Mac.
+    def appStage = layout.buildDirectory.dir("installers/stage-mac${target}/app").get().asFile
+    def linkStage = layout.buildDirectory.dir("installers/stage-mac${target}/link").get().asFile
+    def outFile = installersDir.get().file("${appName}-${projectVersion}-macos-${arch}.dmg").asFile
+
+    def stage = tasks.register("stageMac${target}", Sync) {
+        dependsOn "packageMac${target}"
+        // The bundled JDK ships its legal/ files read-only, and Sync overwrites in
+        // place, so a second run fails on them. Start from an empty tree.
+        doFirst { appStage.deleteDir() }
+        from(appDir) { into bundleName }
+        into appStage
+    }
+
+    tasks.register("installerMac${target}", Exec) {
+        group = 'distribution'
+        description = "Builds the macOS ${arch} .dmg (needs genisoimage or mkisofs)."
+        dependsOn stage
+
+        inputs.dir(appStage)
+        outputs.file(outFile)
+
+        executable = (project.findProperty('genisoimage') ?: 'genisoimage').toString()
+        // -R (Rock Ridge) is what carries the execute bits and the symlink through;
+        // without it the launcher inside the .app arrives non-executable and the .dmg
+        // is a dead end. -apple adds the Apple extensions on top of Rock Ridge. Plain
+        // HFS is deliberately NOT used: macOS 10.15 dropped read support for HFS
+        // Standard volumes, so an -hfs hybrid would fail to mount on anything current.
+        args '-V', construo.humanName.get(),
+             '-D', '-R', '-apple', '-no-pad', '-quiet',
+             '-o', outFile.absolutePath,
+             appStage.absolutePath, linkStage.absolutePath
+
+        doFirst {
+            if (!hasTool(executable)) {
+                throw new GradleException(
+                        "genisoimage was not found (looked for '${executable}').\n" +
+                        "  Debian/Ubuntu: sudo apt install genisoimage\n" +
+                        "  Or point at one: -Pgenisoimage=/path/to/mkisofs")
+            }
+            outFile.parentFile.mkdirs()
+            outFile.delete()
+            // A symlink to a path that does not exist on the build machine is the
+            // point: it is stored as a symlink and resolves on the Mac that mounts the
+            // image, which is what makes the window a drag-to-install target.
+            linkStage.mkdirs()
+            def link = new File(linkStage, 'Applications')
+            link.delete()
+            java.nio.file.Files.createSymbolicLink(link.toPath(), new File('/Applications').toPath())
+        }
+        doLast {
+            logger.lifecycle("macOS installer: ${outFile} (${outFile.length().intdiv(1024 * 1024)} MB)")
+        }
+    }
+}
+
+// Linux gets two artefacts, because one format cannot serve the platform: a .deb
+// for Debian and Ubuntu, which installs properly (menu entry, icon, `peaknav` on
+// PATH, removal through the package manager), and an AppImage, which is a single
+// executable file that runs on any distribution without being installed at all.
+def linuxImageDir = layout.buildDirectory.dir('construo/linuxX64/roast').get().asFile
+def linuxIcons = project.fileTree('icons/linux').include('*.png').files.sort { it.name }
+
+def debStage = layout.buildDirectory.dir('installers/stage-deb').get().asFile
+def debFile = installersDir.get().file("${appName}_${projectVersion}_amd64.deb").asFile
+
+def stageDeb = tasks.register('stageLinuxDeb', Sync) {
+    dependsOn 'packageLinuxX64'
+    into debStage
+
+    // Sync overwrites in place, and the JDK ships its legal/ files read-only, so a
+    // second run fails with "permission denied" on them. Start from an empty tree.
+    doFirst { debStage.deleteDir() }
+
+    // Debian policy wants 0644 for data and 0755 for anything executable, while the
+    // files in the build tree are group-writable (0664/0775) as they come off a
+    // normal umask. Normalise both here rather than shipping a package lintian
+    // complains about; the executable bit still has to be preserved exactly, or the
+    // launcher and everything under runtime/bin stops being runnable.
+    dirPermissions { unix(0755) }
+    filePermissions { unix(0644) }
+    eachFile { details ->
+        if (details.file.canExecute()) {
+            details.permissions { unix(0755) }
+        }
+    }
+
+    // /opt rather than /usr, which is what Debian policy reserves for software not
+    // managed by the distribution's own packaging - and this carries its own JRE.
+    from(linuxImageDir) { into "opt/${appName}" }
+    from(project.file('packaging/linux/peaknav.desktop')) { into 'usr/share/applications' }
+    from(rootProject.file('LICENSE')) {
+        into "usr/share/doc/${appName}"
+        rename { 'copyright' }
+    }
+    linuxIcons.each { icon ->
+        def px = icon.name - '.png'
+        from(icon) {
+            into "usr/share/icons/hicolor/${px}x${px}/apps"
+            rename { "${appName}.png" }
+        }
+    }
+
+    doLast {
+        // Written here rather than as a copied file because Sync empties the tree
+        // first, and because Installed-Size has to be measured from the result.
+        def installedKb = debStage.directorySize().intdiv(1024)
+        def control = new File(debStage, 'DEBIAN/control')
+        control.parentFile.mkdirs()
+        control.text = """\
+            |Package: ${appName}
+            |Version: ${projectVersion}
+            |Section: science
+            |Priority: optional
+            |Architecture: amd64
+            |Maintainer: Francesco Bonazzi <franz.bonazzi@gmail.com>
+            |Installed-Size: ${installedKb}
+            |Depends: libc6, libgl1, libx11-6, libxcursor1, libxrandr2, libxinerama1, libxi6
+            |Description: Identify surrounding peaks and navigate mountain terrain in 3D
+            | PeakNav renders the terrain around you from elevation data and labels the
+            | summits, lakes, islands and ranges in view, so you can tell which mountain
+            | you are looking at.
+            | .
+            | This package bundles its own Java runtime; no system JRE is required.
+            |""".stripMargin()
+
+        // The X11 and GL libraries above are dlopen'd by GLFW at runtime, so they do
+        // not appear as ELF NEEDED entries and dpkg-shlibdeps cannot infer them.
+        // Getting the list wrong shows up as a window that never opens, so it is
+        // written out by hand. No java dependency: the JRE is inside the package.
+
+        new File(debStage, 'usr/bin').mkdirs()
+        def link = new File(debStage, "usr/bin/${appName}")
+        link.delete()
+        java.nio.file.Files.createSymbolicLink(link.toPath(),
+                new File("/opt/${appName}/${appName}").toPath())
+    }
+}
+
+tasks.register('installerLinuxDeb', Exec) {
+    group = 'distribution'
+    description = 'Builds the Debian/Ubuntu .deb package.'
+    dependsOn stageDeb
+
+    inputs.dir(debStage)
+    outputs.file(debFile)
+
+    executable = 'dpkg-deb'
+    // --root-owner-group gives every file root:root without needing fakeroot, which
+    // dpkg-deb has supported since 1.19; this project's builds run as a normal user.
+    args '--build', '--root-owner-group', debStage.absolutePath, debFile.absolutePath
+
+    doFirst {
+        if (!hasTool(executable)) {
+            throw new GradleException("dpkg-deb was not found; it ships with dpkg on Debian/Ubuntu.")
+        }
+        debFile.parentFile.mkdirs()
+    }
+    doLast {
+        logger.lifecycle("Debian package: ${debFile} (${debFile.length().intdiv(1024 * 1024)} MB)")
+    }
+}
+
+// AppImage. The format is a squashfs filesystem appended to a small runtime that
+// mounts it and executes /AppRun, so it can be assembled with mksquashfs and `cat`;
+// appimagetool would do the same thing and is only a convenience wrapper.
+def appImageRuntime = layout.buildDirectory.file('installers/runtime-x86_64').get().asFile
+def appDirStage = layout.buildDirectory.dir('installers/stage-appdir').get().asFile
+def squashFile = layout.buildDirectory.file('installers/peaknav.squashfs').get().asFile
+def appImageFile = installersDir.get().file("${appName}-${projectVersion}-x86_64.AppImage").asFile
+
+tasks.register('downloadAppImageRuntime') {
+    description = 'Fetches the AppImage type-2 runtime (~1 MB), once.'
+    outputs.file(appImageRuntime)
+    doLast {
+        appImageRuntime.parentFile.mkdirs()
+        def url = 'https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64'
+        logger.lifecycle("Downloading AppImage runtime from ${url}")
+        try {
+            appImageRuntime.withOutputStream { out -> new URL(url).withInputStream { out << it } }
+        } catch (IOException e) {
+            appImageRuntime.delete()
+            throw new GradleException(
+                    "Could not download the AppImage runtime from ${url}: ${e.message}\n" +
+                    "This is the only step in the whole installer chain that needs the network at\n" +
+                    "build time. Fetch it once by hand and drop it at ${appImageRuntime} to work offline.", e)
+        }
+        appImageRuntime.setExecutable(true, false)
+    }
+}
+
+def stageAppDir = tasks.register('stageAppDir', Sync) {
+    dependsOn 'packageLinuxX64'
+    into appDirStage
+
+    // Same reason as the .deb staging above: the JDK's read-only legal/ files cannot
+    // be overwritten in place on a second run.
+    doFirst { appDirStage.deleteDir() }
+
+    // An AppDir is the application tree plus three things at its root: AppRun, a
+    // .desktop file and an icon named to match the desktop file's Icon= key.
+    from(linuxImageDir)
+    from(project.file('packaging/linux/peaknav.desktop'))
+    from(project.file('icons/linux/512.png')) { rename { "${appName}.png" } }
+
+    doLast {
+        def appRun = new File(appDirStage, 'AppRun')
+        appRun.delete()
+        // A symlink to the launcher, which already resolves its jar and runtime
+        // relative to its own location, so no wrapper script is needed.
+        java.nio.file.Files.createSymbolicLink(appRun.toPath(), new File(appName).toPath())
+    }
+}
+
+def squashAppDir = tasks.register('squashAppDir', Exec) {
+    dependsOn stageAppDir
+    inputs.dir(appDirStage)
+    outputs.file(squashFile)
+
+    executable = 'mksquashfs'
+    args appDirStage.absolutePath, squashFile.absolutePath,
+         '-root-owned', '-noappend', '-quiet', '-no-progress',
+         // zstd keeps the image small without the decompression cost showing up as
+         // a slow first launch.
+         '-comp', 'zstd', '-Xcompression-level', '19'
+
+    doFirst {
+        if (!hasTool(executable)) {
+            throw new GradleException(
+                    "mksquashfs was not found.\n  Debian/Ubuntu: sudo apt install squashfs-tools")
+        }
+        squashFile.parentFile.mkdirs()
+        // mksquashfs appends to an existing image even with -noappend in some
+        // versions; deleting is the reliable way to get a fresh one.
+        squashFile.delete()
+    }
+}
+
+tasks.register('installerLinuxAppImage') {
+    group = 'distribution'
+    description = 'Builds a portable .AppImage that runs on any distribution.'
+    dependsOn squashAppDir, 'downloadAppImageRuntime'
+
+    inputs.files(squashFile, appImageRuntime)
+    outputs.file(appImageFile)
+
+    doLast {
+        appImageFile.parentFile.mkdirs()
+        appImageFile.withOutputStream { out ->
+            appImageRuntime.withInputStream { out << it }
+            squashFile.withInputStream { out << it }
+        }
+        appImageFile.setExecutable(true, false)
+        logger.lifecycle("AppImage: ${appImageFile} (${appImageFile.length().intdiv(1024 * 1024)} MB)")
+    }
+}
+
+tasks.register('installers') {
+    group = 'distribution'
+    description = 'Builds the Windows, macOS and Linux installers.'
+    dependsOn 'installerWindows', 'installerMacM1', 'installerMacX64',
+              'installerLinuxDeb', 'installerLinuxAppImage'
 }
 
 // Equivalent to the jar task; here for compatibility with gdx-setup.

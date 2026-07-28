@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=PeakNav
+GenericName=Mountain Navigator
+Comment=Identify surrounding peaks and navigate mountain terrain in 3D
+Exec=peaknav
+Icon=peaknav
+Terminal=false
+Categories=Science;Geoscience;
+Keywords=map;mountain;peak;summit;navigation;hiking;gps;terrain;

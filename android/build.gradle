@@ -52,7 +52,10 @@ android {
         // overrides onBackPressed.
         targetSdkVersion 36
         versionCode 149
-        versionName "1.0"
+        // Kept in step with `projectVersion` in gradle.properties, which is what the
+        // desktop installers are named after; versionCode stays the Play upload
+        // counter and is bumped by hand per upload.
+        versionName "1.1.0"
     }
     compileOptions {
         sourceCompatibility "8"
