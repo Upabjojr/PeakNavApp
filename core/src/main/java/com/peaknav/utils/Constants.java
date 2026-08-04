@@ -22,9 +22,17 @@ public interface Constants {
         String VIEWER_LAYER_VISIBLE_BASE_ROADS = "viewerLayerVisibleBaseRoads";
         String VIEWER_SUN_SHADING = "viewerSunShading";
         String VIEWER_HORIZON_COMPASS = "viewerHorizonCompass";
+        String VIEWER_COMPASS_LOCATION = "viewerCompassLocation";
+        String VIEWER_SHOW_COORDINATES = "viewerShowCoordinates";
+        String VIEWER_CORNER_COMPASS = "viewerCornerCompass";
         String VIEWER_SKY = "viewerSky";
         String VIEWER_SKY_CONSTELLATIONS = "viewerSkyConstellations";
         String VIEWER_SKY_MODE = "viewerSkyMode";
+        String VIEWER_SKY_GRID = "viewerSkyGrid";
+        String VIEWER_SKY_ECLIPTIC = "viewerSkyEcliptic";
+        String VIEWER_SKY_STAR_NAMES = "viewerSkyStarNames";
+        String VIEWER_SKY_LABELS = "viewerSkyLabels";
+        String VIEWER_SKY_TIME_LABEL = "viewerSkyTimeLabel";
         String UNDERLAY_IMAGE_PROVIDER = "underlayImageProviderChosen";
         String VIEWER_UNIT_SYSTEM = "viewerUnitSystem";
 

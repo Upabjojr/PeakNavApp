@@ -49,6 +49,16 @@ public final class SkyModel {
     private float[] starEnu = new float[0];
     private float[] bodyEnu = new float[0];               // one entry per solarSystem.bodies
     private final List<float[]> constellationEnu = new ArrayList<>();
+    /**
+     * The equatorial grid, as polylines: meridians of right ascension and parallels of
+     * declination. The right ascension and declination of each vertex never change, so the
+     * source is built once; only the conversion to the horizon moves with time and place.
+     */
+    private final List<float[]> gridRaDec = new ArrayList<>();
+    private final List<float[]> gridEnu = new ArrayList<>();
+    /** The ecliptic, one polyline. Its equatorial coordinates depend on the obliquity, which
+     *  drifts, so unlike the grid it is recomputed with everything else. */
+    private final float[] eclipticEnu = new float[ECLIPTIC_POINTS * 3];
     private float[] labelEnu = new float[0];              // 3 per constellation label
 
     private double sunAltitudeDeg = -90;
@@ -138,7 +148,17 @@ public final class SkyModel {
         // Bodies
         for (int i = 0; i < solarSystem.bodies.size(); i++) {
             SkyBody b = solarSystem.bodies.get(i);
-            SkyMath.AzAlt aa = SkyMath.equatorialToHorizontal(b.raDeg, b.decDeg, lst, latitudeDeg);
+            double raDeg = b.raDeg;
+            double decDeg = b.decDeg;
+            if (b.kind == SkyBody.Kind.MOON) {
+                // The Moon is close enough that where you stand matters - up to 57 arcminutes
+                // of it. Every other body is far enough away to ignore.
+                double[] topo = SkyMath.topocentric(
+                        raDeg, decDeg, b.distanceEarthRadii, lst, latitudeDeg);
+                raDeg = topo[0];
+                decDeg = topo[1];
+            }
+            SkyMath.AzAlt aa = SkyMath.equatorialToHorizontal(raDeg, decDeg, lst, latitudeDeg);
             writeEnu(bodyEnu, i * 3, aa.azimuth, aa.altitude);
             if (b.kind == SkyBody.Kind.SUN) sunAltitudeDeg = aa.altitude;
         }
@@ -159,6 +179,26 @@ public final class SkyModel {
             }
         }
 
+        // Equatorial grid
+        buildGridRaDec();
+        for (int p = 0; p < gridRaDec.size(); p++) {
+            float[] src = gridRaDec.get(p);
+            float[] dst = gridEnu.get(p);
+            for (int j = 0, k = 0; j < src.length; j += 2, k += 3) {
+                SkyMath.AzAlt aa = SkyMath.equatorialToHorizontal(src[j], src[j + 1], lst, latitudeDeg);
+                writeEnu(dst, k, aa.azimuth, aa.altitude);
+            }
+        }
+
+        // Ecliptic: ecliptic longitude swept right round, at ecliptic latitude 0
+        double oblecl = SkyMath.obliquity(d);
+        for (int i = 0; i < ECLIPTIC_POINTS; i++) {
+            double lambda = 360.0 * i / (ECLIPTIC_POINTS - 1);
+            double[] raDec = SkyMath.eclipticToEquatorial(lambda, oblecl);
+            SkyMath.AzAlt aa = SkyMath.equatorialToHorizontal(raDec[0], raDec[1], lst, latitudeDeg);
+            writeEnu(eclipticEnu, i * 3, aa.azimuth, aa.altitude);
+        }
+
         // Constellation name anchors
         for (int i = 0; i < constellations.labels.size(); i++) {
             ConstellationData.Label lab = constellations.labels.get(i);
@@ -175,6 +215,42 @@ public final class SkyModel {
     }
 
     public float[] getNamedStarEnu() { return namedStarEnu; }
+
+    /** Vertices along the ecliptic; every 3 degrees of ecliptic longitude, closing the loop. */
+    private static final int ECLIPTIC_POINTS = 121;
+    /** Meridians of right ascension, every 30 degrees (two hours). */
+    private static final int GRID_MERIDIAN_STEP_DEG = 30;
+    /** Parallels of declination drawn, in degrees. */
+    private static final int[] GRID_PARALLELS = {-60, -30, 0, 30, 60};
+
+    /** Builds the grid's fixed equatorial coordinates. Called once. */
+    private void buildGridRaDec() {
+        if (!gridRaDec.isEmpty()) {
+            return;
+        }
+        // Meridians: half-circles from pole to pole, stopped short of the poles themselves
+        // where every meridian meets and the lines would knot together.
+        for (int ra = 0; ra < 360; ra += GRID_MERIDIAN_STEP_DEG) {
+            float[] line = new float[33 * 2];
+            for (int i = 0; i < 33; i++) {
+                line[i * 2] = ra;
+                line[i * 2 + 1] = -80 + i * 5;
+            }
+            gridRaDec.add(line);
+        }
+        // Parallels: full circles at fixed declination.
+        for (int dec : GRID_PARALLELS) {
+            float[] line = new float[73 * 2];
+            for (int i = 0; i < 73; i++) {
+                line[i * 2] = i * 5;
+                line[i * 2 + 1] = dec;
+            }
+            gridRaDec.add(line);
+        }
+        for (float[] src : gridRaDec) {
+            gridEnu.add(new float[src.length / 2 * 3]);
+        }
+    }
 
     private static void writeEnu(float[] arr, int off, double azimuthDeg, double altitudeDeg) {
         double azr = Math.toRadians(azimuthDeg);
@@ -193,6 +269,8 @@ public final class SkyModel {
     public float[] getStarEnu() { return starEnu; }
     public float[] getBodyEnu() { return bodyEnu; }
     public List<float[]> getConstellationEnu() { return constellationEnu; }
+    public List<float[]> getGridEnu() { return gridEnu; }
+    public float[] getEclipticEnu() { return eclipticEnu; }
     public ConstellationData getConstellations() { return constellations; }
     public float[] getLabelEnu() { return labelEnu; }
 

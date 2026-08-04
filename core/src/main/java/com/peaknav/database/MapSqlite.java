@@ -30,9 +30,22 @@ public abstract class MapSqlite {
             sqlInsertIntoDownloadQueue = "INSERT OR REPLACE INTO download_queue (tile_x, tile_y, tile_z, layer_type) VALUES (?, ?, ?, ?)";
 
     protected final static String
+            // Ordered so the useful layers download first: elevation makes the terrain
+            // appear, POIs put the labels on it, highways draw the paths - and AREAS goes
+            // strictly last. Area archives do not exist for every region (the dataset is
+            // still growing), and each missing one costs a full round of failed attempts;
+            // with no ORDER BY, sqlite happened to serve AREAS first, so a download over a
+            // region without them spent its opening seconds failing before anything the
+            // user can see had arrived.
             sqlQueryDownloadQueue = "SELECT tile_x, tile_y, tile_z, layer_type " +
                     "FROM download_queue " +
-                    "WHERE download_time IS NULL",
+                    "WHERE download_time IS NULL " +
+                    "ORDER BY CASE layer_type " +
+                    "WHEN '" + LAYER_ELEV + "' THEN 0 " +
+                    "WHEN 'PBF_POI' THEN 1 " +
+                    "WHEN 'PBF_HIGHWAYS' THEN 2 " +
+                    "WHEN 'AREAS' THEN 3 " +
+                    "ELSE 4 END, tile_z, tile_x, tile_y",
             sqlQueryDownloadedTiles = "SELECT tile_x, tile_y, tile_z, layer_type " +
                     "FROM download_queue " +
                     "WHERE download_time IS NOT NULL AND layer_type = ?";
@@ -78,6 +91,16 @@ public abstract class MapSqlite {
             return new Tile(tileX, tileY, tileZ, MF_ZOOM);
         }
     }
+
+    /**
+     * Groups many queue inserts into one transaction. Without this every
+     * {@code INSERT OR REPLACE} auto-commits - one fsync per tile - which is what made
+     * "adding to queue" take seconds per tile on desktop. Implementations that cannot
+     * batch may leave these as no-ops; callers must pair them in try/finally.
+     */
+    public void beginQueueBatch() {}
+
+    public void endQueueBatch() {}
 
     public abstract List<QueuedTile> getDownloadQueue();
     public abstract List<Tile> getListOfDownloadedTiles(String layer_name);

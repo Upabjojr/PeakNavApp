@@ -30,8 +30,21 @@ public class CacheDirManager {
         cacheDir = new File(getCacheDir());
     }
 
-    private void scanCacheDir() {
+    /**
+     * Rebuilds the list of cached files, newest last.
+     *
+     * <p>Into a LOCAL list, published at the end. It used to append to the shared field and
+     * sort that, which broke twice over: the field was never cleared, so every scan piled
+     * another copy of the whole cache onto the last one; and two satellite threads run this
+     * at once ({@code tileRendererExecutorSat} has two, and each satellite pass submits a
+     * clean-up), so they interleaved appends into one LinkedList and left null links in it.
+     * The sort then dereferenced one and the app died - observed on a device, twice within
+     * 40 ms, once per worker thread:
+     * {@code NullPointerException ... CachedFiles.timestamp ... CacheDirManager.lambda$scanCacheDir$0}.
+     */
+    private List<CachedFiles> scanCacheDir() {
         List<File> found = getAllFilesInSubdir(cacheDir);
+        List<CachedFiles> scanned = new java.util.ArrayList<>();
         long totalSize = 0;
         for (File file : found) {
             long lastModified = file.lastModified();
@@ -39,15 +52,22 @@ public class CacheDirManager {
             if (file.exists()) {
                 long fileSize = file.length();
                 totalSize += fileSize;
-                cacheFiles.add(new CachedFiles(file, lastModified));
+                scanned.add(new CachedFiles(file, lastModified));
             }
         }
-        Collections.sort(cacheFiles, (c1, c2) -> Long.compare(c1.timestamp, c2.timestamp));
+        Collections.sort(scanned, (c1, c2) -> Long.compare(c1.timestamp, c2.timestamp));
         this.totalSize = totalSize;
+        this.cacheFiles = scanned;
+        return scanned;
     }
 
-    public void removeOldCacheFiles() {
-        scanCacheDir();
+    /**
+     * Synchronized: two satellite workers asking to tidy the cache at the same moment would
+     * otherwise both walk the directory and both delete from it, racing over which files
+     * still exist.
+     */
+    public synchronized void removeOldCacheFiles() {
+        List<CachedFiles> cacheFiles = scanCacheDir();
         long TIMESTAMP_30_DAY_AGO = System.currentTimeMillis() - 30L*24*3600*1000;
         if (totalSize > CACHE_SIZE_LIMIT) {
             for (CachedFiles cachedFile: cacheFiles) {

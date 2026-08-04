@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Compass and location": the master switch in the main menu, so it carries both ideas -
+     the rose for the compasses and a pin for the coordinates readout. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <!-- the rose, offset up-left to leave the pin room -->
+  <circle cx="102" cy="98" r="72" fill="#ffffff" fill-opacity="0.82"
+          stroke="#12222e" stroke-width="7"/>
+  <circle cx="102" cy="98" r="60" fill="none" stroke="#12222e" stroke-width="2" opacity="0.45"/>
+  <g stroke="#12222e" stroke-width="4" opacity="0.7">
+    <line x1="102" y1="32" x2="102" y2="44"/>
+    <line x1="102" y1="152" x2="102" y2="164"/>
+    <line x1="36" y1="98" x2="48" y2="98"/>
+    <line x1="156" y1="98" x2="168" y2="98"/>
+  </g>
+  <path d="M102 46 L120 98 L102 94 L84 98 Z" fill="#d23b32" stroke="#7a1c17" stroke-width="2"/>
+  <path d="M102 150 L120 98 L102 102 L84 98 Z" fill="#f0f0f0" stroke="#8a8f96" stroke-width="2"/>
+  <circle cx="102" cy="98" r="7" fill="#2a3038" stroke="#12222e" stroke-width="2"/>
+
+  <!-- the pin, sat in front at the lower right -->
+  <path d="M176 108 C199 108 218 127 218 150 C218 178 176 216 176 216
+           C176 216 134 178 134 150 C134 127 153 108 176 108 Z"
+        fill="#d23b32" stroke="#12222e" stroke-width="7" stroke-linejoin="round"/>
+  <circle cx="176" cy="150" r="16" fill="#ffffff"/>
+</svg>

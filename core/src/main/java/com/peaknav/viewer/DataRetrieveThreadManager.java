@@ -37,6 +37,13 @@ public class DataRetrieveThreadManager {
     }
 
     public void triggerReadData() {
+        if (labelUpdatesHeld) {
+            // Held means the label SET is frozen between explicit refreshes - and the
+            // POI lists are where the set comes from. Re-retrieving on every camera
+            // step also meant each retrieve was stopped by the next before finishing.
+            // forceLabelUpdateNow() retrieves on the refresh cadence instead.
+            return;
+        }
         execRetrieveData.stopLoop();
         executorLoadGraph.stopLoop();
         lastLatLong = C.L.getCurrentLatLong();
@@ -46,17 +53,78 @@ public class DataRetrieveThreadManager {
         // executorLoadGraph.executeStoppableRunnable(new RunnableLoadGraph(C));
     }
 
+    /**
+     * While true, none of the trigger methods below schedules a visibility update. For
+     * interactive use the triggers are right: a person turns the camera, the labels
+     * re-sort themselves, nothing looks amiss. A video is different - the camera moves
+     * EVERY frame, so the 5-degree rotation threshold fires every few frames and the
+     * labels reshuffle several times a second, which on playback reads as flicker. The
+     * headless renderer holds updates and calls {@link #forceLabelUpdateNow()} on a
+     * cadence chosen by the caller - twice a second of video, typically.
+     */
+    private volatile boolean labelUpdatesHeld = false;
+
+    public void setLabelUpdatesHeld(boolean held) {
+        labelUpdatesHeld = held;
+    }
+
+    public boolean isLabelUpdatesHeld() {
+        return labelUpdatesHeld;
+    }
+
+    /** Bumped by every explicit refresh; the area labels freeze their winners against it. */
+    private final java.util.concurrent.atomic.AtomicLong labelSelectionVersion =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    public long getLabelSelectionVersion() {
+        return labelSelectionVersion.get();
+    }
+
+    /** The full label pass - overlap, mountain occlusion, relevance sort - hold or no hold. */
+    public void forceLabelUpdateNow() {
+        // Deliberately NO POI retrieve here. The lazy retrieve calls back once per
+        // tile - twenty-odd callbacks each swapping the master lists and running
+        // missing-data checks - and firing one per refresh overlapped the storms
+        // until the view never went quiet again (every frame then sat out its full
+        // tile-wait timeout: a 200x slowdown, measured). Under the frozen-anchor
+        // scheme the current position holds still between boots anyway, so the
+        // boot's own retrieve already covers everything a chunk can see.
+        Vector3 camDir = C.getMapViewerScreen().cam.direction;
+        prevCameraAngle = Math.atan2(camDir.y, camDir.x);
+        updateRequests.add(MapDataUpdateRequest.DATA_VISIBILITY_RECOMPUTE_LABEL_OVERLAP);
+        updateRequests.add(MapDataUpdateRequest.DATA_VISIBILITY_RECOMPUTE_HIDDEN_BY_MOUNTAINS);
+        updateRequests.add(MapDataUpdateRequest.DATA_SORT_POI_LIST_BY_RELEVANCE);
+        labelSelectionVersion.incrementAndGet();
+        execUpdateVisibilityFull.executeStoppableRunnable(new RunnableUpdateVisibility(C, updateRequests));
+    }
+
     public void triggerUpdateVisibilityByZooming() {
+        if (labelUpdatesHeld) {
+            return;
+        }
         updateRequests.add(MapDataUpdateRequest.DATA_VISIBILITY_RECOMPUTE_LABEL_OVERLAP);
         execUpdateVisibilityFull.executeStoppableRunnable(new RunnableUpdateVisibility(C, updateRequests));
     }
 
     public void triggerUpdateVisibilityPositionChanged() {
+        if (labelUpdatesHeld) {
+            return;
+        }
         updateRequests.add(MapDataUpdateRequest.DATA_SORT_POI_LIST_BY_RELEVANCE);
+        // This fires on every frame the camera position changes (a pan or flight holds that true
+        // for seconds at a time, up to 120 frames a second), so it needs the same backlog cap as
+        // the rotation trigger below.
+        if (execUpdateVisibilityFull.getQueue().size() >= MAX_PENDING_VISIBILITY_UPDATES) {
+            // Already queued work will pick up the request added above.
+            return;
+        }
         execUpdateVisibilityFull.executeStoppableRunnable(new RunnableUpdateVisibility(C, updateRequests));
     }
 
     public void triggerUpdateVisibilityElevationChanged() {
+        if (labelUpdatesHeld) {
+            return;
+        }
         updateRequests.add(MapDataUpdateRequest.DATA_VISIBILITY_RECOMPUTE_HIDDEN_BY_MOUNTAINS);
         execUpdateVisibilityFull.executeStoppableRunnable(new RunnableUpdateVisibility(C, updateRequests));
     }
@@ -81,6 +149,9 @@ public class DataRetrieveThreadManager {
     private static final int MAX_PENDING_VISIBILITY_UPDATES = 2;
 
     public void triggerUpdateVisibilityCameraRotated() {
+        if (labelUpdatesHeld) {
+            return;
+        }
         Vector3 camDir = C.getMapViewerScreen().cam.direction;
 
         double angle = Math.atan2(camDir.y, camDir.x);
@@ -108,6 +179,9 @@ public class DataRetrieveThreadManager {
      * labels de-overlapped. Resets the rotation baseline so the next turn is measured from here.
      */
     public void triggerUpdateVisibilityLabelOverlap() {
+        if (labelUpdatesHeld) {
+            return;
+        }
         Vector3 camDir = C.getMapViewerScreen().cam.direction;
         prevCameraAngle = Math.atan2(camDir.y, camDir.x);
 
@@ -120,6 +194,14 @@ public class DataRetrieveThreadManager {
     }
 
     public void stopRunnableUpdateVisibility() {
+        if (labelUpdatesHeld) {
+            // Held mode runs one pass per explicit refresh and captures against its
+            // result; a tile update killing that pass mid-publish left a torn label
+            // set standing for the whole next window. The races this stop guards
+            // against are label-vs-tile churn during interaction - while held, the
+            // pass is rare and must finish.
+            return;
+        }
         execUpdateVisibilityFull.stopLoopByType(RunnableUpdateVisibility.class);
     }
 

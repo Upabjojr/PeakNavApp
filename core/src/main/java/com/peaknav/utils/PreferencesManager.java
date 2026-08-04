@@ -22,8 +22,16 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_BASE_
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SUN_SHADING;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_COMPASS_LOCATION;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_COORDINATES;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_CORNER_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_CONSTELLATIONS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_ECLIPTIC;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_GRID;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_LABELS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_TIME_LABEL;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_STAR_NAMES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_MODE;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ALPINE_HUTS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ISLANDS;
@@ -73,8 +81,16 @@ public class PreferencesManager {
     private boolean layerVisibleOpenStreetMap;
     private boolean sunShading;
     private boolean horizonCompass;
+    private boolean compassLocation;
+    private boolean showCoordinates;
+    private boolean cornerCompass;
     private boolean skyView;
     private boolean skyConstellations;
+    private boolean skyGrid;
+    private boolean skyEcliptic;
+    private boolean skyStarNames;
+    private boolean skyLabels;
+    private boolean skyTimeLabel;
     /** 0 = follow local time, 1 = force day, 2 = force night. */
     private int skyMode;
     private SatelliteImageProvider underlayImageProvider;
@@ -146,8 +162,32 @@ public class PreferencesManager {
 
     private UnitSystem unitSystem;
 
+    /**
+     * Whether the next manager keeps its changes in memory instead of writing them out. Set by
+     * the headless renderer before the app starts; the interactive launchers leave it alone, so
+     * the app itself is unaffected.
+     */
+    private static boolean ephemeral = false;
+
+    /**
+     * Makes preferences read-through and write-nowhere from here on: settings are still read
+     * from the stored file, and every change is kept in memory and dropped when the process
+     * exits. Call before the app is created - the manager reads the flag once, in its
+     * constructor. Only settings are affected; downloaded map data is untouched and stays
+     * shared with the interactive app.
+     */
+    public static void setEphemeral(boolean value) {
+        ephemeral = value;
+    }
+
+    /** Whether preferences changes are being kept in memory only. */
+    public static boolean isEphemeral() {
+        return ephemeral;
+    }
+
     public PreferencesManager() {
-        preferences = Gdx.app.getPreferences(PREF_NAME);
+        Preferences stored = Gdx.app.getPreferences(PREF_NAME);
+        preferences = ephemeral ? new EphemeralPreferences(stored) : stored;
         updatePreferences();
     }
 
@@ -166,8 +206,19 @@ public class PreferencesManager {
         layerVisibleUnderlayLayer = preferences.getBoolean(VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER, true);
         sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
         horizonCompass = preferences.getBoolean(VIEWER_HORIZON_COMPASS, true);
-        skyView = preferences.getBoolean(VIEWER_SKY, false);
+        // All three compass-and-location items default to on for a fresh install.
+        compassLocation = preferences.getBoolean(VIEWER_COMPASS_LOCATION, true);
+        showCoordinates = preferences.getBoolean(VIEWER_SHOW_COORDINATES, true);
+        cornerCompass = preferences.getBoolean(VIEWER_CORNER_COMPASS, true);
+        skyView = preferences.getBoolean(VIEWER_SKY, true);
         skyConstellations = preferences.getBoolean(VIEWER_SKY_CONSTELLATIONS, true);
+        // Reference overlays, off unless asked for.
+        skyGrid = preferences.getBoolean(VIEWER_SKY_GRID, false);
+        skyEcliptic = preferences.getBoolean(VIEWER_SKY_ECLIPTIC, false);
+        // On, as the app has always drawn them; a scripted render can turn them off.
+        skyStarNames = preferences.getBoolean(VIEWER_SKY_STAR_NAMES, true);
+        skyLabels = preferences.getBoolean(VIEWER_SKY_LABELS, true);
+        skyTimeLabel = preferences.getBoolean(VIEWER_SKY_TIME_LABEL, true);
         skyMode = preferences.getInteger(VIEWER_SKY_MODE, 0);
         // Set to "true" for subscribed users:
         viewerLayerVisibleBaseRoads = preferences.getBoolean(VIEWER_LAYER_VISIBLE_BASE_ROADS, true);
@@ -342,6 +393,11 @@ public class PreferencesManager {
      * twice or leave stale data behind.
      */
     private void migrateCustomSatelliteProvidersFromPreferences() {
+        // This one writes to the provider config file as well as to the preferences, so an
+        // ephemeral session skips it: it must leave no trace outside its own memory.
+        if (ephemeral) {
+            return;
+        }
         int count = preferences.getInteger("satellite_custom_count", 0);
         if (count <= 0) {
             return;
@@ -402,6 +458,43 @@ public class PreferencesManager {
         preferences.flush();
     }
 
+    /**
+     * Master toggle over the compass-and-location group, mirroring how {@link #isSkyView()}
+     * gates all sky drawing: nothing in the group (horizon markers, corner compass,
+     * on-screen coordinates) is drawn while this is off, whatever the per-item toggles say.
+     */
+    public boolean isCompassLocation() {
+        return compassLocation;
+    }
+
+    public void setCompassLocation(boolean enabled) {
+        compassLocation = enabled;
+        preferences.putBoolean(VIEWER_COMPASS_LOCATION, enabled);
+        preferences.flush();
+    }
+
+    /** Whether the current coordinates are written on screen. */
+    public boolean isShowCoordinates() {
+        return showCoordinates;
+    }
+
+    public void setShowCoordinates(boolean enabled) {
+        showCoordinates = enabled;
+        preferences.putBoolean(VIEWER_SHOW_COORDINATES, enabled);
+        preferences.flush();
+    }
+
+    /** Whether the compass rose in the top-right corner is drawn. */
+    public boolean isCornerCompass() {
+        return cornerCompass;
+    }
+
+    public void setCornerCompass(boolean enabled) {
+        cornerCompass = enabled;
+        preferences.putBoolean(VIEWER_CORNER_COMPASS, enabled);
+        preferences.flush();
+    }
+
     public boolean isSkyView() {
         return skyView;
     }
@@ -419,6 +512,75 @@ public class PreferencesManager {
     public void setSkyConstellations(boolean enabled) {
         skyConstellations = enabled;
         preferences.putBoolean(VIEWER_SKY_CONSTELLATIONS, enabled);
+        preferences.flush();
+    }
+
+    /** The equatorial grid over the sky: meridians of right ascension and parallels of
+     *  declination. Off by default - it is a reference overlay, not scenery. */
+    public boolean isSkyGrid() {
+        return skyGrid;
+    }
+
+    public void setSkyGrid(boolean enabled) {
+        skyGrid = enabled;
+        preferences.putBoolean(VIEWER_SKY_GRID, enabled);
+        preferences.flush();
+    }
+
+    /**
+     * Master switch over every caption drawn on the sky: the constellation names, the bright
+     * star names, and the names beside the Sun, the Moon and the planets. Off means a sky with
+     * nothing written across it, whatever the individual settings say.
+     *
+     * <p>It gates rather than replaces the finer settings, so switching it back on restores
+     * exactly the labels that were showing before. A constellation name still needs
+     * {@link #isSkyConstellations()} as well - the names belong to the lines, and captioning
+     * figures whose lines are not drawn would label empty sky.
+     */
+    public boolean isSkyLabels() {
+        return skyLabels;
+    }
+
+    public void setSkyLabels(boolean enabled) {
+        skyLabels = enabled;
+        preferences.putBoolean(VIEWER_SKY_LABELS, enabled);
+        preferences.flush();
+    }
+
+    /**
+     * The date-and-time pill shown while the sky is frozen at a chosen instant. On in the app,
+     * where it is the only sign that the sky is not the live one - switching it off is for
+     * renders, which want the picture and not the read-out.
+     */
+    public boolean isSkyTimeLabel() {
+        return skyTimeLabel;
+    }
+
+    public void setSkyTimeLabel(boolean enabled) {
+        skyTimeLabel = enabled;
+        preferences.putBoolean(VIEWER_SKY_TIME_LABEL, enabled);
+        preferences.flush();
+    }
+
+    /** Names of the brightest stars, drawn beside them. On, as in the app. */
+    public boolean isSkyStarNames() {
+        return skyStarNames;
+    }
+
+    public void setSkyStarNames(boolean enabled) {
+        skyStarNames = enabled;
+        preferences.putBoolean(VIEWER_SKY_STAR_NAMES, enabled);
+        preferences.flush();
+    }
+
+    /** The ecliptic: the lane the Sun, Moon and planets travel along. Off by default. */
+    public boolean isSkyEcliptic() {
+        return skyEcliptic;
+    }
+
+    public void setSkyEcliptic(boolean enabled) {
+        skyEcliptic = enabled;
+        preferences.putBoolean(VIEWER_SKY_ECLIPTIC, enabled);
         preferences.flush();
     }
 

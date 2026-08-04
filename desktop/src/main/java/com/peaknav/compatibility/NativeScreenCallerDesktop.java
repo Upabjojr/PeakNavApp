@@ -3,6 +3,7 @@ package com.peaknav.compatibility;
 import static com.peaknav.compatibility.PeakNavAppState.getAppState;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.s;
+import static com.peaknav.utils.PreferencesManager.P;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Pixmap;
@@ -22,13 +23,18 @@ import java.awt.BorderLayout;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.Rectangle;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import java.awt.Component;
 import javax.swing.Box;
+import javax.swing.JComponent;
+import javax.swing.KeyStroke;
+import javax.swing.JLabel;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
@@ -58,22 +64,46 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
             MissingDataDownloader missingDataDownloader = getC().missingDataDownloader;
             missingDataDownloader.setCoords(lat, lon);
 
+            // The started flag suppresses the missing-data prompt while a download runs
+            // (CurrentLocation.shouldAskToDownloadMissingData). It MUST be cleared on every
+            // exit path: left set, the prompt never appears again for the whole session.
             getAppState().setMapDataDownloadStarted(true);
-
-            missingDataDownloader.setCoords(
-                    lat,
-                    lon
-            );
-            missingDataDownloader.doDownload(goToAfterDownload);
-
-            getAppState().setMapDataDownloadStarted(false);
+            try {
+                missingDataDownloader.doDownload(goToAfterDownload);
+            } finally {
+                getAppState().setMapDataDownloadStarted(false);
+            }
             getAppState().setMapDataDownloaded(true);
         });
     }
 
     @Override
     public void openMapDataDownloadChooserWizard() {
-        getAppState().setMapDataDownloaded(true);
+        // This used to only setMapDataDownloaded(true): the intro screen's "download data"
+        // button marked the data as present without fetching a single byte, which is why the
+        // desktop app "could not download map data" - it never tried. Android opens a
+        // region-chooser wizard here; the desktop has no such screen, so do the honest
+        // minimum instead: actually download for the current target location. The intro
+        // button sets the download consent before calling this, so the workers really fetch.
+        getC().submitExecutorGeneric(() -> {
+            if (!getC().L.isCurrentLocationNotSet()) {
+                double lat = getC().L.getTargetLatitude();
+                double lon = getC().L.getTargetLongitude();
+                MissingDataDownloader missingDataDownloader = getC().missingDataDownloader;
+                missingDataDownloader.setCoords(lat, lon);
+                // Cleared in finally, or this suppresses the missing-data prompt for the
+                // rest of the session - which is exactly the bug this once caused.
+                getAppState().setMapDataDownloadStarted(true);
+                try {
+                    missingDataDownloader.doDownload(false);
+                } finally {
+                    getAppState().setMapDataDownloadStarted(false);
+                }
+            }
+            // Lets the intro proceed either way; with no location set yet there is nothing
+            // sensible to fetch, and the missing-data prompt takes over once one is chosen.
+            getAppState().setMapDataDownloaded(true);
+        });
     }
 
     /**
@@ -83,29 +113,71 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
      */
     private int searchGeneration = 0;
 
+    /**
+     * The search window while it is open, so a second click raises it instead of building
+     * another one. Clicking the button twice used to leave two identical windows stacked,
+     * each with its own result list, and typing into the one on top searched in a window
+     * the user could no longer see. Only touched on the EDT.
+     */
+    private JFrame openSearchFrame;
+
     @Override
     public void openScreenSearchLocation(ClickCallback callback) {
         // The whole window is built on the EDT (this method is called from the GL render thread;
         // constructing Swing UI there is undefined behaviour and deadlock-prone on macOS).
         SwingUtilities.invokeLater(() -> {
+            if (openSearchFrame != null) {
+                // One search window, and clicking the button again is a request to SEE it:
+                // un-minimised, above the map, with the caret back in the search box.
+                com.peaknav.viewer.desktop.WindowRaiser.bringToFront(openSearchFrame);
+                return;
+            }
             JFrame searchFrame = new JFrame();
+            openSearchFrame = searchFrame;
+            // Closing it - by the window button, by Escape, or by picking a result - must
+            // release the slot above, or search would open once per session and never again.
+            searchFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            searchFrame.addWindowListener(new java.awt.event.WindowAdapter() {
+                @Override
+                public void windowClosed(java.awt.event.WindowEvent event) {
+                    openSearchFrame = null;
+                }
+            });
             searchFrame.setLayout(null);
             searchFrame.setSize(800, 600);
-            searchFrame.setTitle(s("Search"));
+            searchFrame.setTitle(s("Search_place_title"));
             JPanel panel = new JPanel();
             BoxLayout layout = new BoxLayout(panel, BoxLayout.PAGE_AXIS);
             panel.setLayout(layout);
             panel.setBounds(0, 0, 800, 600);
+            panel.setBorder(new EmptyBorder(12, 12, 12, 12));
             searchFrame.add(panel);
+
+            // The pane used to be a bare text field over an unlabeled list - nothing said
+            // what to type or what the list was for. Each part now announces itself.
+            JLabel promptLabel = new JLabel(s("Search_prompt"));
+            promptLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+            panel.add(promptLabel);
+            panel.add(Box.createVerticalStrut(6));
 
             JTextField textField = new JTextField("", 1);
             textField.setMaximumSize(new Dimension(300, 65));
+            textField.setAlignmentX(Component.LEFT_ALIGNMENT);
+            textField.setToolTipText(s("Search_prompt"));
             panel.add(textField, BorderLayout.CENTER);
             JButton searchButton = new JButton();
             searchButton.setText(s("Search"));
             searchButton.setSize(new Dimension(150, 50));
+            searchButton.setAlignmentX(Component.LEFT_ALIGNMENT);
             panel.add(searchButton);
-            panel.add(Box.createVerticalGlue());
+            panel.add(Box.createVerticalStrut(12));
+
+            JLabel resultsLabel = new JLabel(s("Search_results_hint"));
+            resultsLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+            panel.add(resultsLabel);
+            panel.add(Box.createVerticalStrut(4));
+            // No vertical glue here: it would expand between the label and the result list
+            // below it; the scroll pane itself takes the remaining height.
 
             SwingUtilities.getRootPane(searchButton).setDefaultButton(searchButton);
 
@@ -136,7 +208,9 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                 }
             });
 
-            panel.add(new JScrollPane(list), BorderLayout.CENTER);
+            JScrollPane resultsPane = new JScrollPane(list);
+            resultsPane.setAlignmentX(Component.LEFT_ALIGNMENT);
+            panel.add(resultsPane, BorderLayout.CENTER);
 
             searchButton.addActionListener(actionEvent -> {
                 final int generation = ++searchGeneration;
@@ -167,6 +241,14 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                 }));
                 MapViewerSingleton.getAppInstance().resume();
             });
+            // Escape closes the panel, from anywhere inside it - WHEN_IN_FOCUSED_WINDOW, so
+            // it works while the caret is in the search box, which is where it always is.
+            // Bound to Escape alone: Delete has to keep deleting characters as one types.
+            searchFrame.getRootPane().registerKeyboardAction(
+                    closeEvent -> searchFrame.dispose(),
+                    KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+                    JComponent.WHEN_IN_FOCUSED_WINDOW);
+
             searchFrame.setVisible(true);
             textField.requestFocus();
         });
@@ -179,7 +261,9 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void openGalleryPick() {
-        GalleryPickDesktop pick = new GalleryPickDesktop();
+        // Called from the render thread; the chooser puts itself on the EDT, and refuses
+        // to open a second time while one is already up. Both matter: see GalleryPickDesktop.
+        GalleryPickDesktop.open();
     }
 
     @Override
@@ -303,6 +387,28 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         }
     }
 
+    /**
+     * Opens the coordinate in the browser, on Wikipedia's GeoHack page.
+     *
+     * <p>GeoHack is the page Wikipedia's coordinate links lead to: it takes a point and lists
+     * the services that can show it - OpenStreetMap, Google, Bing, topographic maps, aerial
+     * imagery, national mapping agencies for that country. That is a better answer than
+     * picking one provider on the user's behalf, and it is the desktop equivalent of handing
+     * the point to Android and letting the system offer the choice.
+     */
+    @Override
+    public void openCoordinate(double latitude, double longitude) {
+        // params takes decimal degrees separated by a semicolon; the language follows the
+        // app's own, so the page comes up in the same language as the interface.
+        String url = com.peaknav.utils.CoordinateLinks.geoHackUrl(
+                latitude, longitude, java.util.Locale.getDefault().getLanguage());
+        try {
+            com.badlogic.gdx.Gdx.net.openURI(url);
+        } catch (Exception e) {
+            alertMessage(url);
+        }
+    }
+
     private final CurrentLocationListener currentLocationListener = new CurrentLocationListener() {
         @Override
         public void getCurrentLocation(CurrentLocationCallback currentLocationCallback) {
@@ -349,6 +455,23 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
             );
 
             if (dialogResult == JOptionPane.YES_OPTION) {
+                // The download workers honour the privacy consent for downloading files
+                // (PeakNavDownloadManager checks P.isCollectDownloadInfo() and skips every
+                // fetch without it). Android asks for that consent in its download chooser;
+                // the desktop never did, so a user who reached this prompt without having
+                // pressed the intro screen's download button got a download that queued
+                // everything, showed progress - and fetched nothing. Ask here, like Android.
+                if (!P.isCollectDownloadInfo()) {
+                    int consent = JOptionPane.showConfirmDialog(
+                            null,
+                            s("Missing_download_info_consent"),
+                            s("Missing_data_download"),
+                            JOptionPane.YES_NO_OPTION);
+                    if (consent != JOptionPane.YES_OPTION) {
+                        return; // no consent, no download - and no silent pretend-download
+                    }
+                    getC().submitExecutorGeneric(() -> P.setCollectDownloadInfo(true));
+                }
                 this.openMapDataDownloadChooser();
             } else if (dialogResult == JOptionPane.NO_OPTION) {
                 // Go back to where we were, without re-running the missing-data check: doing that
@@ -445,7 +568,9 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
      * other platforms relies on PixmapIO's own flip). JPEG has no alpha channel, so it is written as
      * opaque RGB.
      */
-    private static void savePixmapToFile(Pixmap pixmap, java.io.File file, boolean jpeg)
+    // protected, not private: the headless renderer saves snapshots through this very method
+    // so that a scripted capture and the share button produce byte-identical images.
+    protected static void savePixmapToFile(Pixmap pixmap, java.io.File file, boolean jpeg)
             throws java.io.IOException {
         int w = pixmap.getWidth(), h = pixmap.getHeight();
         java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(
@@ -458,8 +583,13 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                 int r = (rgba >>> 24) & 0xFF;
                 int g = (rgba >>> 16) & 0xFF;
                 int b = (rgba >>> 8) & 0xFF;
-                int a = rgba & 0xFF;
-                image.setRGB(x, y, (a << 24) | (r << 16) | (g << 8) | b); // RGB type ignores alpha
+                // Alpha is forced opaque rather than copied. GL blending writes the *destination*
+                // alpha as well as the colour, so anywhere a translucent thing was drawn - a label
+                // plate above all - the framebuffer ends up with alpha < 255. The RGB there is
+                // already correct: the mountains behind have been blended in. Copying that alpha
+                // into the PNG made those areas translucent, so the label looked like a hole
+                // showing nothing rather than the terrain it had just been blended over.
+                image.setRGB(x, y, 0xFF000000 | (r << 16) | (g << 8) | b);
             }
         }
         java.io.File parent = file.getParentFile();

@@ -60,13 +60,18 @@ public class RunnableRetrievePOIs extends StoppableRunnable {
 
             getLogger().debug(TAG, "Calling lock");
             C.dataRetrieveThreadManager.stopRunnableUpdateVisibility();
+            // The swap must be all-or-nothing. There was a stop-check between clear()
+            // and the re-fill, and a retrieve stopped at that exact moment - which
+            // rapid retargeting made routine - left the master lists EMPTY or partial.
+            // Every later visibility pass then faithfully published a near-empty label
+            // set: labels vanished for whole half-second stretches of video, and
+            // interactively whenever a new retrieve pre-empted the last one. A stop
+            // request now takes effect before the swap starts or waits until it ends.
             C.O.applyToAllListsOfPOIs((listOfPeaks, listOfNonPeaks) -> {
                 listOfPeaks.clear();
                 listOfPeaks.addAll(newListOfPeaks);
                 listOfNonPeaks.clear();
                 listOfNonPeaks.addAll(newListOfNonPeaks);
-
-                checkStopThrow();
             });
 
             C.dataRetrieveThreadManager.triggerUpdateVisibilityPositionChanged();

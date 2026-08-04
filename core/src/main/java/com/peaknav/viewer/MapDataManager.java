@@ -16,6 +16,7 @@ import java.util.Map;
 import com.peaknav.pbf.PbfMapDataStore;
 import com.peaknav.viewer.labels.DrawLabelCategory;
 import com.peaknav.viewer.labels.PoiObject;
+import com.peaknav.utils.CjkLabelNames;
 import com.peaknav.utils.Units;
 import com.peaknav.viewer.tiles.TileId;
 
@@ -110,14 +111,23 @@ public class MapDataManager {
             String name = null;
             String name_en = null;
             String name_latn = null;
-            // boolean transliterationFound = false;
+            String name_ja = null;
+            String name_ja_rm = null;
+            String name_hira = null;
+            boolean hasJaTag = false;
             float lat, lon;
             Float ele = null;
             int isolationParent = -1;
+            float prominence = -1;
             DrawLabelCategory drawLabelCategory = null;
             Map<String, String> tags = new HashMap<>();
             for (Tag tag : pointOfInterest.tags) {
                 tags.put(tag.key, tag.value);
+                if (tag.key.contains(":ja")) {
+                    // The data itself declaring the place Japanese - which decides how,
+                    // and whether, its kanji may be romanized below.
+                    hasJaTag = true;
+                }
                 switch (tag.key) {
                     case "name":
                         name = tag.value;
@@ -125,11 +135,26 @@ public class MapDataManager {
                     case "name:en":
                         name_en = tag.value;
                         break;
+                    case "name:ja":
+                        // Some places carry name:ja and no name at all; without this
+                        // they had no label whatever the tags offered.
+                        name_ja = tag.value;
+                        break;
+                    case "name:ja_rm":
+                    case "alt_name:ja_rm":
+                        // Rōmaji from the mapper's own hand - the best Latin form a
+                        // Japanese name can have, and it was never read until now.
+                        if (name_ja_rm == null) {
+                            name_ja_rm = tag.value;
+                        }
+                        break;
+                    case "name:ja-Hira":
+                        name_hira = tag.value;
+                        break;
                     case "name:ja-Latn":
                     case "name:zh-Latn-pinyin":
                     case "name:ko-Latn":
                         name_latn = tag.value;
-                        // transliterationFound = true;
                         break;
                     case "ele":
                         try {
@@ -150,6 +175,14 @@ public class MapDataManager {
                         else if (tag.value.equals("volcano"))
                             drawLabelCategory = DrawLabelCategory.PEAK;
                         break;
+                    case "prominence":
+                        try {
+                            prominence = Float.parseFloat(tag.value);
+                        } catch (NumberFormatException notANumber) {
+                            // Some are written "3776 m" or with a range; no prominence is
+                            // better than a wrong one, so it stays unknown.
+                        }
+                        break;
                     case "isolation_parent":
                         String isolationParentS = tags.get("isolation_parent");
                         isolationParent = Integer.parseInt(isolationParentS);
@@ -158,20 +191,30 @@ public class MapDataManager {
             }
             lat = (float)pointOfInterest.position.getLatitude();
             lon = (float)pointOfInterest.position.getLongitude();
+            if (name == null) {
+                name = name_ja;
+            }
             if (name == null || drawLabelCategory == null)
                 continue;
             if (ele == null) {
                 ele = getElevationLatitsFromMaxCoords(lon, lat, false);
             }
             if (containsUnrenderableCharacters(name)) {
-                if (name_en != null) {
-                    name = name_en;
-                } else if (name_latn != null) {
-                    name = name_latn;
+                // Latin forms from the data first; kana romanized if that is all there
+                // is; and for a kanji-only Japanese name with no reading anywhere, no
+                // label at all - the fallback transliterator reads kanji as Chinese,
+                // which mislabelled every such mountain in Japan ("gao zuo shan" on
+                // 高座山). Chinese and Korean names pass through and keep their correct
+                // romanizations.
+                name = CjkLabelNames.bestLatinName(
+                        name, name_en, name_ja_rm, name_latn, name_hira,
+                        hasJaTag, lat, lon);
+                if (name == null) {
+                    continue;
                 }
             }
             if (ele != null) {
-                poiList.add(new PoiObject(name, lon, lat, ele, tags, isolationParent, drawLabelCategory));
+                poiList.add(new PoiObject(name, lon, lat, ele, tags, prominence, isolationParent, drawLabelCategory));
             }
         }
         return poiList;

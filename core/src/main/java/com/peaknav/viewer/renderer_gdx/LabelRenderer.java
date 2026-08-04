@@ -26,9 +26,10 @@ import com.peaknav.utils.CrashLogger;
 import com.peaknav.utils.Units;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.PerspectiveCameraExt;
-import com.peaknav.viewer.render_tiles.ImpactPixmap;
+import com.peaknav.viewer.labels.AreaLabelStability;
 import com.peaknav.viewer.labels.DrawLabel;
 import com.peaknav.viewer.labels.DrawLabelCategory;
+import com.peaknav.viewer.render_tiles.ImpactPixmap;
 import com.peaknav.viewer.screens.BackgroundPicManager;
 
 import java.util.List;
@@ -61,6 +62,10 @@ public class LabelRenderer {
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
     }
 
+    // Labels drawn since the last render() began; published to PeakNavAppState once per
+    // frame so "the labels are on screen now" is an observable fact rather than a guess.
+    private int labelsDrawnThisFrame;
+
     private void drawWayLabels(int currentAngle, SpriteBatch spriteBatch) {
         //  TODO: in MapViewerScreen there should be only one for-loop over peak data:
         // Bucketed by angle, so every POI here already matches currentAngle.
@@ -69,6 +74,7 @@ public class LabelRenderer {
             if (!drawLabel.isVisible())
                 return;
             drawLabel.drawOnSpriteBatch(spriteBatch);
+            labelsDrawnThisFrame++;
         });
     }
 
@@ -100,6 +106,7 @@ public class LabelRenderer {
     }
 
     public void render(float deltaTime) {
+        labelsDrawnThisFrame = 0;
         // renderBackgroundPixmap();
         renderAreas();
         renderLabelLines();
@@ -112,6 +119,87 @@ public class LabelRenderer {
         }
         renderCompass();
         renderSkyClock();
+        renderCoordinates();
+        getAppState().setVisibleLabelCount(labelsDrawnThisFrame);
+    }
+
+    /**
+     * Height of the coordinates pill above the bottom edge, in widget units. Named because the
+     * sky clock is positioned relative to it - the two have to stay stacked, and a bare 1.4f in
+     * two places drifts apart the first time one of them is nudged.
+     */
+    private static final float COORDINATES_PILL_Y = 1.4f;
+
+    private final GlyphLayout coordinatesGlyph = new GlyphLayout();
+    // Rebuilt only when the position actually moves; formatting per frame would be garbage.
+    private float coordinatesCachedLat = Float.NaN;
+    private float coordinatesCachedLon = Float.NaN;
+    private String coordinatesText = "";
+
+    /**
+     * The current coordinates on a small pill, bottom centre, above the copyright line.
+     * Same styling as the sky clock's pill so the two read as one family; part of the
+     * compass-and-location group, so it obeys that master switch plus its own toggle.
+     */
+    private void renderCoordinates() {
+        if (!P.isCompassLocation() || !P.isShowCoordinates())
+            return;
+        // Where the CAMERA is, not where the target is. They are usually the same, but not
+        // while the camera is moving under its own steam: orbiting a clicked point circles
+        // the camera without changing the target, and reading the target left the pill frozen
+        // for the whole orbit. A flight shows the same thing on the way.
+        //
+        // The world x is a longitude scaled at the frame's reference latitude, and that
+        // reference is the target's - the same one MapTile and the label geometry above use -
+        // so it, not the camera's own latitude, is what converts back.
+        PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
+        float lat = cam.position.y;
+        float lon = Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude());
+        // Rebuild only when the text would actually change. Comparing the raw floats would
+        // reformat every frame of an orbit, which is exactly the garbage this cache avoids.
+        // Written as a negated "close enough" so the first frame formats too: the cache starts
+        // at NaN, and every comparison against NaN is false.
+        if (!(Math.abs(lat - coordinatesCachedLat) < 1e-5f
+                && Math.abs(lon - coordinatesCachedLon) < 1e-5f)) {
+            coordinatesCachedLat = lat;
+            coordinatesCachedLon = lon;
+            coordinatesText = String.format(java.util.Locale.ENGLISH, "%.5f° %s   %.5f° %s",
+                    Math.abs(lat), lat >= 0 ? "N" : "S",
+                    Math.abs(lon), lon >= 0 ? "E" : "W");
+        }
+        String text = coordinatesText;
+        BitmapFont font = getC().styleSingleton.getBitmapFontSmallWhite();
+        coordinatesGlyph.setText(font, text);
+        float tw = coordinatesGlyph.width;
+        float th = coordinatesGlyph.height;
+        float padX = 0.4f * widgetUnitStep;
+        float padY = 0.18f * widgetUnitStep;
+        float pw = tw + 2f * padX;
+        float ph = th + 2f * padY;
+        float cx = Gdx.graphics.getWidth() * 0.5f;
+        float px = cx - pw * 0.5f;
+        // Above the copyright notice at the bottom, clear of the corner buttons.
+        float py = COORDINATES_PILL_Y * widgetUnitStep;
+
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        try {
+            shapeRenderer.setColor(0.05f, 0.06f, 0.13f, 0.78f);
+            fillPill(px, py, pw, ph, ph * 0.5f);
+        } finally {
+            shapeRenderer.end();
+        }
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        spriteBatch.setTransformMatrix(identityMat);
+        spriteBatch.begin();
+        try {
+            font.setColor(Color.WHITE);
+            font.draw(spriteBatch, text, cx - tw * 0.5f, py + ph * 0.5f + th * 0.5f);
+        } finally {
+            spriteBatch.end();
+        }
     }
 
     private final GlyphLayout clockGlyph = new GlyphLayout();
@@ -127,12 +215,16 @@ public class LabelRenderer {
 
     /**
      * When the sky is frozen at a user-chosen time (via "..." → Set time), shows that date and time
-     * on a small pill near the top of the screen, so it is clear the sky is not the live one. Nothing
-     * is drawn while the sky follows the device clock.
+     * on a small pill at the bottom of the screen, directly under the coordinates, so it is clear
+     * the sky is not the live one. Nothing is drawn while the sky follows the device clock.
+     *
+     * <p>It used to sit at the top centre, where it was the first thing the eye met and sat in the
+     * middle of the view. Down here it joins the other read-outs instead of interrupting the
+     * picture.
      */
     private void renderSkyClock() {
         com.peaknav.sky.SkyModel sky = getC().skyModel;
-        if (sky == null || !sky.hasCustomTime())
+        if (sky == null || !sky.hasCustomTime() || !P.isSkyTimeLabel())
             return;
         long millis = sky.currentTimeMillis();
         long minute = millis / 60000L;
@@ -153,9 +245,14 @@ public class LabelRenderer {
         float ph = th + 2f * padY;
         float cx = Gdx.graphics.getWidth() * 0.5f;
         float px = cx - pw * 0.5f;
-        // Sit below the top button row (camera/gallery live top-left) so nothing covers it, in both
-        // portrait and landscape.
-        float py = Gdx.graphics.getHeight() - ph - 1.6f * widgetUnitStep;
+        // Directly under the coordinates pill when that is showing, and in its place when it is
+        // not - so the clock never floats alone over a gap where the coordinates would have been.
+        float py = COORDINATES_PILL_Y * widgetUnitStep;
+        if (P.isCompassLocation() && P.isShowCoordinates()) {
+            py -= ph + 0.22f * widgetUnitStep;
+        }
+        // The attribution line runs along the very bottom; do not sit on it.
+        py = Math.max(py, 0.2f * widgetUnitStep);
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
@@ -255,10 +352,11 @@ public class LabelRenderer {
         int sw = Gdx.graphics.getWidth(), sh = Gdx.graphics.getHeight();
         int iw = backgroundPicManager.getWidth(), ih = backgroundPicManager.getHeight();
 
+        backgroundTextureRegion.setRegion(background);
         spriteBatch.begin();
         spriteBatch.setColor(1, 1, 1, 1);  // getBackgroundAlpha();
         spriteBatch.draw(
-                new TextureRegion(background),
+                backgroundTextureRegion,
                 (sw - iw)/2f, (sh - ih)/2f,
                 0, 0,
                 iw, ih,
@@ -268,12 +366,17 @@ public class LabelRenderer {
         spriteBatch.setColor(1, 1, 1, 1);
     }
 
+    private final TextureRegion backgroundTextureRegion = new TextureRegion();
     private final TextureRegion compassTextureRegion = new TextureRegion();
     // Reused identity transform for the compass; never mutated, so a single instance is safe
     // (setTransformMatrix copies the values into the batch). Avoids a per-frame allocation.
     private final Matrix4 identityMat = new Matrix4();
 
     private void renderCompass() {
+        // The rose in the top-right corner was always drawn; it now honours the
+        // compass-and-location group's master switch and its own toggle.
+        if (!P.isCompassLocation() || !P.isCornerCompass())
+            return;
 
         PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
         float angle2 = cam.getAngleForCompass2();
@@ -375,6 +478,7 @@ public class LabelRenderer {
      */
     /** A measured area label awaiting the de-overlap pass. */
     private static final class PendingArea {
+        com.peaknav.areas.MapArea area;   // identity, for the frozen-selection membership test
         String name;
         AreaPalette palette;
         float rx, ry, rw, rh;      // plate rectangle on screen (what is drawn)
@@ -408,11 +512,22 @@ public class LabelRenderer {
         return 1; // city / default
     }
 
-    private static boolean areaLabelsOverlap(PendingArea a, PendingArea b) {
-        // Compared on the tight text rectangles, not the wide plates, so a big area's pill does not
-        // suppress neighbours whose names sit well clear of it.
-        return a.crx < b.crx + b.crw && a.crx + a.crw > b.crx
-                && a.cry < b.cry + b.crh && a.cry + a.crh > b.cry;
+    /**
+     * Do these two labels' names collide?
+     *
+     * <p>Compared on the tight text rectangles, not the wide plates, so a big area's pill does not
+     * suppress neighbours whose names sit well clear of it.
+     *
+     * <p>{@code slackA} shrinks the first rectangle before the test. The de-overlap pass passes
+     * slack for a label already on screen: two names grazing each other's edge would otherwise
+     * trade the spot at every decision as the camera drifts them apart and back by a pixel, which
+     * looks like blinking. A sitting label must be overlapped by more than the slack to be
+     * displaced, a new one only has to touch - so the spot changes hands once, deliberately,
+     * rather than at every re-decision.
+     */
+    private static boolean areaLabelsOverlap(PendingArea a, PendingArea b, float slackA) {
+        return AreaLabelStability.namesOverlap(a.crx, a.cry, a.crw, a.crh, slackA,
+                b.crx, b.cry, b.crw, b.crh);
     }
 
     private void renderAreas() {
@@ -424,6 +539,20 @@ public class LabelRenderer {
         PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
         if (cam == null)
             return;
+
+        // Is this a DECISION frame - one on which the set of area labels may change?
+        // Between decisions the labels already on screen keep their places and simply
+        // move; nothing appears, disappears or swaps. Held (scripted rendering): only an
+        // explicit refresh decides. Interactive: at most twice a second.
+        //
+        // The decision cadence gates the "hidden by mountains" test as well as the
+        // de-overlap competition, and it must: see areaVisibleThroughTerrain.
+        boolean held = getC().dataRetrieveThreadManager.isLabelUpdatesHeld();
+        long version = getC().dataRetrieveThreadManager.getLabelSelectionVersion();
+        long now = System.currentTimeMillis();
+        boolean decide = held
+                ? version != frozenAreaVersion
+                : now - lastAreaSelectionMs >= AREA_SELECTION_DEBOUNCE_MS;
 
         float cosTargetLat = (float) Math.cos(Math.toRadians(targetLat));
         int screenW = Gdx.graphics.getWidth();
@@ -466,6 +595,11 @@ public class LabelRenderer {
             if (dLatKm * dLatKm + dLonKm * dLonKm > effRangeKm * effRangeKm)
                 continue;
 
+            // Is this area's label already on screen? Every boundary cull below is widened for
+            // one that is, so a label sitting at the edge of the view is not switched on and off
+            // by the sub-pixel wobble of a slow camera - it leaves once, when it is properly out.
+            boolean standing = frozenAreaSelection.contains(area);
+
             // Centre at sea level (elevation 0, round-earth corrected).
             float centreCorr = ElevationUtils.getElevationCorrectionForRoundEarth(area.lat, areaLon);
             float centreX = (float) Units.convertLonitsToLatits(areaLon, targetLat);
@@ -487,7 +621,7 @@ public class LabelRenderer {
                     ? Math.max(area.peakMeters, 200f) : area.peakMeters;
             float horizonReach = (float) (Math.sqrt(2.0 * Units.radiusOfEarth * camHeightMeters)
                     + Math.sqrt(2.0 * Units.radiusOfEarth * effPeakMeters));
-            if (distMeters > horizonReach)
+            if (distMeters > (standing ? horizonReach * BORDER_STICKY_RANGE : horizonReach))
                 continue;
 
             // Ellipse boundary (used only to locate and size the area on screen — never drawn).
@@ -530,9 +664,15 @@ public class LabelRenderer {
             // Off-screen cull (with a margin so a partially visible area still labels). With no
             // boundary point in front (camera inside/right on top of the area) the box is empty,
             // so the cull is skipped and the label is placed from the summit alone below.
+            //
+            // A label already on screen gets a far wider margin. The box is rebuilt every frame
+            // from whichever boundary points are in front of the camera, and at the edge of the
+            // view that count changes as the camera turns, so the box jumps - with a tight margin
+            // it jumps across the threshold and back, and the label blinks at the border.
+            float edgeMargin = standing ? BORDER_STICKY_MARGIN : 0.1f;
             if (inFront > 0
-                    && (maxX < -0.1f * screenW || minX > 1.1f * screenW
-                    || maxY < -0.1f * screenH || minY > 1.1f * screenH))
+                    && (maxX < -edgeMargin * screenW || minX > (1f + edgeMargin) * screenW
+                    || maxY < -edgeMargin * screenH || minY > (1f + edgeMargin) * screenH))
                 continue;
 
             // Place the label just above the area's on-screen silhouette, so it never covers the
@@ -542,11 +682,13 @@ public class LabelRenderer {
             // from the side the summit wins, from straight above the footprint does. Gate on the
             // summit being inside the frustum, so no ghost pill shows when you face away.
             float summitZ = centreZ + Units.convertMetersToLatits(area.peakMeters);
-            if (!cam.frustum.pointInFrustum(centreX, centreY, summitZ))
+            if (!areaSummitInView(centreX, centreY, summitZ, cam, standing))
                 continue;
             // Hidden-by-terrain cull: like the peak/place labels, drop the area when it is entirely
-            // occluded by nearer mountains.
-            if (!areaHasVisiblePoint(area, areaLon, targetLat, centreX, centreY, centreZ, cam))
+            // occluded by nearer mountains. Sampled on decision frames only and smoothed - the raw
+            // test is too noisy to steer a label every frame (see areaVisibleThroughTerrain).
+            if (!areaVisibleThroughTerrain(area, areaLon, targetLat, centreX, centreY, centreZ,
+                    cam, decide, now))
                 continue;
             areaTmp.set(centreX, centreY, summitZ);
             cam.project(areaTmp);
@@ -560,6 +702,7 @@ public class LabelRenderer {
                     ? Math.min(Math.max(0f, maxX - minX), 1.5f * screenW) : 0f;
 
             PendingArea p = obtainPending();
+            p.area = area;
             measureAreaLabel(p, area.name, summitX, plateBottom, spanW);
             p.palette = paletteFor(area.type);
             p.priority = areaPriority(area.type);
@@ -567,28 +710,172 @@ public class LabelRenderer {
             areaPending.add(p);
         }
 
-        // Pass 2: draw in priority order (islands/ranges before towns, larger range first within a
-        // tier) and skip any label whose plate overlaps one already drawn — so nothing is hidden
-        // behind another label.
-        areaPending.sort((a, b) -> a.priority != b.priority
-                ? Integer.compare(b.priority, a.priority)
-                : Float.compare(b.importance, a.importance));
+        // Pass 2: draw in priority order and drop whatever overlaps a higher-priority
+        // plate. Run on decision frames only (see `decide` at the top of this method).
+        // Deciding the winners every frame WAS the flicker: two plates near the same
+        // spot alternate as the winner shifts by a pixel, faster than the eye can read
+        // them. Between decisions the standing winners are drawn at their freshly
+        // measured positions - same labels, moving smoothly, like the peak labels. The
+        // geometric pass-1 culls stay live, so a plate that genuinely leaves the view
+        // (range, frustum, off-screen) still exits at once; only APPEARANCE and
+        // re-shuffling are damped.
+        if (!decide) {
+            for (int i = 0; i < areaPending.size(); i++) {
+                PendingArea p = areaPending.get(i);
+                if (frozenAreaSelection.contains(p.area)) {
+                    drawAreaName(p);
+                    labelsDrawnThisFrame++;
+                }
+            }
+            return;
+        }
+        // A lake outranks the islands inside it. Islands outrank lakes everywhere else,
+        // and rightly so - an island in the sea is the landmark and the sea is not - but
+        // inside a lake that ordering inverts the meaning: the islet is a feature OF the
+        // lake, so letting its name suppress the lake's reads backwards. Demoted just
+        // below its lake rather than to the bottom, so it still outranks a town.
+        for (int i = 0; i < areaPending.size(); i++) {
+            PendingArea island = areaPending.get(i);
+            if (!"island".equals(island.area.type)) {
+                continue;
+            }
+            for (int j = 0; j < areaPending.size(); j++) {
+                PendingArea lake = areaPending.get(j);
+                if (!"lake".equals(lake.area.type)) {
+                    continue;
+                }
+                if (AreaLabelStability.ellipseContains(lake.area, island.area.lat,
+                        island.area.lon)) {
+                    island.priority = Math.min(island.priority, lake.priority - 1);
+                    break;
+                }
+            }
+        }
+
+        // Incumbency: a plate already on screen outranks a challenger of its own
+        // tier. Without this, two near-tied plates contesting one spot alternated at
+        // every re-decision - the debounce made the flicker slower, not gone. An
+        // incumbent loses its seat only to a strictly higher-priority category, or by
+        // leaving the view; a fresh challenger gets the seat only when it is free.
+        final java.util.HashSet<com.peaknav.areas.MapArea> incumbents =
+                new java.util.HashSet<>(frozenAreaSelection);
+        areaPending.sort((a, b) -> {
+            if (a.priority != b.priority) {
+                return Integer.compare(b.priority, a.priority);
+            }
+            boolean ia = incumbents.contains(a.area), ib = incumbents.contains(b.area);
+            if (ia != ib) {
+                return ia ? -1 : 1;
+            }
+            return Float.compare(b.importance, a.importance);
+        });
         areaAccepted.clear();
+        frozenAreaSelection.clear();
+        frozenAreaVersion = version;
+        lastAreaSelectionMs = now;
+        float incumbentSlack = 0.12f * widgetUnitStep;
         for (int i = 0; i < areaPending.size(); i++) {
             PendingArea p = areaPending.get(i);
+            float slack = incumbents.contains(p.area) ? incumbentSlack : 0f;
             boolean blocked = false;
             for (int j = 0; j < areaAccepted.size(); j++) {
-                if (areaLabelsOverlap(p, areaAccepted.get(j))) {
+                if (areaLabelsOverlap(p, areaAccepted.get(j), slack)) {
                     blocked = true;
                     break;
                 }
             }
             if (!blocked) {
                 areaAccepted.add(p);
+                frozenAreaSelection.add(p.area);
                 drawAreaName(p);
+                // Area labels count toward the per-frame label tally too - a view showing
+                // only islands or ranges is labelled, and a caller waiting for "labels are
+                // on screen" (PeakNavAppState.getVisibleLabelCount) must see them.
+                labelsDrawnThisFrame++;
             }
         }
     }
+
+    /** Interactive re-decision cadence for the area winners; see the comment above. */
+    private static final long AREA_SELECTION_DEBOUNCE_MS = 500;
+    private long lastAreaSelectionMs = 0L;
+
+    /** Smoothing for both flicker sources; see {@link AreaLabelStability}. */
+    private final AreaLabelStability areaStability = new AreaLabelStability();
+
+    /**
+     * How much the boundary culls are widened for a label already on screen, so it leaves the view
+     * once rather than blinking on its way out: a third of a screen of extra margin off the edges,
+     * a tenth more horizon reach, and {@link #BORDER_STICKY_TAN} of view angle around the frustum.
+     * All three are one-way - they only ever keep a standing label a little longer, never bring a
+     * new one in early, so what the view shows is unchanged apart from the flicker.
+     */
+    private static final float BORDER_STICKY_MARGIN = 0.35f;
+    private static final float BORDER_STICKY_RANGE = 1.1f;
+    private static final float BORDER_STICKY_TAN = 0.06f; // ~3.5 degrees
+
+    private final Vector3 frustumTmp = new Vector3();
+
+    /**
+     * Is the area's summit inside the view?
+     *
+     * <p>The plain test is a hard yes/no on a single point, which is what makes area labels blink
+     * at the image border: as the camera turns, the summit crosses a frustum side plane, and the
+     * jitter of a slowly moving camera walks it back and forth across that plane several times.
+     *
+     * <p>For a label already on screen the test is widened into a sphere of a few degrees of view
+     * angle - held to an angle rather than a fixed size so a distant range is not favoured over a
+     * near one. The "in front of the camera" half is deliberately NOT widened: a point behind the
+     * camera projects mirrored, and admitting one would put a plate on the wrong side of the
+     * screen, which is a much worse defect than the flicker being fixed here.
+     */
+    private boolean areaSummitInView(float x, float y, float z, PerspectiveCameraExt cam,
+                                     boolean standing) {
+        float dx = x - cam.position.x, dy = y - cam.position.y, dz = z - cam.position.z;
+        if (dx * cam.direction.x + dy * cam.direction.y + dz * cam.direction.z <= 0f)
+            return false;
+        if (!standing) {
+            return cam.frustum.pointInFrustum(x, y, z);
+        }
+        float pad = BORDER_STICKY_TAN * (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        return cam.frustum.sphereInFrustum(frustumTmp.set(x, y, z), pad);
+    }
+
+    /**
+     * "Is any part of this area not hidden behind nearer mountains?", stabilised.
+     *
+     * <p>The raw test ({@link #areaHasVisiblePoint}) samples the geographical depth pixmaps, and
+     * those are rendered only when the POI visibility worker asks for them - so between renders
+     * they describe the terrain as seen from where the camera WAS. Every frame of an orbit moves
+     * the camera, so the distance being tested drifts against a frozen depth map, and for any
+     * area whose sample points graze a silhouette the verdict flips from frame to frame. Sampled
+     * every frame, that noise steers the label directly: the plate blinks, and because a blinking
+     * plate also loses its seat in the de-overlap competition, a rival takes its place and the
+     * pair start trading. Peak labels never show this because their occlusion is decided once per
+     * visibility pass, against a depth map rendered for that pass, and then cached.
+     *
+     * <p>So this does the same: the raw test runs on decision frames only, and its answer has to
+     * hold for {@link AreaLabelStability#DISSENT_TO_FLIP} decisions running before it overturns
+     * the verdict in force. A newly seen area is believed at once, so labels still appear
+     * promptly; only reversals are made to earn it. Between decisions the last verdict is reused,
+     * which also spares the render thread a few hundred pixmap reads per area per frame.
+     */
+    private boolean areaVisibleThroughTerrain(MapArea area, float areaLon, float targetLat,
+                                              float centreX, float centreY, float centreZ,
+                                              PerspectiveCameraExt cam,
+                                              boolean decide, long now) {
+        if (!decide) {
+            return areaStability.lastVerdict(area);
+        }
+        return areaStability.record(area,
+                areaHasVisiblePoint(area, areaLon, targetLat, centreX, centreY, centreZ, cam),
+                now);
+    }
+
+    /** The area winners while label updates are held; see the pass-2 comment. */
+    private final java.util.Set<com.peaknav.areas.MapArea> frozenAreaSelection =
+            new java.util.HashSet<>();
+    private long frozenAreaVersion = Long.MIN_VALUE;
 
     private final Vector3 visSample = new Vector3();
 
@@ -792,7 +1079,9 @@ public class LabelRenderer {
      * compass" option.
      */
     private void renderHorizonCompass() {
-        if (!P.isHorizonCompass())
+        // Both gates: the compass-and-location master switch, then this item's own toggle -
+        // exactly how every sky element sits behind isSkyView() plus its own preference.
+        if (!P.isCompassLocation() || !P.isHorizonCompass())
             return;
         PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
         if (cam == null)
@@ -1002,6 +1291,14 @@ public class LabelRenderer {
                 spriteBatch.end();
             }
         }
+        // Put the batch back as it was found. These label buckets are drawn through a
+        // ROTATED transform, one per angle, and leaving the last one in place made it
+        // everyone else's problem: whatever drew next inherited a rotation it never asked
+        // for. It went unnoticed because the compass and coordinate passes that follow all
+        // set the identity matrix themselves - until "Location and Compass" was switched
+        // off, when they return early, nothing resets it, and the sky labels came out
+        // shifted and slightly turned. Whoever sets a transform clears it.
+        spriteBatch.setTransformMatrix(identityMat);
     }
 
     private void renderLabelLines() {

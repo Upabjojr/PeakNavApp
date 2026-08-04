@@ -32,6 +32,17 @@ public class PixmapLayers {
         executorPixmapDrawing.stopLoop();
     }
 
+    /**
+     * Draw tasks queued or running - the roads, pistes and overlay layers being drawn
+     * onto tile pixmaps. "The view is quiet" must include this: the mesh signals said
+     * quiet while a road layer was still drawing, and a frame captured in that window
+     * showed terrain with its paths missing - they arrived a moment after the shutter.
+     */
+    public static int pendingDrawWork() {
+        return executorPixmapDrawing.getQueue().size()
+                + executorPixmapDrawing.getActiveCount();
+    }
+
     /*
     public synchronized void queueDrawingActions(PixmapLayerName pixmapLayerName, File tileFile, int srcX, int srcY, int srcWidth, int srcHeight, int destX, int destY, int ovWidth, int ovHeight) {
         drawingActionsPQ.add(new PixmapLayersDrawingAction(this, pixmapLayerName, tileFile, srcX, srcY, srcWidth, srcHeight, destX, destY, ovWidth, ovHeight));

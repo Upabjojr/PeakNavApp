@@ -18,6 +18,12 @@ public final class SkyBody {
      * position angle — the field used to be named as if it were.
      */
     public double elongationDeg = 0.0;
+    /**
+     * Distance in Earth radii, for the Moon only (about 60). Needed because the Moon is close
+     * enough for it to matter WHERE on Earth you stand: its parallax is nearly a degree, twice
+     * the Sun's width, so a geocentric position is not what an observer sees.
+     */
+    public double distanceEarthRadii = 0.0;
 
     // Colour used when drawing the body's disc/dot (r,g,b in 0..1).
     public final float r, g, b;

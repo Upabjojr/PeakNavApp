@@ -69,6 +69,19 @@ public abstract class NativeScreenCaller {
 
     public abstract void ensureLocationPermissions();
 
+    /**
+     * Hands a coordinate to whatever else the device can open it with.
+     *
+     * <p>Deliberately vague about the destination, because the right answer differs by
+     * platform: Android has a standard "here is a point" intent that any installed map app
+     * can answer, so the choice belongs to the system and the person using it. A desktop has
+     * no such notion, so it opens a page that lists the map services for that point.
+     *
+     * @param latitude  degrees north
+     * @param longitude degrees east
+     */
+    public abstract void openCoordinate(double latitude, double longitude);
+
     public abstract void comingSoon();
     public abstract void alertMessage(String message);
 

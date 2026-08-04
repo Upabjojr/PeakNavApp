@@ -1,5 +1,6 @@
 package com.peaknav.viewer.render_tiles;
 
+import static com.peaknav.compatibility.PeakNavAppState.getAppState;
 import static com.peaknav.viewer.render_tiles.PixmapLayerName.UNDERLAY_LAYER;
 
 import com.peaknav.viewer.imgmapprovider.SatelliteImageProvider;
@@ -25,10 +26,19 @@ public class TileRendererRunnerSatellite extends TileRendererRunner {
     protected void renderAndDraw(PixmapLayerName pixmapLayerName) {
         assert pixmapLayerName == UNDERLAY_LAYER;
 
-        tileProvider.downloadTileImageIfNotExists(tile);
-        File imgFile = tileProvider.getImageFileHandle(tile.zoomLevel, tile.tileX, tile.tileY);
-        if (imgFile.exists()) {
-            drawTileOnMap(imgFile, UNDERLAY_LAYER);
+        // Bracketed so PeakNavAppState.getPendingSatelliteWork() reports the truth:
+        // 0 there means every satellite tile requested so far is fetched AND drawn,
+        // which is what "the imagery has finished loading" actually means. The
+        // finally guarantees a failed download cannot leave the counter pinned.
+        getAppState().satelliteWorkStarted();
+        try {
+            tileProvider.downloadTileImageIfNotExists(tile);
+            File imgFile = tileProvider.getImageFileHandle(tile.zoomLevel, tile.tileX, tile.tileY);
+            if (imgFile.exists()) {
+                drawTileOnMap(imgFile, UNDERLAY_LAYER);
+            }
+        } finally {
+            getAppState().satelliteWorkFinished();
         }
     }
 

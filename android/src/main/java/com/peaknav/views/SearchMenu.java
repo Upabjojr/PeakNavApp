@@ -123,7 +123,18 @@ public class SearchMenu extends Fragment {
             addGeoNameResponses(new ArrayList<>());
         } else {
             ((NativeScreenCallerAndroid)getNativeScreenCaller()).runOnUiThread(() -> {
-                List<LuceneGeonameSearch.GeonameResult> searchResults = getC().luceneGeonameSearch.searchGeoName(searchText);
+                // The index is built after start-up, and this fires on every keystroke - so
+                // typing into the search box before it is ready called searchGeoName on a
+                // null and killed the app (seen on a device: NullPointerException ...
+                // LuceneGeonameSearch.searchGeoName ... SearchMenu.doSearchResults). No
+                // results is the honest answer while it loads, and the next keystroke asks
+                // again, so nothing is lost by waiting.
+                LuceneGeonameSearch search = getC().luceneGeonameSearch;
+                if (search == null) {
+                    addGeoNameResponses(new ArrayList<>());
+                    return;
+                }
+                List<LuceneGeonameSearch.GeonameResult> searchResults = search.searchGeoName(searchText);
                 addGeoNameResponses(searchResults);
             });
         }

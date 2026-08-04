@@ -1,0 +1,310 @@
+"""A Python client for the PeakNav headless renderer.
+
+The renderer is the real application booted off-screen; this client either starts one
+(`PeakNavHeadless(lat, lon)`) or attaches to one already running
+(`PeakNavHeadless.attach("http://127.0.0.1:8080")`). Under the hood it is plain HTTP
+against the server documented at /openapi.json - nothing here that curl could not do,
+which is the point: the protocol is the API, this file is only convenience.
+
+    from peaknav.headless import PeakNavHeadless
+
+    with PeakNavHeadless(46.0207, 7.7491) as nav:      # Zermatt
+        nav.move_to(46.0207, 7.7491, download_timeout_ms=600_000, await_tiles_ms=120_000)
+        nav.look(bearing_deg=230, pitch_deg=-4)
+        nav.set_altitude_asl(3200)
+        nav.set_view(sky=True, sky_mode="day", labels=["peaks", "roads"])
+        nav.wait(tiles_timeout_ms=60_000, settle_ms=1_000)
+        nav.save_frame("matterhorn.png")
+
+Requires only the standard library. The spawned JVM needs a session display (the window
+is created hidden, but GLFW needs a display connection to make the GL context).
+"""
+
+import json
+import os
+import queue
+import subprocess
+import threading
+import time
+import urllib.error
+import urllib.request
+
+from . import jar as jar_module
+
+__all__ = ["PeakNavHeadless", "PeakNavError"]
+
+
+class PeakNavError(RuntimeError):
+    """An error reported by the renderer, carrying its message verbatim."""
+
+
+def _find_jar(explicit=None):
+    """The renderer jar: a local build, the cache, or the published release.
+
+    The whole search, and how to steer it, is documented in :mod:`peaknav.headless.jar`.
+    The jar is 75 MB, so it is not shipped inside the wheel - it is fetched once, on
+    first use, and cached.
+    """
+    try:
+        return jar_module.resolve_jar(explicit)
+    except jar_module.JarNotFound as missing:
+        # One exception type for callers of this package, whatever went wrong.
+        raise PeakNavError(str(missing)) from missing
+
+
+def _find_java():
+    home = os.environ.get("PEAKNAV_JAVA_HOME", "/usr/lib/jvm/java-17-openjdk-amd64")
+    candidate = os.path.join(home, "bin", "java")
+    return candidate if os.path.exists(candidate) else "java"
+
+
+class PeakNavHeadless:
+    """One off-screen PeakNav instance, spawned and owned, or merely attached to.
+
+    Spawning is the normal way: the JVM's lifetime is tied to this object, so a crashed
+    or interrupted script cannot leave renderers running (the process also dies with its
+    parent's pipes). Attach mode is for a server someone else started - it is never
+    shut down by ``close()`` unless ``shutdown()`` is called explicitly.
+    """
+
+    def __init__(self, lat, lon, *, jar=None, java=None, width=1600, height=900,
+                 language="en", max_heap="4g", image_format="png",
+                 extra_args=(), boot_timeout_s=240):
+        self._proc = None
+        self._owned = True
+        # Set before anything can fail: the cleanup path calls close(), which used to
+        # reach for a base_url that did not exist yet and raise AttributeError - burying
+        # the real reason the renderer never came up under a nonsense error.
+        self.base_url = None
+        args = [java or _find_java(), "-Xmx" + max_heap, "-jar", _find_jar(jar),
+                "--lat", str(lat), "--lon", str(lon),
+                "--width", str(width), "--height", str(height),
+                "--language", language, "--format", image_format,
+                "--serve", "0", *extra_args]
+        self._proc = subprocess.Popen(args, stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, text=True)
+        self.base_url = "http://127.0.0.1:%d" % self._await_port(boot_timeout_s)
+
+    @classmethod
+    def attach(cls, base_url):
+        """A client for a server already running at ``base_url``."""
+        self = cls.__new__(cls)
+        self._proc = None
+        self._owned = False
+        self.base_url = base_url.rstrip("/")
+        return self
+
+    def _await_port(self, timeout_s):
+        """Reads the child's output until the PEAKNAV_SERVE marker names the port.
+
+        After the marker, a thread keeps draining the pipe forever: the app logs
+        throughout its life, and an undrained pipe eventually fills and blocks the
+        JVM mid-log - a hang with no error anywhere.
+
+        The reading happens on its own thread rather than by iterating the pipe here,
+        because the deadline has to hold even when the renderer says NOTHING. Iterating
+        blocks inside ``readline`` until a line arrives, so a renderer that printed its
+        banner and then wedged - a graphics driver that will not give out a GL context,
+        say - was waited on indefinitely, whatever timeout the caller asked for.
+        """
+        lines = queue.Queue()
+        transcript = []
+
+        def read_output():
+            try:
+                for line in self._proc.stdout:
+                    lines.put(line)
+            except Exception:
+                pass
+            finally:
+                lines.put(None)      # end of the child's output
+
+        threading.Thread(target=read_output, daemon=True).start()
+
+        deadline = time.time() + timeout_s
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                self._boot_failed("did not start within %gs" % timeout_s, transcript)
+            try:
+                line = lines.get(timeout=min(remaining, 0.5))
+            except queue.Empty:
+                if self._proc.poll() is not None:
+                    self._boot_failed("exited with status %s before it served anything"
+                                      % self._proc.returncode, transcript)
+                continue
+            if line is None:
+                self._boot_failed("stopped printing and never served; status %s"
+                                  % self._proc.poll(), transcript)
+            transcript.append(line.rstrip())
+            if line.startswith("PEAKNAV_SERVE port="):
+                port = int(line.strip().split("=", 1)[1])
+                threading.Thread(target=self._drain, daemon=True).start()
+                return port
+
+    def _boot_failed(self, reason, transcript):
+        """Stops the half-started renderer and reports it, with what it managed to say.
+
+        The output is the diagnosis - a stack trace, a missing file, or (the case that
+        prompted this) nothing at all after the banner, which says the renderer never got
+        as far as its own code. Discarding it left "renderer did not start" and no clue.
+        """
+        if self._proc is not None:
+            try:
+                self._proc.kill()
+                self._proc.wait(timeout=10)
+            except Exception:
+                pass
+        tail = "\n".join(transcript[-12:])
+        raise PeakNavError("the renderer %s.%s" % (
+            reason, ("\nIt printed:\n" + tail) if tail else " It printed nothing."))
+
+    def _drain(self):
+        try:
+            for _ in self._proc.stdout:
+                pass
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------ transport
+
+    def _request(self, method, path, payload=None, timeout=900):
+        data = None if payload is None else json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(self.base_url + path, data=data, method=method)
+        if data is not None:
+            req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = resp.read()
+                kind = resp.headers.get("Content-Type", "")
+        except urllib.error.HTTPError as e:
+            try:
+                message = json.loads(e.read()).get("error", str(e))
+            except Exception:
+                message = str(e)
+            raise PeakNavError(message) from None
+        if kind.startswith("application/json"):
+            return json.loads(body)
+        return body
+
+    # ------------------------------------------------------------------ the API
+
+    def status(self):
+        return self._request("GET", "/status")
+
+    def move_to(self, lat, lon, *, download_timeout_ms=None, await_tiles_ms=None):
+        """Moves the viewpoint; optionally downloads the area and waits for quiet."""
+        payload = {"lat": lat, "lon": lon}
+        if download_timeout_ms is not None:
+            payload["download_timeout_ms"] = download_timeout_ms
+        if await_tiles_ms is not None:
+            payload["await_tiles_ms"] = await_tiles_ms
+        return self._request("POST", "/position", payload)
+
+    def look(self, bearing_deg, pitch_deg):
+        """Faces the camera: bearing 0 is north, negative pitch looks down."""
+        return self._request("POST", "/camera",
+                             {"bearing_deg": bearing_deg, "pitch_deg": pitch_deg})
+
+    def set_altitude_asl(self, meters):
+        """Absolute height above sea level - what a video wants."""
+        return self._request("POST", "/camera", {"altitude_asl_m": meters})
+
+    def set_elevation_above_ground(self, meters):
+        return self._request("POST", "/camera", {"elevation_above_ground_m": meters})
+
+    def set_elevation_bar(self, fraction):
+        """The UI's elevation bar, 0..1; the scale is exponential, like the app's."""
+        return self._request("POST", "/camera", {"elevation_bar": fraction})
+
+    def set_view(self, **options):
+        """Display options, named as in /openapi.json: sky=True, sky_mode="day",
+        labels=["peaks", "roads"], sky_time="2026-07-15T09:30:00Z", ..."""
+        return self._request("POST", "/view", options)
+
+    def wait(self, *, tiles_timeout_ms=None, settle_ms=None):
+        """Lets streaming finish before a frame; returns {"quiet": False} on timeout."""
+        payload = {}
+        if tiles_timeout_ms is not None:
+            payload["tiles_timeout_ms"] = tiles_timeout_ms
+        if settle_ms is not None:
+            payload["settle_ms"] = settle_ms
+        return self._request("POST", "/wait", payload)
+
+    def frame(self, image_format="png"):
+        """The current view, as PNG or JPEG bytes."""
+        return self._request("GET", "/frame?format=" + image_format)
+
+    def save_frame(self, path):
+        """Renders to ``path``, choosing PNG or JPEG from its suffix."""
+        image_format = "jpg" if path.lower().endswith((".jpg", ".jpeg")) else "png"
+        data = self.frame(image_format)
+        with open(path, "wb") as f:
+            f.write(data)
+        return path
+
+    def providers(self):
+        """The imagery sources this renderer can be pointed at: [{"id", "name"}, ...].
+
+        Needs a renderer new enough to serve ``GET /providers``; older ones 404, which is
+        reported as a :class:`PeakNavError` like any other refusal.
+        """
+        return self._request("GET", "/providers")["providers"]
+
+    def set_satellite(self, provider_id=None, *, template=None, name="Custom",
+                      attribution=""):
+        """Chooses the imagery draped on the terrain.
+
+        Either a known source by id (see :meth:`providers`) or any XYZ tile server by URL
+        template, with ``{x}``, ``{y}`` and ``{z}`` placeholders::
+
+            nav.set_satellite(template="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                              name="OpenStreetMap",
+                              attribution="© OpenStreetMap contributors")
+
+        Every tile is re-fetched, so follow it with a wait before asking for a frame.
+        """
+        if template:
+            return self.set_view(satellite_template=template, satellite_name=name,
+                                 satellite_attribution=attribution)
+        if provider_id:
+            return self.set_view(satellite_provider=provider_id)
+        raise ValueError("name a provider_id or a template")
+
+    def openapi(self):
+        """The server's own API description, as a dict."""
+        return self._request("GET", "/openapi.json")
+
+    # ------------------------------------------------------------------ lifecycle
+
+    def shutdown(self):
+        """Asks the server to exit - also stops servers this client only attached to."""
+        try:
+            self._request("POST", "/shutdown", {}, timeout=10)
+        except (PeakNavError, OSError):
+            pass  # it may already be gone, which is what was wanted
+
+    def close(self):
+        """Shuts down a spawned renderer and reaps the process. Attached servers are
+        left running - stopping something this client did not start is shutdown()'s
+        job, not a context-manager side effect."""
+        if self._proc is not None and self._owned:
+            self.shutdown()
+            try:
+                self._proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait()
+            self._proc = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass

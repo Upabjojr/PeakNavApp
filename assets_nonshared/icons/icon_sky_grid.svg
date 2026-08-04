@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Sky grid: meridians of right ascension and parallels of declination over the celestial
+     sphere. Drawn as a globe of lines rather than a flat mesh, because that is what it is. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs><clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath></defs>
+  <circle cx="120" cy="120" r="120" fill="#0d1a2a"/>
+  <g clip-path="url(#disc)">
+    <!-- a few stars behind the grid -->
+    <g fill="#ffffff" opacity="0.75">
+      <circle cx="60" cy="66" r="4"/><circle cx="176" cy="58" r="3"/>
+      <circle cx="196" cy="150" r="4"/><circle cx="52" cy="170" r="3"/>
+      <circle cx="126" cy="196" r="3"/>
+    </g>
+    <g fill="none" stroke="#7fb2d9" stroke-width="6" opacity="0.85">
+      <!-- parallels of declination -->
+      <ellipse cx="120" cy="120" rx="86" ry="30"/>
+      <ellipse cx="120" cy="120" rx="66" ry="72"/>
+      <!-- meridians of right ascension -->
+      <ellipse cx="120" cy="120" rx="30" ry="86"/>
+      <ellipse cx="120" cy="120" rx="72" ry="86"/>
+      <circle cx="120" cy="120" r="86"/>
+    </g>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#10202b" stroke-width="3"/>
+</svg>

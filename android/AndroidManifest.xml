@@ -8,6 +8,20 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:required="false" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- From Android 11 an app can only see other apps it declares here. Without this,
+         resolveActivity() and friends report that nothing handles a coordinate even when
+         several map apps are installed. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Android 10+ redacts GPS EXIF from imported images unless the app holds this;
@@ -17,8 +31,22 @@
     <uses-permission android:name="android.permission.CAMERA" android:required="false" />
     <uses-feature android:name="android.hardware.camera2.full" android:required="false" />
 
+    <!-- android:largeHeap raises the heap ceiling from the default (268 MB on this class of
+         device, as the crash reports show) to whatever the manufacturer allows, typically 512 MB.
+
+         Needed because of how OSM map data is read: the PBF parser materialises one
+         PrimitiveBlock at a time, and a block over a dense city is huge - every way in it
+         carries an Info record of version, timestamp, changeset and user. A device crashed
+         inside exactly that, with the whole stack in protobuf and not one frame of app code:
+           OutOfMemoryError ... Osmformat$Way$Builder.buildPartial
+                            ... Osmformat$PrimitiveBlock.parseFrom
+         The app cannot make that block smaller - it is what the file contains, and the
+         generated parser has no streaming mode - so the room has to come from somewhere.
+
+         A mitigation, not a cure: it buys headroom rather than reducing what is held. -->
     <application
         android:allowBackup="true"
+        android:largeHeap="true"
         android:icon="@drawable/ic_launcher_app"
         android:appCategory="maps"
         android:isGame="false"
@@ -64,7 +92,23 @@
                 <data android:mimeType="text/xml" />
             </intent-filter>
 
-            <!-- Open a .gpx file directly (e.g. from a file manager). -->
+            <!-- Offer PeakNav wherever a coordinate is opened, alongside the other map apps:
+                 a "geo:" VIEW is the standard way one app hands a point to another, sent by
+                 map apps, browsers, messaging apps and PeakNav itself. BROWSABLE so a geo:
+                 link in a web page counts too. AndroidLauncher.parseGeoUri reads the point. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="geo" />
+            </intent-filter>
+
+            <!-- Open a .gpx file directly: from a file manager, a mail attachment, a
+                 download, a chat app. Three filters rather than one, because a GPX arrives
+                 described in three different ways and matching only the first is why the app
+                 did not appear in "open with" for most files.
+
+                 1. The correct type, when the sender knows it. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -72,6 +116,43 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:mimeType="application/gpx+xml" />
+                <data android:mimeType="application/x-gpx+xml" />
+            </intent-filter>
+
+            <!-- 2. The types senders actually use. A GPX is XML, and file managers that do
+                 not recognise the extension fall back to octet-stream. These are broad, so
+                 the launcher confirms every file by its BYTES before doing anything with it
+                 (AndroidLauncher.handleShareIntent) - a wrong match opens nothing. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/xml" />
+                <data android:mimeType="text/xml" />
+            </intent-filter>
+
+            <!-- 3. By extension, for senders that give no usable type at all. pathPattern
+                 has no "any characters including dots" form, so a pattern is needed per dot
+                 in the name: "track.gpx" needs the first, "alps.2026.gpx" the second, and so
+                 on. Four covers any sane filename. android:host="*" is required for
+                 pathPattern to be considered at all. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.gpx" />
+                <data android:pathPattern=".*\\..*\\.gpx" />
+                <data android:pathPattern=".*\\..*\\..*\\.gpx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.gpx" />
+                <data android:pathPattern=".*\\.GPX" />
+                <data android:pathPattern=".*\\..*\\.GPX" />
             </intent-filter>
 
         </activity>

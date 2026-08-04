@@ -1,0 +1,14 @@
+# Build artifacts of `python -m build` and the editable install
+build/
+dist/
+*.egg-info/
+
+# Test and tool caches
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Generated documentation (`pdoc ... -o docs/`) - built from docstrings on demand,
+# so committing it would only let it drift from the code
+docs/
+examples/.ipynb_checkpoints/

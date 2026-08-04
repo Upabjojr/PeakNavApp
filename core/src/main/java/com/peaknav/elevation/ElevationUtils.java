@@ -72,13 +72,31 @@ public class ElevationUtils {
     }
 
     public static float getElevationCorrectionForRoundEarth(float latitude, float longitude) {
-        final float cLon = getC().L.getTargetLongitude();
-        final float cLat = getC().L.getTargetLatitude();
-        final float corrForRadius = (float) Math.pow(Math.cos(Math.toRadians(cLat)), 2);
+        return roundEarthDropLatits(latitude - getC().L.getTargetLatitude(),
+                longitude - getC().L.getTargetLongitude(), getC().L.getTargetLatitude());
+    }
 
-        float dLon = longitude - cLon;
-        float dLat = latitude - cLat;
-
+    /**
+     * How far below the flat world's plane the round Earth has curved away, at a point
+     * offset from the reference by {@code dLat},{@code dLon} degrees - in latits,
+     * positive downward, to be SUBTRACTED from an elevation.
+     *
+     * <p>The world is rendered flat: y is latitude, x is longitude times the cosine of
+     * the reference latitude, and this correction is what makes distant terrain sink
+     * the way the real horizon does. The horizontal metric here is deliberately the
+     * SAME equirectangular one the renderer places vertices with - not the true
+     * great-circle distance - so a mountain and its label, both corrected through this
+     * formula, sink together with the mesh they stand on.
+     *
+     * <p>The drop is {@code R(sec θ - 1)} for angular distance θ. The textbook
+     * tangent-plane drop is {@code R(1 - cos θ)}; the two agree to fourth order
+     * (θ²R/2 - about 785 m at 100 km), and against the angle-preserving ideal
+     * {@code Rθ·tan(θ/2)} the secant form overshoots by {@code θ⁴R/6} - one metre at
+     * 200 km, so the choice between the three is invisible at any distance labels are
+     * drawn. See TestRoundEarthCurvature for the numbers.
+     */
+    public static float roundEarthDropLatits(float dLat, float dLon, float refLat) {
+        final float corrForRadius = (float) Math.pow(Math.cos(Math.toRadians(refLat)), 2);
         float dz = (float) Math.sqrt(corrForRadius * dLon * dLon + dLat * dLat) * Units.deg2rad;
         dz = (float) ( - radiusOfEarthInLatits + radiusOfEarthInLatits / Math.cos(dz) );
         return dz;

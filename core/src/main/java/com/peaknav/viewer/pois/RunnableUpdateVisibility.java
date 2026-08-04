@@ -52,10 +52,12 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
 
     @Override
     public void run() {
+        com.peaknav.utils.ResourceStats.labelVisibilityRuns.incrementAndGet();
         clearEverything();
 
         try {
             mainRun();
+            com.peaknav.utils.ResourceStats.labelVisibilityCompleted.incrementAndGet();
         } finally {
             clearEverything();
         }

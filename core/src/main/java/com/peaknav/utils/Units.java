@@ -124,10 +124,24 @@ public class Units {
         return Float.min(Gdx.graphics.getHeight(), Gdx.graphics.getWidth())/10f;
     }
 
+    /**
+     * Ground distance between two points of the world frame, in metres.
+     *
+     * <p>The order matters: <b>pos2 defines the frame</b>. An x in this frame is a longitude
+     * scaled by the cosine of some latitude, and only that latitude recovers it, so both
+     * points are read at pos2's. Callers pass the camera as pos2, because a point produced by
+     * marching a ray out from the camera carries the camera's scale whatever latitude it
+     * lands at. Reading each point at its own latitude instead reported Seattle to Mount
+     * Rainier as 189 km rather than 94.5, and the app showed that figure to the user.
+     */
     public static int computeDistanceBetweenWorldVectors(Vector3 pos1, Vector3 pos2) {
         try {
             double sphericalDist = LatLongUtils.sphericalDistance(
-                    new LatLong(pos1.y, convertLatitsToLonits(pos1.x, pos1.y)),
+                    // Both points are read in ONE frame - the second's latitude, which for
+                    // the usual caller (impact vs camera) is the camera's. Converting each
+                    // point with its own latitude mixes two frames and inflates the distance:
+                    // Seattle to Mount Rainier came out as 189 km instead of 94.5.
+                    new LatLong(pos1.y, convertLatitsToLonits(pos1.x, pos2.y)),
                     new LatLong(pos2.y, convertLatitsToLonits(pos2.x, pos2.y))
             );
             return (int) Math.round(

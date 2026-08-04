@@ -129,6 +129,16 @@ public class MapSqliteAndroid extends MapSqlite {
     }
 
     @Override
+    public void beginQueueBatch() {
+        sqLiteDatabase.beginTransaction();
+    }
+
+    @Override
+    public void endQueueBatch() {
+        sqLiteDatabase.setTransactionSuccessful();
+        sqLiteDatabase.endTransaction();
+    }
+
     public List<QueuedTile> getDownloadQueue() {
         List<QueuedTile> queuedTiles = new ArrayList<>(512);
         Cursor rs = sqLiteDatabase.rawQuery(

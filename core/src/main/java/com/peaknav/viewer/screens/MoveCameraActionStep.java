@@ -235,9 +235,29 @@ public class MoveCameraActionStep extends TemporalAction {
     @Override
     protected void end() {
         if (setLocationAtEnd) {
+            // Recover the longitude with the latitude of the frame this x was built in, which
+            // is where the camera STARTED, not where it has arrived.
+            //
+            // The world x is longitude scaled by a cosine of latitude, and that scale is only
+            // valid at the latitude it was taken at. A destination clicked on the terrain is
+            // produced by marching a ray out from the camera, so its x carries the scale of
+            // the camera's latitude at the moment of the click. Dividing it by the cosine of
+            // the DESTINATION's latitude then mixes two frames, and the error is a whole
+            // degree or more of longitude for a move of less than one degree of latitude.
+            //
+            // Concretely, and this is the bug it caused: clicking Mount Rainier from Seattle
+            // flew the camera correctly to the mountain, and this line then re-targeted the
+            // app to 46.876, -120.108 - about 128 km east, out past Ellensburg - the instant
+            // the animation finished. The point itself was right: 91 km from Seattle on a
+            // bearing of 152.8 degrees, which is exactly where Rainier is.
+            // The reference latitude of the world frame is the target's - it is what
+            // MapTile, PoiObject and the label geometry all scale longitudes by - so it is
+            // what converts an x back, whatever latitude the camera has reached. (Reading it
+            // off the camera's own position was the teleport; reading it off the start of the
+            // move works only while the camera starts on the target, which an orbit breaks.)
             getC().L.setCurrentTargetCoords(
                     cam.position.y,
-                    Units.convertLatitsToLonits(cam.position.x, cam.position.y)
+                    Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude())
             );
         }
     }

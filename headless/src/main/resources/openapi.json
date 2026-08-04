@@ -1,0 +1,407 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PeakNav headless renderer",
+    "description": "REST control of an off-screen PeakNav instance. Start it with `peaknav-headless --lat <deg> --lon <deg> --serve 0`; the chosen port is printed as `PEAKNAV_SERVE port=N`. The server binds to 127.0.0.1 and handles one request at a time: the renderer is a single camera and framebuffer, so requests are deliberately serialised. Point Swagger UI or any OpenAPI generator at /openapi.json.",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}",
+      "variables": {
+        "port": {
+          "default": "8080"
+        }
+      }
+    }
+  ],
+  "paths": {
+    "/status": {
+      "get": {
+        "summary": "Liveness, and whether an orbit is running",
+        "responses": {
+          "200": {
+            "description": "Always ok when reachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "orbiting": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/position": {
+      "post": {
+        "summary": "Move the viewpoint to a coordinate",
+        "description": "Optionally downloads missing map data for the area and waits for the view to go quiet before returning - do both before the first /frame at a new place.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "lat",
+                  "lon"
+                ],
+                "properties": {
+                  "lat": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "lon": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180
+                  },
+                  "download_timeout_ms": {
+                    "type": "integer",
+                    "description": "Fetch missing elevation/map/imagery for the area, up to this long."
+                  },
+                  "await_tiles_ms": {
+                    "type": "integer",
+                    "description": "Wait for tiles and imagery to finish streaming, up to this long."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Moved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "downloaded": {
+                      "type": "boolean"
+                    },
+                    "quiet": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/camera": {
+      "post": {
+        "summary": "Aim and place the camera",
+        "description": "Height is one of three explicit forms - metres above sea level, metres above the ground, or the UI's elevation-bar fraction (0..1, exponential). Giving more than one is an error.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bearing_deg": {
+                    "type": "number",
+                    "description": "Compass bearing to face; 0 = north, 90 = east."
+                  },
+                  "pitch_deg": {
+                    "type": "number",
+                    "description": "Camera pitch; negative looks down."
+                  },
+                  "altitude_asl_m": {
+                    "type": "number",
+                    "description": "Absolute height above sea level - what a video wants, so ridges do not bob the camera."
+                  },
+                  "elevation_above_ground_m": {
+                    "type": "number"
+                  },
+                  "elevation_bar": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Applied"
+          },
+          "400": {
+            "description": "Conflicting heights or bad values"
+          }
+        }
+      }
+    },
+    "/view": {
+      "post": {
+        "summary": "Display options - set exactly the fields you name",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sky": {
+                    "type": "boolean"
+                  },
+                  "sky_mode": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "day",
+                      "night"
+                    ]
+                  },
+                  "constellations": {
+                    "type": "boolean"
+                  },
+                  "star_names": {
+                    "type": "boolean"
+                  },
+                  "sky_labels": {
+                    "type": "boolean",
+                    "description": "Master switch over every caption on the sky."
+                  },
+                  "sky_grid": {
+                    "type": "boolean"
+                  },
+                  "ecliptic": {
+                    "type": "boolean"
+                  },
+                  "sky_time": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Freeze the sky and sunlight at this UTC instant, e.g. 2026-07-15T09:30:00Z - renders stop depending on when they run."
+                  },
+                  "sky_time_label": {
+                    "type": "boolean",
+                    "description": "The date-and-time pill shown while the sky is frozen."
+                  },
+                  "sun_shading": {
+                    "type": "boolean"
+                  },
+                  "horizon_compass": {
+                    "type": "boolean"
+                  },
+                  "coordinates": {
+                    "type": "boolean"
+                  },
+                  "corner_compass": {
+                    "type": "boolean"
+                  },
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "peaks",
+                        "place_names",
+                        "cities",
+                        "islands",
+                        "lakes",
+                        "mountain_ranges",
+                        "alpine_huts",
+                        "pistes",
+                        "roads"
+                      ]
+                    },
+                    "description": "Whitelist: everything off, then the named kinds on."
+                  },
+                  "satellite_provider": {
+                    "type": "string",
+                    "description": "id of a known imagery source; GET /providers lists them"
+                  },
+                  "satellite_template": {
+                    "type": "string",
+                    "description": "URL template of any XYZ tile server, with {x} {y} {z} - selects it, adding it if new; takes precedence over satellite_provider"
+                  },
+                  "satellite_name": {
+                    "type": "string",
+                    "description": "display name for satellite_template"
+                  },
+                  "satellite_attribution": {
+                    "type": "string",
+                    "description": "attribution for satellite_template"
+                  },
+                  "label_auto_update": {
+                    "type": "boolean",
+                    "description": "whether the renderer recomputes label visibility on its own"
+                  },
+                  "refresh_labels": {
+                    "type": "boolean",
+                    "description": "run one label visibility pass now; needed after changing 'labels', and applied BEFORE it within a request, so send it as a separate call"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Applied"
+          },
+          "400": {
+            "description": "Unknown label or sky_mode"
+          }
+        }
+      }
+    },
+    "/wait": {
+      "post": {
+        "summary": "Let the view finish before reading a frame",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tiles_timeout_ms": {
+                    "type": "integer",
+                    "description": "Wait for tile/imagery streaming to go quiet."
+                  },
+                  "settle_ms": {
+                    "type": "integer",
+                    "description": "A plain pause on top, for label fade-ins."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "quiet": {
+                      "type": "boolean",
+                      "description": "False if tiles were still arriving at the timeout."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/frame": {
+      "get": {
+        "summary": "The current view, as an image",
+        "description": "The response body is the picture. Call /wait first, or the frame may catch tiles mid-stream.",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "png",
+                "jpg"
+              ],
+              "default": "png"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rendered frame",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shutdown": {
+      "post": {
+        "summary": "Stop the renderer and exit the process",
+        "responses": {
+          "200": {
+            "description": "Acknowledged; the process halts immediately after."
+          }
+        }
+      }
+    },
+    "/providers": {
+      "get": {
+        "summary": "Imagery sources this renderer can use",
+        "responses": {
+          "200": {
+            "description": "the sources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "providers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "This document",
+        "responses": {
+          "200": {
+            "description": "the API description"
+          }
+        }
+      }
+    }
+  }
+}

@@ -82,6 +82,8 @@ public class MountainInputController extends CameraInputController {
 
         @Override
         public boolean tap(float x, float y, int count, int button) {
+            // Picking a new point ends an orbit around the old one.
+            mapViewerScreen.stopOrbit();
 
             mapViewerScreen.impact = mapViewerScreen.detectClicked3DPosition(x, y);
             boolean valid = mapViewerScreen.updateImpact();
@@ -137,6 +139,9 @@ public class MountainInputController extends CameraInputController {
     }
 
     protected boolean process(float deltaX, float deltaY, int button) {
+        // Taking hold of the view ends the orbit: two things steering one camera only
+        // produces a fight, and the person with their hand on it should win.
+        mapViewerScreen.stopOrbit();
         boolean processed = false;
         if (button == rotateButton) {
             tmpV1.set(camera.direction).crs(camera.up);

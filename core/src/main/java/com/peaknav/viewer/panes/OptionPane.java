@@ -54,6 +54,7 @@ public class OptionPane {
     private final Table selectGpx;
     private final Table selectLabels;
     private final Table selectSky;
+    private final Table selectCompass;
     private final float buttonWidth;
     private final float height;
     private final float padHeight;
@@ -111,6 +112,7 @@ public class OptionPane {
         selectGpx = createGpxMenu();
         selectLabels = createLabelsMenu();
         selectSky = createSkyMenu();
+        selectCompass = createCompassMenu();
         // tableAppInfo = createTableAppInfo();
         table = getPreferencesTable(false);
         tableOneColumn = getPreferencesTable(true);
@@ -191,6 +193,10 @@ public class OptionPane {
 
     public Table getSelectSky() {
         return selectSky;
+    }
+
+    public Table getSelectCompass() {
+        return selectCompass;
     }
 
     /* private Table createSatelliteSourceSelectBox2() {
@@ -430,6 +436,89 @@ public class OptionPane {
                     P.setSkyView(true); // touching a sky option turns the sky on
                 }));
         buttons.add(checkBoxConstellations);
+
+        // Sits directly under the constellations, because it governs their names as well as
+        // everything else written on the sky.
+        ImageTextButtonOptionPane checkBoxSkyLabels = getC().widgetGetter.getImageTextButton(
+                "icons/icon_sky_labels.png", s("Sky_labels"), true);
+        addCheckingStateProperty(checkBoxSkyLabels, () -> P.isSkyLabels());
+        checkBoxSkyLabels.addClickListener(() ->
+                changer.execute(() -> {
+                    P.setSkyLabels(checkBoxSkyLabels.isChecked());
+                    P.setSkyView(true); // touching a sky option turns the sky on
+                }));
+        buttons.add(checkBoxSkyLabels);
+
+        ImageTextButtonOptionPane checkBoxSkyGrid = getC().widgetGetter.getImageTextButton(
+                "icons/icon_sky_grid.png", s("Sky_grid"), true);
+        addCheckingStateProperty(checkBoxSkyGrid, () -> P.isSkyGrid());
+        checkBoxSkyGrid.addClickListener(() ->
+                changer.execute(() -> {
+                    P.setSkyGrid(checkBoxSkyGrid.isChecked());
+                    P.setSkyView(true); // touching a sky option turns the sky on
+                }));
+        buttons.add(checkBoxSkyGrid);
+
+        ImageTextButtonOptionPane checkBoxEcliptic = getC().widgetGetter.getImageTextButton(
+                "icons/icon_sky_ecliptic.png", s("Sky_ecliptic"), true);
+        addCheckingStateProperty(checkBoxEcliptic, () -> P.isSkyEcliptic());
+        checkBoxEcliptic.addClickListener(() ->
+                changer.execute(() -> {
+                    P.setSkyEcliptic(checkBoxEcliptic.isChecked());
+                    P.setSkyView(true);
+                }));
+        buttons.add(checkBoxEcliptic);
+
+        ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
+                "icons/icon_back.png", s("Back"), false);
+        back.addClickListener(() -> {
+            table.setVisible(false);
+            show();
+        });
+        buttons.add(back);
+
+        addButtonsToTable(table, buttons, true, buttonWidth);
+        table.setVisible(false);
+        return table;
+    }
+
+    private Table createCompassMenu() {
+        Table table = new Table();
+        table.center();
+        table.setFillParent(true);
+
+        List<Table> buttons = new ArrayList<>(4);
+
+        // Touching any option turns the whole group on, exactly as the sky submenu
+        // turns the sky on - an adjustment you can see beats one silently ignored
+        // because the master switch was off.
+
+        ImageTextButtonOptionPane checkBoxCoordinates = getC().widgetGetter.getImageTextButton(
+                "icons/icon_loc_pin.png", s("Show_coordinates"), true);
+        addCheckingStateProperty(checkBoxCoordinates, () -> P.isShowCoordinates());
+        checkBoxCoordinates.addClickListener(() -> changer.execute(() -> {
+            P.setShowCoordinates(checkBoxCoordinates.isChecked());
+            P.setCompassLocation(true);
+        }));
+        buttons.add(checkBoxCoordinates);
+
+        ImageTextButtonOptionPane checkBoxHorizon = getC().widgetGetter.getImageTextButton(
+                "icons/icon_compass_horizon.png", s("Horizon_compass"), true);
+        addCheckingStateProperty(checkBoxHorizon, () -> P.isHorizonCompass());
+        checkBoxHorizon.addClickListener(() -> changer.execute(() -> {
+            P.setHorizonCompass(checkBoxHorizon.isChecked());
+            P.setCompassLocation(true);
+        }));
+        buttons.add(checkBoxHorizon);
+
+        ImageTextButtonOptionPane checkBoxCorner = getC().widgetGetter.getImageTextButton(
+                "icons/icon_compass_corner.png", s("Corner_compass"), true);
+        addCheckingStateProperty(checkBoxCorner, () -> P.isCornerCompass());
+        checkBoxCorner.addClickListener(() -> changer.execute(() -> {
+            P.setCornerCompass(checkBoxCorner.isChecked());
+            P.setCompassLocation(true);
+        }));
+        buttons.add(checkBoxCorner);
 
         ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
                 "icons/icon_back.png", s("Back"), false);
@@ -918,12 +1007,26 @@ public class OptionPane {
         }));
         buttons.add(checkBoxLargeFonts);
 
-        ImageTextButtonOptionPane checkBoxHorizonCompass = getC().widgetGetter.getImageTextButton(
-                "icons/icon_compass.png", s("Horizon_compass"), true);
-        addCheckingStateProperty(checkBoxHorizonCompass, () -> P.isHorizonCompass());
-        checkBoxHorizonCompass.addClickListener(() -> changer.execute(
-                () -> P.setHorizonCompass(checkBoxHorizonCompass.isChecked())));
-        buttons.add(checkBoxHorizonCompass);
+        // Compass & location: master on/off plus a "..." submenu (coordinates, horizon
+        // markers, corner rose) - the same composite scheme as the sky row below.
+        ImageTextButtonOptionPane checkBoxCompassLocation = getC().widgetGetter.getImageTextButton(
+                "icons/icon_compass_location.png", s("Compass_location"), true);
+        addCheckingStateProperty(checkBoxCompassLocation, () -> P.isCompassLocation());
+        checkBoxCompassLocation.addClickListener(() -> changer.execute(
+                () -> P.setCompassLocation(checkBoxCompassLocation.isChecked())));
+        checkBoxCompassLocation.setProgrammaticChangeEvents(false);
+        Table tableCompass = new Table();
+        tableCompass.add(checkBoxCompassLocation).width(buttonWidth * 0.8f);
+        TextButton buttonCompassOptions = getC().widgetGetter.getTextButton("...", false);
+        buttonCompassOptions.addListener(new ChangeListener() {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                selectCompass.setVisible(true);
+                table.setVisible(false);
+            }
+        });
+        tableCompass.add(buttonCompassOptions).width(buttonWidth * 0.2f).height(height);
+        buttons.add(tableCompass);
 
         // Sky & stars: a shortened on/off checkbox with a "..." options button in the same row
         // (same scheme as the satellite and map-data rows above).
@@ -1166,6 +1269,7 @@ public class OptionPane {
         selectGpx.setVisible(false);
         selectLabels.setVisible(false);
         selectSky.setVisible(false);
+        selectCompass.setVisible(false);
         // tableAppInfo.setVisible(false);
 
         optionsButton.setChecked(true);
@@ -1181,6 +1285,7 @@ public class OptionPane {
         selectGpx.setVisible(false);
         selectLabels.setVisible(false);
         selectSky.setVisible(false);
+        selectCompass.setVisible(false);
         // tableAppInfo.setVisible(false);
         optionsButton.setChecked(false);
         changer.submit(() -> getC().widgetGetter.setCopyrightLabel(

@@ -16,7 +16,8 @@ Terrain and OpenStreetMap data come from two HuggingFace datasets, retiled to th
 
 ## Module layout
 
-Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`.
+Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
+`headless`.
 
 - **`core`** — all shared, platform-independent logic. Package root
   `com.peaknav`. Almost every change belongs here. Sub-packages of note:
@@ -30,6 +31,10 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`.
 - **`android`** — Android launcher/activity, fragments, native screens.
 - **`ios`** — RoboVM launcher. Largely a stub (`LoadFactory` returns `null`s).
 - **`html`** — GWT target.
+- **`headless`** — drives the real renderer off-screen (`PeakNavRenderer`,
+  `RenderCli`; driven by `snapshots/generate_snapshots.py`): programmatic camera, label/sky toggles, waits
+  built on `PeakNavAppState` signals, snapshot capture. See `headless/README.md`;
+  its test suite (`:headless:test`) boots the actual app.
 
 ## Cross-platform architecture
 
@@ -56,15 +61,18 @@ Common patterns from shared code:
 
 ## Build & run
 
-There is no committed Gradle wrapper jar. Use a system `gradle` (Gradle 8.x, matching
-`com.android.tools.build:gradle:8.9.3`), or the daemon is disabled by config, so
-builds are one-shot.
+Use the **wrapper** (`./gradlew`, Gradle 9.3.0), not a system `gradle` — a system
+8.x will not build this project. The build needs JDK 17; pass it explicitly if your
+default JDK is something else. The daemon is disabled by config, so builds are
+one-shot and each command cold-starts.
 
 ```bash
-gradle :core:compileJava            # compile shared code (fast sanity check)
-gradle :desktop:compileJava         # compile desktop
-gradle :desktop:run                 # run the desktop app (mainClass DesktopLauncher)
-gradle :core:test                   # JUnit 5 tests (core/src/test/java)
+J=-Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
+./gradlew :core:compileJava $J        # compile shared code (fast sanity check)
+./gradlew :desktop:compileJava $J     # compile desktop
+./gradlew :desktop:run $J             # run the desktop app (mainClass DesktopLauncher)
+./gradlew :core:test $J               # JUnit 5 tests (core/src/test/java)
+./gradlew :headless:test $J           # boots the real app off-screen; needs DISPLAY
 ```
 
 - **Android** requires the SDK: set `ANDROID_HOME` or add `sdk.dir` to
@@ -73,6 +81,13 @@ gradle :core:test                   # JUnit 5 tests (core/src/test/java)
   `gradle :android:compileDebugJavaWithJavac`.
 - Full asset/data setup (fonts, icons, Lucene geonames index) is described in
   `README.md`; a plain `:core`/`:desktop` compile does **not** need it.
+- **Build-time data tools** live in their own source set, `core/src/tools/java`
+  (package `com.peaknav.tools`), so nothing they pull in ships in the app. Each is
+  exposed as a Gradle task in the `peaknav` group — currently
+  `./gradlew :core:buildGeonamesIndex --args="cities500.txt alternateNamesV2.txt out_dir"`,
+  which rebuilds the place-search index. Put new data-prep tools here rather than in
+  a test: an index builder hidden in `TestLuceneGeonames` meant a half-built index
+  directory from an earlier run could fail the whole suite.
 
 ### Desktop installers
 

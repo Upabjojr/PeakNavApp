@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Open this point somewhere else": a location pin with the arrow-out-of-a-box that means
+     "leaves this app". On Android the system offers whatever map apps are installed; on the
+     desktop it opens a page listing the map services for the point. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs><clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath></defs>
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <g clip-path="url(#disc)">
+    <!-- the point -->
+    <path d="M92 46 C126 46 154 74 154 108 C154 150 92 204 92 204
+             C92 204 30 150 30 108 C30 74 58 46 92 46 Z"
+          fill="#d23b32" stroke="#7a1c17" stroke-width="8" stroke-linejoin="round"/>
+    <circle cx="92" cy="106" r="24" fill="#ffffff"/>
+
+    <!-- leaving the app: the box with the arrow going out of it -->
+    <path d="M132 126 H206 V200 H132 Z" fill="none" stroke="#12222e" stroke-width="12"
+          stroke-linejoin="round"/>
+    <path d="M170 96 H232 V158" fill="none" stroke="#12222e" stroke-width="12"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M232 96 L166 162" fill="none" stroke="#12222e" stroke-width="12"
+          stroke-linecap="round"/>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#10202b" stroke-width="3"/>
+</svg>

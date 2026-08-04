@@ -183,7 +183,10 @@ public class SatelliteImageProvider {
                 Pixmap pixmap = new Pixmap(w, h, zoPixmap.getFormat());
                 // Write via a per-thread temp file + rename, so a concurrent worker producing the
                 // same tile can never interleave bytes into one file.
-                File tmp = new File(imagePath.getPath() + ".part-" + Thread.currentThread().getId());
+                // UUID, not thread id: thread ids are per-JVM, and several renderer processes
+                // share this cache - two of them can hold the same thread id, and a
+                // shared temp name splices two writers into one torn file.
+                File tmp = new File(imagePath.getPath() + ".part-" + java.util.UUID.randomUUID());
                 try {
                     int srcx = (tile.tileX - factor*zoutTile.tileX)*w;
                     int srcy = (tile.tileY - factor*zoutTile.tileY)*h;
@@ -216,7 +219,7 @@ public class SatelliteImageProvider {
         File file = getImageFileHandle(tile.zoomLevel, tile.tileX, tile.tileY);
         if (file.exists())
             return file;
-        File tmp = new File(file.getPath() + ".part-" + Thread.currentThread().getId());
+        File tmp = new File(file.getPath() + ".part-" + java.util.UUID.randomUUID());
         try {
             URL url = new URL(getURL(tile.zoomLevel, tile.tileX, tile.tileY));
 

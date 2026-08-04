@@ -27,19 +27,30 @@ public class LuceneGeonameSearch {
         public final int population;
         /** ISO country code, or empty when the index predates it / the result is not a place. */
         public final String country;
+        /** Metres above sea level for a peak; 0 for places, and for peaks without an ele tag. */
+        public final int elevation;
+        /** True when this result is a mountain peak rather than a populated place. */
+        public final boolean peak;
 
         public GeonameResult(String name, String asciiname, float lat, float lon, int population) {
-            this(name, asciiname, lat, lon, population, "");
+            this(name, asciiname, lat, lon, population, "", 0, false);
         }
 
         public GeonameResult(String name, String asciiname, float lat, float lon, int population,
                              String country) {
+            this(name, asciiname, lat, lon, population, country, 0, false);
+        }
+
+        public GeonameResult(String name, String asciiname, float lat, float lon, int population,
+                             String country, int elevation, boolean peak) {
             this.name = name;
             this.asciiname = asciiname;
             this.lat = lat;
             this.lon = lon;
             this.population = population;
             this.country = (country == null) ? "" : country;
+            this.elevation = elevation;
+            this.peak = peak;
         }
 
         /**
@@ -58,6 +69,15 @@ public class LuceneGeonameSearch {
                 stringBuilder.append(" (");
                 stringBuilder.append(this.country);
                 stringBuilder.append(')');
+            }
+            // A peak is told apart from a namesake village by its height - "Matterhorn
+            // (4478 m)" - the way places are told apart by their country code. Digits and
+            // "m", deliberately: this string has no access to translations, and the SI
+            // abbreviation reads the same in every interface language the app has.
+            if (this.peak && this.elevation > 0) {
+                stringBuilder.append(" (");
+                stringBuilder.append(this.elevation);
+                stringBuilder.append(" m)");
             }
             return stringBuilder.toString();
         }
@@ -102,9 +122,19 @@ public class LuceneGeonameSearch {
                     float lon = Float.parseFloat(doc.get("lon_store"));
                     int population = Integer.parseInt(doc.get("population_store"));
                     String country = doc.get("country_store"); // absent in indexes built before
+                    // Peaks carry a type and an elevation; city documents predate both fields.
+                    boolean peak = "peak".equals(doc.get("type_store"));
+                    int elevation = 0;
+                    String ele = doc.get("ele_store");
+                    if (ele != null) {
+                        try {
+                            elevation = Integer.parseInt(ele);
+                        } catch (NumberFormatException leaveZero) {
+                        }
+                    }
 
-                    geonameResults.add(
-                            new GeonameResult(name, asciiName, lat, lon, population, country));
+                    geonameResults.add(new GeonameResult(
+                            name, asciiName, lat, lon, population, country, elevation, peak));
                     // System.out.printf("%s: %f,%f (pop: %d)\n", name, lat, lon, population);
                 } catch (NumberFormatException | NullPointerException ignored) {
                     // Skip index documents missing the stored coordinate fields.

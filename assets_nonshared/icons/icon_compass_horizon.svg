@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- The compass strip drawn ACROSS THE HORIZON: bearing markers on stalks standing on the
+     horizon line, over a low skyline. Deliberately no lettering - the icon must render the
+     same wherever it is built, and rsvg would substitute whatever font happens to exist. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <!-- the land below the horizon, kept faint so the markers stay the subject -->
+  <path d="M16 152 L62 118 L96 146 L134 106 L176 148 L224 124 L224 196 L16 196 Z"
+        fill="#12222e" fill-opacity="0.22"/>
+
+  <!-- the horizon itself -->
+  <line x1="16" y1="152" x2="224" y2="152" stroke="#12222e" stroke-width="8"
+        stroke-linecap="round"/>
+
+  <!-- side bearing markers: shorter stalks, plain white dashes -->
+  <g stroke="#12222e" stroke-width="5">
+    <line x1="56" y1="152" x2="56" y2="112"/>
+    <line x1="184" y1="152" x2="184" y2="112"/>
+  </g>
+  <rect x="34" y="78" width="44" height="36" rx="12" fill="#12222e"/>
+  <rect x="162" y="78" width="44" height="36" rx="12" fill="#12222e"/>
+  <line x1="46" y1="96" x2="66" y2="96" stroke="#f0f0f0" stroke-width="6"
+        stroke-linecap="round"/>
+  <line x1="174" y1="96" x2="194" y2="96" stroke="#f0f0f0" stroke-width="6"
+        stroke-linecap="round"/>
+
+  <!-- north marker: taller stalk, larger plate, red arrow -->
+  <line x1="120" y1="152" x2="120" y2="86" stroke="#12222e" stroke-width="6"/>
+  <rect x="88" y="34" width="64" height="56" rx="16" fill="#12222e"/>
+  <path d="M120 48 L138 78 L102 78 Z" fill="#d23b32"/>
+</svg>

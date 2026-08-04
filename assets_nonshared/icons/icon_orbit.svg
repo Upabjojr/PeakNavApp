@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Orbit around": circle a summit instead of flying at it. The ellipse is the path seen at
+     an angle - its far half is drawn first so the peak stands in front of it, its near half
+     last so it passes before the peak. That overlap is what makes the ring read as going
+     round rather than as a flat disc. Contrast with icon_go_to_dest, an arrow pointing AT
+     something; the white disc and rim match that icon so the pair reads as a set. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+  </defs>
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <g clip-path="url(#disc)">
+    <!-- far half of the path, behind the summit -->
+    <path d="M28 146 A 92 38 0 0 1 212 146" fill="none" stroke="#12222e" stroke-width="11"
+          stroke-linecap="round" opacity="0.28"/>
+
+    <!-- the summit, standing on the centre line of the ellipse -->
+    <path d="M120 52 L176 146 L64 146 Z" fill="#2f4152"/>
+    <path d="M120 52 L148 100 L120 92 L92 100 Z" fill="#ffffff"/>
+    <path d="M120 52 L176 146 L120 146 Z" fill="#12222e" opacity="0.30"/>
+
+    <!-- near half of the path, in front of the summit -->
+    <path d="M28 146 A 92 38 0 0 0 212 146" fill="none" stroke="#12222e" stroke-width="11"
+          stroke-linecap="round"/>
+
+    <!-- direction of travel, riding on the near half -->
+    <path d="M142 196 L186 180 L150 156 Z" fill="#d23b32" stroke="#7a1c17" stroke-width="3"
+          stroke-linejoin="round"/>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#10202b" stroke-width="3"/>
+</svg>

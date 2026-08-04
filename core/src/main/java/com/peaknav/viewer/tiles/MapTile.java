@@ -43,8 +43,10 @@ import com.peaknav.viewer.render_tiles.PixmapLayerName;
 import org.mapsforge.core.model.BoundingBox;
 import org.mapsforge.core.model.LatLong;
 import org.mapsforge.core.model.Tile;
+import com.peaknav.utils.ResourceStats;
 
 public class MapTile {
+
 
     public static final byte ZOOM_LEVEL_MIN = (byte) 8;
     public static final byte ZOOM_LEVEL_MAX = (byte) 13;
@@ -331,6 +333,14 @@ public class MapTile {
         // Requires OpenGL context!
         while (!texturePixmapMap.isEmpty()) {
             DrawingPair pair = texturePixmapMap.remove();
+            if (disposed) {
+                // The tile was evicted while this upload sat in the queue. Uploading now
+                // would put a texture into a textureMap that dispose() has already emptied,
+                // so nothing would ever free it.
+                pair.pixmap.dispose();
+                ResourceStats.pixmapsDisposed.incrementAndGet();
+                continue;
+            }
             // TODO: check if satellite provider has changed...
             Texture texture = createLayerTexture(pair.layer, pair.pixmap);
             PixmapLayerName layer = pair.layer;
@@ -338,8 +348,10 @@ public class MapTile {
             textureMap.put(layer, texture);
             if (previousTexture != null) {
                 previousTexture.dispose();
+                ResourceStats.texturesDisposed.incrementAndGet();
             }
             pair.pixmap.dispose();
+            ResourceStats.pixmapsDisposed.incrementAndGet();
             refreshUserData();
         }
     }
@@ -366,6 +378,8 @@ public class MapTile {
         // faded out at distance.
         if (layer == PixmapLayerName.GPX_PATH) {
             Texture texture = new Texture(pixmap);
+        ResourceStats.texturesCreated.incrementAndGet();
+            ResourceStats.texturesCreated.incrementAndGet();
             texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
             return texture;
         }
@@ -373,6 +387,7 @@ public class MapTile {
                 && MathUtils.isPowerOfTwo(pixmap.getHeight());
         if (powerOfTwo) {
             Texture texture = new Texture(pixmap, true); // generate mip-maps
+            ResourceStats.texturesCreated.incrementAndGet();
             texture.setFilter(Texture.TextureFilter.MipMapLinearLinear,
                     Texture.TextureFilter.Linear);
             float maxAniso = Texture.getMaxAnisotropicFilterLevel();
@@ -387,6 +402,7 @@ public class MapTile {
     }
 
     public void setTexturePixmap(PixmapLayerName layer, Pixmap pixmap) {
+        ResourceStats.pixmapsCreated.incrementAndGet();
         texturePixmapMap.add(new DrawingPair(layer, pixmap));
         getC().mapTilePixmapToTexturesHandler.addMapTileToQueue(this);
         textureLayerAdded.add(layer);
@@ -443,6 +459,7 @@ public class MapTile {
     }
 
     public MapTile(Tile tile, int zoomElevFactor) {
+        ResourceStats.tilesCreated.incrementAndGet();
         this.tile = tile;
         Tile tileMinZoom = tile;
         while (tileMinZoom.zoomLevel > ZOOM_LEVEL_MIN)
@@ -482,7 +499,16 @@ public class MapTile {
         clearEdgeTucks(); // a fresh mesh; neighbours re-weld and re-request as needed
         numVertices = getWidth() * getHeight();
         int numIndices = (getWidth() - 1) * (getHeight() - 1) * 6;
+        // The tile may already hold a mesh: drawGraphics() runs again every time a neighbour
+        // welds to this tile, and a Mesh owns a vertex and an index buffer on the GPU that
+        // only dispose() frees. Overwriting the field abandoned both - invisible to the heap,
+        // ~185 KB a time, hundreds of times a second while the camera moves.
+        if (mesh != null) {
+            mesh.dispose();
+            ResourceStats.meshesDisposed.incrementAndGet();
+        }
         mesh = new Mesh(true, numVertices, numIndices, getC().staticData.mapTileVertexAttributes);
+        ResourceStats.meshesCreated.incrementAndGet();
         mesh.setIndices(elevationImage.getMeshIndices());
         uploadMeshVertices();
         buildModelInstance();
@@ -530,25 +556,43 @@ public class MapTile {
     public void dispose() {
         // WARNING: .dispose() should always be called by the main thread!
         // assert Thread.currentThread().getName().contains("main");
+        if (disposed) {
+            return;
+        }
         disposed = true;
+        ResourceStats.tilesDisposed.incrementAndGet();
         if (mesh != null) {
             mesh.dispose();
+            ResourceStats.meshesDisposed.incrementAndGet();
             mesh = null;
         }
         for (Texture texture : textureMap.values()) {
             texture.dispose();
+            ResourceStats.texturesDisposed.incrementAndGet();
         }
         textureMap.clear();
+        // Pixmaps that were waiting to be uploaded. A tile can be evicted before the render
+        // thread reaches them, and a Pixmap holds its pixels in native memory that the
+        // garbage collector cannot reclaim - the wrapper is small, the buffer is megabytes.
+        DrawingPair pending;
+        while ((pending = texturePixmapMap.poll()) != null) {
+            pending.pixmap.dispose();
+            ResourceStats.pixmapsDisposed.incrementAndGet();
+        }
         if (material != null) {
             material = null;
         }
         instance = null;
         pixmapLock.lock();
-
-        if (elevationImage != null) {
-            elevationImage.dispose();
+        try {
+            if (elevationImage != null) {
+                elevationImage.dispose();
+            }
+            elevationImage = null;
+        } finally {
+            // Was never unlocked: a disposed tile kept its lock for the life of the process.
+            pixmapLock.unlock();
         }
-        elevationImage = null;
     }
 
     public void addWeldersForTile() {

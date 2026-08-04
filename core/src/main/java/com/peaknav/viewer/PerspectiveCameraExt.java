@@ -5,6 +5,7 @@ import static com.peaknav.gesture.MountainInputController.FIELD_OF_VIEW_MIN;
 import static com.peaknav.utils.PeakNavUtils.getC;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.math.collision.Ray;
 import com.badlogic.gdx.graphics.PerspectiveCamera;
 import com.badlogic.gdx.math.Vector3;
 
@@ -104,6 +105,46 @@ public class PerspectiveCameraExt extends PerspectiveCamera {
         updateAnglesForCompass();
 
         updateGeographicCameras(updateFrustum);
+    }
+
+    /**
+     * A pick ray built analytically from the camera's basis, without inverting the
+     * projection matrix.
+     *
+     * <p>{@link #getPickRay} unprojects through the inverse of the combined matrix - and
+     * with this camera's extreme depth range (near 0.0001, far 15; a 150000:1 ratio) that
+     * inversion loses enough float precision that the resulting ray no longer passes
+     * through the clicked pixel: its terrain hit re-projected several pixels away, which
+     * put the location pin visibly off the click. The forward projection is
+     * well-conditioned; only the inverse is not. Building the ray from direction, up and
+     * the field of view avoids the inverse entirely, so hit points re-project onto the
+     * click to sub-pixel accuracy.
+     *
+     * <p>Returns a fresh Ray: unlike {@code getPickRay} there is no shared instance to
+     * step on, so it is safe from any thread that sees a consistent camera.
+     *
+     * @param screenX window x in pixels
+     * @param screenY window y in pixels, measured downward (touch convention)
+     */
+    public Ray getPickRayStable(float screenX, float screenY) {
+        float w = Gdx.graphics.getWidth();
+        float h = Gdx.graphics.getHeight();
+        double ndcX = 2.0 * screenX / w - 1.0;   // -1 left .. +1 right
+        double ndcY = 1.0 - 2.0 * screenY / h;   // -1 bottom .. +1 top (screenY is y-down)
+        double tanY = Math.tan(Math.toRadians(fieldOfView) * 0.5);
+        double tanX = tanY * (w / (double) h);
+
+        Vector3 right = new Vector3(direction).crs(up).nor();
+        Vector3 upOrtho = new Vector3(right).crs(direction).nor();
+        Vector3 dir = new Vector3(direction)
+                .mulAdd(right, (float) (ndcX * tanX))
+                .mulAdd(upOrtho, (float) (ndcY * tanY))
+                .nor();
+
+        Ray ray = new Ray();
+        ray.origin.set(position);
+        ray.direction.set(dir);
+        return ray;
     }
 
     public PerspectiveCamera getGeographicCameraForPoint(float x, float y) {

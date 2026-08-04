@@ -57,6 +57,10 @@ public class PbfDataCache {
             return new MapReadResult();
         }
 
+        if (!hasHeadroomFor(file)) {
+            return new MapReadResult();
+        }
+
         try {
             InputStream inputStream = new FileInputStream(file);
             BlockReaderAdapter adapter = new PbfTileBinaryParser(dataTile, mapReadResult);
@@ -68,6 +72,54 @@ public class PbfDataCache {
             e.printStackTrace();
         }
         return mapReadResult;
+    }
+
+    /**
+     * How many bytes of heap one byte of compressed PBF turns into while it is parsed.
+     *
+     * <p>The parser inflates a whole block into protobuf objects before anything is kept:
+     * every way becomes a Builder, and each carries an Info record of version, timestamp,
+     * changeset and user that this app never reads. Twelve is a deliberately cautious
+     * estimate of that expansion - it is cheaper to skip a tile than to be right about the
+     * ratio and die anyway.
+     */
+    private static final long PARSE_EXPANSION = 12;
+
+    /** Never refuse a file below this: the check is for city-sized blocks, not small ones. */
+    private static final long ALWAYS_ALLOW_BYTES = 2L * 1024 * 1024;
+
+    /**
+     * Is there room to parse this file, or would it take the process down?
+     *
+     * <p>A device died exactly here, with the whole stack inside protobuf and not one frame
+     * of app code - {@code Osmformat$PrimitiveBlock.parseFrom}, out of memory at the 268 MB
+     * ceiling, over a dense city. Nothing in the app could catch that: by the time the
+     * allocation fails the heap is already gone. So the decision has to be made BEFORE
+     * opening the file, from what is knowable in advance - the file's size and the heap
+     * still free.
+     *
+     * <p>Skipping a tile costs its roads and places on the map. Losing the process costs
+     * everything, including whatever the user was looking at, so the trade is not close.
+     */
+    private boolean hasHeadroomFor(File file) {
+        long size = file.length();
+        if (size <= ALWAYS_ALLOW_BYTES) {
+            return true;
+        }
+        Runtime runtime = Runtime.getRuntime();
+        // Free heap AND the room the heap may still grow into - a nearly full heap that is
+        // allowed to expand is not short of memory.
+        long free = runtime.freeMemory() + (runtime.maxMemory() - runtime.totalMemory());
+        long needed = size * PARSE_EXPANSION;
+        if (needed <= free) {
+            return true;
+        }
+        PeakNavUtils.getLogger().warn(TAG, String.format(java.util.Locale.ENGLISH,
+                "skipping %s: %d MB of map data needs about %d MB to parse and only %d MB "
+                        + "is free. The map will be missing its roads here.",
+                file.getName(), size / (1024 * 1024), needed / (1024 * 1024),
+                free / (1024 * 1024)));
+        return false;
     }
 
     public MapReadResult get(Tile tile, PbfLayer pbfLayer) {

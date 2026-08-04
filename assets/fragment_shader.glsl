@@ -79,7 +79,18 @@ void main() {
         gl_FragColor = vec4(vec3(light), 1.0);
     }
 
-    // GPX path, painted onto the tile surface (over the lit terrain, under the roads).
+    if (u_roadsSet == 1) {
+        vec4 roads = texture2D(u_textureRoads, v_texCoord0).rgba;
+        if (roads.a > 0.01 && distance <= MAX_ROAD_DISTANCE) {
+            float r = distance / MAX_ROAD_DISTANCE;
+            // libgdx equivalent: Interpolation.Exp5In
+            roads.a *= (1.0 - pow(2.0, 5.0*(r-1.0)))/(1.0-min);
+            gl_FragColor = gl_FragColor * (1.0 - roads.a) + roads * roads.a;
+        }
+    }
+
+    // GPX path, painted onto the tile surface (over the lit terrain and the roads, so a track
+    // following a road stays visible on top of it).
     // GpxTileRasterizer stores, per texel: the flow phase as sine (r) and cosine (g) so it can be
     // filtered across its wrap, and in alpha the coverage, which ramps down across the edge of the
     // line instead of switching off. Both are read with a linear filter, so the line keeps a
@@ -105,19 +116,6 @@ void main() {
             // A darker rim where coverage is partial keeps the line legible over bright terrain.
             gpxCol = mix(vec3(0.03, 0.12, 0.28), gpxCol, smoothstep(0.35, 0.85, gpx.a));
             gl_FragColor = vec4(mix(gl_FragColor.rgb, gpxCol, cov), 1.0);
-        }
-    }
-
-    if (u_roadsSet == 1) {
-        vec4 roads = texture2D(u_textureRoads, v_texCoord0).rgba;
-        if (roads.a > 0.01) {
-            if (distance > MAX_ROAD_DISTANCE)
-                return;
-            float r = distance / MAX_ROAD_DISTANCE;
-            // libgdx equivalent: Interpolation.Exp5In
-            roads.a *= (1.0 - pow(2.0, 5.0*(r-1.0)))/(1.0-min);
-            gl_FragColor = gl_FragColor * (1.0 - roads.a) + roads * roads.a;
-            return;
         }
     }
 

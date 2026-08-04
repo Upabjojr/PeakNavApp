@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "peaknav"
+version = "0.1.0"
+description = "Python tools for PeakNav, the 3D mountain viewer: elevation of any coordinate (pure Python), and a client for the off-screen renderer."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "GPL-3.0-only"}
+authors = [{name = "Francesco Bonazzi", email = "peaknav.info@gmail.com"}]
+keywords = ["elevation", "terrain", "ASTER", "mountains", "rendering", "maps"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+# Pillow decodes the elevation tiles; peaknav.headless needs nothing beyond the
+# standard library (the renderer itself is a separate Java artifact).
+dependencies = ["pillow>=9"]
+
+[project.optional-dependencies]
+# The notebook viewer only. peaknav.jupyter.camera - everything the widget actually does -
+# needs nothing; ipywidgets is just the face on it, so it stays out of the base install.
+jupyter = ["ipywidgets>=8"]
+dev = ["pytest>=7", "pdoc>=14", "build", "twine", "ipywidgets>=8"]
+
+[project.urls]
+Homepage = "https://peaknav.com"
+Repository = "https://github.com/Upabjojr/PeakNavApp"
+
+[tool.setuptools.packages.find]
+include = ["peaknav*"]
+
+[tool.pytest.ini_options]
+# The doctests ARE the documentation's examples: collecting them here is what
+# guarantees every example in the docs actually runs. Examples needing the
+# network or the jar carry `# doctest: +SKIP` and have real counterparts in
+# tests/ that skip themselves with a reason instead of silently passing.
+addopts = "--doctest-modules"
+testpaths = ["peaknav", "tests"]

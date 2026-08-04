@@ -136,6 +136,23 @@ public class AreaRegistry {
         return result;
     }
 
+    /**
+     * Has every area tile around this point been read?
+     *
+     * <p>{@link #getAreasNear} reads at most {@link #TILE_LOADS_PER_CALL} tiles per call and is
+     * called once per rendered frame, so the neighbourhood arrives over several frames and the
+     * first of them see only part of it. That is invisible while someone is looking at a moving
+     * map and obvious in a video, whose opening frames were missing area names that appeared a
+     * moment later. Anything capturing an image should wait for this - under a timeout, like
+     * every other readiness signal.
+     *
+     * <p>True exactly when the last scan for this centre tile finished: the neighbourhood is only
+     * remembered ({@code lastCentreKey}) once complete.
+     */
+    public synchronized boolean isNeighbourhoodLoaded(double lat, double lon) {
+        return tileKey(lon2tileX(lon), lat2tileY(lat)) == lastCentreKey;
+    }
+
     private List<MapArea> loadTile(int tileX, int tileY) {
         long key = tileKey(tileX, tileY);
         List<MapArea> cached = tileCache.get(key);

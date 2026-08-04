@@ -72,10 +72,19 @@ public class PeakNavDownloadManager {
     }
 
     public void addDataToQueue(double lat, double lon) {
-        addQueueElevations(lat, lon);
-        addQueueHighways(lat, lon);
-        addQueuePois(lat, lon);
-        addQueueAreas(lat, lon);
+        // Same order the queue is served in (see sqlQueryDownloadQueue): terrain first,
+        // then the labels and paths on it, and AREAS - which not every region has - last.
+        // One transaction around the lot: measured at ~2.8 s per tile when every insert
+        // auto-committed, i.e. most of a minute before the first download could begin.
+        mapSqlite.beginQueueBatch();
+        try {
+            addQueueElevations(lat, lon);
+            addQueuePois(lat, lon);
+            addQueueHighways(lat, lon);
+            addQueueAreas(lat, lon);
+        } finally {
+            mapSqlite.endQueueBatch();
+        }
     }
 
     public List<Tile> getQueueTilesEven(double lat, double lon, byte zoomLevel, int tileSpan) {
@@ -231,20 +240,43 @@ public class PeakNavDownloadManager {
                 conn.setConnectTimeout(DOWNLOAD_CONNECT_TIMEOUT_MILLIS);
                 conn.setReadTimeout(DOWNLOAD_READ_TIMEOUT_MILLIS);
 
+                // Streamed to a name only this process uses, then renamed into place. The
+                // rename is atomic on the same filesystem, so any other process - another
+                // renderer downloading the same region, or the app reading while a renderer
+                // works - sees the file either absent or complete, never part-written. Two
+                // processes fetching the same tile both finish; whichever renames last wins,
+                // and both leave a whole file.
+                File partial = new File(localFile.getPath()
+                        + ".part-" + java.util.UUID.randomUUID());
                 try (InputStream in = conn.getInputStream();
-                     FileOutputStream fos = new FileOutputStream(localFile)) {
+                     FileOutputStream fos = new FileOutputStream(partial)) {
                     byte[] readBuf = new byte[8192];
                     int readLen;
                     while ((readLen = in.read(readBuf)) > 0) {
                         fos.write(readBuf, 0, readLen);
                     }
+                } catch (IOException e) {
+                    partial.delete();
+                    throw e;
                 }
+                java.nio.file.Files.move(partial.toPath(), localFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
                 return;
             } catch (IOException ex) {
                 lastFailure = ex;
-                // Never leave a half written archive behind: it would be unpacked as if complete.
-                if (localFile.exists()) {
-                    localFile.delete();
+                // No half-written archive to clean up: the stream went to the .part file,
+                // which its own catch already removed, and nothing lands on the final name
+                // except by the atomic rename. Deleting localFile here - as this used to -
+                // would now be worse than needless: with several processes downloading, the
+                // file at that name may be another process's completed archive.
+                // 404: the file is not on the server, and it will not be there on the next
+                // attempt either. Retrying with backoff here is what made a download over a
+                // region without AREAS archives crawl - every absent tile burned all the
+                // attempts plus the sleeps between them, on both download workers.
+                if (ex instanceof java.io.FileNotFoundException) {
+                    getLogger().debug(TAG, "not on server (no retry): " + urlString);
+                    throw ex;
                 }
                 getLogger().debug(TAG, "download attempt " + attempt + "/" + DOWNLOAD_ATTEMPTS
                         + " failed for " + urlString + ": " + ex);
@@ -282,6 +314,13 @@ public class PeakNavDownloadManager {
                         File localFile = null;
                         try {
                             if (!P.isCollectDownloadInfo()) {
+                                // Respect the missing download consent, but never silently:
+                                // this skip used to be invisible, so a download without the
+                                // consent queued everything, showed progress and fetched
+                                // nothing - indistinguishable from a network failure.
+                                System.err.println("[Download] skipped " + target.objectKey
+                                        + ": download consent not granted"
+                                        + " (see Missing_download_info_consent)");
                                 ok = true;
                                 return;
                             }
@@ -303,7 +342,22 @@ public class PeakNavDownloadManager {
 
                             okDownload = true;
 
-                            unpackTarGz(localFile, unpackRootFor(target.queuedTile));
+                            try {
+                                unpackTarGz(localFile, unpackRootFor(target.queuedTile));
+                            } catch (IOException | RuntimeException corrupt) {
+                                // The archive on disk is not to be trusted just because it
+                                // exists: a truncated or stale file (crashes and the
+                                // pre-atomic-write era both produced them) fails to unpack
+                                // here for ever, and the old handling then dropped the
+                                // queue row - leaving the tile neither downloaded nor
+                                // pending, unhealable by asking again. Discard the file
+                                // and fetch it fresh, once; only a second failure counts.
+                                getLogger().debug(TAG, "unpack failed for " + target.objectKey
+                                        + "; refetching once: " + corrupt);
+                                localFile.delete();
+                                downloadFromProviders(target.candidateUrls, localFile);
+                                unpackTarGz(localFile, unpackRootFor(target.queuedTile));
+                            }
 
                             ok = true;
                         } catch (IOException ex) {
@@ -382,9 +436,15 @@ public class PeakNavDownloadManager {
                     throw new IOException("Failed to create directory " + parent);
                 }
 
+                // Unpacked the same way tiles are downloaded: to a private name, renamed
+                // into place. Two processes can be unpacking the same archive - both were
+                // told the region was missing before either finished - and a tile file that
+                // one is reading while the other writes it directly would be part-written.
+                File partialEntry = new File(outputFile.getPath()
+                        + ".part-" + java.util.UUID.randomUUID());
                 boolean success = false;
                 try (
-                    FileOutputStream fos = new FileOutputStream(outputFile)
+                    FileOutputStream fos = new FileOutputStream(partialEntry)
                 ) {
                     byte[] buffer = new byte[4096];
                     int len;
@@ -394,9 +454,12 @@ public class PeakNavDownloadManager {
                     success = true;
                 } finally {
                     if (!success) {
-                        outputFile.delete();
+                        partialEntry.delete();
                     }
                 }
+                java.nio.file.Files.move(partialEntry.toPath(), outputFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
             }
         }
     }

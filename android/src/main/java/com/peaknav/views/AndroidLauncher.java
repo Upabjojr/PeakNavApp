@@ -89,6 +89,39 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
+		// The system Back button, made to do what the on-screen Back button does.
+		//
+		// Leaving one of these screens is four steps, not one: hide the overlay the
+		// fragment sits in, show the map again, pop the fragment, and resume the renderer
+		// (NativeScreenCallerAndroid.popStack). Plain Back does only the third, so the
+		// fragment vanished while the overlay stayed in front of a still-hidden,
+		// still-paused map - a blank screen with the app apparently dead behind it.
+		//
+		// Registered on the dispatcher rather than by overriding onBackPressed, because
+		// this app targets SDK 36: from Android 16 predictive back is on by default and
+		// onBackPressed is NEVER CALLED, so an override there is dead code that looks
+		// exactly like a working fix. The dispatcher is the supported route and works on
+		// every version.
+		getOnBackPressedDispatcher().addCallback(this,
+				new androidx.activity.OnBackPressedCallback(true) {
+			@Override
+			public void handleOnBackPressed() {
+				if (getSupportFragmentManager().getBackStackEntryCount() > 0) {
+					com.peaknav.compatibility.NativeScreenCaller caller =
+							com.peaknav.utils.PeakNavUtils.getNativeScreenCaller();
+					if (caller instanceof com.peaknav.compatibility.NativeScreenCallerAndroid) {
+						((com.peaknav.compatibility.NativeScreenCallerAndroid) caller).popStack();
+						return;
+					}
+				}
+				// Nothing of ours to close: hand the press back to the system, which
+				// leaves the app. Disabling first stops this callback catching it again.
+				setEnabled(false);
+				getOnBackPressedDispatcher().onBackPressed();
+				setEnabled(true);
+			}
+		});
+
 		super.onCreate(savedInstanceState);
 
 		setContentView(R.layout.activity_main);
@@ -185,6 +218,16 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		if (uri == null) {
 			return;
 		}
+		// A coordinate handed to us by another app: nothing to read, just a place to go.
+		if ("geo".equalsIgnoreCase(uri.getScheme())) {
+			double[] point = com.peaknav.utils.CoordinateLinks.parseGeoUri(uri.toString());
+			if (point != null) {
+				pendingGeoLat = point[0];
+				pendingGeoLon = point[1];
+				processPendingGeo(0);
+			}
+			return;
+		}
 		byte[] data = readShareBytes(uri);
 		if (data == null || data.length == 0) {
 			return;
@@ -217,6 +260,33 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 				setBytesAsBackgroundImage(data);
 				checkImageGpsAndPrompt(data);
 			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	private Double pendingGeoLat;
+	private Double pendingGeoLon;
+
+	/** Flies to a coordinate handed in by another app, once the map exists. */
+	private void processPendingGeo(final int attempt) {
+		if (pendingGeoLat == null || pendingGeoLon == null) {
+			return;
+		}
+		if (getC() == null || getC().getMapViewerScreen() == null) {
+			if (attempt < 60) {
+				shareHandler.postDelayed(() -> processPendingGeo(attempt + 1), 250);
+			}
+			return;
+		}
+		double lat = pendingGeoLat;
+		double lon = pendingGeoLon;
+		pendingGeoLat = null;
+		pendingGeoLon = null;
+		try {
+			// Ask about missing data for this area, as a tap on the map would: arriving from
+			// another app is exactly when the region is likely to be one never visited.
+			getC().L.setCurrentTargetCoords(lat, lon);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

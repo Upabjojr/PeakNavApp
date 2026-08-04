@@ -37,8 +37,20 @@ public class MapSqliteDesktop extends MapSqlite {
 
     public void openConnection(File file) {
         try {
+            // More than one process may have this database open at once: the desktop app and
+            // any number of headless renderers all share the download bookkeeping. Two
+            // settings make that safe. WAL lets readers proceed while another process
+            // commits, instead of failing during its lock window. The busy timeout makes a
+            // writer that meets another writer wait its turn; the driver's default gives up
+            // after three seconds, and every SQLException here is caught-and-printed, so
+            // under contention a queue write would not fail loudly - it would just quietly
+            // not happen.
+            org.sqlite.SQLiteConfig config = new org.sqlite.SQLiteConfig();
+            config.setBusyTimeout(30_000);
+            config.setJournalMode(org.sqlite.SQLiteConfig.JournalMode.WAL);
             connection = DriverManager.getConnection(
-                    String.format("jdbc:sqlite:%s", file.getAbsolutePath().replace("\\", "/")));
+                    String.format("jdbc:sqlite:%s", file.getAbsolutePath().replace("\\", "/")),
+                    config.toProperties());
         } catch (SQLException throwables) {
             throwables.printStackTrace();
         }
@@ -57,6 +69,29 @@ public class MapSqliteDesktop extends MapSqlite {
     }
 
     @Override
+    public void beginQueueBatch() {
+        try {
+            connection.setAutoCommit(false);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void endQueueBatch() {
+        try {
+            connection.commit();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                connection.setAutoCommit(true);
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
     public void addToDownloadQueueElevationTile(Tile tile) {
         try {
             PreparedStatement statement = connection.prepareStatement(

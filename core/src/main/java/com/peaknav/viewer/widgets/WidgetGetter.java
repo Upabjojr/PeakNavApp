@@ -23,7 +23,6 @@ import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.peaknav.viewer.MapApp;
-import com.peaknav.utils.Units;
 import com.peaknav.viewer.MapViewerSingleton;
 
 import java.util.concurrent.Executor;
@@ -245,8 +244,7 @@ public class WidgetGetter {
                 public void changed(ChangeEvent event, Actor actor) {
                     float visualPerc = sliderElevation.getVisualPercent();
                     mapApp.mapViewerScreen.setCameraElevationBar(visualPerc);
-                    float ele = mapApp.mapViewerScreen.cam.position.z - (float)getC().L.getCurrentTerrainEle() - mapApp.mapViewerScreen.LIFT_ELEV;
-                    float eleMeters = Units.convertLatitsToMeters(ele);
+                    float eleMeters = (float) mapApp.mapViewerScreen.getCameraElevationMeters();
 
                     mapApp.mapViewerScreen.toast(
                             " +" + formatDistanceToUnitSystem(eleMeters) + " ");
@@ -391,6 +389,8 @@ public class WidgetGetter {
         private final TextureRegionDrawable icon_here;
         private final TextureRegionDrawable icon_here_gps;
         public final Button buttonGoToDest;
+        public final Button buttonOrbitDest;
+        public final Button buttonOpenCoordinate;
         private final Button buttonCancelGoToDest;
         public final Table tableCancelGoToDest;
         public final Button buttonGpxFly; // cinematic tour of the loaded GPX; shown only when one is loaded
@@ -503,6 +503,8 @@ public class WidgetGetter {
             buttonCancelGoToDest.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
+                    // Clearing the selection also ends an orbit around it.
+                    mapApp.mapViewerScreen.stopOrbit();
                     mapApp.mapViewerScreen.removeImpact();
                 }
             });
@@ -553,6 +555,50 @@ public class WidgetGetter {
             });
             tableCancelGoToDest.add(buttonGoToDest).width(widgetUnitStep)
                     .height(widgetUnitStep);
+
+            // The other thing to do with a clicked point: circle it instead of flying to it.
+            // Same strip as "go to", so it appears with the pin and goes away with it.
+            buttonOrbitDest = getC().widgetTextures.getButtonWithIcon("icons/icon_orbit.png");
+            buttonOrbitDest.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    // The gyroscope would fight the orbit for the camera, as it does a flight.
+                    getC().getMapViewerScreen().tableTool.buttonOrientation.setChecked(false);
+                    // Start from where the camera already is: the current distance to the
+                    // point becomes the radius, so the view does not jump before it turns.
+                    mapApp.mapViewerScreen.startOrbit(mapApp.mapViewerScreen.impact);
+                    // The pin has served its purpose, exactly as after "go to". The orbit
+                    // holds its own copy of the centre, so clearing the pin does not stop it.
+                    mapApp.mapViewerScreen.removeImpact();
+                }
+            });
+            tableCancelGoToDest.add(buttonOrbitDest).width(widgetUnitStep)
+                    .height(widgetUnitStep).padLeft(0.35f * widgetUnitStep);
+
+            // A second row, set apart from the three above it: this one does not move the
+            // camera at all, it hands the point to something else entirely, so it should not
+            // sit among the buttons that fly and orbit.
+            tableCancelGoToDest.row();
+            buttonOpenCoordinate = getC().widgetTextures
+                    .getButtonWithIcon("icons/icon_open_coordinate.png");
+            buttonOpenCoordinate.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    Vector3 impact = mapApp.mapViewerScreen.impact;
+                    if (impact == null || getNativeScreenCaller() == null) {
+                        return;
+                    }
+                    // World x is a longitude scaled at the frame's reference latitude - the
+                    // target's - so that is what converts it back.
+                    double latitude = impact.y;
+                    double longitude = com.peaknav.utils.Units.convertLatitsToLonits(
+                            impact.x, (float) getC().L.getTargetLatitude());
+                    getNativeScreenCaller().openCoordinate(latitude, longitude);
+                }
+            });
+            tableCancelGoToDest.add(buttonOpenCoordinate).width(widgetUnitStep)
+                    .height(widgetUnitStep).colspan(3).right()
+                    .padTop(0.55f * widgetUnitStep);
             table.add(tableCancelGoToDest).right().expandY()
                     .padRight(borderPad)
                     .row();

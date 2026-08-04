@@ -23,6 +23,7 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Interpolation;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Matrix4;
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.Stage;
@@ -174,6 +175,13 @@ public class MapViewerScreen implements Screen {
 
 	// TODO: this should only be called from ElevationImageProviderManager:
 	public void setCurrentCoordLocation(double longitude, double latitude, double elevation) {
+		// While label updates are held, the camera is scripted from outside frame by
+		// frame - the renderer places it and nothing else may. This callback fires from
+		// tile loads at times of the tiles' own choosing, and the fly it starts stole
+		// single frames from rendered videos whenever a load completed mid-chunk.
+		if (getC().dataRetrieveThreadManager.isLabelUpdatesHeld()) {
+			return;
+		}
 		elevation += LIFT_ELEV;
 
 		// The observer moved: recompute Sun/Moon/planet/star positions for the new location.
@@ -830,17 +838,72 @@ public class MapViewerScreen implements Screen {
 		);
 	}
 
-	public final float LIFT_ELEV = Units.convertMetersToLatits(20);
-	public final float MAX_ELEV_BAR_ELEV = Units.convertMetersToLatits(25000);
+	/** How far above the terrain the camera sits when the bar is at the bottom. */
+	public static final double GROUND_CLEARANCE_METERS = 20;
+	/** Ceiling of the elevation bar, in metres above sea level. */
+	public static final double MAX_ELEV_BAR_METERS = 25000;
+
+	public final float LIFT_ELEV = Units.convertMetersToLatits(GROUND_CLEARANCE_METERS);
+	public final float MAX_ELEV_BAR_ELEV = Units.convertMetersToLatits(MAX_ELEV_BAR_METERS);
+
+	// ---- Camera height ---------------------------------------------------------------------
+	//
+	// Two layers, deliberately separate:
+	//
+	//   metres  - setCameraElevationMeters / getCameraElevationMeters. A height above the
+	//             ground, in the unit the thing actually has. This is the primitive, and what
+	//             any caller that knows where it wants the camera should use.
+	//   the bar - setCameraElevationBar and the convert* helpers, a wrapper over the metre
+	//             layer that applies the slider's feel: exp5In, so dragging near the bottom
+	//             moves the camera a few metres at a time and dragging near the top moves it
+	//             kilometres. That curve belongs to the user interface, not to the camera.
+	//
+	// Keeping them apart matters because the curve is steep: bar 0.45 is about 2.5 km up, not
+	// 450 m. Callers that reason in metres (scripted renders, tests, anything computing a
+	// viewpoint) went through the bar and silently flew several times too high.
+
+	/** Fraction of the way from the ground to the ceiling, as the bar's curve maps it. */
+	private static float barToSpanFraction(float visualPerc) {
+		return Interpolation.exp5In.apply(MathUtils.clamp(visualPerc, 0f, 1f));
+	}
+
+	/**
+	 * The inverse of {@link #barToSpanFraction}. Not exp5Out: that is a different easing
+	 * curve, not the inverse of exp5In, and using it here meant a camera height converted to
+	 * a bar position and back moved by up to 11% of the bar's travel.
+	 */
+	private static float spanFractionToBar(float fraction) {
+		final float min = 1f / 32f;                       // 2^-5, from Interpolation.exp5In
+		fraction = MathUtils.clamp(fraction, 0f, 1f);
+		return MathUtils.clamp((float)(1 + Math.log(fraction * (1 - min) + min)
+				/ (5 * Math.log(2))), 0f, 1f);
+	}
+
+	/** Camera height above the terrain, in metres, for a bar position. */
+	public double convertElevationBar2Meters(float visualPerc) {
+		float baseEle = (float)getC().L.getCurrentTerrainEle() + LIFT_ELEV;
+		return Units.convertLatitsToMeters(
+				(MAX_ELEV_BAR_ELEV - baseEle) * barToSpanFraction(visualPerc));
+	}
+
+	/** The bar position that corresponds to a camera height above the terrain, in metres. */
+	public float convertMeters2ElevationBar(double metersAboveGround) {
+		float baseEle = (float)getC().L.getCurrentTerrainEle() + LIFT_ELEV;
+		float span = MAX_ELEV_BAR_ELEV - baseEle;
+		if (span <= 0)
+			return 0f;
+		return spanFractionToBar(Units.convertMetersToLatits(metersAboveGround) / span);
+	}
 
 	public double convertUnitsElevationBar2Z(float visualPerc) {
 		float baseEle = (float)getC().L.getCurrentTerrainEle() + LIFT_ELEV;
-		return baseEle + (MAX_ELEV_BAR_ELEV - baseEle)*Interpolation.exp5In.apply(visualPerc);
+		return baseEle + (MAX_ELEV_BAR_ELEV - baseEle) * barToSpanFraction(visualPerc);
 	}
 
 	public float convertUnitsZ2ElevationBar(float z) {
 		float baseEle = (float)getC().L.getCurrentTerrainEle() + LIFT_ELEV;
-		return Interpolation.exp5Out.apply((z - baseEle)/(MAX_ELEV_BAR_ELEV - baseEle));
+		float span = MAX_ELEV_BAR_ELEV - baseEle;
+		return span <= 0 ? 0f : spanFractionToBar((z - baseEle) / span);
 	}
 
 	/**
@@ -857,13 +920,74 @@ public class MapViewerScreen implements Screen {
 		slider.setVisualPercent(MathUtils.clamp(slider.getVisualPercent() + deltaPercent, 0f, 1f));
 	}
 
+	/**
+	 * Puts the camera a given height above the terrain, in metres. The primitive: no easing
+	 * curve, no bar, the number means what it says. Clamped to the bar's ceiling so the two
+	 * modes cannot disagree about how high the camera may go.
+	 *
+	 * @param metersAboveGround height above the terrain at the current position
+	 */
+	public void setCameraElevationMeters(double metersAboveGround) {
+		float baseEle = (float)getC().L.getCurrentTerrainEle() + LIFT_ELEV;
+		float z = baseEle + Units.convertMetersToLatits(Math.max(0, metersAboveGround));
+		setCameraZ(Math.min(z, MAX_ELEV_BAR_ELEV));
+	}
+
+	/**
+	 * Puts the camera at an absolute height above sea level, ignoring the ground beneath it.
+	 *
+	 * <p>The third mode, and the one a flight wants. Height above the terrain is right for a
+	 * viewpoint - "stand 600 m up" - but wrong for a moving camera: as it crosses ridges and
+	 * valleys the ground rises and falls beneath it, so a camera held at a constant height
+	 * above ground rides up and down, and whatever it is pointed at bobs in the frame. An
+	 * orbit holds this constant instead.
+	 *
+	 * @param metersAboveSeaLevel absolute altitude; raised if it would be underground
+	 */
+	public void setCameraAltitudeMeters(double metersAboveSeaLevel) {
+		float ground = (float)getC().L.getCurrentTerrainEle() + LIFT_ELEV;
+		float z = Units.convertMetersToLatits(metersAboveSeaLevel);
+		setCameraZ(Math.min(Math.max(z, ground), MAX_ELEV_BAR_ELEV));
+	}
+
+	/** Where the camera is now, in metres above sea level. */
+	public double getCameraAltitudeMeters() {
+		return Units.convertLatitsToMeters(cam.position.z);
+	}
+
+	/** Where the camera is now, in metres above the terrain beneath it. */
+	public double getCameraElevationMeters() {
+		float baseEle = (float)getC().L.getCurrentTerrainEle() + LIFT_ELEV;
+		return Units.convertLatitsToMeters(cam.position.z - baseEle);
+	}
+
+	/**
+	 * Puts the camera where the elevation bar says. A wrapper over
+	 * {@link #setCameraElevationMeters}: it converts the bar's position through the slider
+	 * curve first, so the interface keeps its feel - fine control low down, kilometres per
+	 * drag up high - while the camera itself is still positioned in metres.
+	 *
+	 * @param elevation bar position, 0 (on the ground) to 1 (the ceiling)
+	 */
 	public void setCameraElevationBar(float elevation) {
-		double newElevation = convertUnitsElevationBar2Z(elevation);
+		setCameraElevationMeters(convertElevationBar2Meters(elevation));
+	}
+
+	private void setCameraZ(float z) {
 		moveCameraAction.camQueueLock.writeLock().lock();
 		try {
-			cam.position.z = (float) newElevation;
+			cam.position.z = z;
 			cam.update();
 			triggerElevationChanged = true;
+			// An orbit re-imposes its own height on EVERY frame (see advanceOrbit), so
+			// without this the next frame undid whatever the elevation bar had just done:
+			// the camera twitched and snapped straight back, and changing height while
+			// orbiting a pinned point simply did not work. This is the one place that can
+			// tell the difference - every deliberate height change arrives here, and the
+			// orbit's own per-frame pose does not (it goes through setCameraVectors). So a
+			// height the user asked for becomes the height the orbit holds, while the
+			// orbit still ignores the ground rising and falling beneath it.
+			orbitHeight = z;
 		} finally {
 			moveCameraAction.camQueueLock.writeLock().unlock();
 		}
@@ -1000,6 +1124,7 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(optionPane.getSelectGpx());
 		stage.addActor(optionPane.getSelectLabels());
 		stage.addActor(optionPane.getSelectSky());
+		stage.addActor(optionPane.getSelectCompass());
 		// stage.addActor(optionPane.getTableAppInfo());
 		optionPane.hide();
 
@@ -1239,6 +1364,8 @@ public class MapViewerScreen implements Screen {
 		if (paused) {
 			return;
 		}
+
+		advanceOrbit(deltaTime);
 
 		updateGpxButtons();
 
@@ -1572,14 +1699,27 @@ public class MapViewerScreen implements Screen {
 						impactDistanceMeters, 10000) + " ");
 	}
 
+	// Scratch for converting the projected impact into stage coordinates each frame.
+	private final Vector2 pinStageCoords = new Vector2();
+	// Scratch for cam.project, which mutates its argument; impact itself must stay in world space.
+	private final Vector3 pinProjCoords = new Vector3();
+
 	public boolean buttonPinLocUpdatePosition() {
 		if (impact == null || buttonPinLoc == null)
 			return false;
-		Vector3 proj = cam.project(impact.cpy());
+		Vector3 proj = cam.project(pinProjCoords.set(impact));
 		if (proj.x < 0 || proj.x >= Gdx.graphics.getWidth() || proj.y < 0 || proj.y >= Gdx.graphics.getHeight()) {
 			buttonPinLoc.setVisible(false);
 			return false;
 		}
+		// cam.project yields WINDOW pixels (origin bottom-left), but the pin lives on the
+		// scene2d stage, which runs in ExtendViewport world units - a different space
+		// whenever the window has been resized away from its start-up size. Feeding pixels
+		// straight into setPosition put the pin off its click point by the viewport scale,
+		// growing toward the screen edges. Convert via the stage viewport: unproject wants
+		// y measured downward, project's y is measured upward.
+		pinStageCoords.set(proj.x, Gdx.graphics.getHeight() - proj.y);
+		stage.getViewport().unproject(pinStageCoords);
 		/*
 		Vector3 otherImpact = detectClicked3DPosition(
 				(int) proj.x,
@@ -1596,9 +1736,93 @@ public class MapViewerScreen implements Screen {
 		buttonPinLoc.setVisible(true);
 		tableLocation.tableCancelGoToDest.setVisible(true);
 		buttonPinLoc.setPosition(
-				proj.x - 0.5f*buttonPinLoc.getWidth(),
-				proj.y);
+				pinStageCoords.x - 0.5f*buttonPinLoc.getWidth(),
+				pinStageCoords.y);
 		return true;
+	}
+
+	// ---- Orbit ---------------------------------------------------------------------------
+	//
+	// Circles the camera around a clicked point, keeping it in view: the alternative to flying
+	// to it. Everything here is in world coordinates and nothing touches the target, which is
+	// what makes it safe - the world frame's east-west scale is fixed by
+	// getC().L.getTargetLatitude() (see MapTile.buildVertices, LabelRenderer, PoiObject), so
+	// leaving the target alone leaves the frame still and the geometry plain Euclidean.
+
+	/** A full turn a minute: slow enough to watch, fast enough to see it move. */
+	private static final double ORBIT_RADIANS_PER_SECOND = Math.toRadians(6);
+
+	private boolean orbiting = false;
+	private final Vector3 orbitCentre = new Vector3();
+	private final Vector3 orbitEye = new Vector3();
+	private final Vector3 orbitDirection = new Vector3();
+	/** Horizontal distance from the centre, in world units, held constant. */
+	private float orbitRadius;
+	/** Camera height, held constant so the subject does not bob as the ground changes. */
+	private float orbitHeight;
+	/** Where the camera currently is around the circle, in radians. */
+	private double orbitAngle;
+
+	public boolean isOrbiting() {
+		return orbiting;
+	}
+
+	/**
+	 * Starts circling the given world point, from wherever the camera is now.
+	 *
+	 * <p>The current distance becomes the radius and the current height is held, so the orbit
+	 * begins exactly where the view already is and simply starts turning.
+	 */
+	public void startOrbit(Vector3 centre) {
+		if (centre == null) {
+			return;
+		}
+		float dx = cam.position.x - centre.x;
+		float dy = cam.position.y - centre.y;
+		float radius = (float) Math.sqrt(dx * dx + dy * dy);
+		if (radius < 1e-5f) {
+			// Standing on it: there is no circle to walk.
+			return;
+		}
+		orbitCentre.set(centre);
+		orbitRadius = radius;
+		orbitHeight = cam.position.z;
+		orbitAngle = Math.atan2(dy, dx);
+		orbiting = true;
+	}
+
+	public void stopOrbit() {
+		orbiting = false;
+	}
+
+	/**
+	 * Stops whatever scheduled path is currently driving the camera — a pinned-point orbit, a
+	 * running GPX tour, or queued fly steps — so a newly chosen destination is not fought over by
+	 * moves still aimed at the old one. Called from CurrentLocation when the target coordinates
+	 * actually change. Deliberately leaves pendingGpxFrame alone: a GPX load files its framing
+	 * request before re-targeting, and that fly belongs to the new destination, not the old.
+	 */
+	public void cancelScheduledCameraPath() {
+		stopOrbit();
+		if (gpxTourActive) {
+			stopGpxFlythrough(); // also clears the queued steps and the framing hold
+		} else {
+			moveCameraAction.clearSteps();
+		}
+	}
+
+	private void advanceOrbit(float deltaTime) {
+		if (!orbiting) {
+			return;
+		}
+		orbitAngle += ORBIT_RADIANS_PER_SECOND * deltaTime;
+		orbitEye.set(
+				orbitCentre.x + orbitRadius * (float) Math.cos(orbitAngle),
+				orbitCentre.y + orbitRadius * (float) Math.sin(orbitAngle),
+				orbitHeight);
+		orbitDirection.set(orbitCentre).sub(orbitEye).nor();
+		// immediate: this is a pose per frame, not a move to queue behind other moves.
+		moveCameraAction.setCameraVectors(orbitEye, orbitDirection, Vector3.Z, true);
 	}
 
 	public void removeImpact() {

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Sky labels: stars with their names written beside them. The same night disc as the other
+     sky icons, so the group reads as a set; what distinguishes this one is the caption plates,
+     drawn in the amber the app uses for its own labels rather than in the bluish white of the
+     constellation icon. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+    <radialGradient id="sky" cx="0.5" cy="0.4" r="0.75">
+      <stop offset="0" stop-color="#26356e"/>
+      <stop offset="1" stop-color="#0b1234"/>
+    </radialGradient>
+  </defs>
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <g clip-path="url(#disc)">
+    <rect x="0" y="0" width="240" height="240" fill="url(#sky)"/>
+
+    <!-- a bright star with its name plate -->
+    <g>
+      <circle cx="58" cy="86" r="11" fill="#ffffff"/>
+      <g fill="#ffffff" opacity="0.85">
+        <rect x="55.5" y="66" width="5" height="40" rx="2.5"/>
+        <rect x="38" y="83.5" width="40" height="5" rx="2.5"/>
+      </g>
+      <rect x="84" y="68" width="122" height="34" rx="8" fill="#f2a63c"/>
+      <g fill="#3a2408">
+        <rect x="96" y="79" width="74" height="6" rx="3"/>
+        <rect x="96" y="89" width="46" height="5" rx="2.5"/>
+      </g>
+    </g>
+
+    <!-- a second, fainter one below -->
+    <g>
+      <circle cx="72" cy="168" r="7" fill="#ffffff"/>
+      <rect x="92" y="152" width="96" height="28" rx="7" fill="#f2a63c" opacity="0.85"/>
+      <g fill="#3a2408" opacity="0.9">
+        <rect x="102" y="161" width="56" height="5" rx="2.5"/>
+        <rect x="102" y="170" width="34" height="4" rx="2"/>
+      </g>
+    </g>
+
+    <!-- scattered background stars -->
+    <g fill="#cdd9ff">
+      <circle cx="150" cy="124" r="3.5"/>
+      <circle cx="196" cy="140" r="2.6"/>
+      <circle cx="44" cy="126" r="3"/>
+      <circle cx="120" cy="212" r="3"/>
+      <circle cx="206" cy="196" r="2.6"/>
+      <circle cx="96" cy="36" r="2.6"/>
+    </g>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#0b1234" stroke-width="3"/>
+</svg>

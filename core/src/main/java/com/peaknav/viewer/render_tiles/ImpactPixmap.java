@@ -74,10 +74,34 @@ public class ImpactPixmap {
         }
     };
 
+    /**
+     * How far along the clicked ray to take the point that selects the depth-map pixel. Any
+     * distance does: the geographic cameras sit exactly where the main camera does (see
+     * PerspectiveCameraExt.updateGeographicCameras), so every point on the ray projects to the
+     * same pixel and only the direction matters. ~111 km is well clear of the near plane
+     * without approaching the far one, where float precision thins out.
+     */
+    private static final float RAY_SAMPLE_LATITS = 1f;
+
+    /**
+     * No depth sample here - the point falls outside the depth map altogether. Negative so
+     * it can never be mistaken for a distance; the callers that scan for a usable range
+     * already ignore anything below 5, and the picker treats it as "nothing was hit".
+     */
+    private static final int NO_READING = -1;
+
     private int getPseudometerPixelDistance(int x, int y, boolean flipY) {
         Vector3 tempUnproj = scratch.get().unproj;
-        tempUnproj.set(x, y, 0.99999f);
-        this.cam.unproject(tempUnproj);
+        // A point along the clicked ray, built analytically.
+        //
+        // This used to be cam.unproject(x, y, 0.99999f). Inverting this camera's matrix at a
+        // near/far ratio of 150000:1 is imprecise - the same reason the ray below is not
+        // cam.getPickRay - and the error tilted the sampled direction slightly upwards. The
+        // ray that placed the hit was already exact, so the two disagreed: the distance came
+        // from a pixel above the one that was clicked. On a distant summit that pixel is the
+        // sky behind it, so the mountain had to be clicked below its top to select it.
+        Ray ray = cam.getPickRayStable(x, y);
+        tempUnproj.set(ray.direction).scl(RAY_SAMPLE_LATITS).add(ray.origin);
         return getPseudometerCoordinateDistance(tempUnproj, flipY, 0);
     }
 
@@ -115,6 +139,18 @@ public class ImpactPixmap {
 
         if (flipY) {
             screenY = pixmap.getHeight() - 1 - screenY;
+        }
+        // Outside the depth map there is no reading, and saying so matters. The four
+        // geographical cameras look along the horizon and reach only about 28 degrees
+        // above and below it (their vertical field of view; see PerspectiveCameraExt), so
+        // anything steeply below the viewer projects off the bottom of the map. libGDX
+        // answers an out-of-bounds getPixel with 0 rather than complaining (measured), and
+        // 0 decodes to a distance of ZERO - which put the impact point exactly at the
+        // camera, where it projects to nowhere and no pin is ever shown. An unknown
+        // distance must not masquerade as a very near one.
+        if (screenX < 0 || screenY < 0
+                || screenX >= pixmap.getWidth() || screenY >= pixmap.getHeight()) {
+            return NO_READING;
         }
         int pixel = pixmap.getPixel(screenX, screenY); // int pixel = pixmap.getPixel(pixmap.getWidth() - 1 - x, pixmap.getHeight() - 1 - y);
         return getPseudometersDistanceFromColor(pixel);
@@ -210,8 +246,16 @@ public class ImpactPixmap {
             if (pixmapNorth == null || pixmapEast == null || pixmapSouth == null || pixmapWest == null)
                 return null;
             int distanceMeters = getPseudometerPixelDistance(screenX, screenY, false);
+            if (distanceMeters <= 0) {
+                // Nothing was hit, or the click was outside what the depth maps cover -
+                // steeply downward, in practice. Returning a point anyway would place it
+                // on top of the camera; the caller shows no pin, which is at least honest.
+                return null;
+            }
             float distanceLatits = Units.convertMetersToLatits(distanceMeters);
-            Ray pickRay = cam.getPickRay(screenX, screenY);
+            // The stable (analytic) ray: the matrix-inverting getPickRay is too imprecise
+            // at this camera's near/far ratio, and its hits re-projected off the click.
+            Ray pickRay = cam.getPickRayStable(screenX, screenY);
             Vector3 dest = new Vector3();
             pickRay.getEndPoint(dest, distanceLatits);
             return dest;

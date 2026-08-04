@@ -19,8 +19,12 @@ public class PoiObject {
     public final float lat, lon, elevation;
     public transient DrawLabel drawLabel;
     public final int isolationParent;
+    /** Metres of prominence from the map data, or -1 when it carries none. */
+    public final float prominence;
     public final DrawLabelCategory drawLabelCategory;
     private final Map<String, String> tags;
+
+
     private final Vector3 pos;
     private int population = -1;
 
@@ -32,13 +36,61 @@ public class PoiObject {
 
     private static final double isolationFactor = 10.0;
 
+    /**
+     * The value {@code isolation_parent} carries when there is nothing higher anywhere near -
+     * a sentinel, not a distance.
+     *
+     * <p>Divided by {@link #isolationFactor} it produced a score of a hundred million, which
+     * EVERY prominent peak shared. So every pair of them compared equal, the sort left them
+     * in whatever order the list happened to hold, and which name won a contested spot was
+     * luck. That is why Mount Fuji appeared only sometimes, and why it lost to Kengamine -
+     * the 380 m distant point on its own crater rim, which is 20 cm higher and tied with it
+     * on every other term.
+     */
+    private static final int ISOLATION_UNKNOWN = 1_000_000_000;
+
+    /**
+     * How strong a claim a summit has on a contested label spot - larger wins.
+     *
+     * <p>Prominence decides where the data gives it. It is the measure that says which of two
+     * summits IS the mountain: Fuji's is the whole 3776 m, while the point on its crater rim
+     * 380 m away has none at all. Elevation cannot do that job here - the rim is 20 cm HIGHER,
+     * which is exactly how it kept winning.
+     *
+     * <p>A documented prominence outranks any peak without one, hence the offset. OSM carries
+     * the tag on the summits that matter, so "someone has recorded this mountain's prominence"
+     * is itself the signal; a lesser hill that happens to carry one appearing ahead of an
+     * untagged giant is the cost, and it is small, since both are drawn when there is room.
+     *
+     * <p>Without prominence the original rule stands: height, or isolation where that says
+     * more - minus the sentinel, which used to make every prominent peak score alike.
+     */
+    public static double peakRank(float prominence, float elevation, int isolationParent) {
+        if (prominence > 0) {
+            return DOCUMENTED_PROMINENCE_OFFSET + prominence;
+        }
+        return Double.max(elevation, isolationScoreOf(isolationParent));
+    }
+
+    /** Above any elevation or isolation score, so a documented mountain always sorts first. */
+    private static final double DOCUMENTED_PROMINENCE_OFFSET = 1e9;
+
+    private static double isolationScoreOf(int isolationParent) {
+        return isolationParent >= ISOLATION_UNKNOWN
+                ? Double.NEGATIVE_INFINITY : isolationParent / isolationFactor;
+    }
+
+    /** The isolation-derived score, or nothing when the value is the sentinel above. */
+    private static double isolationScore(PoiObject peak) {
+        return peak.isolationParent >= ISOLATION_UNKNOWN
+                ? Double.NEGATIVE_INFINITY : peak.isolationParent / isolationFactor;
+    }
+
     public static Comparator<PoiObject> getComparatorPeaks(double curLat, double curLon, double curEle) {
         // double ele = convertLatitsToMeters((float)curEle);
         return (o1, o2) -> {
-            double ele1 = Double.max(o1.elevation, o1.isolationParent/isolationFactor);
-            double ele2 = Double.max(o2.elevation, o2.isolationParent/isolationFactor);
-
-            return Double.compare(ele2, ele1);
+            return Double.compare(peakRank(o2.prominence, o2.elevation, o2.isolationParent),
+                    peakRank(o1.prominence, o1.elevation, o1.isolationParent));
         };
     }
 
@@ -141,7 +193,7 @@ public class PoiObject {
 
     public PoiObject(
             String name, float lon, float lat,
-            float elevation, Map<String, String> tags,
+            float elevation, Map<String, String> tags, float prominence,
             int isolationParent, DrawLabelCategory drawLabelCategory) {
         this.name = getC().transliterator.transliterate(name);
         this.lon = lon;
@@ -152,6 +204,7 @@ public class PoiObject {
         this.isolationParent = isolationParent;
         this.drawLabelCategory = drawLabelCategory;
         this.tags = tags;
+        this.prominence = prominence;
         this.pos = new Vector3();
         this.pos.set(
                 (float)convertLonitsToLatits(lon, lat),

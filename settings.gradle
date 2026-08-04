@@ -1,4 +1,4 @@
-include 'desktop', 'android', 'ios', 'core'
+include 'desktop', 'android', 'ios', 'core', 'headless'
 
 // The GWT `html` target is optional and incomplete, and is not checked into git,
 // so it is absent on some checkouts/branches. Only include it when the module

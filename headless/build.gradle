@@ -1,0 +1,79 @@
+// Builds the app as a library that renders off-screen, with no visible window and no
+// user input, so views can be produced programmatically - for screenshots, for
+// documentation images, and as a way to exercise the real renderer from a test.
+//
+// It is NOT libGDX's headless backend: gdx-backend-headless stubs graphics out
+// entirely and cannot draw a single terrain pixel. This uses the ordinary LWJGL3
+// backend with the window created hidden (GLFW_VISIBLE=false). That gives a real GL
+// context whose frames can be read back, while nothing is ever mapped onto a display.
+//
+//   ./gradlew :headless:renderJar          # runnable fat jar (CLI)
+//   ./gradlew :headless:jar                # the library alone
+plugins {
+    id "application"
+}
+
+// Depends on :desktop rather than :core: the platform pieces the app needs to run on a
+// JVM - DesktopFiles, MapSqliteDesktop, UtilsOSDesktop, NativeScreenCallerDesktop -
+// all live there, and duplicating them here would be a second implementation to keep
+// in step with the first.
+dependencies {
+    api project(':desktop')
+    // :desktop declares :core as `implementation`, so it is not on this module's compile
+    // classpath transitively - and everything being driven here (MapApp, MapController,
+    // MapViewerSingleton) lives in :core.
+    api project(':core')
+    api "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
+    api "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+
+    testImplementation "org.junit.jupiter:junit-jupiter-api:5.10.0"
+    testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.10.0"
+    // Gradle 9 needs the launcher on the test runtime classpath explicitly.
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+ext.mainClassName = 'com.peaknav.headless.RenderCli'
+application.mainClass.set(ext.mainClassName)
+eclipse.project.name = appName + '-headless'
+
+java.sourceCompatibility = 8
+java.targetCompatibility = 8
+if (JavaVersion.current().isJava9Compatible()) {
+    compileJava.options.release.set(8)
+}
+
+// The root build only configures its own Test tasks, so this module needs its own.
+test {
+    useJUnitPlatform()
+    // The renderer boots the whole app once per class; the default timeout is generous
+    // but the output is what matters when something hangs.
+    testLogging {
+        events "passed", "failed", "skipped"
+        exceptionFormat "full"
+        showStandardStreams false
+    }
+}
+
+def os = System.properties['os.name'].toLowerCase()
+
+run {
+    // The renderer reads assets the same way the desktop app does.
+    workingDir = rootProject.file('assets').path
+    if (os.contains('mac')) jvmArgs += "-XstartOnFirstThread"
+}
+
+// A self-contained jar, so the CLI can be handed to a script or a CI job without a
+// Gradle invocation wrapped around it.
+tasks.register('renderJar', Jar) {
+    group = 'build'
+    description = 'Fat jar containing the headless renderer and its dependencies.'
+    archiveFileName.set("${appName}-headless-${projectVersion}.jar")
+    duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
+    dependsOn configurations.runtimeClasspath
+    from sourceSets.main.output
+    from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+    exclude('META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA')
+    manifest {
+        attributes 'Main-Class': project.mainClassName, 'Enable-Native-Access': 'ALL-UNNAMED'
+    }
+}

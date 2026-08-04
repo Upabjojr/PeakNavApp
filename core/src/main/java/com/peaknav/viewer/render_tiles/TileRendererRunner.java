@@ -125,17 +125,31 @@ public abstract class TileRendererRunner extends StoppableRunnable {
         return new File(file, filename);
     }
 
+    /**
+     * How far from the viewer roads and pistes are still rasterised, in degrees (~33 km).
+     * Past it a tile deliberately gets no road layer at all, which is why anything waiting for
+     * "the paths are drawn" has to ask {@link #roadsExpectedFor} rather than expect every tile to
+     * end up with one - it would wait for a layer that is never coming.
+     */
+    public static final double ROAD_CUTOFF_DEGREES = 0.3;
+
+    /** Will this tile ever be given a road/piste layer, at the current target? */
+    public static boolean roadsExpectedFor(Tile tile) {
+        return tile.getBoundingBox().getCenterPoint()
+                .distance(getC().L.getTargetLatLong()) <= ROAD_CUTOFF_DEGREES;
+    }
+
     TileBitmap renderTile(Tile tile, PixmapLayerName pixmapLayerName) {
         RenderThemeFuture renderThemeFuture;
-        double distance = tile.getBoundingBox().getCenterPoint().distance(getC().L.getTargetLatLong());
+        boolean withinCutoff = roadsExpectedFor(tile);
         switch (pixmapLayerName) {
             case BASE_ROADS:
-                if (distance > 0.3)
+                if (!withinCutoff)
                     return null;
                 renderThemeFuture = renderThemes.renderThemeFutureBaseRoads;
                 break;
             case SKI_SLOPES:
-                if (distance > 0.3)
+                if (!withinCutoff)
                     return null;
                 renderThemeFuture = renderThemes.renderThemeFutureSkiSlopes;
                 break;
@@ -149,7 +163,17 @@ public abstract class TileRendererRunner extends StoppableRunnable {
         displayModel.setFixedTileSize(largeTile.tileSize);
         RendererJob rendererJob = new RendererJob(largeTile, tileRenderer.pbfMapDataStore, renderThemeFuture,
                 displayModel, MAP_LABEL_TEXT_SCALE, true, false);
-        getAppState().waitForLastAnyMapTileUpdateTime(500);
+        if (!com.peaknav.utils.PeakNavUtils.getC()
+                .dataRetrieveThreadManager.isLabelUpdatesHeld()) {
+            // Interactive pacing: don't compete with active streaming for CPU. But the
+            // wait and the headless renderer's quiet-wait starve each other - this
+            // wait spaces tile renders ~1/s, each render resets the very clock the
+            // quiet-wait needs 400 ms of silence from, and a label refresh re-queues
+            // tile label layers faster than that drip drains. Held mode (scripted
+            // rendering) skips the pacing: drain the queue flat out, then the scene
+            // is genuinely quiet.
+            getAppState().waitForLastAnyMapTileUpdateTime(500);
+        }
         return tileRenderer.getDatabaseRenderer().executeJob(rendererJob);
     }
 

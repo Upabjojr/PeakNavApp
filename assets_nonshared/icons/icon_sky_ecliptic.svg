@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Ecliptic: the lane the Sun, Moon and planets travel along, tilted against the equator.
+     The warm line is the ecliptic itself, the faint straight one the celestial equator, and
+     the Sun rides on it - the same warm colour the renderer draws the line in. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs><clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath></defs>
+  <circle cx="120" cy="120" r="120" fill="#0d1a2a"/>
+  <g clip-path="url(#disc)">
+    <g fill="#ffffff" opacity="0.7">
+      <circle cx="56" cy="70" r="3.5"/><circle cx="188" cy="78" r="3"/>
+      <circle cx="176" cy="176" r="3.5"/><circle cx="62" cy="186" r="3"/>
+    </g>
+    <!-- the celestial equator, for the tilt to be a tilt against something -->
+    <path d="M6 132 H234" stroke="#7fb2d9" stroke-width="5" opacity="0.45"/>
+    <!-- the ecliptic -->
+    <path d="M6 168 C70 96 170 96 234 96" fill="none" stroke="#f5b642" stroke-width="10"
+          stroke-linecap="round"/>
+    <!-- the Sun on it -->
+    <circle cx="150" cy="100" r="21" fill="#ffd166" stroke="#c98a1e" stroke-width="4"/>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#10202b" stroke-width="3"/>
+</svg>

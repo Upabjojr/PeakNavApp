@@ -155,6 +155,9 @@ public final class SolarSystem {
         double ze = yg * sind(oblecl) + zg * cosd(oblecl);
         moon.raDeg = rev(atan2d(ye, xe));
         moon.decDeg = atan2d(ze, Math.sqrt(xe * xe + ye * ye));
+        // Geocentric so far - as seen from the centre of the Earth. SkyMath.topocentric moves
+        // it to where the observer actually is, which needs this distance.
+        moon.distanceEarthRadii = r;
         moon.magnitude = -11.0;
 
         // Illuminated fraction from the Sun-Moon elongation seen from Earth. Clamp the cosine to

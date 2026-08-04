@@ -5,90 +5,28 @@ import org.robovm.apple.uikit.UIApplication;
 
 import com.badlogic.gdx.backends.iosrobovm.IOSApplication;
 import com.badlogic.gdx.backends.iosrobovm.IOSApplicationConfiguration;
-import com.badlogic.gdx.math.Vector3;
 
-import com.peaknav.compatibility.LoadFactory;
-import com.peaknav.compatibility.NativeScreenCaller;
-import com.peaknav.compatibility.NotificationManagerPeakNav;
-import com.peaknav.database.MapSqlite;
-import com.peaknav.gesture.PositionChangeListener;
-import com.peaknav.network.PeakNavS3Downloader;
-import com.peaknav.utils.CrashLogger;
-import com.peaknav.utils.PeakNavCaches;
-import com.peaknav.utils.PeakNavLogger;
-import com.peaknav.utils.UtilsOSDep;
+import com.peaknav.compatibility.IOSLoadFactory;
 
+/**
+ * The iOS entry point: hands the shared {@link MapApp} to libGDX's RoboVM backend, with
+ * {@link IOSLoadFactory} supplying everything platform-shaped.
+ *
+ * <p>This used to carry a LoadFactory written inline that returned null from every method,
+ * including two that no longer exist on the interface. It compiled only because the module
+ * never built its own sources - {@code ios/build.gradle} declared no source set, so Gradle
+ * looked in {@code src/main/java}, found nothing there, and reported success. That is fixed;
+ * the launcher is now held to the same compiler as the rest of the project.
+ *
+ * <p>It does not yet launch on a device: see {@link IOSLoadFactory} for the two platform
+ * pieces still missing, and why they throw with an explanation rather than returning null.
+ */
 public class IOSLauncher extends IOSApplication.Delegate {
+
     @Override
     protected IOSApplication createApplication() {
         IOSApplicationConfiguration config = new IOSApplicationConfiguration();
-        MapApp mapApp = new MapApp(new LoadFactory() {
-            @Override
-            public MapSqlite getMapSqlite() {
-                return null;
-            }
-
-            @Override
-            public PeakNavS3Downloader getElevationTileDownloader() {
-                return null;
-            }
-
-            @Override
-            public org.mapsforge.core.graphics.GraphicFactory getGraphicFactory() {
-                return null;
-            }
-
-            @Override
-            public NativeScreenCaller getNativeScreenCaller() {
-                return null;
-            }
-
-            @Override
-            public void startWizard() {
-
-            }
-
-            @Override
-            public PeakNavLogger getPeakNavLogger() {
-                return null;
-            }
-
-            @Override
-            public PeakNavCaches getCaches() {
-                return null;
-            }
-
-            @Override
-            public UtilsOSDep getUtilsOSDep() {
-                return null;
-            }
-
-            @Override
-            public NotificationManagerPeakNav getPeakNavNotificationManager() {
-                return null;
-            }
-
-            @Override
-            public CrashLogger getCrashLogger(Throwable throwable, String fileNamePrefix) {
-                return null;
-            }
-        });
-        mapApp.mapViewerScreen.addPositionChangeListener(new PositionChangeListener() {
-            @Override
-            public void onCameraPositionChanged(Vector3 position) {
-
-            }
-
-            @Override
-            public void onZoomChanged(float fieldOfView) {
-
-            }
-
-            @Override
-            public void onCameraDirectionChanged(Vector3 direction, Vector3 up) {
-
-            }
-        });
+        MapApp mapApp = new MapApp(new IOSLoadFactory());
         return new IOSApplication(mapApp, config);
     }
 

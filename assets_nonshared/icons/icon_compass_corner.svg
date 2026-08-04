@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- The compass rose parked IN THE TOP-RIGHT CORNER of the screen: a frame with the rose
+     sitting in its corner, so the icon says where the thing appears rather than what it is. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <!-- the screen -->
+  <rect x="20" y="40" width="200" height="160" rx="18"
+        fill="#ffffff" fill-opacity="0.55" stroke="#12222e" stroke-width="8"/>
+
+  <!-- a hint of terrain inside it, so the frame reads as the map view -->
+  <path d="M28 168 L74 136 L108 160 L146 128 L184 158 L212 142 L212 192
+           Q212 200 204 200 L36 200 Q28 200 28 192 Z"
+        fill="#12222e" fill-opacity="0.20"/>
+
+  <!-- the rose, in the corner it actually occupies -->
+  <circle cx="170" cy="88" r="38" fill="#ffffff" fill-opacity="0.95"
+          stroke="#12222e" stroke-width="6"/>
+  <path d="M170 58 L182 88 L170 84 L158 88 Z" fill="#d23b32" stroke="#7a1c17" stroke-width="1.5"/>
+  <path d="M170 118 L182 88 L170 92 L158 88 Z" fill="#f0f0f0" stroke="#8a8f96" stroke-width="1.5"/>
+  <circle cx="170" cy="88" r="5" fill="#2a3038"/>
+</svg>

@@ -1,14 +1,48 @@
-GPL-3.0 WITH PeakNavApp-Additional-Restriction
-
-PeakNav App
+PeakNav
 Copyright © Francesco Bonazzi
 
-Licensed under the GNU General Public License, version 3.0.
-See: https://www.gnu.org/licenses/gpl-3.0.txt
+SOURCE CODE AND ASSETS
 
-PeakNav Additional Restriction:
+Licensed under the GNU General Public License, version 3.
+Full text: https://www.gnu.org/licenses/gpl-3.0.html
+SPDX-License-Identifier: GPL-3.0-only
 
-The source code, images, and any derivative works may not be used, in whole or in part,
-to publish or distribute applications on any digital mobile application distribution service,
-including but not limited to the Apple App Store, Google Play Store, Samsung Galaxy Store,
-or similar platforms, without the prior written consent of the author.
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.
+
+This covers everything in the repository except the three items named below — the
+code, the interface icons, and the rendered images of the application.
+
+NAME, LOGO AND APPLICATION ICON — NOT COVERED BY THE GPL
+
+These are the author's own work, Copyright © Francesco Bonazzi, all rights reserved,
+and are NOT licensed under the GPL:
+
+  * the name "PeakNav"
+  * the PeakNav logo
+  * the application launcher icon — ic_launcher.svg, ic_launcher.png, and the launcher
+    resources under android/res/ (mipmap-*/ic_launcher*,
+    drawable/ic_launcher_debug.xml, values/ic_launcher_background.xml)
+
+They may not be used or redistributed, in original or in modified form, without the
+prior written permission of the author.
+
+This is a statement of what the license does not reach, not a condition added to it.
+The GPL licenses copyright in software and has never granted rights to a project's
+name or logo; GPLv3 says as much in section 7(e). The rights granted in the source
+code are unaffected: you may build, run, modify and redistribute it, and publish your
+own application made from it, under your own name and with your own launcher icon. A
+fork must supply one in any case — the application loads it at start-up and Android
+requires it in order to build.
+
+Permission is not unreasonably withheld — ask: peaknav.info@gmail.com
+
+See TRADEMARK-AND-ASSETS.md for the detail.
+
+THIRD-PARTY CODE, DATA AND MEDIA
+
+Media and data supplied by others — the Liberation Fonts, the Mapsforge render-theme
+symbols and patterns, the GeoNames search index, and the map, terrain and imagery
+data — are not the author's to restrict and are governed by their own licenses,
+listed in THIRD_PARTY_LICENSES.md.

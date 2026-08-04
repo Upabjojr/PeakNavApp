@@ -88,6 +88,16 @@ public class TileRenderer {
     }
 
     public void initialize() {
+        if (graphicFactory == null) {
+            // No mapsforge graphics backend on this platform, so there is nothing to
+            // rasterise roads and paths WITH. The rest of the app - terrain, satellite
+            // imagery, labels, sky - does not go through mapsforge at all, so it runs
+            // perfectly well without this; the map simply has no path layer on it. iOS is
+            // in this position until a CoreGraphics backend exists (see IOSLoadFactory).
+            // Everything below would throw on a null factory, and everything that USES
+            // what it builds is guarded by databaseRenderer being null.
+            return;
+        }
         renderThemes = new RenderThemes();
 
         TileCache tileCache = new FileSystemTileCache(
@@ -222,22 +232,69 @@ public class TileRenderer {
         tileRendererExecutorSat.execute(() -> getC().cacheDirManager.removeOldCacheFiles());
     }
 
-    public void drawArea(PixmapLayerName pixmapLayerName) {
-
+    /**
+     * How much road/path drawing is still outstanding: tiles near enough to be given a road layer
+     * that have not been rasterised yet, plus whatever the renderer thread still holds.
+     *
+     * <p>A tile reaches {@code IS_DRAWN} as soon as its elevation mesh is ready — the roads are
+     * rasterised afterwards, on a separate low-priority executor, and only then handed over as a
+     * pixmap. So "every tile is drawn" is NOT "the map is finished", and anything that captures an
+     * image on that signal alone gets terrain with no paths on it. The headless renderer's wait
+     * asks this as well; see {@code PeakNavRenderer.awaitTilesLoaded}.
+     *
+     * <p>Counts only what is actually expected: nothing when the roads layer is switched off, and
+     * nothing for tiles past {@link TileRendererRunner#ROAD_CUTOFF_DEGREES}, which never get one.
+     */
+    public int pendingRoadWork() {
+        if (databaseRenderer == null)
+            return 0;   // nothing can draw roads here, so nothing is outstanding
+        if (!P.isPixmapLayerNameVisible(PixmapLayerName.BASE_ROADS))
+            return 0;
+        int pending = 0;
         for (MapTile mapTile : getC().mapTileStorage.getMapTiles()) {
-            if (mapTile.isLayerDrawn(pixmapLayerName))
+            if (mapTile.isDisposed())
                 continue;
-            TileRendererRunner renderer;
-            if (pixmapLayerName == PixmapLayerName.BASE_ROADS) {
-                renderer = new TileRendererRunnerMapsforge(
-                        this, renderThemes, mapTile, pixmapLayerName);
-                renderer.setPriority(Thread.MIN_PRIORITY);
-            } else {
+            if (!TileRendererRunner.roadsExpectedFor(mapTile.tile))
                 continue;
-            }
+            if (!mapTile.isLayerDrawn(PixmapLayerName.BASE_ROADS))
+                pending++;
+        }
+        return pending;
+    }
+
+    /** True while the road renderer has nothing queued and nothing in hand. */
+    public boolean isRoadRendererIdle() {
+        return tileRendererExecutor.getQueue().isEmpty()
+                && tileRendererExecutor.getActiveCount() == 0;
+    }
+
+    public void drawArea(PixmapLayerName pixmapLayerName) {
+        if (pixmapLayerName != PixmapLayerName.BASE_ROADS)
+            return;
+        if (databaseRenderer == null)
+            return;   // no graphics backend: there is no road layer on this platform
+
+        // Nearest tile first. These are rasterised one at a time, and a full neighbourhood takes
+        // far longer than anyone waits for a frame - so the ORDER decides what a picture taken
+        // meanwhile contains. Storage order scattered the work all round the compass, leaving the
+        // foreground bare while tiles behind the camera were drawn; nearest-first fills the view
+        // from the ground up, which is also the order the frame needs them in.
+        java.util.List<MapTile> waiting = new java.util.ArrayList<>();
+        for (MapTile mapTile : getC().mapTileStorage.getMapTiles()) {
+            if (!mapTile.isLayerDrawn(pixmapLayerName))
+                waiting.add(mapTile);
+        }
+        final LatLong target = getC().L.getTargetLatLong();
+        Collections.sort(waiting, (a, b) -> Double.compare(
+                LatLongUtils.distance(a.getImpWhiteTileIndex(), target),
+                LatLongUtils.distance(b.getImpWhiteTileIndex(), target)));
+
+        for (MapTile mapTile : waiting) {
+            TileRendererRunner renderer = new TileRendererRunnerMapsforge(
+                    this, renderThemes, mapTile, pixmapLayerName);
+            renderer.setPriority(Thread.MIN_PRIORITY);
             tileRendererExecutor.executeStoppableRunnable(renderer);
         }
-
     }
 
     /*

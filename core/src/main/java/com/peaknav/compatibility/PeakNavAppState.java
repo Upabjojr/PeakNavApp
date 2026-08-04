@@ -15,6 +15,46 @@ public class PeakNavAppState {
     private boolean loadingMapData;
     private long lastAnyMapTileUpdateTime = System.currentTimeMillis();
 
+    // ------------------------------------------------------------------
+    // Render-completeness signals.
+    //
+    // "The view has finished filling in" is not one event in this app: tiles,
+    // satellite imagery and labels all arrive on their own threads. These fields
+    // are written at the points where that work actually happens, so a caller
+    // (the headless renderer above all, but equally a test or a loading
+    // indicator) can wait on facts instead of inferring readiness from
+    // timestamps going quiet.
+    // ------------------------------------------------------------------
+
+    /** Satellite tile fetches currently in flight; see TileRendererRunnerSatellite. */
+    private final java.util.concurrent.atomic.AtomicInteger pendingSatelliteWork =
+            new java.util.concurrent.atomic.AtomicInteger();
+    /** Labels drawn in the most recent frame; see LabelRenderer.render. */
+    private volatile int visibleLabelCount;
+
+    public void satelliteWorkStarted() {
+        pendingSatelliteWork.incrementAndGet();
+    }
+
+    public void satelliteWorkFinished() {
+        pendingSatelliteWork.decrementAndGet();
+        setLastAnyMapTileUpdateTimeToNow();
+    }
+
+    /** 0 means no satellite tile is being fetched or drawn right now. */
+    public int getPendingSatelliteWork() {
+        return pendingSatelliteWork.get();
+    }
+
+    public void setVisibleLabelCount(int count) {
+        visibleLabelCount = count;
+    }
+
+    /** How many labels the last frame actually drew (0 while they are still being prepared). */
+    public int getVisibleLabelCount() {
+        return visibleLabelCount;
+    }
+
     private PeakNavAppState() {}
 
     public static PeakNavAppState getAppState() {
@@ -91,14 +131,24 @@ public class PeakNavAppState {
         setLastAnyMapTileUpdateTime(System.currentTimeMillis());
     }
 
+    /**
+     * Waits for a lull in tile updates before heavy work - BOUNDED. This used to wait
+     * for ever, and "for ever" is exactly what it did: the waiting worker's own tiles
+     * never finished, so the welding queue kept re-marking updates, which kept the
+     * worker waiting - a self-sustaining park that stalled whole rendering runs (and
+     * could do the same interactively). Politeness is worth five seconds; after that
+     * the work proceeds regardless, because a paced pipeline that never runs paces
+     * nothing.
+     */
     public void waitForLastAnyMapTileUpdateTime(long deltaTime) {
-        while (true) {
+        long deadline = System.currentTimeMillis() + 5_000;
+        while (System.currentTimeMillis() < deadline) {
             long current = System.currentTimeMillis();
             if (current - getLastAnyMapTileUpdateTime() > deltaTime) {
-                break;
+                return;
             }
             try {
-                Thread.sleep(550);
+                Thread.sleep(100);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }

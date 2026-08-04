@@ -11,7 +11,19 @@ apply plugin: 'robovm'
 [compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
 
 ext {
-	mainClassName = "com.peaknav.IOSLauncher"
+	mainClassName = "com.peaknav.viewer.IOSLauncher"
+}
+
+// The sources live in ios/src, the layout the RoboVM tooling and every libGDX iOS
+// project use. Without this Gradle looks in src/main/java, finds nothing, and compiles
+// NOTHING while still reporting success - which is how the launcher below came to
+// reference two LoadFactory methods that no longer exist. A module that cannot fail to
+// build cannot tell you anything.
+sourceSets {
+	main {
+		java.srcDirs = ['src']
+		resources.srcDirs = ['data']
+	}
 }
 
 launchIPhoneSimulator.dependsOn build
@@ -25,6 +37,11 @@ eclipse.project {
 }
 
 dependencies {
+	// mapsforge-core only: it is the type of LoadFactory.getGraphicFactory, so the module
+	// cannot compile without it. There is deliberately no mapsforge graphics BACKEND here -
+	// the project ships one for AWT (desktop) and one for Android, and iOS has neither. See
+	// IOSGraphics for what an iOS backend would have to be, and what the app does meanwhile.
+	implementation 'org.mapsforge:mapsforge-core:0.17.0'
 	implementation "com.badlogicgames.gdx:gdx-backend-robovm:$gdxVersion"
 	implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-ios"
 	implementation "com.mobidevelop.robovm:robovm-cocoatouch:$robovmVersion"

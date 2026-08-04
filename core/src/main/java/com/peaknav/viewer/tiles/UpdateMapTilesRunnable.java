@@ -216,7 +216,9 @@ public class UpdateMapTilesRunnable extends StoppableRunnable {
 
         interruptDrawingThread();
 
-        getC().mapTileStorage.mapTilesForDisposal.clear();
+        // EXPERIMENT: was mapTilesForDisposal.clear(), which dropped tiles the render thread
+        // had not disposed yet - freeing the Java object but never the GPU texture or mesh.
+        getC().mapTileStorage.readyToDispose = true;
 
         long totalMemory = getNativeScreenCaller().getTotalMemory();
         double totalMemoryGB = totalMemory / 1024.0 / 1024.0 / 1024.0;

@@ -17,6 +17,7 @@ import com.peaknav.sky.ConstellationData;
 import com.peaknav.sky.SkyBody;
 import com.peaknav.sky.SkyModel;
 import com.peaknav.sky.StarCatalog;
+import com.peaknav.utils.Units;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.PerspectiveCameraExt;
 
@@ -34,9 +35,38 @@ public final class SkyRenderer {
 
     /** Radius (in latits) at which sky objects are placed; comfortably inside the camera far plane. */
     private static final float SKY_RADIUS = 12f;
-    private static final float HORIZON_SIN = -0.02f; // allow a hair below the mathematical horizon
+    /**
+     * How far below level the sky is drawn when the camera is on the ground: a hair, to keep
+     * stars from showing through terrain that has not loaded yet.
+     */
+    private static final float HORIZON_SIN_GROUND = -0.02f;
+    /** A little beyond the true horizon, so stars sitting exactly on it are not clipped away. */
+    private static final double HORIZON_MARGIN_DEG = 0.75;
+
+    /**
+     * Sine of the lowest direction the sky is drawn in, for the camera's current height.
+     *
+     * <p>Climb, and the horizon drops away from level: at 3 km it is 1.8 degrees down, at 10 km
+     * 3.2, at the top of the elevation bar just over 5. With a fixed limit the sky stopped at a
+     * constant 1.15 degrees below level, so from any real altitude there was a widening band of
+     * empty screen between the last star and the horizon - which is precisely where, from up
+     * there, there are stars to see.
+     */
+    private float horizonSin = HORIZON_SIN_GROUND;
+
+    private static float horizonSinForCamera(PerspectiveCameraExt cam) {
+        double altitudeMeters = Units.convertLatitsToMeters(cam.position.z);
+        if (altitudeMeters <= 0) {
+            return HORIZON_SIN_GROUND;
+        }
+        double dipDeg = com.peaknav.sky.SkyMath.horizonDipDegrees(altitudeMeters);
+        return (float) -Math.sin(Math.toRadians(dipDeg + HORIZON_MARGIN_DEG));
+    }
 
     private final Vector3 tmp = new Vector3();
+
+    /** Reused; setTransformMatrix copies it, so one instance is enough. */
+    private final com.badlogic.gdx.math.Matrix4 identitySkyMat = new com.badlogic.gdx.math.Matrix4();
     private final Vector3 tmp2 = new Vector3();
 
     private com.badlogic.gdx.graphics.Texture moonTexture;
@@ -134,6 +164,8 @@ public final class SkyRenderer {
         boolean objects = P.isSkyView();
         boolean showConstellations = objects && P.isSkyConstellations();
         float px = Math.max(1f, Gdx.graphics.getHeight() / 900f); // pixel scale for hi-dpi
+        // Once per frame: project() is called for every star, and this involves an acos.
+        horizonSin = horizonSinForCamera(cam);
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
@@ -144,6 +176,26 @@ public final class SkyRenderer {
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glDepthMask(false);
         shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());
+
+        // 0) Reference overlays, under everything else so stars and figures stay on top.
+        //    Both are drawn as polylines whose vertices skip when a segment leaves the
+        //    frustum, so a line that wraps behind the viewer does not streak across the sky.
+        if (objects && (P.isSkyGrid() || P.isSkyEcliptic())) {
+            shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+            if (P.isSkyGrid()) {
+                shapeRenderer.setColor(0.45f, 0.62f, 0.78f, 0.32f * starNight);
+                for (float[] enu : sky.getGridEnu()) {
+                    drawPolyline(cam, enu);
+                }
+            }
+            if (P.isSkyEcliptic()) {
+                // Warm, and stronger than the grid: it is the lane the Sun, Moon and planets
+                // ride along, so it should read against the cool grid rather than blend in.
+                shapeRenderer.setColor(0.98f, 0.78f, 0.32f, 0.75f * starNight);
+                drawPolyline(cam, sky.getEclipticEnu());
+            }
+            shapeRenderer.end();
+        }
 
         // 1) Constellation lines (faint)
         if (showConstellations && starNight > 0.05f) {
@@ -205,10 +257,21 @@ public final class SkyRenderer {
         }
 
         // 3) Labels
+        //
+        // One switch covers the lot - constellation names, star names, and the names beside the
+        // Sun, Moon and planets. With it off nothing is written across the sky, whatever the
+        // finer settings say; the finer settings still apply when it is on, so turning it back
+        // on restores what was showing before rather than everything at once.
+        boolean labels = P.isSkyLabels();
         BitmapFont font = getC().styleSingleton.getBitmapFont();
+        // The sky's own transform, not whatever the last pass happened to leave behind.
+        // Sky labels are positioned in screen coordinates already, so any inherited
+        // rotation or offset simply moves them somewhere wrong - which is exactly what a
+        // rotated matrix left by the peak-label pass used to do.
+        spriteBatch.setTransformMatrix(identitySkyMat);
         spriteBatch.begin();
         // constellation names
-        if (showConstellations && starNight > 0.15f) {
+        if (labels && showConstellations && starNight > 0.15f) {
             font.setColor(0.6f, 0.7f, 0.9f, 0.5f * starNight);
             java.util.List<ConstellationData.Label> labs = sky.getConstellations().labels;
             float[] lenu = sky.getLabelEnu();
@@ -220,7 +283,7 @@ public final class SkyRenderer {
             }
         }
         // bright star names
-        if (objects && starNight > 0.15f) {
+        if (labels && objects && P.isSkyStarNames() && starNight > 0.15f) {
             font.setColor(0.85f, 0.9f, 1.0f, 0.75f * starNight);
             float[] nenu = sky.getNamedStarEnu();
             for (int i = 0; i < SkyModel.NAMED_STARS.length; i++) {
@@ -230,11 +293,14 @@ public final class SkyRenderer {
                 }
             }
         }
-        // Sun label always; Moon/planet labels only when sky objects are on and dark enough
+        // Sun label always; Moon/planet labels only when sky objects are on and dark enough.
+        // "Always" still yields to the master switch: the Sun is the one caption that shows in
+        // broad daylight, so leaving it out of the gate would mean switching the labels off and
+        // still having a word on the sky.
         if (bodyNameCache == null || bodyNameCache.length != bodies.size()) {
             bodyNameCache = new String[bodies.size()];
         }
-        for (int i = 0; i < bodies.size(); i++) {
+        for (int i = 0; labels && i < bodies.size(); i++) {
             SkyBody b = bodies.get(i);
             if (b.kind != SkyBody.Kind.SUN && !objects) continue;
             int o = i * 3;
@@ -382,8 +448,32 @@ public final class SkyRenderer {
      * Places an ENU direction at the sky radius, culls it if below the horizon or outside the view
      * frustum, and projects it to screen pixels in {@link #tmp}. Returns true if it should be drawn.
      */
+    /**
+     * Draws a run of ENU points as a line strip, dropping any segment with an end off screen.
+     *
+     * <p>Both ends must project for a segment to be drawn: a point behind the camera comes
+     * back from the projection at a mirrored position, and joining it to a visible neighbour
+     * draws a line clean across the sky.
+     */
+    private void drawPolyline(PerspectiveCameraExt cam, float[] enu) {
+        boolean havePrevious = false;
+        float px = 0f, py = 0f;
+        for (int i = 0; i + 2 < enu.length; i += 3) {
+            if (project(cam, enu[i], enu[i + 1], enu[i + 2])) {
+                if (havePrevious) {
+                    shapeRenderer.line(px, py, tmp.x, tmp.y);
+                }
+                px = tmp.x;
+                py = tmp.y;
+                havePrevious = true;
+            } else {
+                havePrevious = false;
+            }
+        }
+    }
+
     private boolean project(PerspectiveCameraExt cam, float ex, float ey, float ez) {
-        if (ez < HORIZON_SIN) return false;
+        if (ez < horizonSin) return false;
         float wx = cam.position.x + ex * SKY_RADIUS;
         float wy = cam.position.y + ey * SKY_RADIUS;
         float wz = cam.position.z + ez * SKY_RADIUS;

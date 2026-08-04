@@ -35,14 +35,30 @@ public class CurrentLocation {
     }
     private volatile LocationState currentTerrainEleFired = LocationState.NEVER_SET;
 
+    /**
+     * The ground height under the target has been measured; put the camera on it.
+     *
+     * <p>Called from {@link com.peaknav.viewer.tiles.MapTile} when a tile that contains the
+     * target finishes loading its elevation image, having sampled the height <em>at the
+     * target</em>.
+     *
+     * <p>It must therefore place the camera at the target too. It used to pass
+     * {@code currentLatitude}/{@code currentLongitude}, which are only updated later, by
+     * {@code setCurrentFinalCoords} on a different path - so a tile finishing after a flight
+     * snapped the camera back to where the flight started, at the destination's ground
+     * height. Flying from Seattle to Mount Rainier ended with the camera back over Seattle.
+     */
     public void setCurrentTerrainEle(float currentTerrainEle) {
-        // if (currentTerrainEleFired != LocationState.WAITING_FOR_ELEVATION)
-        //     return;
         currentTerrainEleFired = LocationState.ELEVATION_SET;
         this.currentTerrainEle = currentTerrainEle;
+        // Keep the current position in step with what was just measured, rather than leaving
+        // it stale until the other path catches up.
+        currentLatitude = targetLatitude;
+        currentLongitude = targetLongitude;
+        currentLocationNotSet = false;
         getC().getMapViewerScreen().setCurrentCoordLocation(
-                currentLongitude,
-                currentLatitude,
+                targetLongitude,
+                targetLatitude,
                 currentTerrainEle
         );
     }
@@ -85,7 +101,26 @@ public class CurrentLocation {
         setCurrentTargetCoords(lat, lon, checkMissing, false);
     }
 
+    /**
+     * How far the target must move before it counts as a new destination rather than a re-fire of
+     * the current one. Internal flows re-target the same coordinates (tile updates via
+     * setCurrentTargetCoordsAfterTileUpdates, a finished fly via MoveCameraActionStep.end), and
+     * those must not cancel a scheduled camera path. About 11 m — far below any user-chosen move.
+     */
+    private static final double TARGET_MOVED_EPSILON_DEG = 1e-4;
+
     public void setCurrentTargetCoords(double lat, double lon, boolean checkMissing, boolean fromGps) {
+        if (!fromGps
+                && (Math.abs(lat - targetLatitude) > TARGET_MOVED_EPSILON_DEG
+                        || Math.abs(lon - targetLongitude) > TARGET_MOVED_EPSILON_DEG)
+                && getC().getMapViewerScreen() != null) {
+            // A new destination takes over the camera: an orbit around a pinned point, a GPX tour
+            // or queued fly steps would keep steering it toward the old one and fight the move.
+            // GPS is exempt — a moving fix re-targets on every update, and cancelling there would
+            // make orbits and tours unusable whenever GPS following is active.
+            getC().getMapViewerScreen().cancelScheduledCameraPath();
+        }
+
         currentTerrainEleFired = LocationState.TARGETING;
 
         setTargetSetFromGPS(fromGps);
@@ -141,6 +176,17 @@ public class CurrentLocation {
 
         saveCoordinatesToPreferences(currentLatitude, currentLongitude);
 
+        if (getC().dataRetrieveThreadManager.isLabelUpdatesHeld()) {
+            // Held label updates freeze WHICH labels show; the code below is the arrival
+            // ritual that empties the visible and displayable lists and relies on the
+            // triggers - gated while held - to refill them. Running it emptied the screen
+            // on every landed video frame, with nothing allowed to repopulate until the
+            // next explicit refresh: labels blinked out for half-second stretches. The
+            // lists stay as they are; the per-frame reprojection keeps them placed, and
+            // the next refresh rebuilds them from fresh data.
+            return;
+        }
+
         getC().dataRetrieveThreadManager.stopRunnableUpdateVisibility();
         LatLong lastLatLong = getC().dataRetrieveThreadManager.getLastLatLong();
         if (lastLatLong == null || LatLongUtils.distance(
@@ -189,6 +235,35 @@ public class CurrentLocation {
         getC().mapViewerScreen.cam.update();
     }
      */
+
+    /**
+     * Lands the current position on the target with none of the arrival ritual: state
+     * and coordinates only - no camera action, no sky invalidation, no missing-data
+     * checks, no screen callback. For callers that place the camera themselves and
+     * need only the INVARIANT (current == target) to hold: the headless renderer's
+     * frame loop, where the full ritual measured six seconds a frame and none of it
+     * was wanted.
+     */
+    public void landOnTargetQuiet() {
+        currentTerrainEleFired = LocationState.ELEVATION_SET;
+        currentLatitude = targetLatitude;
+        currentLongitude = targetLongitude;
+        currentLocationNotSet = false;
+    }
+
+    /**
+     * Whether the last {@link #setCurrentTargetCoords} has fully landed: the target's
+     * ground elevation has been measured, the camera has been placed there, and the
+     * current coordinates equal the target coordinates. Until this is true the camera
+     * is still where the PREVIOUS target left it - so a frame captured now would be a
+     * frame of the wrong place. The headless renderer waits on this before every
+     * capture, including the fast frames that skip every other wait.
+     */
+    public boolean isTargetReached() {
+        return currentTerrainEleFired == LocationState.ELEVATION_SET
+                && (float) currentLatitude == targetLatitude
+                && (float) currentLongitude == targetLongitude;
+    }
 
     public double getCurrentLatitude() {
         if (currentLocationNotSet) {

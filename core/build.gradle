@@ -1,6 +1,13 @@
 [compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
 eclipse.project.name = appName + '-core'
 
+// Build-time data tools. Their own source set on purpose: they are run from a developer's
+// machine to prepare data that ships as assets, and none of their code belongs in the app -
+// keeping them here means the index-writing half of Lucene never reaches the APK.
+sourceSets {
+    tools
+}
+
 dependencies {
     api "com.badlogicgames.gdx:gdx:$gdxVersion"
 
@@ -51,14 +58,64 @@ dependencies {
 
     // compile 'org.openpnp:opencv:4.5.5-1'
 
+    // Build-time tools (see the tools source set above). Same pinned Lucene as the app, so an
+    // index built here is one the app can open.
+    toolsImplementation 'org.apache.lucene:lucene-core:3.6.2'
+    toolsImplementation 'org.apache.lucene:lucene-analyzers:3.6.2'
+
     // Test dependencies :
     testImplementation "org.junit.jupiter:junit-jupiter-api:5.8.2"
     testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.8.2"
+    // Gradle 9 needs the launcher on the test runtime classpath explicitly, as :headless does.
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
     // testImplementation "org.mockito:mockito-core:3.10.0"
+    // The tests cover the tools too: they build a small index and search it.
+    testImplementation sourceSets.tools.output
 
 }
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
+}
+
+/**
+ * Rebuilds the place-search index the app ships in assets/geonames_index.362/.
+ *
+ * Needs cities500.txt and alternateNamesV2.txt from https://download.geonames.org/export/dump/:
+ *
+ *   ./gradlew :core:buildGeonamesIndex \
+ *       --args="cities500.txt alternateNamesV2.txt assets/geonames_index.362"
+ *
+ * With no arguments it reads those two names from the working directory and writes
+ * geonames_index.362 beside them. Lucene is pinned to 3.6.2, the last Android-compatible
+ * release, so do not bump it here without bumping it for the app.
+ */
+tasks.register('buildGeonamesIndex', JavaExec) {
+    group = 'peaknav'
+    description = 'Builds the GeoNames place-search index from the GeoNames dumps.'
+    classpath = sourceSets.tools.runtimeClasspath
+    mainClass = 'com.peaknav.tools.GeonamesIndexBuilder'
+    // Relative paths in --args resolve against the repository root, as every example in
+    // the README writes them. JavaExec's default is this subproject's directory, which
+    // silently created core/geonames_index.362 and core/assets/... instead of touching
+    // the real index - "the build ran fine" with the output somewhere nobody looks.
+    workingDir = rootProject.projectDir
+}
+
+/*
+ * Adds OSM mountain peaks to an already-built index, in place:
+ *
+ *   ./gradlew :core:addPeaksToIndex --args="peaks.tsv assets/geonames_index.362 [minEle]"
+ *
+ * peaks.tsv comes from extracting natural=peak nodes out of .osm.pbf files; minEle drops
+ * peaks below that elevation unless they have a Wikipedia article. Appending needs only
+ * the shipped index, not the GeoNames dumps a full rebuild would ask for.
+ */
+tasks.register('addPeaksToIndex', JavaExec) {
+    group = 'peaknav'
+    description = 'Appends mountain peaks (from an OSM extraction) to the search index.'
+    classpath = sourceSets.tools.runtimeClasspath
+    mainClass = 'com.peaknav.tools.PeakIndexAppender'
+    workingDir = rootProject.projectDir   // see buildGeonamesIndex
 }
 

@@ -88,6 +88,48 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         checkLocationPermission(mainActivity);
     }
 
+    /**
+     * Hands the coordinate to Android, so whatever the person has installed can open it.
+     *
+     * <p>A {@code geo:} URI is the platform's standard way of saying "this point": it goes to
+     * whichever map app the person has made their default, with nothing asked of them here.
+     * Naming a provider in the app, or putting a chooser in front of them every time, both
+     * take a decision that Android already handles and remembers.
+     *
+     * <p>If nothing on the device answers a geo: URI - a phone with no map app at all - it
+     * falls back to the same web page the desktop uses, which lists the services for a point.
+     */
+    @Override
+    public void openCoordinate(double latitude, double longitude) {
+        mainActivity.runOnUiThread(() -> {
+            String point = String.format(java.util.Locale.ENGLISH, "%.6f,%.6f", latitude, longitude);
+            // The q= repeat is what makes a marker appear: geo:lat,lon alone only centres.
+            Intent map = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(
+                    "geo:" + point + "?q=" + point + "(PeakNav)"));
+            // Just start it. Do NOT ask resolveActivity() first: from Android 11 that only
+            // sees packages declared in <queries>, so it answers null even with three map
+            // apps installed - which sent this down the fallback path and put a dialog on
+            // screen instead of opening the map. Launching and catching the failure is the
+            // only reliable test of whether anything can handle it.
+            try {
+                mainActivity.startActivity(map);
+            } catch (android.content.ActivityNotFoundException noMapApp) {
+                // No map app at all. A browser is the last resort - still an app opening,
+                // never a dialog of ours.
+                String url = com.peaknav.utils.CoordinateLinks.geoHackUrl(
+                        latitude, longitude, java.util.Locale.getDefault().getLanguage());
+                try {
+                    mainActivity.startActivity(
+                            new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+                } catch (android.content.ActivityNotFoundException noBrowser) {
+                    // Nothing on the device can open a coordinate or a web page. Say nothing:
+                    // an alert carrying a URL helps no one and is not what the button is for.
+                    System.err.println("openCoordinate: no app can handle geo: or https: " + url);
+                }
+            }
+        });
+    }
+
     @Override
     public void comingSoon() {
         mainActivity.runOnUiThread(() ->

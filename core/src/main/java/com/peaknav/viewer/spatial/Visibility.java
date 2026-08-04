@@ -20,6 +20,17 @@ public class Visibility {
     }
 
     public void updateCameraPosLatits() {
+        // The camera may not exist yet, or may be gone again. This runs on the visibility
+        // worker, which is started from data arriving rather than from the screen being
+        // ready, so it can reach here before the first frame has built a camera - and it
+        // did, killing the app on a device:
+        // NullPointerException ... Camera.position ... Visibility.updateCameraPosLatits.
+        // Keeping the last known position is right: it is what every other frame used, and
+        // the pass that follows is redone as soon as the camera moves.
+        if (MapViewerSingleton.getViewerInstance() == null
+                || MapViewerSingleton.getViewerInstance().cam == null) {
+            return;
+        }
         ReentrantReadWriteLock rwl = MapViewerSingleton.getViewerInstance().moveCameraAction.camQueueLock;
         rwl.readLock().lock();
         try {
