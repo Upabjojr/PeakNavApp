@@ -76,7 +76,7 @@ public class IntroScreen implements Screen {
 
     @Override
     public void show() {
-        int minSize = Integer.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        int minSize = Math.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         widgetUnitStep = Units.getWidgetUnitStep();
         stage = new Stage(new ExtendViewport(minSize, minSize));
         spriteBatch = new SpriteBatch();

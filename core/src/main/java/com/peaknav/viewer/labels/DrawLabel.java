@@ -201,7 +201,7 @@ public class DrawLabel {
         }
         screenPoiX = mPosition.x;
         screenPoiY = mPosition.y;
-        screenLabelY = Float.max(
+        screenLabelY = Math.max(
                 getCategoryScreenLabelY(),
                 screenPoiY + drawLabelCategory.shiftLabelY);
         updateHiddenBehindCamera();

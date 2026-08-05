@@ -121,7 +121,7 @@ public class Units {
     }
 
     public static float getWidgetUnitStep() {
-        return Float.min(Gdx.graphics.getHeight(), Gdx.graphics.getWidth())/10f;
+        return Math.min(Gdx.graphics.getHeight(), Gdx.graphics.getWidth())/10f;
     }
 
     /**

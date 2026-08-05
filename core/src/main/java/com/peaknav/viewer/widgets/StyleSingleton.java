@@ -35,7 +35,7 @@ public class StyleSingleton {
     private float minSize;
 
     public void updateMinSize() {
-        minSize = Float.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        minSize = Math.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
     }
 
     /**

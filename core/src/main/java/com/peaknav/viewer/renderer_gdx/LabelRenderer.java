@@ -759,7 +759,10 @@ public class LabelRenderer {
         // leaving the view; a fresh challenger gets the seat only when it is free.
         final java.util.HashSet<com.peaknav.areas.MapArea> incumbents =
                 new java.util.HashSet<>(frozenAreaSelection);
-        areaPending.sort((a, b) -> {
+        // Collections.sort, not List.sort: the latter is a Java 8 default method that
+        // RoboVM's runtime lacks, and the NoSuchMethodError here aborted the whole frame
+        // after the terrain pass - every 2D element (labels, compass, buttons) vanished.
+        java.util.Collections.sort(areaPending, (a, b) -> {
             if (a.priority != b.priority) {
                 return Integer.compare(b.priority, a.priority);
             }

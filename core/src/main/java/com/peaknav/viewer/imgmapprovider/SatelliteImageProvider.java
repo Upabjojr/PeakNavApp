@@ -150,7 +150,17 @@ public class SatelliteImageProvider {
         }
         if (cn.size() == 0)
             return "";
-        return "©" + String.join(". ", cn);
+        // Joined by hand rather than with String.join: that is a Java 8 method, and RoboVM's
+        // runtime is Android's, which does not have it - the iOS build would compile and then
+        // die with NoSuchMethodError the first time a copyright notice was drawn.
+        StringBuilder joined = new StringBuilder("©");
+        for (int i = 0; i < cn.size(); i++) {
+            if (i > 0) {
+                joined.append(". ");
+            }
+            joined.append(cn.get(i));
+        }
+        return joined.toString();
     }
 
     public String getURL(final int z, final int x, final int y) {

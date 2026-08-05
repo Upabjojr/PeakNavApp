@@ -182,8 +182,8 @@ public class ImpactPixmap {
         }
 
         public void addMargin() {
-            min = Integer.max(Math.round(marginMinPerc*min), min - distMargin);
-            max = Integer.min(Math.round(marginMaxPerc*max), max + distMargin);
+            min = Math.max(Math.round(marginMinPerc*min), min - distMargin);
+            max = Math.min(Math.round(marginMaxPerc*max), max + distMargin);
         }
     }
 

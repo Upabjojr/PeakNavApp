@@ -1077,7 +1077,7 @@ public class MapViewerScreen implements Screen {
 
 	private void createStagesOnce() {
 		// stageViewport = new ScreenViewport(new OrthographicCamera());
-		int minSize = Integer.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+		int minSize = Math.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 		stageViewport = new ExtendViewport(minSize, minSize, new OrthographicCamera());
 		stage = new Stage(stageViewport);
 		stageCopyright = new Stage(stageViewport);

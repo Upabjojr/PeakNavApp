@@ -195,7 +195,8 @@ public class ElevationImageProviderManager {
             }
 
             // Farthest tiles first: least likely to be looked at again soon.
-            candidates.sort((a, b) -> Long.compare(
+            // Collections.sort, not List.sort - the latter is Java 8 and absent on RoboVM.
+            java.util.Collections.sort(candidates, (a, b) -> Long.compare(
                     tileDistanceSq(b.tile, targetTileX, targetTileY),
                     tileDistanceSq(a.tile, targetTileX, targetTileY)));
 

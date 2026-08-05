@@ -78,7 +78,7 @@ public class TileRenderer {
 
     public TileRenderer(MapController C) {
         execDraw = new PeakNavThreadExecutor(
-                Integer.max(getNumOfCpuCores() / 2, 1),
+                Math.max(getNumOfCpuCores() / 2, 1),
                 "execDraw");
         graphicFactory = C.mapsforgeConnector.getGraphicFactory();
 

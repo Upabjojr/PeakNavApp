@@ -53,7 +53,7 @@ public class ObjectManager {
     public boolean iterateOverAllLists(RunOnPoiObject runnable) {
         lockAll.lock();
         try {
-            int minLength = Integer.min(listOfPeaks.size(), listOfNonPeaks.size());
+            int minLength = Math.min(listOfPeaks.size(), listOfNonPeaks.size());
             for (int i = 0; i < minLength; i++) {
                 runnable.run(listOfPeaks.get(i));
                 runnable.run(listOfNonPeaks.get(i));

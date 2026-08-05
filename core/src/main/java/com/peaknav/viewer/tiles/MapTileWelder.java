@@ -259,8 +259,8 @@ public class MapTileWelder {
         BoundingBox bb = mapTile.tile.getBoundingBox();
         int h = mapTile.getHeight(); int w = mapTile.getWidth();
 
-        double latStart = Double.max(bb.minLatitude, lat1);
-        double latEnd = Double.min(bb.maxLatitude, lat2);
+        double latStart = Math.max(bb.minLatitude, lat1);
+        double latEnd = Math.min(bb.maxLatitude, lat2);
         double latDiff = bb.maxLatitude - bb.minLatitude;
 
         latStart -= bb.minLatitude;
@@ -308,8 +308,8 @@ public class MapTileWelder {
         BoundingBox bb = mapTile.tile.getBoundingBox();
         int h = mapTile.getHeight(); int w = mapTile.getWidth();
 
-        double lonStart = Double.max(bb.minLongitude, lon1);
-        double lonEnd = Double.min(bb.maxLongitude, lon2);
+        double lonStart = Math.max(bb.minLongitude, lon1);
+        double lonEnd = Math.min(bb.maxLongitude, lon2);
         double lonDiff = bb.maxLongitude - bb.minLongitude;
 
         lonStart -= bb.minLongitude;

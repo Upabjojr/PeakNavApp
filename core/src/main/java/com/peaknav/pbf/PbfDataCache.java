@@ -16,13 +16,16 @@ import java.util.ArrayDeque;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import crosby.binary.file.BlockInputStream;
 import crosby.binary.file.BlockReaderAdapter;
 
 public class PbfDataCache {
     private static final String TAG = "PbfDataCache";
-    private final EnumMap<PbfLayer, Map<Tile, MapReadResult>> readerCache = new EnumMap<>(PbfLayer.class);
+    // Typed ConcurrentMap, not Map: putIfAbsent below must resolve against ConcurrentMap
+    // (a Java 5 method RoboVM's runtime has), not the Java 8 Map default it lacks.
+    private final EnumMap<PbfLayer, ConcurrentMap<Tile, MapReadResult>> readerCache = new EnumMap<>(PbfLayer.class);
 
     // Parsed tile data (mapsforge Ways/POIs, the bulk of the heap's Tag/LatLong instances) used
     // to be kept for every tile visited until the next location change, so panning far within one
@@ -123,7 +126,7 @@ public class PbfDataCache {
     }
 
     public MapReadResult get(Tile tile, PbfLayer pbfLayer) {
-        Map<Tile, MapReadResult> cache = readerCache.get(pbfLayer);
+        ConcurrentMap<Tile, MapReadResult> cache = readerCache.get(pbfLayer);
         MapReadResult mapReadResult = cache.get(tile);
         if (mapReadResult == null) {
             mapReadResult = new MapReadResult();

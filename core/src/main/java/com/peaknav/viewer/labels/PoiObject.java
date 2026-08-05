@@ -69,7 +69,7 @@ public class PoiObject {
         if (prominence > 0) {
             return DOCUMENTED_PROMINENCE_OFFSET + prominence;
         }
-        return Double.max(elevation, isolationScoreOf(isolationParent));
+        return Math.max(elevation, isolationScoreOf(isolationParent));
     }
 
     /** Above any elevation or isolation score, so a documented mountain always sorts first. */

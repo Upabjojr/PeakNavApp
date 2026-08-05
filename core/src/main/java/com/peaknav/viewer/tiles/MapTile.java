@@ -432,7 +432,7 @@ public class MapTile {
 
     public static int computeZoomElevFactor(int zoomLevel) {
         // int f = 1 << (tile.zoomLevel - MapTile.ZOOM_LEVEL_MIN);
-        return Integer.max(0, 6 - (zoomLevel - MapTile.ZOOM_LEVEL_MIN));
+        return Math.max(0, 6 - (zoomLevel - MapTile.ZOOM_LEVEL_MIN));
     }
 
     /** Mesh vertices along one edge of a tile at this zoom level and elevation factor. */
@@ -447,7 +447,7 @@ public class MapTile {
      * and the tile renders as torn geometry.
      */
     public static int clampElevFactorToIndexLimit(int zoomLevel, int elevFactor) {
-        int factor = Integer.max(0, elevFactor);
+        int factor = Math.max(0, elevFactor);
         while (factor < 16) {
             long edge = edgeLengthFor(zoomLevel, factor);
             if (edge * edge <= ElevationImageAbstract.MAX_MESH_VERTICES) {
@@ -721,7 +721,8 @@ public class MapTile {
     In Python, np.fromfile("filename", dtype=np.float32)
      */
     public void serializeVerticesToFile(File outputFile) {
-        ByteBuffer byteBuffer = ByteBuffer.allocate(vertices.length * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+        // Float.SIZE/8, not Float.BYTES: BYTES is Java 8 and absent from RoboVM's runtime.
+        ByteBuffer byteBuffer = ByteBuffer.allocate(vertices.length * (Float.SIZE / 8)).order(ByteOrder.LITTLE_ENDIAN);
         byteBuffer.asFloatBuffer().put(vertices);
         try {
             new DataOutputStream(new FileOutputStream(outputFile)).write(byteBuffer.array());

@@ -10,7 +10,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Paths;
 
 public class LuceneAssetLoader {
     private final String assetFolderName = "geonames_index.362";
