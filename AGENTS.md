@@ -29,7 +29,10 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
   - `elevation/`, `pbf/`, `database/`, `network/`, `satellite/`, `utils/`.
 - **`desktop`** — LWJGL3 launcher (`DesktopLauncher`), Swing-based native screens.
 - **`android`** — Android launcher/activity, fragments, native screens.
-- **`ios`** — RoboVM launcher. Largely a stub (`LoadFactory` returns `null`s).
+- **`ios`** — RoboVM launcher plus a real `IOSLoadFactory`: logging, caches, file
+  writing, crash reports, a `libsqlite3` binding for the tile catalogue, and the
+  `NativeScreenCallerIOS` surface. Builds and runs (verified in the iPhone
+  simulator); see "iOS" under Build & run for what is still missing.
 - **`html`** — GWT target.
 - **`headless`** — drives the real renderer off-screen (`PeakNavRenderer`,
   `RenderCli`; driven by `snapshots/generate_snapshots.py`): programmatic camera, label/sky toggles, waits
@@ -44,15 +47,18 @@ concrete per-platform implementation wired up at startup:
 
 - **`NativeScreenCaller`** — native UI: file/gallery pickers, dialogs, toasts,
   sharing, permissions. Implemented by `NativeScreenCallerDesktop` (Swing /
-  `JOptionPane`) and `NativeScreenCallerAndroid` (`AlertDialog`, fragments).
-  Reached from shared code via `PeakNavUtils.getNativeScreenCaller()` — **this can
-  be `null` on iOS**, so null-check before use.
+  `JOptionPane`), `NativeScreenCallerAndroid` (`AlertDialog`, fragments) and
+  `NativeScreenCallerIOS` (`UIAlertController` presented on the key window).
+  Reached from shared code via `PeakNavUtils.getNativeScreenCaller()` — it can
+  still be `null` before a platform has wired one in, so null-check before use.
 - **`LoadFactory`** — provides platform services (SQLite, downloaders, graphics
   factory, logger, caches). Set into `MapApp` by each launcher.
 
 **When you add a native capability**, add an `abstract` method to
-`NativeScreenCaller` and implement it in *both* `NativeScreenCallerDesktop` and
-`NativeScreenCallerAndroid`. iOS does not subclass it, so it needs no change.
+`NativeScreenCaller` and implement it in *all three* of
+`NativeScreenCallerDesktop`, `NativeScreenCallerAndroid` and
+`NativeScreenCallerIOS`. iOS does subclass it now, so leaving it out breaks
+`:ios:compileJava` — and only on a Mac, where that module tends to get built.
 
 Common patterns from shared code:
 - Navigate the camera to coordinates: `getC().L.setCurrentTargetCoords(lat, lon)`
@@ -79,6 +85,145 @@ J=-Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
   `local.properties`. Without it `:android:*` tasks fail (that is an environment
   issue, not a code error). Compile with
   `gradle :android:compileDebugJavaWithJavac`.
+- **iOS** builds only on a Mac, and needs **full Xcode** — the Command Line Tools
+  alone are not enough. RoboVM shells out to `xcrun`/`simctl` and rejects a
+  developer directory that is not an Xcode bundle
+  ("`/Library/Developer/CommandLineTools` does not appear to be a valid Xcode
+  path"). Install Xcode, then `sudo xcode-select -switch /Applications/Xcode.app`.
+
+  ```bash
+  ./gradlew :ios:build                  # Java only — works on any OS, no Xcode needed
+  ./gradlew :ios:launchIPhoneSimulator  # AOT-compile, link and run in the simulator
+  ./gradlew :ios:createIPA              # device build; needs a signing identity
+  ```
+
+  `:ios:build` compiles the module's Java against `core` and is the check worth
+  running from Linux or Windows — it catches the usual breakage (a new abstract
+  method on `NativeScreenCaller`) without any Apple tooling. The native link is
+  where the rest shows up: it needs the `natives-ios` jars for every gdx extension
+  `core` uses (`gdx-platform`, `gdx-freetype-platform`, `gdx-box2d-platform` — see
+  `ios/build.gradle`), since a Java-only compile passes happily without them.
+
+  Before the first build, generate the app icons with `ios/build_icons.sh` (needs
+  `brew install librsvg`). The asset catalogue names 18 PNGs that `.gitignore`
+  excludes, so a fresh clone has none of them and `actool` produces an icon-less
+  bundle.
+
+  A matching **iOS platform** must be installed too, not just Xcode — `ibtool`
+  compiles `LaunchScreen.storyboard` and fails with `iOS <version> Platform Not
+  Installed` without it, *after* the AOT compile and link have both succeeded.
+  Install it with `xcodebuild -downloadPlatform iOS` (a ~10 GB download; no sudo
+  needed).
+
+  The GUI Simulator is not required: `xcrun simctl` can boot, install, launch and
+  screenshot headlessly, which is useful because Xcode's Simulator.app is fussy
+  about matching the host macOS — an Xcode whose Simulator predates the host will
+  die at launch with a missing-symbol dyld error while `simctl` carries on fine.
+
+  ```bash
+  xcrun simctl install booted ios/build/robovm.tmp/IOSLauncher.app
+  xcrun simctl launch booted com.peaknav.viewer      # add --console-pty for logs
+  xcrun simctl io booted screenshot shot.png
+  ```
+
+  Downloading data and search *are* built. The download methods are deliberately
+  thin — the work is all `core`'s, exactly as on the desktop, and what a platform
+  has to get right is running it off the render thread and clearing
+  `setMapDataDownloadStarted` in a `finally` (left set, the missing-data prompt
+  never fires again for the whole session). Search is a `UIAlertController` asking
+  for text and a second one offering the results, not the scrolling screen the
+  other platforms build; typing `lat, lon` navigates straight there.
+
+  Two traps worth keeping in mind if you touch that flow:
+  - The download consent (`P.setCollectDownloadInfo`) must be set **in the same
+    task** as the download it enables. `PeakNavDownloadManager` skips every request
+    without it, so a download that starts first shows progress and fetches nothing.
+  - `OnlineSearch.failed()` never calls its listener, so anything waiting on a
+    Nominatim response needs its own timeout or it waits forever.
+
+  What is still missing, and will surface at runtime rather than at compile time:
+  `getGraphicFactory()` returns `null` (no mapsforge backend for iOS, so no road
+  and path layer — the 3D terrain, satellite imagery, labels and sky do not use
+  it); the gallery/camera pickers, GPS, the compass and the tutorial all report
+  themselves as unbuilt; and search finds only online results until
+  `assets/geonames_index.362` is built.
+
+### Points vs pixels
+
+`IOSLauncher` sets `config.hdpiMode = HdpiMode.Pixels`. **Do not remove it.** The
+backend's default is `Logical`, where `Gdx.graphics.getWidth()` returns points —
+375 on a 2× phone with a 750-wide framebuffer. Shared code hands that value
+straight to `Gdx.gl.glViewport` (`AbstractScreen`, `IntroScreen`,
+`MapViewerScreen`), so the whole app renders into the bottom-left quarter of the
+screen; and `DefaultIOSInput` scales touches by `pixelsPerPoint` whatever the mode
+is, so input and rendering end up one display-scale apart and nothing is tappable.
+
+Neither symptom can appear on the other targets — Android reports pixels, and a
+non-retina desktop display has logical == pixels — so this is iOS-only by nature
+and easy to reintroduce.
+
+### What RoboVM's runtime does *not* have
+
+This is the single biggest source of iOS-only breakage, and none of it fails at
+compile time — `core` is compiled against a JDK, and only the AOT link and the
+device runtime see the difference. RoboVM's class library is derived from
+Android's libcore and predates Java 8:
+
+- **No `java.util.function`, no `java.util.stream`, no `java.nio.file`, no
+  `java.time`, no `Optional`.** The AOT compiler reports these as
+  `phantom class` warnings and carries on; you find out at runtime.
+- **No Java 8 statics**: `Integer.max`, `Float.min`, `Double.max`, `String.join`
+  and friends. Use `Math.max`/`Math.min` and build strings by hand — they behave
+  identically everywhere, so this costs the other platforms nothing.
+- **No Java 8 default methods on collections**: `List.sort`, `Map.putIfAbsent`,
+  `Map.getOrDefault`, `Map.computeIfAbsent`, `Collection.removeIf`,
+  `Iterable.forEach`. Use `Collections.sort(list, cmp)`; for `putIfAbsent`,
+  declare the reference as `ConcurrentMap` (a Java 5 interface RoboVM does have)
+  rather than `Map`. A single `List.sort` in the label renderer threw
+  `NoSuchMethodError` mid-frame once terrain existed, which aborted every frame
+  before `stage.draw()` — the symptom was "all buttons and labels invisible but
+  still clickable", three layers from the cause.
+- **No Java 8 constants** like `Float.BYTES` (javac inlines them, so these are
+  compile-audit noise rather than runtime crashes — but keep them out anyway).
+- **No `Locale.getScript()`**, a Java 7 method Android added late.
+- **No `java.io.File.toPath()`** either, so code cannot even reach `java.nio.file`.
+  Use `com.peaknav.utils.AtomicFileMove` to rename a finished file into place; the
+  downloader's `Files.move(REPLACE_EXISTING, ATOMIC_MOVE)` calls used to fail here,
+  which meant every tile downloaded in full and then died on the last step.
+
+Two consequences worth knowing before adding a dependency to `core`: Guava cannot
+be used at all (its `Equivalence` implements `BiPredicate`, so building any cache
+throws `NoClassDefFoundError` on launch — `com.peaknav.utils.LruCache` replaced
+it), and ICU4J is pinned to 59.1 on iOS because 63+ call `Locale.getScript()`
+directly. **A new dependency in `core` needs checking against this list**, since
+`:ios:compileJava` will pass regardless.
+
+The whole class of bug can be caught at a desk instead of on a device: compile
+`core` (and `ios/src`) with the RoboVM runtime as the bootclasspath and javac
+flags every missing API at once —
+
+```sh
+javac -nowarn -source 8 -target 8 \
+  -bootclasspath ~/.gradle/caches/**/robovm-rt-2.3.25.jar \
+  -cp "<runtimeClasspath>" -d /tmp/out $(find core/src/main/java -name '*.java')
+```
+
+The only expected errors are `AtomicFileMove`'s `java.nio.file` references, which
+sit inside a `LinkageError` guard on purpose. Run this after touching `core` in
+any nontrivial way; it is minutes cheaper than an AOT build and catches what the
+normal compile cannot.
+
+Two more RoboVM-side traps, both handled in `ios/build.gradle`:
+
+- **Pre-Java-6 `jsr`/`ret` bytecode** is rejected outright
+  (`Unrecognized bytecode instruction: 168`). Lucene 3.6.2 is full of it, so the
+  three Lucene jars are rewritten through ASM's `JSRInlinerAdapter` by the
+  `inlineLuceneJsr` task. Other platforms use the untouched jars.
+- **Soot, RoboVM's bytecode frontend, cannot read some modern bytecode**:
+  "Exception reference used other than as the first statement of an exception
+  handler". commons-compress hit this (and two runtime failures besides), which
+  is why the project no longer uses it at all — downloads are unpacked with
+  `java.util.zip.GZIPInputStream` + `com.peaknav.utils.TarReader` instead.
 - Full asset/data setup (fonts, icons, Lucene geonames index) is described in
   `README.md`; a plain `:core`/`:desktop` compile does **not** need it.
 - **Build-time data tools** live in their own source set, `core/src/tools/java`
@@ -125,7 +270,13 @@ up with `PeakNavUtils.s("Key")`.
 
 ## Gotchas
 
-- `getNativeScreenCaller()` may be `null` (iOS) — guard it.
+- `getNativeScreenCaller()` may be `null` — guard it.
+- `getGraphicFactory()` is `null` on iOS; `TileRenderer` treats that as "this
+  platform has no path layer" and skips the mapsforge machinery. Anything new that
+  reaches for the factory must do the same.
+- The Gradle wrapper JAR is **not** in git (`.gitignore` ignores `/gradle/`), so
+  `./gradlew` fails with "Unable to access jarfile" on a fresh clone. Regenerate it
+  with a system Gradle 9.3.0: `gradle wrapper --gradle-version 9.3.0`.
 - The Gradle daemon is off; expect each command to cold-start.
 - Don't rely on the Android module compiling in a headless/SDK-less environment;
   verify Android changes against existing patterns in the `android` module.

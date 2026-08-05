@@ -28,8 +28,13 @@
     <false/>
     <key>UIStatusBarHidden</key>
     <true/>
+    <!-- 12.0, not the 8.0 this carried from the libGDX project template. The gdx natives
+         ship as xcframeworks with only ios-arm64 and simulator slices - there is no 32-bit
+         armv7 build to target an iOS 8 device with - and the App Store has not accepted a
+         deployment target this old for years. 12.0 is the floor for arm64-only, which is
+         what is actually being built. -->
     <key>MinimumOSVersion</key>
-    <string>8.0</string>
+    <string>12.0</string>
     <key>UIDeviceFamily</key>
     <array>
         <integer>1</integer>
@@ -50,5 +55,11 @@
     <string>LaunchScreen</string>
     <key>CFBundleIconName</key>
     <string>AppIcon</string>
+    <!-- NativeScreenCallerIOS.shareSnapshot puts the rendered frame into the system share
+         sheet, whose "Save Image" writes to the photo library. iOS terminates an app that
+         reaches the library with no usage string in its Info.plist - so the absence of this
+         key is not a missing prompt, it is a crash the moment a user shares a snapshot. -->
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>PeakNav needs this to save a snapshot of the view to your photo library.</string>
 </dict>
 </plist>

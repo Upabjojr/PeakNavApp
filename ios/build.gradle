@@ -4,6 +4,8 @@ buildscript {
 	}
 	dependencies {
 		classpath "com.mobidevelop.robovm:robovm-gradle-plugin:$robovmVersion"
+		// For the jsr-inlining task below. Build-time only - nothing from ASM ships.
+		classpath 'org.ow2.asm:asm-commons:9.7'
 	}
 }
 apply plugin: 'robovm'
@@ -26,6 +28,97 @@ sourceSets {
 	}
 }
 
+// ---------------------------------------------------------------------------------------
+// Lucene 3.6.2 carries jsr/ret bytecode, which RoboVM cannot compile.
+//
+// jsr (opcode 168) is how compilers before Java 6 implemented try/finally. Lucene 3.6.2 is
+// from 2012 and its jars are full of it - NativeFSLock alone has twenty. RoboVM's AOT
+// compiler rejects it outright: "Unrecognized bytecode instruction: 168". Every other jar on
+// this module's runtime classpath is Java 6 or newer, so these three are the whole problem.
+//
+// Lucene cannot simply be dropped from the iOS build: MapViewerScreen constructs
+// LuceneGeonameSearch during start-up, so an absent class is a crash on launch rather than a
+// missing feature. And it cannot be upgraded either - the pin to 3.6.2 is what keeps Android
+// working AND what the shipped geonames_index.362 was written by.
+//
+// So the bytecode is rewritten instead. ASM's JSRInlinerAdapter inlines each subroutine into
+// its callers, which is exactly the transformation javac 6 started doing itself; the result is
+// semantically identical and every other platform keeps using the untouched jars.
+configurations {
+	// The originals, resolved without transitives - each of the three is rewritten on its own.
+	luceneJsr { transitive = false }
+}
+
+def luceneInlinedDir = layout.buildDirectory.dir('lucene-jsr-inlined').get().asFile
+
+tasks.register('inlineLuceneJsr') {
+	description = 'Rewrites Lucene 3.6.2 jars with jsr/ret subroutines inlined, for RoboVM.'
+	inputs.files(configurations.luceneJsr)
+	outputs.dir(luceneInlinedDir)
+	doLast {
+		def outDir = luceneInlinedDir
+		outDir.deleteDir()
+		outDir.mkdirs()
+		configurations.luceneJsr.each { jar ->
+			def target = new File(outDir, jar.name)
+			new java.util.zip.ZipFile(jar).withCloseable { zip ->
+				new java.util.zip.ZipOutputStream(target.newOutputStream()).withCloseable { zos ->
+					zip.entries().each { entry ->
+						if (entry.isDirectory()) {
+							return
+						}
+						byte[] bytes = zip.getInputStream(entry).bytes
+						if (entry.name.endsWith('.class')) {
+							def reader = new org.objectweb.asm.ClassReader(bytes)
+							// ClassWriter(0), not COMPUTE_FRAMES: these are version 49 classes
+							// and carry no stack map frames, so there is nothing to recompute -
+							// and COMPUTE_FRAMES would need the whole class hierarchy on the
+							// buildscript classpath to do it.
+							def writer = new org.objectweb.asm.ClassWriter(0)
+							reader.accept(new org.objectweb.asm.ClassVisitor(
+									org.objectweb.asm.Opcodes.ASM9, writer) {
+								@Override
+								org.objectweb.asm.MethodVisitor visitMethod(int access, String name,
+										String desc, String signature, String[] exceptions) {
+									return new org.objectweb.asm.commons.JSRInlinerAdapter(
+											super.visitMethod(access, name, desc, signature, exceptions),
+											access, name, desc, signature, exceptions)
+								}
+							}, org.objectweb.asm.ClassReader.EXPAND_FRAMES)
+							bytes = writer.toByteArray()
+						}
+						def copy = new java.util.zip.ZipEntry(entry.name)
+						zos.putNextEntry(copy)
+						zos.write(bytes)
+						zos.closeEntry()
+					}
+				}
+			}
+			logger.lifecycle("  jsr-inlined ${jar.name}")
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------------------
+// ICU4J is held back on iOS for a different reason: the runtime, not the compiler.
+//
+// RoboVM's java.util.Locale is Android's, and has no getScript() - a Java 7 method. ICU4J 63
+// and later call it directly from ULocale's static initialiser, so the very first use of
+// Transliterator died with NoSuchMethodError before any map was drawn. MapController builds
+// one as a field initialiser, so this was a crash on launch, not a missing feature.
+//
+// 59.1 is the newest release that reaches Locale reflectively instead. It is 2017-era, so
+// romanisation of some scripts may differ very slightly from 74.2 on iOS only; the kana
+// readings CjkLabelNames depends on are deterministic and unaffected.
+def iosIcu4j = '59.1'
+
+// Keep the untouched Lucene off this module's runtime classpath - RoboVM reads that classpath,
+// and the rewritten jars below stand in for the originals :core pulls in.
+configurations.runtimeClasspath {
+	exclude group: 'org.apache.lucene'
+	resolutionStrategy.force "com.ibm.icu:icu4j:$iosIcu4j"
+}
+
 launchIPhoneSimulator.dependsOn build
 launchIPadSimulator.dependsOn build
 launchIOSDevice.dependsOn build
@@ -44,7 +137,23 @@ dependencies {
 	implementation 'org.mapsforge:mapsforge-core:0.17.0'
 	implementation "com.badlogicgames.gdx:gdx-backend-robovm:$gdxVersion"
 	implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-ios"
+
+	// The natives for the two gdx extensions core pulls in. Java-only compilation does not
+	// need them - which is exactly why they were missing - but RoboVM links a real binary,
+	// and without these the link fails on undefined FreeType/Box2D symbols. Each of these
+	// jars carries its own META-INF/robovm/ios/robovm.xml naming the xcframework inside it,
+	// so declaring the dependency is the whole of the wiring; robovm.xml here needs nothing.
+	// Desktop and Android already declare the equivalent natives for their own ABIs.
+	implementation "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-ios"
+	implementation "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-ios"
 	implementation "com.mobidevelop.robovm:robovm-cocoatouch:$robovmVersion"
 	implementation "com.mobidevelop.robovm:robovm-rt:$robovmVersion"
 	implementation project(':core')
+
+	// See inlineLuceneJsr above: the originals are excluded from runtimeClasspath and these
+	// rewritten copies take their place.
+	luceneJsr 'org.apache.lucene:lucene-core:3.6.2'
+	luceneJsr 'org.apache.lucene:lucene-analyzers:3.6.2'
+	luceneJsr 'org.apache.lucene:lucene-queryparser:3.6.2'
+	runtimeOnly fileTree(luceneInlinedDir) { include '*.jar'; builtBy 'inlineLuceneJsr' }
 }

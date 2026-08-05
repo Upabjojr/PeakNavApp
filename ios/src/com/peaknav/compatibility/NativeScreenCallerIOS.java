@@ -1,9 +1,17 @@
 package com.peaknav.compatibility;
 
+import static com.peaknav.compatibility.PeakNavAppState.getAppState;
+import static com.peaknav.utils.PeakNavUtils.getC;
+import static com.peaknav.utils.PeakNavUtils.s;
+import static com.peaknav.utils.PreferencesManager.P;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Pixmap;
 
+import com.peaknav.database.LuceneGeonameSearch;
+import com.peaknav.database.MissingDataDownloader;
 import com.peaknav.gesture.OrientationPointerListener;
+import com.peaknav.network.NominatimResponse;
 import com.peaknav.ui.ClickCallback;
 import com.peaknav.ui.CurrentLocationCallback;
 import com.peaknav.ui.CurrentLocationListener;
@@ -28,6 +36,8 @@ import org.robovm.apple.uikit.UIWindow;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 /**
  * The iOS side of everything the app asks the platform for: alerts, sharing, the browser,
@@ -305,19 +315,236 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
 
     // ------------------------------------------------------------------ not yet built
 
+    // ------------------------------------------------------------------ downloading data
+
+    /**
+     * Fetches the elevation and map data around a point.
+     *
+     * <p>No chooser screen, despite the name: Android opens a region picker here, and this
+     * does what the desktop does instead - download for the point it was handed. The work is
+     * all {@code core}'s; what a platform has to get right is doing it off the render thread
+     * and clearing the started flag afterwards.
+     */
     @Override
     public void openMapDataDownloadChooser(double lat, double lon, boolean goToAfterDownload) {
-        notBuiltYet("Choosing map data to download");
+        getC().submitExecutorGeneric(() -> downloadAround(lat, lon, goToAfterDownload));
     }
 
+    /**
+     * The download itself, on whatever thread the caller is already on.
+     *
+     * <p>Separate from {@link #openMapDataDownloadChooser} so the consent prompt can set the
+     * preference and download in one task rather than submitting two and hoping they run in
+     * order - a download that starts before the consent lands fetches nothing at all, silently
+     * (see {@code PeakNavDownloadManager}, which skips every request without it).
+     */
+    private void downloadAround(double lat, double lon, boolean goToAfterDownload) {
+        MissingDataDownloader missingDataDownloader = getC().missingDataDownloader;
+        missingDataDownloader.setCoords(lat, lon);
+        // The started flag suppresses the missing-data prompt while a download runs
+        // (CurrentLocation.shouldAskToDownloadMissingData). It MUST be cleared on every exit
+        // path: left set, the prompt never appears again for the whole session.
+        getAppState().setMapDataDownloadStarted(true);
+        try {
+            missingDataDownloader.doDownload(goToAfterDownload);
+        } finally {
+            getAppState().setMapDataDownloadStarted(false);
+        }
+        getAppState().setMapDataDownloaded(true);
+    }
+
+    /**
+     * The intro screen's download button.
+     *
+     * <p>The button sets the download consent before calling this, so the workers really
+     * fetch. With no location chosen yet there is nothing sensible to download - the intro is
+     * still let through, and the missing-data prompt takes over once the user picks a place.
+     */
     @Override
     public void openMapDataDownloadChooserWizard() {
-        notBuiltYet("The first-run download wizard");
+        getC().submitExecutorGeneric(() -> {
+            if (!getC().L.isCurrentLocationNotSet()) {
+                downloadAround(getC().L.getTargetLatitude(), getC().L.getTargetLongitude(), false);
+            }
+            getAppState().setMapDataDownloaded(true);
+        });
     }
 
+    /**
+     * The prompt shown when the camera arrives somewhere with no data.
+     *
+     * <p>Reached from inside the render loop, so everything here is posted rather than run:
+     * presenting a view controller mid-frame is exactly the kind of thing that works in
+     * testing and deadlocks on a device.
+     */
+    @Override
+    public void askForDownloadScreen(final double lat, final double lon) {
+        onMainThread(() -> {
+            UIAlertController controller = new UIAlertController(
+                    s("Missing_data_prompt"), null, UIAlertControllerStyle.Alert);
+            controller.addAction(new UIAlertAction(s("Yes"), UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> askConsentThenDownload(lat, lon)));
+            controller.addAction(new UIAlertAction(s("No"), UIAlertActionStyle.Cancel,
+                    (UIAlertAction action) -> Gdx.app.postRunnable(
+                            // Back where we were, WITHOUT re-running the missing-data check:
+                            // doing that here pops this very prompt straight back up when the
+                            // old spot has no data either.
+                            () -> getC().L.setCurrentTargetCoords(
+                                    getC().L.getCurrentLatitude(),
+                                    getC().L.getCurrentLongitude(),
+                                    false))));
+            present(controller);
+        });
+    }
+
+    /**
+     * Asks for the download consent if it has not been given, then downloads.
+     *
+     * <p>Without this the download runs and fetches nothing: every request in
+     * {@code PeakNavDownloadManager} is skipped unless {@code P.isCollectDownloadInfo()}, so a
+     * user who reached the missing-data prompt without passing the intro button would get a
+     * progress bar and no data. Android asks here too.
+     */
+    private void askConsentThenDownload(final double lat, final double lon) {
+        if (P.isCollectDownloadInfo()) {
+            openMapDataDownloadChooser(lat, lon, false);
+            return;
+        }
+        onMainThread(() -> {
+            UIAlertController consent = new UIAlertController(
+                    s("Missing_data_download"), s("Missing_download_info_consent"),
+                    UIAlertControllerStyle.Alert);
+            consent.addAction(new UIAlertAction(s("Yes"), UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> getC().submitExecutorGeneric(() -> {
+                        P.setCollectDownloadInfo(true);
+                        downloadAround(lat, lon, false);
+                    })));
+            // No consent, no download - and no silent pretend-download either.
+            consent.addAction(new UIAlertAction(s("No"), UIAlertActionStyle.Cancel,
+                    (UIAlertAction action) -> { }));
+            present(consent);
+        });
+    }
+
+    // ------------------------------------------------------------------ search
+
+    /**
+     * "lat, lon" typed into the search box. Mirrors the pattern in {@code OnlineSearch}, which
+     * navigates on a match and never calls the results listener - so this has to recognise the
+     * same input, or the results dialogue below would sit waiting for a callback that is never
+     * coming.
+     */
+    private static final Pattern COORDINATE_TEXT =
+            Pattern.compile("\\s*(-?\\d+\\.?\\d*)\\s*,\\s*(-?\\d+\\.?\\d*)\\s*");
+
+    /** Enough results to choose from; an alert with forty actions is not a list. */
+    private static final int MAX_SEARCH_RESULTS = 10;
+
+    /** How long to wait for Nominatim before showing whatever the offline index found. */
+    private static final long ONLINE_SEARCH_TIMEOUT_MS = 8000;
+
+    /**
+     * Search, as an alert asking for text and a second alert offering what was found.
+     *
+     * <p>Not the scrolling result screen the desktop and Android build - this is the platform's
+     * own dialogue, which needs no view controller of its own and is honest about being a
+     * first implementation. Both sources the other platforms use are queried: the offline
+     * geonames index (empty here unless {@code assets/geonames_index.362} was built) and
+     * Nominatim. Typing coordinates goes straight there.
+     *
+     * <p>{@code callback} is unused, as on the desktop: picking a result sets the target
+     * location, which is what every caller passing null wants.
+     */
     @Override
     public void openScreenSearchLocation(ClickCallback callback) {
-        notBuiltYet("Search");
+        promptForTextFields(s("Search_place_title"), s("Search_prompt"),
+                new String[]{s("Search")}, new String[]{""},
+                new TextFieldsCallback() {
+                    @Override
+                    public void onEntered(String[] values) {
+                        if (values.length > 0 && values[0] != null && !values[0].trim().isEmpty()) {
+                            runSearch(values[0].trim());
+                        }
+                    }
+
+                    @Override
+                    public void onCancelled() {
+                    }
+                });
+    }
+
+    private void runSearch(final String query) {
+        if (COORDINATE_TEXT.matcher(query).matches()) {
+            // OnlineSearch navigates for this itself, on the render thread where target
+            // mutation belongs. Nothing to choose from, so no results dialogue - but the
+            // listener is a no-op rather than null: if this pattern and OnlineSearch's ever
+            // drift apart, the text falls through to Nominatim, and null would be an NPE on
+            // the network thread instead of simply finding nothing.
+            Gdx.app.postRunnable(() -> getC().onlineSearch.parseDestinationText(
+                    query, (ArrayList<NominatimResponse> ignored) -> { }));
+            return;
+        }
+
+        final List<LuceneGeonameSearch.GeonameResult> found = new ArrayList<>();
+        LuceneGeonameSearch offline = getC().luceneGeonameSearch;
+        if (offline != null) {
+            // Safe with no index: searchGeoName returns empty rather than throwing when the
+            // searcher never loaded, which is the normal state until the index is built.
+            found.addAll(offline.searchGeoName(query));
+        }
+
+        // Presented once, by whichever arrives first - the response or the timeout. Without
+        // the guard a slow-then-arriving response would stack a second dialogue on the first.
+        final AtomicBoolean presented = new AtomicBoolean(false);
+
+        getC().onlineSearch.parseDestinationText(query, (ArrayList<NominatimResponse> responses) -> {
+            if (responses != null) {
+                for (NominatimResponse response : responses) {
+                    found.add(new LuceneGeonameSearch.GeonameResult(
+                            response.displayName, response.displayName,
+                            response.lat, response.lon, -1));
+                }
+            }
+            if (presented.compareAndSet(false, true)) {
+                showSearchResults(found);
+            }
+        });
+
+        // OnlineSearch.failed() does not call the listener, so a network error would otherwise
+        // leave the user staring at nothing. Show what the offline index gave instead.
+        DISMISS_TIMER.schedule(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                if (presented.compareAndSet(false, true)) {
+                    showSearchResults(found);
+                }
+            }
+        }, ONLINE_SEARCH_TIMEOUT_MS);
+    }
+
+    private void showSearchResults(final List<LuceneGeonameSearch.GeonameResult> results) {
+        onMainThread(() -> {
+            if (results.isEmpty()) {
+                alert(s("Search_place_title"), s("Search_results_hint"), s("OK"));
+                return;
+            }
+            UIAlertController controller = new UIAlertController(
+                    s("Search_place_title"), s("Search_results_hint"),
+                    UIAlertControllerStyle.Alert);
+            int shown = Math.min(results.size(), MAX_SEARCH_RESULTS);
+            for (int i = 0; i < shown; i++) {
+                final LuceneGeonameSearch.GeonameResult result = results.get(i);
+                controller.addAction(new UIAlertAction(result.getFullName(),
+                        UIAlertActionStyle.Default,
+                        // Target mutation belongs on the render thread, not on whichever
+                        // thread UIKit called this action back on.
+                        (UIAlertAction action) -> Gdx.app.postRunnable(
+                                () -> getC().L.setCurrentTargetCoords(result.lat, result.lon))));
+            }
+            controller.addAction(new UIAlertAction(s("Cancel"), UIAlertActionStyle.Cancel,
+                    (UIAlertAction action) -> { }));
+            present(controller);
+        });
     }
 
     @Override
@@ -333,11 +560,6 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     @Override
     public void openAppTutorial() {
         notBuiltYet("The tutorial");
-    }
-
-    @Override
-    public void askForDownloadScreen(double lat, double lon) {
-        notBuiltYet("Downloading data for this area");
     }
 
     /**

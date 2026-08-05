@@ -52,6 +52,19 @@ ICONS=(
   "icon_sky_labels:128:128"
   "icon_loc_pin:128:256"
   "ic_launcher:192:192"
+  # These eight are loaded by the app exactly like the rest but were missing from this
+  # list, so a build from a clean checkout came up short of the icons it asks for.
+  "icon_checkbox_sky:128:128"
+  "icon_info:128:128"
+  "icon_sky_constellations:128:128"
+  "icon_sky_mode:128:128"
+  "icon_sky_time:128:128"
+  "icon_slider_alpha:128:128"
+  "icon_units:128:128"
+  # 30x50 is not a free choice: WidgetTextures.getNinePatchDrawable builds this one with
+  # hard-coded 10px splits on all four sides, which land on the bar in the artwork only at
+  # the SVG's own size. Rendering it larger stretches the wrong pixels.
+  "slider_nine_patch:30:50"
 )
 
 for entry in "${ICONS[@]}"; do
