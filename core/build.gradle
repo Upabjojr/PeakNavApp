@@ -20,7 +20,10 @@ dependencies {
 
     implementation "com.badlogicgames.gdx:gdx-freetype:$gdxVersion"
 
-    implementation "com.google.guava:guava:33.6.0-android"
+    // Guava was here for exactly two CacheBuilder caches, one of which was dead code. It cannot
+    // run on iOS at all - RoboVM's runtime has no java.util.function package, and Guava's
+    // Equivalence implements BiPredicate, so building a cache threw NoClassDefFoundError before
+    // the first frame. Replaced by com.peaknav.utils.LruCache; see the note there.
 
     implementation 'com.google.code.gson:gson:2.14.0'
     /*implementation(group: 'com.graphhopper', name: 'graphhopper-core', version: '1.0') {
@@ -54,7 +57,11 @@ dependencies {
     implementation 'org.apache.lucene:lucene-analyzers:3.6.2'
     implementation 'org.apache.lucene:lucene-queryparser:3.6.2'
 
-    implementation 'org.apache.commons:commons-compress:1.28.0'
+    // commons-compress was here to unpack the downloaded .tar.gz archives, and it is the one
+    // dependency that could not be made to work on iOS at all - three separate failures, each
+    // only visible once the previous was fixed (see com.peaknav.utils.TarReader). The app
+    // needed gzip, which java.util.zip provides everywhere including RoboVM, and a tar reader,
+    // which is now TarReader - verified against a real dataset archive, byte for byte.
 
     // compile 'org.openpnp:opencv:4.5.5-1'
 

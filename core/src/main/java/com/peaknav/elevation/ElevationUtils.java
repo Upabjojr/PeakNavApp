@@ -7,21 +7,18 @@ import static com.peaknav.viewer.tiles.MapTile.MapTileState.ELEVATION_DATA_NOT_L
 
 import org.mapsforge.core.model.Tile;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.peaknav.utils.Units;
 import com.peaknav.viewer.tiles.MapTile;
 
 public class ElevationUtils {
-    // TODO: implement a proper cache, this is just a hash-map:
-    private static Cache<Integer, ElevationTile> elevationTileCache; // TODO: remove this
+
+    // An unbounded Guava cache of elevation tiles used to be built here and assigned to a
+    // field that nothing ever read from or wrote to again - it was already marked "TODO:
+    // remove this". Removing it took the last Guava usage out of core along with it; the
+    // elevation tiles themselves are held by MapTileStorage, which is what actually caches
+    // them.
 
     private ElevationUtils() {
-    }
-
-    public static void initializeElevationTileCache() {
-        elevationTileCache = CacheBuilder.newBuilder()
-                .build();
     }
 
     private static MapTile getElevationMapTileForQuery(double lon, double lat, boolean wait) {

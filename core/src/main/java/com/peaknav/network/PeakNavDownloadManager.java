@@ -13,12 +13,11 @@ import com.badlogic.gdx.Gdx;
 import com.peaknav.compatibility.NotificationManagerPeakNav;
 import com.peaknav.database.MapSqlite;
 import com.peaknav.pbf.PbfLayer;
+import com.peaknav.utils.AtomicFileMove;
 import com.peaknav.utils.PeakNavThreadExecutor;
+import com.peaknav.utils.TarReader;
 import com.peaknav.viewer.MapViewerSingleton;
 
-import org.apache.commons.compress.archivers.ArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.mapsforge.core.model.Tile;
 
 import java.io.File;
@@ -259,9 +258,7 @@ public class PeakNavDownloadManager {
                     partial.delete();
                     throw e;
                 }
-                java.nio.file.Files.move(partial.toPath(), localFile.toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                AtomicFileMove.moveIntoPlace(partial, localFile);
                 return;
             } catch (IOException ex) {
                 lastFailure = ex;
@@ -412,18 +409,20 @@ public class PeakNavDownloadManager {
 
         InputStream is;
         if (inputFile.getName().endsWith(".tar.gz")) {
-            GzipCompressorInputStream gis = new GzipCompressorInputStream(fis);
-            is = gis;
+            // java.util.zip, not commons-compress: this runs on iOS too, where the library
+            // cannot be loaded at all. See TarReader for the whole story.
+            is = new java.util.zip.GZIPInputStream(fis, 32 * 1024);
         } else if (inputFile.getName().endsWith(".tar")) {
             is = fis;
         } else {
+            fis.close();
             throw new RuntimeException("unknown tar/tar.gz extension: " + inputFile.getName());
         }
 
-        TarArchiveInputStream tarInput = new TarArchiveInputStream(is);
+        TarReader tarInput = new TarReader(is);
 
-        ArchiveEntry entry;
-        while ((entry = tarInput.getNextEntry()) != null) {
+        TarReader.Entry entry;
+        while ((entry = tarInput.next()) != null) {
             File outputFile = new File(outputDir, entry.getName());
 
             if (entry.isDirectory()) {
@@ -446,9 +445,9 @@ public class PeakNavDownloadManager {
                 try (
                     FileOutputStream fos = new FileOutputStream(partialEntry)
                 ) {
-                    byte[] buffer = new byte[4096];
+                    byte[] buffer = new byte[8192];
                     int len;
-                    while ((len = tarInput.read(buffer)) != -1) {
+                    while ((len = tarInput.read(buffer, 0, buffer.length)) != -1) {
                         fos.write(buffer, 0, len);
                     }
                     success = true;
@@ -457,9 +456,7 @@ public class PeakNavDownloadManager {
                         partialEntry.delete();
                     }
                 }
-                java.nio.file.Files.move(partialEntry.toPath(), outputFile.toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                AtomicFileMove.moveIntoPlace(partialEntry, outputFile);
             }
         }
     }

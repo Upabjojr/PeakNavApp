@@ -36,7 +36,6 @@ public class MapApp extends Game {
 
         PeakNavUtils.setLogger(loadFactory.getPeakNavLogger());
         PeakNavUtils.setCaches(loadFactory.getCaches());
-        ElevationUtils.initializeElevationTileCache();
 
         setC(new MapController(loadFactory));
 

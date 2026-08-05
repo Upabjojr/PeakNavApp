@@ -2,10 +2,6 @@ package com.peaknav.utils;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Pixmap;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.RemovalListener;
-import com.google.common.cache.RemovalNotification;
 import com.peaknav.compatibility.LoadFactory;
 import com.peaknav.compatibility.NativeScreenCaller;
 import com.peaknav.viewer.MapViewerSingleton;
@@ -31,8 +27,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class PeakNavUtils {
     final static int BUFFER_SIZE = 8192;
     // private static Map<FileHandle, ReentrantLock> fileHandleSet = new HashMap<>();
-    // TODO: this is not a proper cache, it's just a hash-map:
-    private static Cache<FileHandle, Pixmap> cachedImages = null;
+    private static LruCache<FileHandle, Pixmap> cachedImages = null;
     private static PeakNavLogger logger;
     private static PeakNavCaches caches;
     private static MapController C;
@@ -42,12 +37,10 @@ public class PeakNavUtils {
 
     public static synchronized void initializeCache() {
         if (cachedImages == null) {
-            cachedImages = CacheBuilder.newBuilder()
-                    .maximumSize(100)
-                    .removalListener(
-                            (RemovalListener<FileHandle, Pixmap>) notification -> disposalQueue.add(notification.getValue()))
-                    .concurrencyLevel(4)
-                    .build();
+            // Evicted pixmaps go to the disposal queue rather than being freed here: one may
+            // still be being drawn from, so freePixmapCache disposes it only once its
+            // reference count says nobody is left.
+            cachedImages = new LruCache<>(100, pixmap -> disposalQueue.add(pixmap));
         }
     }
 
@@ -94,9 +87,9 @@ public class PeakNavUtils {
         try {
             Pixmap pixmap = cachedImages.get(imageFileHandle, () -> {
                 if (!imageFileHandle.exists()) {
-                    // Cache.get forbids a null result; signal the miss with an exception instead
-                    // (returning null used to throw Guava's unchecked InvalidCacheLoadException
-                    // past our catch and up into the tile worker).
+                    // The cache refuses a null value - it would look like a miss on the next
+                    // call and be reloaded forever - so a missing file is signalled by
+                    // throwing, which arrives below as an ExecutionException.
                     throw new IOException("missing image file: " + imageFileHandle);
                 }
                 Pixmap loaded = readImage(imageFileHandle.file());
@@ -110,8 +103,9 @@ public class PeakNavUtils {
             }
             return pixmap;
         } catch (ExecutionException | RuntimeException e) {
-            // ExecutionException: missing file; RuntimeException: Guava's unchecked wrapper
-            // around a decode failure (e.g. a truncated download). Both mean "no image".
+            // ExecutionException: the loader threw - a missing file, or a decode failure on a
+            // truncated download. RuntimeException: the same thrown straight out of libGDX.
+            // Both mean "no image".
             return null;
         }
     }
