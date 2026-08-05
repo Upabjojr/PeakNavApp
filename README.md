@@ -41,6 +41,52 @@ double-clicking. Downloaded maps and settings are kept outside the installation
 (`%APPDATA%\PeakNav`, `~/Library/Application Support/PeakNav`, or `~/.peaknav`), so
 upgrading or reinstalling never costs you your data.
 
+## Python package
+
+PeakNav is also on PyPI, as [`peaknav`](https://pypi.org/project/peaknav/):
+
+```bash
+pip install peaknav
+```
+
+Three modules, in increasing order of what they need from the machine:
+
+* **`peaknav.terrain`** — the elevation of any coordinate on Earth, in pure Python
+  (one dependency: Pillow). It reads the same compressed ASTER dataset the app
+  renders — with summit heights corrected against surveyed values — downloading
+  tiles per area and caching them locally.
+
+  ```python
+  >>> from peaknav.terrain import elevation_at
+  >>> elevation_at(45.9417, 7.7480)          # the Breithorn
+  4160
+  ```
+
+* **`peaknav.headless`** — the real PeakNav renderer running off-screen, driven
+  from Python: camera control, view options, rendered frames — for scripted
+  snapshots, panoramas and videos. Needs Java 17+ and a display; the renderer jar
+  (`peaknav-headless-<version>.jar`, attached to every
+  [GitHub release](https://github.com/Upabjojr/PeakNavApp/releases)) is downloaded
+  on first use, verified against a pinned digest, and cached — or point
+  `$PEAKNAV_HEADLESS_JAR` at your own build. The renderer speaks plain HTTP
+  (self-described at `/openapi.json`), so anything that can `curl` can drive it too.
+
+  ```python
+  from peaknav.headless import PeakNavHeadless
+
+  with PeakNavHeadless(45.9763, 7.6586) as nav:
+      nav.look(bearing_deg=230, pitch_deg=-4)
+      nav.set_altitude_asl(3200)
+      nav.save_frame("matterhorn.png")
+  ```
+
+* **`peaknav.jupyter`** *(experimental)* — an interactive PeakNav view inside a
+  Jupyter notebook, with pan/tilt controls, altitude, coordinates and display
+  toggles (`pip install "peaknav[jupyter]"`).
+
+The package sources, example notebooks and developer documentation live in
+[`peaknav-python/`](./peaknav-python/).
+
 ## Datasets
 
 This app works with data of two datasets (currently hosted on HuggingFace repository):
@@ -99,12 +145,26 @@ To build the project, follow these steps:
     and rank them below any city sharing their name.
 * Build the project with Gradle — this process is straightforward when using Android Studio, and supports both Android and Desktop builds.
 
-### Python API for the headless renderer
+### Headless renderer
 
-The renderer can be driven from Python — or anything that speaks HTTP: `--serve` starts
-a REST server describing itself at `/openapi.json`. The `peaknav` Python package — the
-renderer client plus pure-Python elevation lookups — lives in
-[`peaknav-python/`](./peaknav-python/).
+The [`headless/`](./headless/) module builds the app as a library that draws off-screen,
+for producing views from code instead of from a person at a keyboard — screenshots,
+panoramas, videos, documentation images:
+
+```bash
+./gradlew :headless:renderJar    # standalone fat jar, no Gradle needed to run it
+java -jar headless/build/libs/peaknav-headless-<version>.jar \
+    --lat 46.0207 --lon 7.7491 --bearing 210 --out matterhorn.png
+```
+
+The same jar is attached to every [GitHub release](https://github.com/Upabjojr/PeakNavApp/releases)
+as `peaknav-headless-<version>.jar`, so rendering from a script does not require building
+the project. It still needs a display connection (the window is created hidden, but GL
+needs one), and `--serve [port]` starts a REST server describing itself at
+`/openapi.json`, so it can be driven from Python — or anything that speaks HTTP. The
+`peaknav` Python package, described in the [Python package](#python-package) section
+above, is exactly such a client; see [`headless/README.md`](./headless/README.md) for
+the Java API and implementation notes.
 
 ### Desktop installers
 
