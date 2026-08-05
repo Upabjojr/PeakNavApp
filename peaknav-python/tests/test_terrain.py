@@ -100,12 +100,19 @@ def test_matterhorn_from_the_dataset(tmp_path):
         e = elevation_at(45.9417, 7.7480)
         assert 4100 <= e <= 4200, "Breithorn read as %s m (surveyed 4164)" % e
 
-        # The Matterhorn: a rock spire, which ASTER clips by hundreds of metres.
-        # The loose band documents that known data behaviour while still catching
-        # code-level errors (wrong tile or row mapping lands on a glacier at
-        # ~3000 m or a valley at ~2000 m).
+        # The Matterhorn: a rock spire raw ASTER clipped to ~4040 m, corrected in
+        # the dataset against its surveyed 4478. The lower bound asserts the
+        # corrected data is actually being served (the superseded dataset fails
+        # it); the band stays loose below the survey because the summit pixel
+        # sits a pixel or two from this coordinate. Code-level errors (wrong tile
+        # or row mapping) land on a glacier at ~3000 m or a valley at ~2000 m.
         m = elevation_at(45.97645, 7.65837)
-        assert 3900 <= m <= 4478, "Matterhorn read as %s m (ASTER clips spires)" % m
+        assert 4250 <= m <= 4490, "Matterhorn read as %s m (corrected data reads ~4376)" % m
+
+        # Scanned around the coordinate, the corrected summit itself appears.
+        top = max(elevation_at(45.9763 + i * 0.0003, 7.6586 + j * 0.0003)
+                  for i in range(-6, 7) for j in range(-7, 8))
+        assert 4474 <= top <= 4490, "summit scan found %s m (surveyed 4478)" % top
 
         ocean = elevation_at(0.0, -30.0)
         assert ocean == 0, "mid-Atlantic should have no tile, got %s m" % ocean

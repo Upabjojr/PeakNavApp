@@ -5,7 +5,7 @@ first one — it needs nothing but the package.
 
 | Notebook | What it shows | Needs |
 | --- | --- | --- |
-| [`01_elevation.ipynb`](01_elevation.ipynb) | `peaknav.terrain`: the elevation of any coordinate, a profile along a line, and the tile encoding underneath | network (tiles are downloaded once and cached) |
+| [`01_elevation.ipynb`](01_elevation.ipynb) | `peaknav.terrain`: the elevation of any coordinate (summits corrected against surveyed heights), a profile along a line, and the tile encoding underneath | network (each area's ~30 MB archive is downloaded once and cached) |
 | [`02_renderer_over_rest.ipynb`](02_renderer_over_rest.ipynb) | Driving the renderer over its REST API and reading frames back — no widgets | Java, a display, the renderer jar |
 | [`03_interactive_widget.ipynb`](03_interactive_widget.ipynb) | The `PeakNavViewer` widget, and driving it from code | the above, plus `peaknav[jupyter]` |
 | [`04_panorama_sweep.ipynb`](04_panorama_sweep.ipynb) | Scripted rendering: a full-circle panorama and a short flight, assembled with Pillow — no widgets | Java, a display, the renderer jar |

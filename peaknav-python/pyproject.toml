@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "peaknav"
-version = "0.1.0"
+version = "0.0.2"
 description = "Python tools for PeakNav, the 3D mountain viewer: elevation of any coordinate (pure Python), and a client for the off-screen renderer."
 readme = "README.md"
 requires-python = ">=3.9"

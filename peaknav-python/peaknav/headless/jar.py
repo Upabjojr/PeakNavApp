@@ -44,12 +44,10 @@ class JarNotFound(RuntimeError):
 #: client and the renderer speak a versioned HTTP API, and a silently newer renderer is
 #: how a script that worked yesterday breaks today.
 #:
-#: NOT YET PUBLISHED. No release carries a headless jar so far - 1.1.0 ships
-#: ``peaknav-1.1.0.jar``, which is the desktop application and has no renderer inside it.
-#: Until ``peaknav-headless-1.2.0.jar`` is attached to the 1.2.0 release, every path here
-#: ends in the explanatory error from :func:`ensure_jar`, and the way to run the renderer
-#: is a local build or ``$PEAKNAV_HEADLESS_JAR``. Raise this in step with the release
-#: being published, and pin its digest in :data:`KNOWN_SHA256` at the same time.
+#: 1.2.0 is the first release that carries a headless jar - earlier releases ship only
+#: ``peaknav-<version>.jar``, the desktop application, which has no renderer inside it.
+#: Raise this in step with each release being published, and pin its digest in
+#: :data:`KNOWN_SHA256` at the same time.
 JAR_VERSION = "1.2.0"
 
 #: Where a released renderer lives. The asset name is canonical - ``peaknav-<version>.jar``
@@ -60,7 +58,9 @@ RELEASE_URL_TEMPLATE = ("https://github.com/Upabjojr/PeakNavApp/releases/downloa
 #: Known-good digests, by version. A version absent from here still downloads (over
 #: HTTPS, structurally checked) but cannot be proven byte-for-byte; fill it in as part of
 #: publishing a release, from ``sha256sum peaknav-headless-<version>.jar``.
-KNOWN_SHA256 = {}
+KNOWN_SHA256 = {
+    "1.2.0": "495dbf480f449b1a6e054122239131316c8e7346ee3038d465465c5792edc727",
+}
 
 #: The entry point every renderer jar has. Its presence is what tells a renderer jar from
 #: the desktop jar, from a half-downloaded file, and from an error page.

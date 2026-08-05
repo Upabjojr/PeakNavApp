@@ -4,8 +4,9 @@ Python tools for [PeakNav](https://peaknav.com), the 3D mountain viewer — in t
 halves that share nothing but a namespace:
 
 * **`peaknav.terrain`** — pure Python. The elevation of any coordinate on Earth,
-  from the same compressed ASTER dataset the app renders, downloaded tile by tile
-  and cached. One dependency: Pillow.
+  from the same compressed ASTER dataset the app renders — with summit heights
+  corrected against surveyed values — downloaded once per area (a ~30 MB archive
+  covers a 4×4 block of tiles) and cached. One dependency: Pillow.
 * **`peaknav.headless`** — a standard-library client for the real PeakNav renderer
   running off-screen: camera control, view options, rendered frames. Needs a Java
   runtime, a display (the window is hidden, but GL still needs one), and the renderer
@@ -19,9 +20,13 @@ halves that share nothing but a namespace:
 4160
 ```
 
-(ASTER, like every stereo DEM, rounds off sharp spires - the Matterhorn reads about
-4100 against its surveyed 4478, while broad summits like the Breithorn read true to
-a few metres. Spire summits are lower bounds.)
+(The dataset carries summit corrections against surveyed heights. Raw ASTER, like
+every stereo DEM, rounds off sharp spires — it clipped the Matterhorn to about
+4040 m — but the corrected data tops out at 4484, the surveyed 4478 to within the
+encoding's 4 m step. At ~30 m pixels the summit can still sit a pixel or two from
+the coordinate you have for a peak — the classic Matterhorn coordinate reads
+4312 — so scan a few arcseconds around a spire's coordinate for its true top;
+`examples/01_elevation.ipynb` shows how.)
 
 ```python
 from peaknav.headless import PeakNavHeadless
@@ -156,6 +161,8 @@ Each zoom-8 slippy tile is a JPEG + PNG pair: the PNG names each pixel's 1024 m
 band (`128 + floor(e/1024)`), the JPEG the position inside it in 4 m steps, with
 odd bands flipped so band edges stay smooth gradients that JPEG compresses without
 ringing. `peaknav.terrain.decode_elevation` is the four-line inverse, doctested
-against an independent port of the dataset's encoder. Summit queries default to
-the max of the four surrounding pixels (ASTER's ~30 m posting rarely centres a
+against an independent port of the dataset's encoder. The dataset ships the pairs
+packed one `.tar.gz` per zoom-6 tile — the same archives the app downloads — which
+the module unpacks into its cache on first use of an area. Summit queries default
+to the max of the four surrounding pixels (ASTER's ~30 m posting rarely centres a
 summit on one); pass `sample="bilinear"` for slopes and profiles.

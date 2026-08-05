@@ -51,7 +51,7 @@ android {
         // is left to the system (MapViewerScreen calls setCatchKey(BACK, false)) and nothing
         // overrides onBackPressed.
         targetSdkVersion 36
-        versionCode 151
+        versionCode 152
         // Kept in step with `projectVersion` in gradle.properties, which is what the
         // desktop installers are named after; versionCode stays the Play upload
         // counter and is bumped by hand per upload.

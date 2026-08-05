@@ -1,12 +1,13 @@
 """Elevation of any coordinate, from PeakNav's compressed ASTER dataset.
 
-The dataset (`Upabjojr/elevation-data-ASTER-compressed-retiled
-<https://huggingface.co/datasets/Upabjojr/elevation-data-ASTER-compressed-retiled>`_)
-is ASTER GDEM re-tiled to slippy-map tiles at zoom 8 and compressed into an unusual
-pair of images per tile: a JPEG carrying the fine detail and a PNG carrying the coarse
-bits. JPEG is lossy but small and smooth terrain compresses superbly; the PNG rides
-along to pin down which kilometre band each pixel is in, so the JPEG's noise cannot
-move a mountain. The encoding, per pixel of elevation ``e`` (metres)::
+The dataset (`PeakNav/global-elevation-aster-slippy-tiles-tar-gz
+<https://huggingface.co/datasets/PeakNav/global-elevation-aster-slippy-tiles-tar-gz>`_
+- the same one the app downloads from) is ASTER GDEM re-tiled to slippy-map tiles at
+zoom 8 and compressed into an unusual pair of images per tile: a JPEG carrying the
+fine detail and a PNG carrying the coarse bits. JPEG is lossy but small and smooth
+terrain compresses superbly; the PNG rides along to pin down which kilometre band
+each pixel is in, so the JPEG's noise cannot move a mountain. The encoding, per
+pixel of elevation ``e`` (metres)::
 
     png = 128 + floor(e / 1024)          # which 1024 m band
     jpg = (e % 1024) / 4                 # position inside the band, 4 m steps
@@ -16,15 +17,25 @@ move a mountain. The encoding, per pixel of elevation ``e`` (metres)::
 Decoding reverses it exactly - see :func:`decode_elevation` for the arithmetic and
 its doctest.
 
-Tiles download on first use and are cached under ``~/.cache/peaknav/elev_tiles``
-(override with ``PEAKNAV_ELEV_CACHE``). A tile the dataset does not have - open
-ocean, mostly - reads as elevation 0.
+The dataset ships one ``.tar.gz`` per zoom-6 tile, holding the sixteen zoom-8
+pairs beneath it. The first lookup in an area therefore downloads a ~30 MB archive;
+it is unpacked into the cache (``~/.cache/peaknav/elev_tiles.v2``, override with
+``PEAKNAV_ELEV_CACHE``), so every later lookup within that 4x4 block of tiles is
+local. An area the dataset does not have - open ocean, mostly - reads as
+elevation 0. (Earlier releases fetched single tiles from the superseded
+``Upabjojr/elevation-data-ASTER-compressed-retiled`` dataset; the cache directory
+changed with the switch, so stale uncorrected tiles are never mixed in.)
 
 One honesty note about the data itself: ASTER is a stereo-photogrammetric DEM, and
-like all of its kind it rounds off sharp summits. Broad ones read true - the
-Breithorn's snow dome comes back 4160 m against a surveyed 4164 - but a rock spire
-clips by hundreds of metres: the Matterhorn reads about 4100. That is the dataset
-speaking, not a bug in this module; take spire summits as lower bounds.
+like all of its kind it rounds off sharp summits - broad ones read true (the
+Breithorn's snow dome comes back 4160 m against a surveyed 4164) while raw ASTER
+clipped a rock spire by hundreds of metres. The dataset now corrects summits
+against surveyed elevations: the Matterhorn, which the raw DEM clipped to about
+4040 m, tops out at 4484 - the surveyed 4478 to within the encoding's 4 m step.
+The rebuilt top can still sit a pixel or two (~30 m each) from the coordinate you
+have for a peak - the classic Matterhorn coordinate reads 4312 - so on a spire,
+the last few tens of metres depend on hitting the summit pixel, not on the data
+missing the summit.
 
 This module deliberately needs only Pillow: single lookups sample four pixels, so
 there is nothing for numpy to speed up, and the download is one HTTPS GET.
@@ -32,6 +43,8 @@ there is nothing for numpy to speed up, and the download is one HTTPS GET.
 
 import math
 import os
+import re
+import tarfile
 import urllib.error
 import urllib.request
 
@@ -39,11 +52,11 @@ from PIL import Image
 
 __all__ = ["elevation_at", "tile_xy", "decode_elevation", "DATASET_URL"]
 
-#: Where the tiles live; {x}, {y} are zero-padded tile numbers, {ext} jpg or png.
+#: Where the tiles live: one tar.gz per ZOOM-6 tile ({x}, {y} are zoom-6 tile
+#: numbers), each holding the sixteen zoom-8 JPEG+PNG pairs beneath it.
 DATASET_URL = ("https://huggingface.co/datasets/"
-               "Upabjojr/elevation-data-ASTER-compressed-retiled/resolve/main/"
-               "elev_tiles/zoom_08/x_{x:05d}/y_{y:05d}/"
-               "elev.z08.x{x:05d}.y{y:05d}.f000.{ext}")
+               "PeakNav/global-elevation-aster-slippy-tiles-tar-gz/resolve/main/"
+               "elev_tiles/zoom_06/x_{x:05d}/y_{y:05d}.tar.gz")
 
 #: The dataset's tiling: slippy-map zoom 8, 256 tiles per axis.
 ZOOM = 8
@@ -94,7 +107,7 @@ def decode_elevation(jpg_value, png_value):
     1024
     >>> decode_elevation(0, 129)         # and 0 its top
     2044
-    >>> decode_elevation(161, 129)       # 1024 + (255-161)*4: the Matterhorn's band
+    >>> decode_elevation(161, 129)       # 1024 + (255-161)*4, inside the flipped band
     1400
     >>> decode_elevation(100, 127)       # band -1 is odd, so it is flipped too:
     -404
@@ -105,15 +118,68 @@ def decode_elevation(jpg_value, png_value):
 
 
 def _cache_dir():
+    # ".v2" because the switch to the corrected PeakNav dataset must not read
+    # tiles a pre-switch install cached from the superseded one.
     return os.environ.get("PEAKNAV_ELEV_CACHE",
                           os.path.join(os.path.expanduser("~"), ".cache",
-                                       "peaknav", "elev_tiles"))
+                                       "peaknav", "elev_tiles.v2"))
+
+
+def _fetch_and_unpack(x6, y6, timeout_s):
+    """Download one zoom-6 archive and unpack its full-detail pairs into the cache.
+
+    Returns False when the dataset has no such archive (open ocean).
+    """
+    url = DATASET_URL.format(x=x6, y=y6)
+    os.makedirs(_cache_dir(), exist_ok=True)
+    # Streamed to a private name, and every extracted tile is renamed into place,
+    # so an interrupted download can never be mistaken for data.
+    archive = os.path.join(_cache_dir(),
+                           "x%05d.y%05d.tar.gz.part-%d" % (x6, y6, os.getpid()))
+    try:
+        with urllib.request.urlopen(url, timeout=timeout_s) as resp, \
+                open(archive, "wb") as f:
+            while True:
+                chunk = resp.read(1 << 16)
+                if not chunk:
+                    break
+                f.write(chunk)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False
+        raise
+    try:
+        with tarfile.open(archive, "r:gz") as tar:
+            for member in tar:
+                name = os.path.basename(member.name)
+                m = re.match(r"elev\.z08\.x(\d{5})\.y\d{5}\.f000\.(jpg|png)$", name)
+                if m is None or not member.isfile():
+                    continue  # f001+ are coarser levels the app uses; not wanted
+                subdir = os.path.join(_cache_dir(), "x%05d" % int(m.group(1)))
+                os.makedirs(subdir, exist_ok=True)
+                out = os.path.join(subdir, name)
+                partial = out + ".part-%d" % os.getpid()
+                src = tar.extractfile(member)
+                with open(partial, "wb") as f:
+                    while True:
+                        chunk = src.read(1 << 16)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                os.replace(partial, out)
+    finally:
+        os.remove(archive)
+    return True
 
 
 def _tile_paths(x, y, dataset_path=None, timeout_s=120):
-    """Local JPEG and PNG paths for a tile, downloading into the cache if needed.
+    """Local JPEG and PNG paths for a zoom-8 tile, downloading into the cache if needed.
 
-    Returns None when the dataset has no such tile (open ocean), which callers
+    The dataset packs each 4x4 block of zoom-8 tiles into one zoom-6 archive, so a
+    cache miss downloads that archive (~30 MB) and unpacks the whole block - the
+    neighbouring tiles are then already local when a profile or sweep reaches them.
+
+    Returns None when the dataset has no data here (open ocean), which callers
     report as elevation 0 rather than an error - "no land here" is an answer.
     """
     if dataset_path is not None:
@@ -127,38 +193,29 @@ def _tile_paths(x, y, dataset_path=None, timeout_s=120):
         return (jpg, png) if os.path.exists(jpg) and os.path.exists(png) else None
 
     cache = os.path.join(_cache_dir(), "x%05d" % x)
-    os.makedirs(cache, exist_ok=True)
-    out = []
-    for ext in ("jpg", "png"):
-        local = os.path.join(cache, "elev.z08.x%05d.y%05d.f000.%s" % (x, y, ext))
-        if not os.path.exists(local):
-            url = DATASET_URL.format(x=x, y=y, ext=ext)
-            try:
-                # Streamed to a private name and renamed into place, so an
-                # interrupted download can never be mistaken for a tile.
-                partial = local + ".part-%d" % os.getpid()
-                with urllib.request.urlopen(url, timeout=timeout_s) as resp, \
-                        open(partial, "wb") as f:
-                    while True:
-                        chunk = resp.read(1 << 16)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                os.replace(partial, local)
-            except urllib.error.HTTPError as e:
-                if e.code == 404:
-                    return None
-                raise
-        out.append(local)
-    return tuple(out)
+    paths = tuple(os.path.join(cache, "elev.z08.x%05d.y%05d.f000.%s" % (x, y, ext))
+                  for ext in ("jpg", "png"))
+    if all(os.path.exists(p) for p in paths):
+        return paths
+    # The marker says this archive was already fetched and unpacked, so a tile
+    # still missing is one the archive genuinely lacks (a coastal block) - asked
+    # again, it must answer 0 again rather than re-download 30 MB to re-learn it.
+    x6, y6 = x >> 2, y >> 2
+    marker = os.path.join(_cache_dir(), "unpacked.x%05d.y%05d" % (x6, y6))
+    if not os.path.exists(marker):
+        if not _fetch_and_unpack(x6, y6, timeout_s):
+            return None
+        with open(marker, "w"):
+            pass
+    return paths if all(os.path.exists(p) for p in paths) else None
 
 
 def elevation_at(lat, lon, *, sample="max", dataset_path=None, timeout_s=120):
     """The elevation of a coordinate, in metres.
 
-    Downloads the covering tile on first use (a few hundred kB) and caches it; later
-    lookups in the same tile are local. Coordinates the dataset has no tile for -
-    open ocean - return 0.
+    Downloads the covering archive on first use (~30 MB, covering a 4x4 block of
+    tiles) and caches it unpacked; later lookups anywhere in that block are local.
+    Coordinates the dataset has no data for - open ocean - return 0.
 
     :param sample: ``"max"`` (default) returns the highest of the four pixels around
         the point, which is what summit queries want - ASTER pixels are ~30 m and a
