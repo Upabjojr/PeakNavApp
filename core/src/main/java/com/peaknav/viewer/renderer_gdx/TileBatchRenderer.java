@@ -189,7 +189,42 @@ public class TileBatchRenderer {
                         Gdx.files.internal("fragment_shader_pseudodistances.glsl").readString()),
                 null);
 
-        this.fbo = createPseudodistanceFbo(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        // The FBO is deliberately NOT created here - see ensureFbo().
+    }
+
+    /**
+     * The size the pseudodistance FBO should have, applied when it is next created. Zero
+     * until {@link #resize} has been called, in which case the current backbuffer is used.
+     */
+    private int fboWidth;
+    private int fboHeight;
+
+    /**
+     * Creates the pseudodistance FBO on first use, from inside the render loop.
+     *
+     * <p>It must not be created any earlier, and the reason is iOS-only but fatal there.
+     * libGDX records the "default" framebuffer - the one {@code FrameBuffer.end()} returns
+     * to - exactly once, when the first FrameBuffer in the process is built, and only on iOS
+     * does it look the value up rather than assume zero. It has to: GLKit does not render
+     * into framebuffer 0, it renders into one of its own.
+     *
+     * <p>Built in the constructor, that lookup happened during screen setup, outside
+     * {@code glkView:drawInRect:}, where no GLKit framebuffer is bound - so libGDX recorded 0
+     * and every later {@code fbo.end()} bound 0. The terrain still appeared, because it is
+     * drawn before this pass; everything drawn after it - labels, the compass, every button
+     * and menu - went to a framebuffer that is not the screen and simply vanished.
+     *
+     * <p>Creating it on the first frame instead means the lookup sees GLKit's own framebuffer,
+     * which is the one to return to. The other platforms are indifferent: they answer 0 either
+     * way, so this only changes *when* the allocation happens, not what it produces.
+     */
+    private void ensureFbo() {
+        if (fbo != null) {
+            return;
+        }
+        int width = fboWidth > 0 ? fboWidth : Gdx.graphics.getWidth();
+        int height = fboHeight > 0 ? fboHeight : Gdx.graphics.getHeight();
+        fbo = createPseudodistanceFbo(width, height);
     }
 
     private static FrameBuffer createPseudodistanceFbo(int width, int height) {
@@ -368,6 +403,7 @@ public class TileBatchRenderer {
     }
 
     public Pixmap renderPseudodistances(Camera camera, boolean requestPixmap) {
+        ensureFbo();
         fbo.begin();
         Gdx.gl.glClearColor(1, 1, 1, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
@@ -446,6 +482,7 @@ public class TileBatchRenderer {
     }
 
     public Texture getSobelTexture() {
+        ensureFbo();
         return fbo.getColorBufferTexture();
     }
 
@@ -463,10 +500,17 @@ public class TileBatchRenderer {
     }
 
     public void resize(int width, int height) {
+        // Records the size and drops the old buffer; ensureFbo() builds the new one on the
+        // next frame. Building it here would be the same mistake the constructor made: resize
+        // is not always called from inside the render callback, and on iOS the first
+        // FrameBuffer built outside it teaches libGDX the wrong default framebuffer for the
+        // rest of the process.
+        this.fboWidth = width;
+        this.fboHeight = height;
         if (this.fbo != null) {
             this.fbo.dispose();
+            this.fbo = null;
         }
-        this.fbo = createPseudodistanceFbo(width, height);
         pseudodistancesDirty = true;
         // The main camera and the four geographic depth cameras are resized by
         // MapViewerScreen.resize (ModelBatch.getCamera() is null outside begin/end,
