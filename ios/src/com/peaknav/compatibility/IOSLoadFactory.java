@@ -4,10 +4,12 @@ import com.peaknav.database.MapSqlite;
 import com.peaknav.database.MapSqliteIOS;
 import com.peaknav.utils.CrashLogger;
 import com.peaknav.utils.CrashLoggerIOS;
+import com.peaknav.utils.FileMover;
 import com.peaknav.utils.IOSCaches;
 import com.peaknav.utils.IOSLogger;
 import com.peaknav.utils.PeakNavCaches;
 import com.peaknav.utils.PeakNavLogger;
+import com.peaknav.utils.RenameFileMover;
 import com.peaknav.utils.UtilsOSDep;
 import com.peaknav.utils.UtilsOSIOS;
 
@@ -53,6 +55,9 @@ public class IOSLoadFactory implements LoadFactory {
     private final IOSLogger logger = new IOSLogger();
     private final IOSCaches caches = new IOSCaches();
     private final UtilsOSIOS utilsOS = new UtilsOSIOS();
+    // RenameFileMover, never NioFileMover: the nio one names java.nio.file classes RoboVM
+    // does not have, and must stay unreachable from this module.
+    private final FileMover fileMover = new RenameFileMover();
     private final NotificationManagerIOS notifications = new NotificationManagerIOS();
 
     private final MapSqliteIOS mapSqlite = new MapSqliteIOS();
@@ -98,6 +103,11 @@ public class IOSLoadFactory implements LoadFactory {
     @Override
     public UtilsOSDep getUtilsOSDep() {
         return utilsOS;
+    }
+
+    @Override
+    public FileMover getFileMover() {
+        return fileMover;
     }
 
     @Override

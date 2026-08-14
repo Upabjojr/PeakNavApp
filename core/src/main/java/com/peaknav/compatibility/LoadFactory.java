@@ -2,6 +2,7 @@ package com.peaknav.compatibility;
 
 import com.peaknav.database.MapSqlite;
 import com.peaknav.utils.CrashLogger;
+import com.peaknav.utils.FileMover;
 import com.peaknav.utils.PeakNavCaches;
 import com.peaknav.utils.PeakNavLogger;
 import com.peaknav.utils.UtilsOSDep;
@@ -15,6 +16,7 @@ public interface LoadFactory {
     PeakNavLogger getPeakNavLogger();
     PeakNavCaches getCaches();
     UtilsOSDep getUtilsOSDep();
+    FileMover getFileMover();
     NotificationManagerPeakNav getPeakNavNotificationManager();
 
     CrashLogger getCrashLogger(Throwable throwable, String fileNamePrefix);

@@ -1,5 +1,4 @@
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -105,54 +104,116 @@ class TestLruCache {
     }
 
     /**
-     * Two threads missing on the same key at once.
+     * Two threads missing on the same key at once - the Guava behavior this class replaces.
      *
-     * <p>The loader deliberately runs outside the lock, so this race is possible by design -
-     * the alternative was serialising every image decode in the app behind one monitor. What
-     * must hold is that both callers end up with the SAME value, and that the discarded one is
-     * reported to the eviction listener. In the real cache that report is what disposes the
-     * loser's native memory; drop it and every such race leaks a pixmap.
+     * <p>Guava's {@code Cache.get(key, Callable)} ran ONE load per key and handed its result
+     * to every concurrent caller. That is the semantics the tile path was written against:
+     * the satellite provider keys many neighbouring tiles to the same zoomed-out parent
+     * image, and both tile workers routinely miss on it in the same instant. A cache that
+     * loaded twice would decode the same pixmap twice and throw one away - so this test holds
+     * the first load open until the second caller is verifiably waiting on it, then checks
+     * that only one load ever ran and both callers share its instance.
      */
     @Test
-    @DisplayName("A concurrent miss on one key yields one winner, and the loser is reported")
-    void concurrentMissReportsTheLoser() throws Exception {
+    @DisplayName("A concurrent miss on one key runs the loader once, and both callers share it")
+    void concurrentMissLoadsOnce() throws Exception {
         List<String> evicted = Collections.synchronizedList(new ArrayList<>());
         LruCache<String, String> cache = new LruCache<>(10, evicted::add);
 
-        CountDownLatch bothInsideLoader = new CountDownLatch(2);
+        AtomicInteger loads = new AtomicInteger();
+        CountDownLatch loaderEntered = new CountDownLatch(1);
+        CountDownLatch releaseLoader = new CountDownLatch(1);
         List<String> returned = Collections.synchronizedList(new ArrayList<>());
 
-        Runnable racer = () -> {
+        Runnable caller = () -> {
             try {
-                String value = cache.get("k", () -> {
-                    // Hold here until the other thread is also past the map check, so both
-                    // genuinely load the same key at the same time.
-                    bothInsideLoader.countDown();
-                    bothInsideLoader.await(5, TimeUnit.SECONDS);
-                    return new String("loaded");   // distinct instances on purpose
-                });
-                returned.add(value);
+                returned.add(cache.get("k", () -> {
+                    loads.incrementAndGet();
+                    loaderEntered.countDown();
+                    releaseLoader.await(5, TimeUnit.SECONDS);
+                    return new String("loaded");
+                }));
             } catch (Exception failed) {
                 throw new RuntimeException(failed);
             }
         };
 
-        Thread one = new Thread(racer, "racer-1");
-        Thread two = new Thread(racer, "racer-2");
-        one.start();
-        two.start();
-        one.join(10_000);
-        two.join(10_000);
+        Thread first = new Thread(caller, "loader-thread");
+        first.start();
+        assertTrue(loaderEntered.await(5, TimeUnit.SECONDS), "the first caller must be loading");
+
+        // The second caller arrives while the load is in flight, and must block on it
+        // rather than load again. Only once it is observably waiting is the loader let go.
+        Thread second = new Thread(caller, "waiter-thread");
+        second.start();
+        waitUntilWaiting(second);
+        releaseLoader.countDown();
+
+        first.join(10_000);
+        second.join(10_000);
 
         assertEquals(2, returned.size(), "both threads must have completed");
+        assertEquals(1, loads.get(), "one load per key, however many callers miss on it");
         assertSame(returned.get(0), returned.get(1),
-                "both callers must see the one value the cache kept");
-        assertEquals(1, evicted.size(), "the discarded load must be reported exactly once");
-        assertNotNull(evicted.get(0));
-        for (String value : returned) {
-            assertTrue(value != evicted.get(0),
-                    "the reported value must be the discarded one, never the one in use");
-        }
+                "every caller must see the single loaded instance");
+        assertTrue(evicted.isEmpty(), "nothing was discarded, so nothing may be reported");
         assertEquals(1, cache.size());
+    }
+
+    @Test
+    @DisplayName("A waiter on someone else's failed load gets the failure, and a retry reloads")
+    void waiterSharesTheFailure() throws Exception {
+        LruCache<String, String> cache = new LruCache<>(10, evicted -> { });
+
+        AtomicInteger loads = new AtomicInteger();
+        CountDownLatch loaderEntered = new CountDownLatch(1);
+        CountDownLatch releaseLoader = new CountDownLatch(1);
+        List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
+
+        Runnable caller = () -> {
+            try {
+                cache.get("k", () -> {
+                    loads.incrementAndGet();
+                    loaderEntered.countDown();
+                    releaseLoader.await(5, TimeUnit.SECONDS);
+                    throw new IOException("decode failed");
+                });
+            } catch (ExecutionException expected) {
+                failures.add(expected.getCause());
+            }
+        };
+
+        Thread first = new Thread(caller, "failing-loader");
+        first.start();
+        assertTrue(loaderEntered.await(5, TimeUnit.SECONDS));
+        Thread second = new Thread(caller, "failing-waiter");
+        second.start();
+        waitUntilWaiting(second);
+        releaseLoader.countDown();
+        first.join(10_000);
+        second.join(10_000);
+
+        assertEquals(1, loads.get(), "the waiter shares the load, failed or not");
+        assertEquals(2, failures.size(), "the one failure must reach both callers");
+        for (Throwable cause : failures) {
+            assertTrue(cause instanceof IOException, "each with the loader's own exception");
+        }
+        assertEquals(0, cache.size(), "a failure must not be cached...");
+
+        cache.get("k", () -> { loads.incrementAndGet(); return "recovered"; });
+        assertEquals(2, loads.get(), "...so the next call simply tries again");
+    }
+
+    /** Spins until the thread parks in WAITING/TIMED_WAITING, i.e. is blocked on the load. */
+    private static void waitUntilWaiting(Thread thread) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            Thread.State state = thread.getState();
+            if (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING) {
+                return;
+            }
+            Thread.sleep(1);
+        }
+        throw new AssertionError("second caller never blocked on the in-flight load");
     }
 }

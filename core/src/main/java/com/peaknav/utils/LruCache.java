@@ -27,10 +27,17 @@ import java.util.concurrent.ExecutionException;
  *
  * <p>The map is guarded by this object's monitor, but <b>the loader runs outside it</b>.
  * Loading decodes an image from disk, and holding a single global lock across that would
- * serialise every tile worker in the app behind one decode. The cost of letting go is that
- * two threads can miss on the same key at once; the second one to finish finds the winner's
- * value already in the map, and hands its own to the eviction listener. That is the same path
- * an evicted value takes, so a loser is disposed of correctly rather than leaked.
+ * serialise every tile worker in the app behind one decode.
+ *
+ * <p>Concurrent misses on the same key are deduplicated, exactly as Guava's
+ * {@code Cache.get(key, Callable)} did it: the first thread in becomes the loader, and every
+ * other thread arriving for that key while the load is in flight waits for its result instead
+ * of decoding the same file again. This matters on the tile path, where the satellite
+ * provider keys many neighbouring tiles to one zoomed-out parent image and both tile workers
+ * routinely miss on it in the same instant - without the dedup, each decoded the full pixmap
+ * and one was thrown away. A load that fails is delivered as {@link ExecutionException} to
+ * the loading thread and every waiter alike, and nothing is cached, so the next call simply
+ * tries again. Distinct keys never wait on each other.
  */
 public class LruCache<K, V> {
 
@@ -39,9 +46,21 @@ public class LruCache<K, V> {
         V load() throws Exception;
     }
 
-    /** Told about every value the cache stops holding, by eviction or by losing a race. */
+    /** Told about every value the cache stops holding. */
     public interface EvictionListener<V> {
         void onEvicted(V value);
+    }
+
+    /**
+     * One in-flight load, shared by the thread running the loader and every thread waiting
+     * on the same key. A hand-rolled latch rather than {@code CompletableFuture}, which is
+     * Java 8 API that RoboVM's runtime does not have; {@code wait}/{@code notifyAll} exist
+     * everywhere.
+     */
+    private static final class InFlight<V> {
+        V value;
+        Throwable failure;
+        boolean done;
     }
 
     private final int maximumSize;
@@ -49,6 +68,10 @@ public class LruCache<K, V> {
 
     /** accessOrder = true, so iteration starts at the least recently used entry. */
     private final LinkedHashMap<K, V> entries;
+
+    /** Loads currently running, so a second miss on the same key waits instead of reloading.
+     *  Guarded by this object's monitor, like {@link #entries}. */
+    private final Map<K, InFlight<V>> loading = new java.util.HashMap<K, InFlight<V>>();
 
     public LruCache(int maximumSize, EvictionListener<V> evictionListener) {
         if (maximumSize < 1) {
@@ -68,48 +91,96 @@ public class LruCache<K, V> {
      *         "no such file" by throwing out of the loader.
      */
     public V get(K key, Loader<V> loader) throws ExecutionException {
+        InFlight<V> flight;
+        boolean thisThreadLoads;
         synchronized (this) {
             V existing = entries.get(key);
             if (existing != null) {
                 return existing;
             }
+            flight = loading.get(key);
+            thisThreadLoads = flight == null;
+            if (thisThreadLoads) {
+                flight = new InFlight<V>();
+                loading.put(key, flight);
+            }
+        }
+        if (!thisThreadLoads) {
+            return await(key, flight);
         }
 
-        V loaded;
+        // The loader itself runs with no lock held - see the class comment.
+        V loaded = null;
+        Throwable failure = null;
         try {
             loaded = loader.load();
-        } catch (Exception failed) {
-            throw new ExecutionException(failed);
-        }
-        if (loaded == null) {
-            throw new ExecutionException(new IllegalStateException("loader returned null for " + key));
+            if (loaded == null) {
+                // A null would be indistinguishable from a miss on the next call and be
+                // reloaded forever, so it is refused rather than cached as a hole.
+                failure = new IllegalStateException("loader returned null for " + key);
+            }
+        } catch (Exception thrown) {
+            failure = thrown;
         }
 
-        V lost = null;
-        List<V> evicted;
+        List<V> evicted = null;
         synchronized (this) {
-            V winner = entries.get(key);
-            if (winner != null) {
-                // Another thread loaded the same key while this one was reading it.
-                lost = loaded;
-                loaded = winner;
-                evicted = null;
-            } else {
+            loading.remove(key);
+            if (failure == null) {
                 entries.put(key, loaded);
                 evicted = evictDownToSize();
             }
         }
+        synchronized (flight) {
+            flight.value = loaded;
+            flight.failure = failure;
+            flight.done = true;
+            flight.notifyAll();
+        }
 
         // Outside the lock: the listener disposes native memory and takes its own locks.
-        if (lost != null) {
-            evictionListener.onEvicted(lost);
-        }
         if (evicted != null) {
             for (V value : evicted) {
                 evictionListener.onEvicted(value);
             }
         }
+        if (failure != null) {
+            throw new ExecutionException(failure);
+        }
         return loaded;
+    }
+
+    /**
+     * Waits for another thread's in-flight load of {@code key} and shares its outcome,
+     * failure included. The wait is uninterruptible with the interrupt flag restored, which
+     * is how Guava's {@code Cache.get} behaved for a thread waiting on someone else's load.
+     */
+    private V await(K key, InFlight<V> flight) throws ExecutionException {
+        boolean interrupted = false;
+        synchronized (flight) {
+            while (!flight.done) {
+                try {
+                    flight.wait();
+                } catch (InterruptedException e) {
+                    interrupted = true;
+                }
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        if (flight.failure != null) {
+            throw new ExecutionException(flight.failure);
+        }
+        // Touch the entry so the waiter counts as a use for LRU order. It may already have
+        // been evicted again; the flight's value is still the right thing to return then.
+        synchronized (this) {
+            V current = entries.get(key);
+            if (current != null) {
+                return current;
+            }
+        }
+        return flight.value;
     }
 
     /** Drops least-recently-used entries until the bound holds. Caller holds the monitor. */

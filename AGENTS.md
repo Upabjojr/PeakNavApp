@@ -187,9 +187,13 @@ Android's libcore and predates Java 8:
   compile-audit noise rather than runtime crashes — but keep them out anyway).
 - **No `Locale.getScript()`**, a Java 7 method Android added late.
 - **No `java.io.File.toPath()`** either, so code cannot even reach `java.nio.file`.
-  Use `com.peaknav.utils.AtomicFileMove` to rename a finished file into place; the
-  downloader's `Files.move(REPLACE_EXISTING, ATOMIC_MOVE)` calls used to fail here,
-  which meant every tile downloaded in full and then died on the last step.
+  To rename a finished file into place, use
+  `PeakNavUtils.getLoadFactory().getFileMover()` — a `com.peaknav.utils.FileMover`
+  supplied per platform, `NioFileMover` (nio, atomic-and-replacing stated in the
+  type system) on desktop/Android/headless and `RenameFileMover` (POSIX
+  `rename(2)`, the same guarantee) on iOS. The downloader's direct
+  `Files.move(REPLACE_EXISTING, ATOMIC_MOVE)` calls used to fail here, which meant
+  every tile downloaded in full and then died on the last step.
 
 Two consequences worth knowing before adding a dependency to `core`: Guava cannot
 be used at all (its `Equivalence` implements `BiPredicate`, so building any cache
@@ -208,10 +212,12 @@ javac -nowarn -source 8 -target 8 \
   -cp "<runtimeClasspath>" -d /tmp/out $(find core/src/main/java -name '*.java')
 ```
 
-The only expected errors are `AtomicFileMove`'s `java.nio.file` references, which
-sit inside a `LinkageError` guard on purpose. Run this after touching `core` in
-any nontrivial way; it is minutes cheaper than an AOT build and catches what the
-normal compile cannot.
+The only expected errors are `NioFileMover`'s `java.nio.file` references: that
+class is the desktop/Android implementation of `FileMover`, constructed only by
+those platforms' `LoadFactory`s and never reachable from the iOS entry point
+(and `ios/robovm.xml` force-links no `com.peaknav` classes, so RoboVM never
+tries to compile it). Run this after touching `core` in any nontrivial way; it
+is minutes cheaper than an AOT build and catches what the normal compile cannot.
 
 Two more RoboVM-side traps, both handled in `ios/build.gradle`:
 

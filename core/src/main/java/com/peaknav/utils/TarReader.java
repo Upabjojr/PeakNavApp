@@ -16,10 +16,21 @@ import java.io.InputStream;
  * both, narrowed {@code getNextEntry()}'s return type in a later version, so a {@code core}
  * compiled against the current one calls a descriptor 1.20 does not have.
  *
- * <p>Rather than pin a fourth version, the app stopped needing the library for this. Gzip
- * comes from {@code java.util.zip}, which every platform has including RoboVM, and tar is a
- * format of 512-byte headers that fits in one class. The dependency stays in the build for
- * whatever else uses it, but this path no longer risks it.
+ * <p>Rather than pin a fourth version, the app stopped needing the library at all: this class
+ * and {@code java.util.zip}'s gzip (which every platform has, including RoboVM) replaced its
+ * only use, and commons-compress is no longer a dependency of {@code core}. Tar is a format
+ * of 512-byte headers that fits in one class.
+ *
+ * <h2>Truncation</h2>
+ *
+ * <p>The error behavior deliberately matches what commons-compress gave the other platforms,
+ * because the download code leans on it: a truncated archive must <b>throw</b>, which is how
+ * {@code PeakNavDownloadManager} knows to discard the file and fetch it again. Anything cut
+ * off mid-entry - a partial header, missing entry data, a short PAX or long-name block, an
+ * EOF while skipping to the next header - raises {@link EOFException}. The one accepted
+ * irregular ending is an EOF falling exactly on a block boundary where the next header would
+ * start: some writers omit the two terminating zero blocks, and commons-compress reads such
+ * archives as complete, so this does too.
  *
  * <h2>What it handles</h2>
  *
@@ -107,8 +118,10 @@ public final class TarReader implements Closeable {
 
         while (true) {
             if (!readFully(header, BLOCK)) {
-                // Truncated rather than terminated. Treat as the end: a short read here means
-                // the download was cut off, and the caller's checks will notice the gap.
+                // EOF exactly where a header would start, with no zero block seen: an archive
+                // whose writer omitted the terminator. commons-compress accepts these as
+                // complete, so this does too. (An EOF *inside* a header is a truncated
+                // download and throws from readFully instead.)
                 finished = true;
                 return null;
             }
@@ -126,8 +139,7 @@ public final class TarReader implements Closeable {
                 // records. Only path is of any interest here.
                 byte[] pax = new byte[(int) Math.min(size, 1 << 20)];
                 if (!readFully(pax, pax.length)) {
-                    finished = true;
-                    return null;
+                    throw new EOFException("tar truncated inside a PAX header");
                 }
                 skipFully(size - pax.length + paddingFor(size));
                 String path = paxPath(pax);
@@ -141,8 +153,7 @@ public final class TarReader implements Closeable {
                 // GNU long name: content is the next entry's name.
                 byte[] nameBytes = new byte[(int) Math.min(size, 1 << 16)];
                 if (!readFully(nameBytes, nameBytes.length)) {
-                    finished = true;
-                    return null;
+                    throw new EOFException("tar truncated inside a long-name block");
                 }
                 skipFully(size - nameBytes.length + paddingFor(size));
                 longName = trimToNul(nameBytes, 0, nameBytes.length);
@@ -322,13 +333,21 @@ public final class TarReader implements Closeable {
         }
     }
 
-    /** Fills {@code length} bytes, or reports that the stream ended first. */
+    /**
+     * Fills {@code length} bytes. Returns false only when the stream ended before the FIRST
+     * byte - the "no more data at a block boundary" case the caller may treat as the end of
+     * the archive. An EOF after that is a structure cut off in the middle, and throws.
+     */
     private boolean readFully(byte[] buffer, int length) throws IOException {
         int at = 0;
         while (at < length) {
             int read = in.read(buffer, at, length - at);
             if (read < 0) {
-                return false;
+                if (at == 0) {
+                    return false;
+                }
+                throw new EOFException("tar truncated: " + (length - at)
+                        + " bytes missing from a " + length + "-byte structure");
             }
             at += read;
         }
@@ -336,11 +355,16 @@ public final class TarReader implements Closeable {
     }
 
     /**
-     * Skips exactly {@code count} bytes.
+     * Skips exactly {@code count} bytes, throwing if the stream ends first.
      *
      * <p>Reads rather than trusting {@link InputStream#skip} alone: on a
      * {@code GZIPInputStream} skip is implemented by reading anyway, and a short skip that
      * went unnoticed would desynchronise every header after it.
+     *
+     * <p>An EOF here is always truncation - these are bytes a header promised - and it must
+     * throw, not return quietly: a caller that ignored an entry's contents would otherwise
+     * mistake a cut-off archive for a finished one, and the download code counts on the
+     * throw to discard and refetch the file. commons-compress threw here too.
      */
     private void skipFully(long count) throws IOException {
         long left = count;
@@ -356,7 +380,7 @@ public final class TarReader implements Closeable {
             }
             int read = in.read(scratch, 0, (int) Math.min(left, scratch.length));
             if (read < 0) {
-                return;     // truncated; next() will see the short header and stop
+                throw new EOFException("tar truncated: " + left + " promised bytes missing");
             }
             left -= read;
         }

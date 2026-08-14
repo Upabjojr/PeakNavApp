@@ -30,6 +30,8 @@ import com.peaknav.ui.ClickCallback;
 import com.peaknav.utils.CrashLogger;
 import com.peaknav.utils.CrashLoggerDesktop;
 import com.peaknav.utils.DesktopLogger;
+import com.peaknav.utils.FileMover;
+import com.peaknav.utils.NioFileMover;
 import com.peaknav.utils.PeakNavCaches;
 import com.peaknav.utils.PeakNavLogger;
 import com.peaknav.utils.UtilsOSDep;
@@ -95,6 +97,13 @@ public class MapViewerDesktopSingleton extends MapViewerSingleton {
                 if (utilsOSDep == null)
                     utilsOSDep = new UtilsOSDesktop();
                 return utilsOSDep;
+            }
+
+            private final FileMover fileMover = new NioFileMover();
+
+            @Override
+            public FileMover getFileMover() {
+                return fileMover;
             }
 
             @Override

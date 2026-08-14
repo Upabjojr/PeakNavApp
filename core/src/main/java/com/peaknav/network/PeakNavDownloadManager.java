@@ -5,6 +5,7 @@ import static com.peaknav.database.CheckMissingData.getTileAtZoomLevel;
 import static com.peaknav.utils.PathUtils.createRecurrentPathsForOsmTilesInExternal;
 import static com.peaknav.utils.PathUtils.getMapFolder;
 import static com.peaknav.utils.PeakNavUtils.getC;
+import static com.peaknav.utils.PeakNavUtils.getLoadFactory;
 import static com.peaknav.utils.PeakNavUtils.getLogger;
 import static com.peaknav.utils.PreferencesManager.P;
 import static com.peaknav.viewer.tiles.MapTile.MF_ZOOM;
@@ -13,7 +14,6 @@ import com.badlogic.gdx.Gdx;
 import com.peaknav.compatibility.NotificationManagerPeakNav;
 import com.peaknav.database.MapSqlite;
 import com.peaknav.pbf.PbfLayer;
-import com.peaknav.utils.AtomicFileMove;
 import com.peaknav.utils.PeakNavThreadExecutor;
 import com.peaknav.utils.TarReader;
 import com.peaknav.viewer.MapViewerSingleton;
@@ -258,7 +258,7 @@ public class PeakNavDownloadManager {
                     partial.delete();
                     throw e;
                 }
-                AtomicFileMove.moveIntoPlace(partial, localFile);
+                getLoadFactory().getFileMover().moveIntoPlace(partial, localFile);
                 return;
             } catch (IOException ex) {
                 lastFailure = ex;
@@ -405,22 +405,34 @@ public class PeakNavDownloadManager {
             outputDir.mkdirs();
         }
 
-        FileInputStream fis = new FileInputStream(inputFile);
-
-        InputStream is;
-        if (inputFile.getName().endsWith(".tar.gz")) {
-            // java.util.zip, not commons-compress: this runs on iOS too, where the library
-            // cannot be loaded at all. See TarReader for the whole story.
-            is = new java.util.zip.GZIPInputStream(fis, 32 * 1024);
-        } else if (inputFile.getName().endsWith(".tar")) {
-            is = fis;
-        } else {
-            fis.close();
-            throw new RuntimeException("unknown tar/tar.gz extension: " + inputFile.getName());
+        // The reader (and through it the gzip and file streams) is closed on every path.
+        // Bulk downloads unpack hundreds of archives; an unclosed descriptor per archive was
+        // survivable where finalizers ran promptly, and is not on iOS's fd limit.
+        try (TarReader tarInput = openTar(inputFile)) {
+            unpackEntries(tarInput, outputDir);
         }
+    }
 
-        TarReader tarInput = new TarReader(is);
+    private static TarReader openTar(File inputFile) throws IOException {
+        FileInputStream fis = new FileInputStream(inputFile);
+        try {
+            if (inputFile.getName().endsWith(".tar.gz")) {
+                // java.util.zip, not commons-compress: this runs on iOS too, where the
+                // library cannot be loaded at all. See TarReader for the whole story.
+                return new TarReader(new java.util.zip.GZIPInputStream(fis, 32 * 1024));
+            }
+            if (inputFile.getName().endsWith(".tar")) {
+                return new TarReader(fis);
+            }
+            throw new IOException("unknown tar/tar.gz extension: " + inputFile.getName());
+        } catch (IOException | RuntimeException e) {
+            // Nothing owns fis yet (a corrupt gzip header throws from the constructor).
+            fis.close();
+            throw e;
+        }
+    }
 
+    private static void unpackEntries(TarReader tarInput, File outputDir) throws IOException {
         TarReader.Entry entry;
         while ((entry = tarInput.next()) != null) {
             File outputFile = new File(outputDir, entry.getName());
@@ -456,7 +468,7 @@ public class PeakNavDownloadManager {
                         partialEntry.delete();
                     }
                 }
-                AtomicFileMove.moveIntoPlace(partialEntry, outputFile);
+                getLoadFactory().getFileMover().moveIntoPlace(partialEntry, outputFile);
             }
         }
     }

@@ -12,6 +12,8 @@ import com.peaknav.compatibility.NotificationManagerAndroid;
 import com.peaknav.compatibility.NotificationManagerPeakNav;
 import com.peaknav.utils.CrashLogger;
 import com.peaknav.utils.CrashLoggerAndroid;
+import com.peaknav.utils.FileMover;
+import com.peaknav.utils.NioFileMover;
 import com.peaknav.utils.UtilsOSAndroid;
 import com.peaknav.utils.UtilsOSDep;
 import com.peaknav.views.AndroidLauncher;
@@ -71,6 +73,13 @@ public class MapViewerAndroidSingleton extends MapViewerSingleton {
                 if (utilsOSDep == null)
                     utilsOSDep = new UtilsOSAndroid();
                 return utilsOSDep;
+            }
+
+            private final FileMover fileMover = new NioFileMover();
+
+            @Override
+            public FileMover getFileMover() {
+                return fileMover;
             }
 
             @Override

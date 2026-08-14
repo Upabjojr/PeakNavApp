@@ -1,6 +1,7 @@
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.peaknav.utils.TarReader;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -153,6 +155,81 @@ class TestTarReader {
         assertEquals(2, names.size());
         assertEquals("a.bin", names.get(0));
         assertEquals("b.bin", names.get(1));
+    }
+
+    /**
+     * Truncation must throw, never read as a shorter archive.
+     *
+     * <p>This is the contract the whole download path leans on: unpacking runs inside a
+     * catch whose recovery is "discard the file and fetch it again", and commons-compress
+     * (which the other platforms shipped with for years) threw on every cut-off archive.
+     * A reader that returned null instead would mark a half-unpacked region as downloaded,
+     * permanently - the missing tiles would never be refetched.
+     */
+    @Test
+    @DisplayName("An archive cut off mid-header throws instead of ending quietly")
+    void truncatedHeaderThrows() throws Exception {
+        Map<String, byte[]> written = new LinkedHashMap<>();
+        written.put("a.bin", bytes(700));
+        byte[] whole = tar(written);
+        // The cut lands inside the very first header block.
+        byte[] cut = new byte[BLOCK / 2];
+        System.arraycopy(whole, 0, cut, 0, cut.length);
+
+        TarReader reader = new TarReader(new ByteArrayInputStream(cut));
+        assertThrows(IOException.class, reader::next);
+    }
+
+    @Test
+    @DisplayName("An entry whose data is cut off throws from read")
+    void truncatedDataThrows() throws Exception {
+        Map<String, byte[]> written = new LinkedHashMap<>();
+        written.put("a.bin", bytes(1000));
+        byte[] whole = tar(written);
+        byte[] cut = new byte[BLOCK + 200];     // header + 200 of the 1000 promised bytes
+        System.arraycopy(whole, 0, cut, 0, cut.length);
+
+        TarReader reader = new TarReader(new ByteArrayInputStream(cut));
+        TarReader.Entry entry = reader.next();
+        assertEquals("a.bin", entry.getName());
+        byte[] buffer = new byte[512];
+        assertThrows(EOFException.class, () -> {
+            while (reader.read(buffer, 0, buffer.length) != -1) {
+                // draining; the missing tail must surface as a throw, not a quiet -1
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("A truncated entry throws even when the caller skips its contents")
+    void truncatedSkipThrows() throws Exception {
+        Map<String, byte[]> written = new LinkedHashMap<>();
+        written.put("a.bin", bytes(1000));
+        written.put("b.bin", bytes(20));
+        byte[] whole = tar(written);
+        byte[] cut = new byte[BLOCK + 200];
+        System.arraycopy(whole, 0, cut, 0, cut.length);
+
+        TarReader reader = new TarReader(new ByteArrayInputStream(cut));
+        assertEquals("a.bin", reader.next().getName());
+        // Never reading a.bin's bytes: the skip to the next header crosses the cut, and that
+        // must throw - this is exactly the path that would otherwise fake a clean end.
+        assertThrows(EOFException.class, reader::next);
+    }
+
+    @Test
+    @DisplayName("EOF exactly at a block boundary, with no zero blocks, is a clean end")
+    void missingTerminatorIsAcceptedAtABoundary() throws Exception {
+        // Parity with commons-compress: some writers omit the two terminating zero blocks,
+        // and the other platforms have always read such archives as complete.
+        Map<String, byte[]> written = new LinkedHashMap<>();
+        written.put("a.bin", bytes(700));
+        byte[] whole = tar(written);
+        byte[] unterminated = new byte[whole.length - 2 * BLOCK];
+        System.arraycopy(whole, 0, unterminated, 0, unterminated.length);
+
+        Map<String, byte[]> read = extract(unterminated);
+        assertArrayEquals(bytes(700), read.get("a.bin"));
     }
 
     // ---------------------------------------------------------------- helpers
