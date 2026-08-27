@@ -1,12 +1,23 @@
 package com.peaknav.viewer;
 
 import org.robovm.apple.foundation.NSAutoreleasePool;
+import org.robovm.apple.foundation.NSURL;
 import org.robovm.apple.uikit.UIApplication;
+import org.robovm.apple.uikit.UIApplicationOpenURLOptions;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.backends.iosrobovm.IOSApplication;
 import com.badlogic.gdx.backends.iosrobovm.IOSApplicationConfiguration;
 import com.badlogic.gdx.graphics.glutils.HdpiMode;
+import com.peaknav.utils.PeakNavUtils;
 
+import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Timer;
+import java.util.TimerTask;
 
 /**
  * The iOS entry point: hands the shared {@link MapApp} to libGDX's RoboVM backend, with
@@ -18,12 +29,69 @@ import com.badlogic.gdx.graphics.glutils.HdpiMode;
  * looked in {@code src/main/java}, found nothing there, and reported success. That is fixed;
  * the launcher is now held to the same compiler as the rest of the project.
  *
- * <p>The app launches and renders. What is not built on this platform - search, the download
- * chooser, the gallery and camera pickers, GPS and the compass - says so when tapped, and
- * {@code IOSLoadFactory} explains the one piece core treats as absent rather than broken:
- * there is no mapsforge graphics backend, so there is no road and path layer.
+ * <p>Beyond launching, this is also where GPX files opened from other apps arrive:
+ * Info.plist registers the .gpx document type, and the system calls {@link #openURL} with
+ * a copy of the file in Documents/Inbox. See {@code IOSLoadFactory} for the one piece core
+ * treats as absent rather than broken: there is no mapsforge graphics backend, so there is
+ * no road and path layer.
  */
 public class IOSLauncher extends IOSApplication.Delegate {
+
+    /** Give a cold-started app this long to bring the map screen up before dropping a file. */
+    private static final int GPX_DELIVERY_ATTEMPTS = 60;
+    private static final long GPX_RETRY_MS = 250L;
+
+    /**
+     * A .gpx handed over by another app - Files, Mail, a share sheet. The bytes are read
+     * immediately (the Inbox copy is ours, but there is no reason to gamble on its
+     * lifetime), and delivery waits for the map screen: on a cold start this fires long
+     * before core exists, the same race Android's share intent has, resolved the same way.
+     */
+    @Override
+    public boolean openURL(UIApplication app, NSURL url, UIApplicationOpenURLOptions options) {
+        if (url == null || !url.isFileURL()) {
+            return false;
+        }
+        byte[] bytes = readFile(url.getPath());
+        if (bytes == null) {
+            return false;
+        }
+        deliverGpxWhenReady(new String(bytes, StandardCharsets.UTF_8), 0);
+        return true;
+    }
+
+    private void deliverGpxWhenReady(final String xml, final int attempt) {
+        if (attempt > GPX_DELIVERY_ATTEMPTS) {
+            return;
+        }
+        if (MapViewerSingleton.getViewerInstance() == null || Gdx.app == null) {
+            new Timer("gpx-delivery", true).schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    deliverGpxWhenReady(xml, attempt + 1);
+                }
+            }, GPX_RETRY_MS);
+            return;
+        }
+        // loadFromXml toasts and moves the camera, so it belongs on the render thread.
+        Gdx.app.postRunnable(() -> PeakNavUtils.getC().gpxManager.loadFromXml(xml));
+    }
+
+    private static byte[] readFile(String path) {
+        // A byte-shuffling loop rather than Files.readAllBytes: java.nio.file does not
+        // exist on RoboVM's runtime (see AGENTS.md).
+        try (InputStream in = new FileInputStream(path)) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+            return out.toByteArray();
+        } catch (IOException failed) {
+            return null;
+        }
+    }
 
     @Override
     protected IOSApplication createApplication() {
