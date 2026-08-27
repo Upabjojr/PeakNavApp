@@ -61,5 +61,13 @@
          key is not a missing prompt, it is a crash the moment a user shares a snapshot. -->
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>PeakNav needs this to save a snapshot of the view to your photo library.</string>
+    <!-- Without this key CLLocationManager.requestWhenInUseAuthorization() does not fail -
+         it silently never shows the prompt, and the "here" button does nothing forever. -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>PeakNav uses your location to center the mountain view on where you are.</string>
+    <!-- Same class of problem as the photo-library key above, but harsher: reaching
+         CoreMotion without a usage string is app termination, not a missing prompt. -->
+    <key>NSMotionUsageDescription</key>
+    <string>PeakNav uses the motion sensors to aim the view where you point your phone.</string>
 </dict>
 </plist>

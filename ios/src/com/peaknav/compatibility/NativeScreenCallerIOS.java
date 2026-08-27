@@ -8,6 +8,8 @@ import static com.peaknav.utils.PreferencesManager.P;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Pixmap;
 
+import com.peaknav.controller.LocationControllerIOS;
+import com.peaknav.controller.OrientationPointerControllerIOS;
 import com.peaknav.database.LuceneGeonameSearch;
 import com.peaknav.database.MissingDataDownloader;
 import com.peaknav.gesture.OrientationPointerListener;
@@ -274,23 +276,67 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         return NSProcessInfo.getSharedProcessInfo().getPhysicalMemory();
     }
 
+    // Constructed lazily on the main thread: CLLocationManager's delegate callbacks arrive
+    // on the run loop of the creating thread, and only the main one is guaranteed to spin.
+    private LocationControllerIOS locationController;
+
+    private LocationControllerIOS locationController() {
+        if (locationController == null) {
+            locationController = new LocationControllerIOS();
+        }
+        return locationController;
+    }
+
     @Override
     public void ensureLocationPermissions() {
-        // Deliberately empty until the location listener below is real: asking for a
-        // permission the app then makes no use of is how an app gets distrusted.
+        onMainThread(() -> {
+            LocationControllerIOS controller = locationController();
+            if (controller.isDenied()) {
+                // The user said no earlier; only the Settings app can change that answer
+                // now, so point there rather than silently doing nothing forever.
+                askOpenSettings();
+                return;
+            }
+            controller.ensureAuthorization();
+        });
+    }
+
+    /** The "location is off for this app" dialog: explain, and offer the Settings page. */
+    private void askOpenSettings() {
+        UIAlertController controller = new UIAlertController(
+                s("Location_permission_missing"),
+                s("Location_permissions_in_device_settings_are_advised_to_use_app"),
+                UIAlertControllerStyle.Alert);
+        controller.addAction(new UIAlertAction(s("Cancel"), UIAlertActionStyle.Cancel,
+                (UIAlertAction action) -> { }));
+        controller.addAction(new UIAlertAction(s("Open_settings"), UIAlertActionStyle.Default,
+                (UIAlertAction action) -> openUrl(UIApplication.getOpenSettingsURLString())));
+        present(controller);
     }
 
     private final OrientationPointerListener orientationPointerListener =
             new OrientationPointerListener() {
-                // Compass and attitude would come from CoreMotion. Until that is built the
-                // app behaves as it does on the desktop, where there is no such sensor: the
-                // view is steered by hand and nothing here has anything to start or stop.
+                // Created on first use, then kept: CMMotionManager instances are meant to be
+                // long-lived, and start/stop toggles updates on the one instance.
+                private OrientationPointerControllerIOS controller;
+
                 @Override
                 public void start() {
+                    onMainThread(() -> {
+                        if (controller == null) {
+                            controller = new OrientationPointerControllerIOS();
+                        }
+                        controller.start();
+                    });
                 }
 
                 @Override
                 public void stop() {
+                    onMainThread(() -> {
+                        if (controller != null) {
+                            controller.stop();
+                        }
+                    });
                 }
             };
 
@@ -303,8 +349,7 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
             new CurrentLocationListener() {
                 @Override
                 public void getCurrentLocation(CurrentLocationCallback callback) {
-                    // CoreLocation, once the permission flow above is built. Until then the
-                    // app behaves as it does on the desktop: no GPS, the user picks a place.
+                    onMainThread(() -> locationController().getCurrentLocation(callback));
                 }
             };
 

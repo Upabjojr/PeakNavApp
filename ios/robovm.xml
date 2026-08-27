@@ -44,5 +44,7 @@
     <framework>AudioToolbox</framework>
     <framework>AVFoundation</framework>
     <framework>GameController</framework>
+    <framework>CoreLocation</framework>
+    <framework>CoreMotion</framework>
   </frameworks>
 </config>
