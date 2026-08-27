@@ -488,6 +488,61 @@ public class LabelRenderer {
         float importance;          // tie-break within a priority (visible range)
     }
 
+    /**
+     * An area label as it was last drawn: the area and its plate rectangle in screen pixels,
+     * libGDX convention (origin bottom-left, y up). A copy, safe to keep after the frame.
+     */
+    public static final class DrawnArea {
+        public final MapArea area;
+        public final float x, y, width, height;
+
+        DrawnArea(PendingArea p) {
+            this.area = p.area;
+            this.x = p.rx;
+            this.y = p.ry;
+            this.width = p.rw;
+            this.height = p.rh;
+        }
+    }
+
+    /**
+     * The area labels (ranges, islands, lakes, towns) drawn in the last frame, at the positions
+     * they were drawn at. Call on the render thread.
+     */
+    public List<DrawnArea> drawnAreas() {
+        List<DrawnArea> out = new java.util.ArrayList<>(areaDrawn.size());
+        for (int i = 0; i < areaDrawn.size(); i++) {
+            out.add(new DrawnArea(areaDrawn.get(i)));
+        }
+        return out;
+    }
+
+    /**
+     * The areas that survived the geometric culls of the last {@code renderAreas} pass - in
+     * range, in front of the camera, on screen, summit in view, not behind terrain - whether
+     * or not they then won a plate in the de-overlap round. Call on the render thread.
+     */
+    public java.util.Set<MapArea> candidateAreas() {
+        java.util.Set<MapArea> out = java.util.Collections.newSetFromMap(
+                new java.util.IdentityHashMap<MapArea, Boolean>());
+        for (int i = 0; i < areaPending.size(); i++) {
+            out.add(areaPending.get(i).area);
+        }
+        return out;
+    }
+
+    /**
+     * The standing terrain-occlusion verdict for an area: true when its last decision found
+     * every sample point behind nearer terrain - or when it has never been tested, which
+     * {@link AreaLabelStability#lastVerdict} also reports as not visible.
+     */
+    public boolean isAreaHiddenByTerrain(MapArea area) {
+        return !areaStability.lastVerdict(area);
+    }
+
+    /** What the last frame drew; rebuilt by every {@code renderAreas} pass. */
+    private final java.util.List<PendingArea> areaDrawn = new java.util.ArrayList<>();
+
     private final java.util.List<PendingArea> areaPool = new java.util.ArrayList<>();
     private final java.util.List<PendingArea> areaPending = new java.util.ArrayList<>();
     private final java.util.List<PendingArea> areaAccepted = new java.util.ArrayList<>();
@@ -531,6 +586,7 @@ public class LabelRenderer {
     }
 
     private void renderAreas() {
+        areaDrawn.clear();
         float targetLat = getC().L.getTargetLatitude();
         float targetLon = (float) getC().L.getTargetLongitude();
         List<MapArea> areas = getC().areaRegistry.getAreasNear(targetLat, targetLon);
@@ -548,11 +604,44 @@ public class LabelRenderer {
         // The decision cadence gates the "hidden by mountains" test as well as the
         // de-overlap competition, and it must: see areaVisibleThroughTerrain.
         boolean held = getC().dataRetrieveThreadManager.isLabelUpdatesHeld();
-        long version = getC().dataRetrieveThreadManager.getLabelSelectionVersion();
+        // Held: decide once per COMPLETED label pass, not once per requested one. The
+        // request bumps its own counter before the pass has run, and a decision taken on
+        // the next frame tests the areas against the depth map of wherever the camera
+        // was for the previous pass; a refresh right after a camera jump then records
+        // "behind terrain" for everything in view, and with the stability rule below
+        // needing two more decisions to overturn a verdict, the plates came back only on
+        // the third refresh - measured as thirty blank frames at the head of every
+        // chunk of the area-labels flights. The pass renders the depth map for the
+        // camera it ran at, so a decision taken after it completes sees what it saw.
+        long version = com.peaknav.utils.ResourceStats.labelVisibilityCompleted.get();
         long now = System.currentTimeMillis();
         boolean decide = held
                 ? version != frozenAreaVersion
                 : now - lastAreaSelectionMs >= AREA_SELECTION_DEBOUNCE_MS;
+        if (decide) {
+            // The cached terrain verdicts describe the view from the depth maps the last
+            // decision read. Once the maps are re-rendered from kilometres away - a scripted
+            // render's chunk start, a teleport - they show different terrain, and holding
+            // the old verdicts to the stability rule's two-dissent bar would only delay the
+            // truth; the rule exists to damp a camera drifting metres, not one that moved.
+            // Drop them, so the first decision on the new maps is believed at once. Keyed on
+            // the maps' camera rather than the live one: a pass requested before a jump can
+            // complete after it, and its maps still show the old viewpoint - whatever that
+            // decision records, the next maps' jump clears.
+            ImpactPixmap ip = MapViewerSingleton.getViewerInstance().impactPixmap;
+            if (ip != null && ip.renderedCameraPosition(areaTmp)) {
+                float dx = areaTmp.x - lastDecisionMapX;
+                float dy = areaTmp.y - lastDecisionMapY;
+                float dz = areaTmp.z - lastDecisionMapZ;
+                if (Units.convertLatitsToMeters((float) Math.sqrt(dx * dx + dy * dy + dz * dz))
+                        > AREA_VERDICT_RESET_JUMP_M) {
+                    areaStability.clear();
+                }
+                lastDecisionMapX = areaTmp.x;
+                lastDecisionMapY = areaTmp.y;
+                lastDecisionMapZ = areaTmp.z;
+            }
+        }
 
         float cosTargetLat = (float) Math.cos(Math.toRadians(targetLat));
         int screenW = Gdx.graphics.getWidth();
@@ -592,8 +681,10 @@ public class LabelRenderer {
             // be loaded, so a larger effective range only promises labels that cannot appear.
             float effRangeKm = Math.min(area.visibleRangeKm * altitudeRangeFactor,
                     MapArea.MAX_RANGE_KM);
-            if (dLatKm * dLatKm + dLonKm * dLonKm > effRangeKm * effRangeKm)
+            if (dLatKm * dLatKm + dLonKm * dLonKm > effRangeKm * effRangeKm) {
+                frozenAreaSelection.remove(area);
                 continue;
+            }
 
             // Is this area's label already on screen? Every boundary cull below is widened for
             // one that is, so a label sitting at the edge of the view is not switched on and off
@@ -621,8 +712,10 @@ public class LabelRenderer {
                     ? Math.max(area.peakMeters, 200f) : area.peakMeters;
             float horizonReach = (float) (Math.sqrt(2.0 * Units.radiusOfEarth * camHeightMeters)
                     + Math.sqrt(2.0 * Units.radiusOfEarth * effPeakMeters));
-            if (distMeters > (standing ? horizonReach * BORDER_STICKY_RANGE : horizonReach))
+            if (distMeters > (standing ? horizonReach * BORDER_STICKY_RANGE : horizonReach)) {
+                frozenAreaSelection.remove(area);
                 continue;
+            }
 
             // Ellipse boundary (used only to locate and size the area on screen — never drawn).
             // Local (east, north) km, major axis rotated CCW from East. The cosine is clamped so
@@ -669,12 +762,6 @@ public class LabelRenderer {
             // from whichever boundary points are in front of the camera, and at the edge of the
             // view that count changes as the camera turns, so the box jumps - with a tight margin
             // it jumps across the threshold and back, and the label blinks at the border.
-            float edgeMargin = standing ? BORDER_STICKY_MARGIN : 0.1f;
-            if (inFront > 0
-                    && (maxX < -edgeMargin * screenW || minX > (1f + edgeMargin) * screenW
-                    || maxY < -edgeMargin * screenH || minY > (1f + edgeMargin) * screenH))
-                continue;
-
             // Place the label just above the area's on-screen silhouette, so it never covers the
             // terrain — at any distance or camera pitch (a fixed world-height lift collapses to a
             // few pixels when the area is far or seen from straight above). The silhouette top is
@@ -682,18 +769,44 @@ public class LabelRenderer {
             // from the side the summit wins, from straight above the footprint does. Gate on the
             // summit being inside the frustum, so no ghost pill shows when you face away.
             float summitZ = centreZ + Units.convertMetersToLatits(area.peakMeters);
-            if (!areaSummitInView(centreX, centreY, summitZ, cam, standing))
+            if (!areaSummitInView(centreX, centreY, summitZ, cam, standing)) {
+                // A standing plate that fails a geometric cull LEAVES the selection. Left in
+                // it, a plate whose summit sits on the padded frustum edge - a range the
+                // camera is flying across - failed on one camera placement and passed on
+                // the next, blinking for single frames until the summit was well outside.
+                // Gone, it can only come back through a decision, whose entry test is the
+                // strict frustum: the exit happens once, and cleanly.
+                frozenAreaSelection.remove(area);
                 continue;
+            }
+            areaTmp.set(centreX, centreY, summitZ);
+            cam.project(areaTmp);
+            float summitX = areaTmp.x;
+            float summitY = areaTmp.y;
+
+            // The on-screen test takes the summit as well as the ring. Flying over a range,
+            // most of its sea-level ring is behind the camera and the few points still in
+            // front lie under the frame - and which ones those are shifts with each frame's
+            // bearing - so the ring alone read as "off screen" on odd frames while the
+            // summit, the very thing the plate is hung from, sat plainly in the picture:
+            // a standing plate blinking out for single frames as the camera crossed its
+            // area. The summit is in front here (areaSummitInView), so its projection is
+            // sound.
+            float extentMinX = Math.min(minX, summitX), extentMaxX = Math.max(maxX, summitX);
+            float extentMinY = Math.min(minY, summitY), extentMaxY = Math.max(maxY, summitY);
+            float edgeMargin = standing ? BORDER_STICKY_MARGIN : 0.1f;
+            if (extentMaxX < -edgeMargin * screenW || extentMinX > (1f + edgeMargin) * screenW
+                    || extentMaxY < -edgeMargin * screenH || extentMinY > (1f + edgeMargin) * screenH) {
+                frozenAreaSelection.remove(area);
+                continue;
+            }
+
             // Hidden-by-terrain cull: like the peak/place labels, drop the area when it is entirely
             // occluded by nearer mountains. Sampled on decision frames only and smoothed - the raw
             // test is too noisy to steer a label every frame (see areaVisibleThroughTerrain).
             if (!areaVisibleThroughTerrain(area, areaLon, targetLat, centreX, centreY, centreZ,
                     cam, decide, now))
                 continue;
-            areaTmp.set(centreX, centreY, summitZ);
-            cam.project(areaTmp);
-            float summitX = areaTmp.x;
-            float summitY = areaTmp.y;
 
             // top of the area on screen (y-up); summit-only when the footprint is behind the camera
             float silhouetteTop = (inFront > 0) ? Math.max(maxY, summitY) : summitY;
@@ -724,6 +837,7 @@ public class LabelRenderer {
                 PendingArea p = areaPending.get(i);
                 if (frozenAreaSelection.contains(p.area)) {
                     drawAreaName(p);
+                    areaDrawn.add(p);
                     labelsDrawnThisFrame++;
                 }
             }
@@ -791,6 +905,7 @@ public class LabelRenderer {
                 areaAccepted.add(p);
                 frozenAreaSelection.add(p.area);
                 drawAreaName(p);
+                areaDrawn.add(p);
                 // Area labels count toward the per-frame label tally too - a view showing
                 // only islands or ranges is labelled, and a caller waiting for "labels are
                 // on screen" (PeakNavAppState.getVisibleLabelCount) must see them.
@@ -837,8 +952,25 @@ public class LabelRenderer {
         float dx = x - cam.position.x, dy = y - cam.position.y, dz = z - cam.position.z;
         if (dx * cam.direction.x + dy * cam.direction.y + dz * cam.direction.z <= 0f)
             return false;
+        // Hysteresis on both sides of the frame's SIDE edges. A standing plate keeps its
+        // seat while its summit is within the pad outside the frustum; a newcomer is
+        // seated only when its summit projects a clear margin inside the left and right
+        // edges. With the bare frustum as the entry test, a summit drifting along the
+        // frame's edge was dropped by the padded test on one placement and re-elected by
+        // the next decision on a placement where it had crept back in - the plate
+        // blinked out and back around the exit instead of leaving once. The margin is
+        // the pad's angle in pixels of this view. Sideways only: a flight pitched down
+        // holds the horizon, and with it every distant range, a few dozen pixels under
+        // the top edge, and a vertical margin there emptied the frame of exactly the
+        // labels it is flown for. Top and bottom exits are made clean by the sticky
+        // removal from the selection in renderAreas instead.
         if (!standing) {
-            return cam.frustum.pointInFrustum(x, y, z);
+            if (!cam.frustum.pointInFrustum(x, y, z))
+                return false;
+            cam.project(frustumTmp.set(x, y, z));
+            float margin = BORDER_STICKY_TAN * 0.5f * Gdx.graphics.getHeight()
+                    / (float) Math.tan(Math.toRadians(cam.fieldOfView) * 0.5);
+            return frustumTmp.x >= margin && frustumTmp.x <= Gdx.graphics.getWidth() - margin;
         }
         float pad = BORDER_STICKY_TAN * (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
         return cam.frustum.sphereInFrustum(frustumTmp.set(x, y, z), pad);
@@ -879,6 +1011,11 @@ public class LabelRenderer {
     private final java.util.Set<com.peaknav.areas.MapArea> frozenAreaSelection =
             new java.util.HashSet<>();
     private long frozenAreaVersion = Long.MIN_VALUE;
+
+    /** The depth maps' camera at the last area decision; a jump beyond this voids the verdicts. */
+    private static final float AREA_VERDICT_RESET_JUMP_M = 1_000f;
+    private float lastDecisionMapX = Float.NaN, lastDecisionMapY = Float.NaN,
+            lastDecisionMapZ = Float.NaN;
 
     private final Vector3 visSample = new Vector3();
 

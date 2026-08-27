@@ -130,6 +130,22 @@ public final class RenderCli {
             applyToggle(options, "horizon-compass", renderer::setHorizonCompass);
             applyToggle(options, "coordinates", renderer::setShowCoordinates);
             applyToggle(options, "corner-compass", renderer::setCornerCompass);
+            if (options.containsKey("fov")) {
+                renderer.setFieldOfView((float) optional(options, "fov", 30));
+            }
+            if (options.containsKey("gpx")) {
+                File gpx = new File(options.get("gpx"));
+                int paths;
+                try {
+                    paths = renderer.loadGpx(gpx);
+                } catch (java.io.IOException e) {
+                    throw new RuntimeException("could not read " + gpx, e);
+                }
+                if (paths == 0) {
+                    fail("no path found in " + gpx);
+                }
+                System.out.println("GPX: " + paths + " path(s) from " + gpx);
+            }
 
             // With no --labels the app keeps its stored preferences, which normally have at
             // least peaks on; an explicit empty list means "no labels", and then waiting for
@@ -197,6 +213,16 @@ public final class RenderCli {
                 long frameQuiet = (long) optional(options, "frame-quiet", 2_000);
                 long frameSettle = (long) optional(options, "frame-settle", 1_200);
                 int labelRefresh = (int) optional(options, "label-refresh", 0);
+                if (serve) {
+                    // --serve alongside --frame is an observer, not a driver: the REST
+                    // server comes up before the first frame so a client can watch the
+                    // render - poll /status, /objects, /frame - while the frame loop runs,
+                    // and the process still exits when the last frame is written. Reads
+                    // are safe to interleave: every request and every step of the loop
+                    // hops onto the render thread and sees a whole frame. A client that
+                    // moves the camera from here gets the frames it deserves.
+                    startServer(renderer, options);
+                }
                 renderFrames(renderer, frames, frameQuiet, frameSettle, labelRefresh);
                 return;
             }
@@ -206,15 +232,7 @@ public final class RenderCli {
                 // then everything else is driven over HTTP. Port 0 asks the OS for a
                 // free one; the marker line is what a client parses to find it, so its
                 // format is part of the API.
-                int port;
-                try {
-                    port = new RestServer(renderer, options.get("format"))
-                            .start((int) optional(options, "serve", 0));
-                } catch (java.io.IOException e) {
-                    throw new RuntimeException("could not bind the REST server", e);
-                }
-                System.out.println("PEAKNAV_SERVE port=" + port);
-                System.out.flush();
+                startServer(renderer, options);
                 try {
                     // Until /shutdown halts the JVM.
                     Thread.currentThread().join();
@@ -331,7 +349,12 @@ public final class RenderCli {
             String height = p[4].trim();
             File output = new File(p[5].trim());
 
-            boolean refreshFrame = labelRefresh > 0 && frameNumber(output) % labelRefresh == 0;
+            // The boot's first frame always refreshes, cadence or not: the set it would
+            // otherwise inherit is whatever the boot's own passes made while the POIs
+            // were still arriving - a third of the peaks, measured - and the cadence's
+            // next refresh could be fourteen frames away.
+            boolean refreshFrame = labelRefresh > 0
+                    && (index == 0 || frameNumber(output) % labelRefresh == 0);
             // Whether this frame may skip the wait ritual entirely. Three conditions,
             // all required: label throttling is on (a still gets its full patience);
             // the LAST wait actually reached quiet (a timed-out wait means tiles were
@@ -384,6 +407,19 @@ public final class RenderCli {
                 System.out.flush();
             }
         }
+    }
+
+    /** Binds the REST server and prints the marker line a client parses to find the port. */
+    private static void startServer(PeakNavRenderer renderer, Map<String, String> options) {
+        int port;
+        try {
+            port = new RestServer(renderer, options.get("format"))
+                    .start((int) optional(options, "serve", 0));
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("could not bind the REST server", e);
+        }
+        System.out.println("PEAKNAV_SERVE port=" + port);
+        System.out.flush();
     }
 
     private static void applyHeight(PeakNavRenderer renderer, String height) {
@@ -507,7 +543,9 @@ public final class RenderCli {
                         + "  --star-names on|off       names beside the bright stars\n"
                         + "  --serve <port>            start a REST server on 127.0.0.1 instead of\n"
                         + "                            rendering shots; 0 picks a free port, printed\n"
-                        + "                            as PEAKNAV_SERVE port=N; see /openapi.json\n"
+                        + "                            as PEAKNAV_SERVE port=N; see /openapi.json.\n"
+                        + "                            With --frame the server runs alongside the\n"
+                        + "                            frame loop, for watching it, and exits with it\n"
                         + "  --frame-quiet <ms>        tile silence required before each --frame\n"
                         + "                            is captured (default 2000; videos use\n"
                         + "                            less, their frames nearly share a view)\n"
@@ -522,6 +560,10 @@ public final class RenderCli {
                         + "                            quiet - much faster for dense videos\n"
                         + "  --sky-time-label on|off   the date-and-time pill shown while the\n"
                         + "                            sky is frozen (see --sky-time)\n"
+                        + "  --fov <degrees>           vertical field of view (the app's map uses 30;\n"
+                        + "                            its GPX tour 62, to keep the peaks beside a\n"
+                        + "                            track in shot)\n"
+                        + "  --gpx <file>              draw the paths of a GPX file on the terrain\n"
                         + "  --sky-time <instant>      freeze the sky and sunlight at one time,\n"
                         + "                            e.g. 2026-08-01T09:30:00Z (UTC), so that a\n"
                         + "                            render does not depend on when it is run\n"

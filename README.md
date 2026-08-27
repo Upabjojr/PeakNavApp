@@ -161,7 +161,15 @@ The same jar is attached to every [GitHub release](https://github.com/Upabjojr/P
 as `peaknav-headless-<version>.jar`, so rendering from a script does not require building
 the project. It still needs a display connection (the window is created hidden, but GL
 needs one), and `--serve [port]` starts a REST server describing itself at
-`/openapi.json`, so it can be driven from Python — or anything that speaks HTTP. The
+`/openapi.json`, so it can be driven from Python — or anything that speaks HTTP. Given
+together with `--frame`, the server runs alongside the frame loop instead of replacing
+it, so a script can watch a video render — `GET /objects` lists the peaks, huts, places
+and area labels the renderer has loaded and which of them are on the current frame
+(`snapshots/generate_videos.py --probe` does exactly that). `--gpx <file>` draws a GPX
+track on the terrain and `--fov` sets the lens; `snapshots/render_gpx.py` uses both to
+turn a GPX file into a 1080p video flown the way the app's own GPX tour flies it, and
+`snapshots/render_orbit.py` circles a summit from a given camera position and altitude;
+both take `--vertical` for a 9:16 Reel and `--webm` for Wikimedia Commons. The
 `peaknav` Python package, described in the [Python package](#python-package) section
 above, is exactly such a client; see [`headless/README.md`](./headless/README.md) for
 the Java API and implementation notes.

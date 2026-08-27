@@ -50,8 +50,32 @@ public class ImpactPixmap {
         this.pixmapEast = pixmapEast;
         this.pixmapSouth = pixmapSouth;
         this.pixmapWest = pixmapWest;
+        if (pixmapNorth != null && cam != null) {
+            renderedCameraPosition.set(cam.position);
+            renderedCameraKnown = true;
+        }
 
         lock.writeLock().unlock();
+    }
+
+    private final Vector3 renderedCameraPosition = new Vector3();
+    private boolean renderedCameraKnown = false;
+
+    /**
+     * Where the camera stood when the current depth maps were rendered, or false if none
+     * have been. The maps describe the terrain from THAT point; a reader comparing them
+     * against a camera that has since moved far is reading the wrong picture.
+     */
+    public boolean renderedCameraPosition(Vector3 out) {
+        lock.readLock().lock();
+        try {
+            if (!renderedCameraKnown)
+                return false;
+            out.set(renderedCameraPosition);
+            return true;
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     /**
@@ -182,16 +206,60 @@ public class ImpactPixmap {
         }
 
         public void addMargin() {
-            min = Math.max(Math.round(marginMinPerc*min), min - distMargin);
+            min = nearMargin(min);
             max = Math.min(Math.round(marginMaxPerc*max), max + distMargin);
+        }
+
+        /** The near end of the range after the margin, for a single reading. */
+        static int nearMargin(int min) {
+            return Math.max(Math.round(marginMinPerc*min), min - distMargin);
         }
     }
 
     public DistanceRange getPseudoDistanceRangeForDirection(Vector3 position) {
+        return getPseudoDistanceRangeForDirection(position, Float.NaN);
+    }
+
+    /**
+     * How far above the rendered terrain a point may stand and still be taken as sitting
+     * on it. A summit's coordinates come from the map data and its rendered top from the
+     * elevation grid, and on a sharp peak the grid's highest cell falls well short of the
+     * true summit: the Matterhorn's 4478 m point stood some 60 m above its own rendered
+     * top, seen from the 12 km orbit. Metres of height at the point's distance, converted
+     * to depth-map rows below. Generous, because the shortfall grows with the coarseness
+     * of the elevation grid drawn at the point's distance: from the 12 km orbit the
+     * Matterhorn's rendered top sat 250 m under its summit.
+     */
+    private static final float SELF_TOLERANCE_METERS = 500f;
+    private static final int MAX_SELF_ROWS = 120;
+
+    /**
+     * The depth readings around a point's screen position, as a [nearest, farthest] range.
+     *
+     * <p>The window is four rows above to four below; with no reading in it (sky), it
+     * extends down to 22 rows looking for any terrain at all. And when {@code pointDist}
+     * is given and every reading in the window is FARTHER than the point - nothing nearer
+     * occludes it, it stands above the rendered terrain against a backdrop - the window
+     * extends down again, for the point's own body: a summit whose map elevation exceeds
+     * the elevation grid's top projects into the mountains behind it, and at a 1600x900
+     * depth map's 13 m per row (12 km away) the four rows below did not reach its rendered
+     * top, so the range held only the backdrop and the peak was reported hidden - in the
+     * middle of a video orbiting it. Scanning down until the range reaches the point's
+     * distance (or {@link #SELF_TOLERANCE_METERS} below it) finds that body. It cannot
+     * turn a hidden point visible: readings further down a column are nearer or equal,
+     * so they can only lower the near end of the range, and a range whose FAR end is
+     * already nearer than the point stays that way.
+     */
+    public DistanceRange getPseudoDistanceRangeForDirection(Vector3 position, float pointDist) {
         int distMax = Integer.MIN_VALUE;
         int distMin = Integer.MAX_VALUE;
+        // How far down to look for the point's own terrain, in the sky case as in the
+        // backdrop case: the same height tolerance, so a skyline summit close by, whose
+        // rows are bigger in metres, is given the same benefit as a far one.
+        int rows = Float.isNaN(pointDist) ? 22
+                : Math.max(22, rowsBelowForSelfTolerance(pointDist));
         // TODO: only return first distance found... useless to have such long loop:
-        for (int i = 4; (i > -4 || distMax < 0) && (i > -22); i -= 1) {
+        for (int i = 4; (i > -4 || distMax < 0) && (i > -rows); i -= 1) {
             int dist = getPseudometerCoordinateDistance(position, false, i);
             if (dist > 1e6 || dist < 5)
                 continue;
@@ -200,10 +268,35 @@ public class ImpactPixmap {
             if (dist > distMax)
                 distMax = dist;
         }
+        if (!Float.isNaN(pointDist) && distMax >= 0
+                && DistanceRange.nearMargin(distMin) > pointDist) {
+            for (int i = -5; i >= -rows; i -= 1) {
+                int dist = getPseudometerCoordinateDistance(position, false, i);
+                if (dist > 1e6 || dist < 5)
+                    continue;
+                if (dist < distMin)
+                    distMin = dist;
+                if (dist > distMax)
+                    distMax = dist;
+                if (DistanceRange.nearMargin(distMin) <= pointDist)
+                    break;
+            }
+        }
         DistanceRange dr = scratch.get().dr;
         dr.min = distMin;
         dr.max = distMax;
         return dr;
+    }
+
+    /** Depth-map rows spanning {@link #SELF_TOLERANCE_METERS} of height at this distance. */
+    private int rowsBelowForSelfTolerance(float pointDist) {
+        Pixmap any = pixmapNorth;
+        if (any == null || pointDist <= 0f)
+            return 4;
+        double radiansPerRow = Math.toRadians(cam.camera180degPointNorth.fieldOfView)
+                / any.getHeight();
+        double rows = Math.ceil(SELF_TOLERANCE_METERS / pointDist / radiansPerRow);
+        return (int) Math.max(4, Math.min(MAX_SELF_ROWS, rows));
     }
 
     /** True once all four geographical depth pixmaps have been rendered at least once. */
@@ -222,7 +315,7 @@ public class ImpactPixmap {
         try {
             if (pixmapNorth == null || pixmapEast == null || pixmapSouth == null || pixmapWest == null)
                 return true; // no depth information yet — don't hide anything
-            DistanceRange dr = getPseudoDistanceRangeForDirection(destination);
+            DistanceRange dr = getPseudoDistanceRangeForDirection(destination, dist);
             // An empty range (no usable depth sample in the column) deliberately falls through
             // and reports "hidden": min stays Integer.MAX_VALUE and max Integer.MIN_VALUE, so the
             // comparison below is false.

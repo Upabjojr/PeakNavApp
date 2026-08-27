@@ -12,7 +12,14 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.utils.JsonValue;
+import com.badlogic.gdx.utils.JsonWriter;
+import com.peaknav.areas.MapArea;
 import com.peaknav.viewer.MapApp;
+import com.peaknav.viewer.MapViewerSingleton;
+import com.peaknav.viewer.labels.DrawLabel;
+import com.peaknav.viewer.renderer_gdx.LabelRenderer;
+import com.peaknav.viewer.screens.MapViewerScreen;
 import com.peaknav.viewer.desktop.DesktopFiles;
 import com.peaknav.viewer.desktop.MapViewerDesktopSingleton;
 
@@ -350,6 +357,39 @@ public final class PeakNavRenderer implements AutoCloseable {
      *
      * @param metersAboveSeaLevel absolute altitude; raised if it would be underground
      */
+    /**
+     * Adds the paths of a GPX document to the map, drawn on the terrain like the app draws a
+     * loaded track. Unlike the app's file picker this does not fly the camera to frame the track:
+     * the caller is placing the camera itself. Returns how many paths the document held.
+     */
+    public int loadGpx(final String gpxXml) {
+        final int[] loaded = new int[1];
+        onRenderThread(() -> loaded[0] = getC().gpxManager.loadFromXml(gpxXml, false));
+        return loaded[0];
+    }
+
+    /** Reads a GPX file and {@link #loadGpx(String) loads} it. */
+    public int loadGpx(File gpxFile) throws java.io.IOException {
+        return loadGpx(new String(java.nio.file.Files.readAllBytes(gpxFile.toPath()),
+                java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /**
+     * The camera's vertical field of view in degrees. The app's map uses 30 - a long lens that
+     * crops to what is straight ahead; its GPX tour widens to 62 so the mountains either side of
+     * the track stay in shot. Set once, it holds: the app only re-fits the lens on a resize.
+     */
+    public PeakNavRenderer setFieldOfView(final float degrees) {
+        if (!(degrees > 1f && degrees < 170f)) {
+            throw new IllegalArgumentException("field of view must be between 1 and 170 degrees");
+        }
+        onRenderThread(() -> {
+            mapApp.mapViewerScreen.cam.fieldOfView = degrees;
+            mapApp.mapViewerScreen.cam.update();
+        });
+        return this;
+    }
+
     public PeakNavRenderer setAltitudeMeters(final double metersAboveSeaLevel) {
         onRenderThread(() ->
                 mapApp.mapViewerScreen.setCameraAltitudeMeters(metersAboveSeaLevel));
@@ -445,11 +485,18 @@ public final class PeakNavRenderer implements AutoCloseable {
      * full rebuild per frame ran the render loop at ~1 fps), so the accumulated
      * drift - fractions of a degree per half second of video - is paid here. */
     public PeakNavRenderer refreshLabels() {
+        requestLabelPass();
+        return this;
+    }
+
+    /** Asks for a label pass; returns its sequence number (see {@link #refreshLabelsAndWait}). */
+    private long requestLabelPass() {
+        final long[] sequence = new long[1];
         onRenderThread(() -> {
             getC().skyModel.invalidate();
-            getC().dataRetrieveThreadManager.forceLabelUpdateNow();
+            sequence[0] = getC().dataRetrieveThreadManager.forceLabelUpdateNow();
         });
-        return this;
+        return sequence[0];
     }
 
     /**
@@ -459,13 +506,20 @@ public final class PeakNavRenderer implements AutoCloseable {
      * had reached; frames between refreshes then held that half-state for the whole
      * window. Waiting for completion makes the refresh frame the frame where the new
      * label set arrives whole.
+     *
+     * <p>It waits for THIS pass, by sequence number, not for the next completion. Passes
+     * queue: the one requested at the start of a chunk, from the boot's ground-level
+     * camera, was often still running when the first frame - now at altitude - asked
+     * for its own, and "any completion" returned on the stale one. The frame was then
+     * captured with that pass's labels and depth map, and the area plates it should have
+     * carried arrived a refresh late: fifteen blank frames at the head of a chunk.
      */
     public boolean refreshLabelsAndWait(long timeoutMillis) {
-        long before = com.peaknav.utils.ResourceStats.labelVisibilityCompleted.get();
-        refreshLabels();
+        long sequence = requestLabelPass();
         long deadline = System.currentTimeMillis() + timeoutMillis;
         while (System.currentTimeMillis() < deadline) {
-            if (com.peaknav.utils.ResourceStats.labelVisibilityCompleted.get() > before) {
+            if (com.peaknav.utils.ResourceStats.labelVisibilityCompletedSequence.get()
+                    >= sequence) {
                 return true;
             }
             sleep(20);
@@ -512,6 +566,7 @@ public final class PeakNavRenderer implements AutoCloseable {
                     + getC().mapTilePixmapToTexturesHandler.pendingTextureJoins()
                     + ",\"areasLoaded\":" + getC().areaRegistry.isNeighbourhoodLoaded(
                             getC().L.getTargetLatitude(), getC().L.getTargetLongitude())
+                    + ",\"poiRetrieves\":" + com.peaknav.utils.ResourceStats.poiRetrievesInFlight.get()
                     + ",\"sinceTileMs\":" + since;
         });
         return out[0];
@@ -630,6 +685,149 @@ public final class PeakNavRenderer implements AutoCloseable {
         return "\"displayable\":" + c[0] + ",\"hiddenByMountains\":" + c[1]
                 + ",\"hiddenBehind\":" + c[2] + ",\"hiddenByLabel\":" + c[3]
                 + ",\"drawn\":" + c[4];
+    }
+
+    /**
+     * The objects the app has loaded around the viewer - peaks, places, alpine huts, pistes
+     * and area names (mountain ranges, islands, lakes, towns) - as a JSON document.
+     *
+     * <p>{@code scope} picks the POI set: {@code "displayable"} is the list the app chose as
+     * candidates for labelling in the current view (the same list the label pass works from),
+     * {@code "all"} is every POI loaded from the tiles in memory, which can run to tens of
+     * thousands. Area names are always the ones the registry holds around the target; with
+     * {@code drawnOnly} only objects whose label was actually drawn in the last frame are
+     * returned, for POIs and areas alike.
+     *
+     * <p>Screen positions are in pixels of the rendered frame, origin top-left and y down -
+     * the convention of the image {@link #capture} writes, so a caller can annotate a frame
+     * directly. POIs carry {@code screen}, the anchor point their label line points at
+     * (which may lie outside the frame when the summit is above the view), and
+     * {@code label}, the bottom-left of the drawn name, always on the frame; areas carry
+     * the label plate rectangle.
+     */
+    public String objectsJson(final String scope, final boolean drawnOnly) {
+        final boolean all;
+        if ("all".equals(scope)) {
+            all = true;
+        } else if (scope == null || "displayable".equals(scope)) {
+            all = false;
+        } else {
+            throw new IllegalArgumentException("scope wants displayable or all, not " + scope);
+        }
+        final JsonValue root = new JsonValue(JsonValue.ValueType.object);
+        final JsonValue list = new JsonValue(JsonValue.ValueType.array);
+        root.addChild("objects", list);
+        onRenderThread(() -> {
+            final com.peaknav.viewer.controller.ObjectManager.RunOnPoiObject add = poi -> {
+                DrawLabel label = poi.drawLabel;
+                // The app's own test passes labels it then draws outside the frame (a
+                // summit far above the view gets a name the GPU clips away). Those are
+                // not on the picture, so they are not "drawn" here.
+                boolean offFrame = label != null && (label.getScreenPoiX() < 0
+                        || label.getScreenPoiX() > width
+                        || label.getScreenLabelY() < 0 || label.getScreenLabelY() > height);
+                boolean drawn = label != null && label.isVisible() && !offFrame;
+                if (drawnOnly && !drawn) {
+                    return;
+                }
+                JsonValue o = new JsonValue(JsonValue.ValueType.object);
+                o.addChild("kind", new JsonValue(
+                        poi.drawLabelCategory.name().toLowerCase(Locale.ROOT)));
+                o.addChild("name", new JsonValue(poi.name));
+                o.addChild("lat", new JsonValue(poi.lat));
+                o.addChild("lon", new JsonValue(poi.lon));
+                o.addChild("elevation_m", new JsonValue(poi.elevation));
+                if (poi.prominence > 0) {
+                    o.addChild("prominence_m", new JsonValue(poi.prominence));
+                }
+                JsonValue tags = new JsonValue(JsonValue.ValueType.object);
+                for (java.util.Map.Entry<String, String> e : poi.getTags().entrySet()) {
+                    tags.addChild(e.getKey(), new JsonValue(e.getValue()));
+                }
+                o.addChild("tags", tags);
+                o.addChild("drawn", new JsonValue(drawn));
+                if (label != null) {
+                    JsonValue screen = new JsonValue(JsonValue.ValueType.object);
+                    screen.addChild("x", new JsonValue(label.getScreenPoiX()));
+                    screen.addChild("y", new JsonValue(height - label.getScreenPoiY()));
+                    o.addChild("screen", screen);
+                    // Where the name is drawn. It is pushed up from the anchor, and pulled
+                    // back down onto the frame when the anchor is above it - a peak higher
+                    // than the view keeps its label, with the line running off the top.
+                    JsonValue text = new JsonValue(JsonValue.ValueType.object);
+                    text.addChild("x", new JsonValue(label.getScreenPoiX()));
+                    text.addChild("y", new JsonValue(height - label.getScreenLabelY()));
+                    o.addChild("label", text);
+                    JsonValue hidden = new JsonValue(JsonValue.ValueType.object);
+                    hidden.addChild("by_mountains", new JsonValue(label.hiddenByMountains));
+                    hidden.addChild("behind", new JsonValue(label.hiddenBehind));
+                    hidden.addChild("by_label", new JsonValue(label.hiddenByLabel));
+                    hidden.addChild("off_frame", new JsonValue(offFrame));
+                    o.addChild("hidden", hidden);
+                }
+                list.addChild(o);
+            };
+            if (all) {
+                getC().O.iterateOverAllLists(add);
+            } else {
+                getC().O.iterateOverDisplayablePois(add);
+            }
+
+            // Area names. Everything the registry holds around the target, flagged with
+            // whether the label pass drew it; the drawn ones carry their plate on screen.
+            java.util.Map<MapArea, LabelRenderer.DrawnArea> drawnAreas =
+                    new java.util.IdentityHashMap<>();
+            java.util.Set<MapArea> candidates = java.util.Collections.emptySet();
+            MapViewerScreen viewer = MapViewerSingleton.getViewerInstance();
+            LabelRenderer labelRenderer = viewer == null ? null : viewer.labelRenderer;
+            if (labelRenderer != null) {
+                for (LabelRenderer.DrawnArea d : labelRenderer.drawnAreas()) {
+                    drawnAreas.put(d.area, d);
+                }
+                candidates = labelRenderer.candidateAreas();
+            }
+            java.util.List<MapArea> areas = getC().areaRegistry.getAreasNear(
+                    getC().L.getTargetLatitude(), getC().L.getTargetLongitude());
+            for (MapArea area : areas) {
+                LabelRenderer.DrawnArea d = drawnAreas.get(area);
+                if (drawnOnly && d == null) {
+                    continue;
+                }
+                JsonValue o = new JsonValue(JsonValue.ValueType.object);
+                o.addChild("kind", new JsonValue("area"));
+                o.addChild("type", new JsonValue(area.type));
+                o.addChild("name", new JsonValue(area.name));
+                o.addChild("lat", new JsonValue(area.lat));
+                o.addChild("lon", new JsonValue(area.lon));
+                o.addChild("elevation_m", new JsonValue(area.peakMeters));
+                o.addChild("semi_major_km", new JsonValue(area.semiMajorKm));
+                o.addChild("semi_minor_km", new JsonValue(area.semiMinorKm));
+                o.addChild("rotation_deg", new JsonValue(area.rotationDeg));
+                o.addChild("visible_range_km", new JsonValue(area.visibleRangeKm));
+                o.addChild("population", new JsonValue(area.population));
+                // Where in the label pipeline it stands: a candidate survived the geometric
+                // culls (range, frustum, summit in view, terrain) and only the de-overlap
+                // round or a held selection kept it off the picture. The terrain verdict is
+                // the one cached across decision frames, so it reads true for areas not yet
+                // tested as well as for those actually behind nearer mountains.
+                o.addChild("candidate", new JsonValue(candidates.contains(area)));
+                JsonValue hidden = new JsonValue(JsonValue.ValueType.object);
+                hidden.addChild("by_mountains", new JsonValue(labelRenderer != null
+                        && labelRenderer.isAreaHiddenByTerrain(area)));
+                o.addChild("hidden", hidden);
+                o.addChild("drawn", new JsonValue(d != null));
+                if (d != null) {
+                    JsonValue screen = new JsonValue(JsonValue.ValueType.object);
+                    screen.addChild("x", new JsonValue(d.x));
+                    screen.addChild("y", new JsonValue(height - d.y - d.height));
+                    screen.addChild("width", new JsonValue(d.width));
+                    screen.addChild("height", new JsonValue(d.height));
+                    o.addChild("screen", screen);
+                }
+                list.addChild(o);
+            }
+        });
+        return root.toJson(JsonWriter.OutputType.json);
     }
 
     /** How many label-visibility passes have run; what tests watch to prove the hold holds. */
@@ -1001,7 +1199,11 @@ public final class PeakNavRenderer implements AutoCloseable {
                 quiet[0] = allSettled
                         && !getAppState().isLoadingMapData()
                         && getAppState().getPendingSatelliteWork() == 0
-                        && com.peaknav.viewer.tiles.PixmapLayers.pendingDrawWork() == 0;
+                        && com.peaknav.viewer.tiles.PixmapLayers.pendingDrawWork() == 0
+                        // The POIs of a new position arrive tile by tile on their own
+                        // thread; a label pass run before the last tile lands publishes
+                        // a partial set, and a frame captured on it lacks its peaks.
+                        && com.peaknav.utils.ResourceStats.poiRetrievesInFlight.get() == 0;
             });
             long nowMillis = System.currentTimeMillis();
             if (!quiet[0]) {

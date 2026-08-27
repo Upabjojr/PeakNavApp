@@ -72,16 +72,17 @@ public class DataRetrieveThreadManager {
         return labelUpdatesHeld;
     }
 
-    /** Bumped by every explicit refresh; the area labels freeze their winners against it. */
-    private final java.util.concurrent.atomic.AtomicLong labelSelectionVersion =
+    /** Numbers the passes {@link #forceLabelUpdateNow()} requests, so a caller can wait for its own. */
+    private final java.util.concurrent.atomic.AtomicLong labelPassSequence =
             new java.util.concurrent.atomic.AtomicLong();
 
-    public long getLabelSelectionVersion() {
-        return labelSelectionVersion.get();
-    }
-
-    /** The full label pass - overlap, mountain occlusion, relevance sort - hold or no hold. */
-    public void forceLabelUpdateNow() {
+    /**
+     * The full label pass - overlap, mountain occlusion, relevance sort - hold or no hold.
+     * Returns the pass's sequence number: once
+     * {@code ResourceStats.labelVisibilityCompletedSequence} reaches it, THIS pass has run to
+     * completion. Passes queue behind one another, so an earlier completion is not this one.
+     */
+    public long forceLabelUpdateNow() {
         // Deliberately NO POI retrieve here. The lazy retrieve calls back once per
         // tile - twenty-odd callbacks each swapping the master lists and running
         // missing-data checks - and firing one per refresh overlapped the storms
@@ -94,8 +95,13 @@ public class DataRetrieveThreadManager {
         updateRequests.add(MapDataUpdateRequest.DATA_VISIBILITY_RECOMPUTE_LABEL_OVERLAP);
         updateRequests.add(MapDataUpdateRequest.DATA_VISIBILITY_RECOMPUTE_HIDDEN_BY_MOUNTAINS);
         updateRequests.add(MapDataUpdateRequest.DATA_SORT_POI_LIST_BY_RELEVANCE);
-        labelSelectionVersion.incrementAndGet();
-        execUpdateVisibilityFull.executeStoppableRunnable(new RunnableUpdateVisibility(C, updateRequests));
+        // The area labels re-decide their winners once this pass COMPLETES (they watch
+        // ResourceStats.labelVisibilityCompleted), so that the decision is taken against
+        // the depth map this pass renders rather than the previous one's.
+        long sequence = labelPassSequence.incrementAndGet();
+        execUpdateVisibilityFull.executeStoppableRunnable(
+                new RunnableUpdateVisibility(C, updateRequests, sequence));
+        return sequence;
     }
 
     public void triggerUpdateVisibilityByZooming() {

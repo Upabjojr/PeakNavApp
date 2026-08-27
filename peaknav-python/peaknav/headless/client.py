@@ -217,6 +217,18 @@ class PeakNavHeadless:
         """The UI's elevation bar, 0..1; the scale is exponential, like the app's."""
         return self._request("POST", "/camera", {"elevation_bar": fraction})
 
+    def load_gpx(self, path=None, *, xml=None):
+        """Draws the paths of a GPX file (or an inline GPX document) on the terrain, as the
+        app draws a loaded track - without flying the camera to frame it; you place the
+        camera. Returns how many paths the document held. The file is read here and sent
+        inline, so it need not be visible to the renderer's process."""
+        if xml is None:
+            if path is None:
+                raise ValueError("give a path or xml")
+            with open(path, encoding="utf-8") as f:
+                xml = f.read()
+        return self._request("POST", "/gpx", {"xml": xml})["paths"]
+
     def set_view(self, **options):
         """Display options, named as in /openapi.json: sky=True, sky_mode="day",
         labels=["peaks", "roads"], sky_time="2026-07-15T09:30:00Z", ..."""
@@ -270,6 +282,43 @@ class PeakNavHeadless:
         if provider_id:
             return self.set_view(satellite_provider=provider_id)
         raise ValueError("name a provider_id or a template")
+
+    def objects(self, *, kinds=None, drawn_only=False, scope="displayable"):
+        """The objects loaded around the viewer: peaks, places, alpine huts, pistes and
+        area names (mountain ranges, islands, lakes, towns), as a list of dicts.
+
+        Each carries ``kind`` (``peak``, ``place``, ``alpine_hut``, ``piste`` or ``area``),
+        ``name``, ``lat``, ``lon``, ``elevation_m`` and ``drawn`` - whether its label was on
+        screen in the last frame. POIs add ``tags`` (the map's key/value pairs),
+        ``prominence_m`` where known, ``hidden`` (which gate blanked the label) and
+        ``screen`` ``{x, y}``, the anchor the label line points at (it can lie above the
+        frame when the summit is higher than the view), and ``label`` ``{x, y}``, the
+        bottom-left of the drawn name, always on the frame. Areas add ``type``
+        (``range``, ``island``, ``lake``, ``city``, ...), ``candidate`` - it survived the
+        geometric culls of the last frame and only the de-overlap round kept it off the
+        picture - ``hidden.by_mountains`` (the verdict cached across label decisions; also
+        true for an area not yet tested) and, when drawn, ``screen``
+        ``{x, y, width, height}`` for the label plate. Screen coordinates are pixels of
+        the image :meth:`frame` returns, origin top-left.
+
+        ``kinds`` filters to some of those kinds; ``drawn_only`` keeps what the last frame
+        drew; ``scope="all"`` widens from the labelling candidates to every loaded POI.
+        Labels lag the terrain after a move, so :meth:`wait` first.
+        """
+        path = "/objects?scope=%s&drawn=%s" % (scope, "true" if drawn_only else "false")
+        found = self._request("GET", path)["objects"]
+        if kinds is not None:
+            wanted = {kinds} if isinstance(kinds, str) else set(kinds)
+            found = [o for o in found if o["kind"] in wanted]
+        return found
+
+    def peaks(self, **kw):
+        """The loaded peaks; see :meth:`objects` for the keyword arguments."""
+        return self.objects(kinds="peak", **kw)
+
+    def areas(self, **kw):
+        """The loaded area names (ranges, islands, lakes, towns); see :meth:`objects`."""
+        return self.objects(kinds="area", **kw)
 
     def openapi(self):
         """The server's own API description, as a dict."""

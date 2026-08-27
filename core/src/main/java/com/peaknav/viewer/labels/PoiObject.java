@@ -186,6 +186,12 @@ public class PoiObject {
         }
     }
 
+    /** The object's map tags (OSM-style key/value pairs), read-only. Never null. */
+    public Map<String, String> getTags() {
+        return tags == null ? java.util.Collections.<String, String>emptyMap()
+                : java.util.Collections.unmodifiableMap(tags);
+    }
+
     public void fillDrawLabel(DrawLabelCategory drawLabelCategory) {
         drawLabel = new DrawLabel(drawLabelCategory, this);
         // drawLabel.updatePosition(true);

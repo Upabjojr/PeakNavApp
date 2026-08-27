@@ -51,20 +51,35 @@ public class GpxManager {
 
     /** Parse GPX text and add whatever paths it contains, with user feedback either way. */
     public void loadFromXml(String xml) {
+        loadFromXml(xml, true);
+    }
+
+    /**
+     * Parse GPX text and add whatever paths it contains. With {@code navigate} the map flies to
+     * frame the track and says so, as a user loading a file expects; without it the paths are
+     * simply added and drawn where they are - for a script that has its own camera plan, such as
+     * the headless renderer's, a framing fly would fight it. Returns how many paths were added.
+     */
+    public int loadFromXml(String xml, boolean navigate) {
         List<GpxTrack> parsed = GpxParser.parse(xml);
         if (parsed.isEmpty()) {
-            toast(s("Gpx_no_path_found"));
-            return;
+            if (navigate) {
+                toast(s("Gpx_no_path_found"));
+            }
+            return 0;
         }
         int points = 0;
         for (GpxTrack track : parsed) {
             points += track.size();
         }
         add(parsed);
-        toast(s("Gpx_loaded")
-                .replace("{tracks}", Integer.toString(parsed.size()))
-                .replace("{points}", Integer.toString(points)));
-        goToTracks(parsed);
+        if (navigate) {
+            toast(s("Gpx_loaded")
+                    .replace("{tracks}", Integer.toString(parsed.size()))
+                    .replace("{points}", Integer.toString(points)));
+            goToTracks(parsed);
+        }
+        return parsed.size();
     }
 
     /**

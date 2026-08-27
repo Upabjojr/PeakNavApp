@@ -1,6 +1,7 @@
 package com.peaknav.headless;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -249,6 +250,67 @@ class PeakNavRendererTest {
         renderer.aim(210f, -3f);
         assertTrue(renderer.awaitLabelsRendered(60_000),
                 "peaks are on and Zermatt has data, so a label must eventually be drawn");
+    }
+
+    @Test
+    @Order(8)
+    @DisplayName("objectsJson() lists the loaded peaks, with drawn ones placed on the frame")
+    void objectsAreListed() {
+        renderer.setLabel(PeakNavRenderer.Label.PEAKS, true);
+        // Looking down the valley leaves the Matterhorn above the top edge - its label
+        // passes every gate and is clipped away. Look up at the skyline instead, and
+        // give the label pass time to place a name on the frame.
+        renderer.aim(210f, 6f);
+        renderer.awaitLabelsRendered(60_000);
+        com.badlogic.gdx.utils.JsonValue all = null;
+        int peaks = 0, drawn = 0;
+        long deadline = System.currentTimeMillis() + 30_000;
+        do {
+            renderer.settle(500);
+            all = new com.badlogic.gdx.utils.JsonReader()
+                    .parse(renderer.objectsJson("displayable", false)).get("objects");
+            drawn = 0;
+            for (com.badlogic.gdx.utils.JsonValue o = all.child; o != null; o = o.next) {
+                if (o.getBoolean("drawn")) drawn++;
+            }
+        } while (drawn == 0 && System.currentTimeMillis() < deadline);
+        peaks = 0;
+        drawn = 0;
+        int areas = 0;
+        for (com.badlogic.gdx.utils.JsonValue o = all.child; o != null; o = o.next) {
+            if ("peak".equals(o.getString("kind"))) {
+                peaks++;
+                assertTrue(o.has("name") && o.has("lat") && o.has("lon")
+                        && o.has("elevation_m") && o.has("tags") && o.has("hidden"));
+            }
+            if ("area".equals(o.getString("kind"))) {
+                areas++;
+                // Where an area stands in the label pipeline: past the geometric culls
+                // (candidate) and the cached terrain verdict, on top of whether it drew.
+                assertTrue(o.has("type") && o.has("candidate")
+                        && o.get("hidden").has("by_mountains"), "area fields: " + o);
+                if (o.getBoolean("drawn")) {
+                    assertTrue(o.getBoolean("candidate"), "a drawn area was a candidate: " + o);
+                }
+            }
+            if (o.getBoolean("drawn")) {
+                drawn++;
+                // The anchor may be above the frame (a summit higher than the view), but
+                // the name itself is pulled onto it.
+                assertTrue(o.has("screen"), "a drawn POI has an anchor: " + o);
+                float y = o.get("label").getFloat("y");
+                assertTrue(y >= 0 && y <= HEIGHT, "a drawn name sits on the frame: " + o);
+            }
+        }
+        assertTrue(peaks > 0, "Zermatt has peaks loaded");
+        assertTrue(areas > 0, "Zermatt has named areas around it");
+        assertTrue(drawn > 0, "looking at the skyline with peaks on, a name is on the frame");
+        com.badlogic.gdx.utils.JsonValue onlyDrawn = new com.badlogic.gdx.utils.JsonReader()
+                .parse(renderer.objectsJson("displayable", true)).get("objects");
+        assertEquals(drawn, onlyDrawn.size);
+        com.badlogic.gdx.utils.JsonValue everything = new com.badlogic.gdx.utils.JsonReader()
+                .parse(renderer.objectsJson("all", false)).get("objects");
+        assertTrue(everything.size >= all.size, "all widens, never narrows");
     }
 
     @Test
@@ -642,6 +704,33 @@ class PeakNavRendererTest {
         assertTrue(renderer.areaNamesLoaded(),
                 "the wait returned while area names were still loading - a frame taken now is"
                         + " missing some of them");
+    }
+
+    @Test
+    @Order(14)
+    @DisplayName("a GPX document is drawn without moving the camera, and the lens can be widened")
+    void gpxLoadsAndTheLensWidens() {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(60_000);
+        renderer.aim(210f, 6f);
+        renderer.settle(300);
+        String gpx = "<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" version=\"1.1\"><trk>"
+                + "<name>t</name><trkseg>"
+                + "<trkpt lat=\"46.0207\" lon=\"7.7491\"><ele>1608</ele></trkpt>"
+                + "<trkpt lat=\"46.0000\" lon=\"7.7300\"><ele>2000</ele></trkpt>"
+                + "<trkpt lat=\"45.9833\" lon=\"7.7853\"><ele>3089</ele></trkpt>"
+                + "</trkseg></trk></gpx>";
+        assertEquals(1, renderer.loadGpx(gpx), "one track in the document");
+        assertEquals(0, renderer.loadGpx("<gpx version=\"1.1\"></gpx>"), "nothing to draw");
+        // The app's file picker would fly off to frame the track; a scripted load must not,
+        // and the view must still render with the track and the wider lens in it.
+        renderer.setFieldOfView(62f);
+        renderer.settle(300);
+        File withGpx = newTempFile("gpx.png");
+        renderer.capture(withGpx);
+        assertTrue(withGpx.length() > 10_000, "a frame was rendered with the track loaded");
+        assertThrows(IllegalArgumentException.class, () -> renderer.setFieldOfView(0f));
+        renderer.setFieldOfView(30f);
     }
 
     @Test

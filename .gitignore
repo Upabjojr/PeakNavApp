@@ -3,9 +3,13 @@
 *.jpg
 *.jpeg
 *.mp4
+*.webm
 *.ttf
 *.pem
 *.jks
+
+*.gpx
+*.ogg
 
 # ...but the desktop launcher icons are source, not generated output: construo reads
 # logo.png to set the icon on the Windows executable and the linux/ sizes go into
@@ -130,6 +134,9 @@ gradle-app.setting
 /headless/build/
 /html/build/
 /ios/build/
+
+.lwjgl/
+snapshots/videos/
 
 ## OS Specific
 .DS_Store

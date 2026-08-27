@@ -21,16 +21,42 @@ public class RunnableRetrievePOIs extends StoppableRunnable {
         this.C = C;
     }
 
+    /** Counted in ResourceStats.poiRetrievesInFlight from construction until finish(). */
+    private final java.util.concurrent.atomic.AtomicBoolean finished =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private volatile boolean started = false;
+
+    {
+        com.peaknav.utils.ResourceStats.poiRetrievesInFlight.incrementAndGet();
+    }
+
+    private void finish() {
+        if (finished.compareAndSet(false, true)) {
+            com.peaknav.utils.ResourceStats.poiRetrievesInFlight.decrementAndGet();
+        }
+    }
+
+    @Override
+    public void stop() {
+        super.stop();
+        if (!started) {
+            // Dropped from the queue before it ran: nobody else will count it out.
+            finish();
+        }
+    }
+
     @Override
     public void run() {
+        started = true;
         getLogger().debug(TAG, "Entering RunnableRetrievePOIs.run()");
-
-        getLogger().debug(TAG, "Calling redactNewPoiLists");
-        // TODO: sometimes sth happens here and data aren't loaded:
-        redactNewPoiListsLazy();
-
-        getLogger().debug(TAG, "Wait released");
-
+        try {
+            getLogger().debug(TAG, "Calling redactNewPoiLists");
+            // TODO: sometimes sth happens here and data aren't loaded:
+            redactNewPoiListsLazy();
+            getLogger().debug(TAG, "Wait released");
+        } finally {
+            finish();
+        }
     }
 
     private void redactNewPoiListsLazy() {

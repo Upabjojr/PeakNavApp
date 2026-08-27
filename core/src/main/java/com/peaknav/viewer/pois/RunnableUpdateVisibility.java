@@ -46,8 +46,20 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
             MapController mapController,
             Set<DataRetrieveThreadManager.MapDataUpdateRequest> updateRequests
     ) {
+        this(mapController, updateRequests, 0L);
+    }
+
+    /** The request's sequence number, published on completion; 0 for untracked passes. */
+    private final long sequence;
+
+    public RunnableUpdateVisibility(
+            MapController mapController,
+            Set<DataRetrieveThreadManager.MapDataUpdateRequest> updateRequests,
+            long sequence
+    ) {
         C = mapController;
         this.updateRequests = updateRequests;
+        this.sequence = sequence;
     }
 
     @Override
@@ -58,6 +70,8 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
         try {
             mainRun();
             com.peaknav.utils.ResourceStats.labelVisibilityCompleted.incrementAndGet();
+            com.peaknav.utils.ResourceStats.labelVisibilityCompletedSequence
+                    .accumulateAndGet(sequence, Math::max);
         } finally {
             clearEverything();
         }

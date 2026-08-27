@@ -38,6 +38,12 @@ with PeakNavHeadless(45.9763, 7.6586) as nav:
     nav.set_view(sky=True, sky_mode="day", labels=["peaks", "roads"])
     nav.wait(tiles_timeout_ms=60_000, settle_ms=1_000)
     nav.save_frame("matterhorn.png")
+
+    # What the frame shows, structured: peaks, places, huts, area names, and where
+    # each label sits on the image (pixels, origin top-left).
+    for peak in nav.peaks(drawn_only=True):
+        print(peak["name"], peak["elevation_m"], peak["screen"])
+    ranges = [a for a in nav.areas() if a["type"] == "range"]
 ```
 
 The renderer speaks plain HTTP, self-described at `/openapi.json` — anything that

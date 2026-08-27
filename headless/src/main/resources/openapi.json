@@ -249,6 +249,10 @@
                   "refresh_labels": {
                     "type": "boolean",
                     "description": "run one label visibility pass now; needed after changing 'labels', and applied BEFORE it within a request, so send it as a separate call"
+                  },
+                  "fov": {
+                    "type": "number",
+                    "description": "Vertical field of view in degrees. The app's map uses 30; its GPX tour 62, to keep the mountains either side of a track in shot. Holds until set again."
                   }
                 }
               }
@@ -389,6 +393,216 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/objects": {
+      "get": {
+        "summary": "The loaded objects: peaks, places, alpine huts, pistes and area names",
+        "description": "Every object the app holds around the viewer, with where its label sits on the frame. POIs (kind peak, place, alpine_hut, piste) carry the map's elevation, prominence where known, their tags, whether the label was drawn in the last frame and, if not, which gate hid it. Area names (kind area; type range, island, lake, city, ...) carry their ellipse and, when drawn, the label plate. Screen coordinates are pixels of the frame, origin top-left, y down - the convention of the image GET /frame returns. Labels lag the terrain after a move: call /wait first, or poll until drawn objects appear.",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "displayable",
+                "all"
+              ],
+              "default": "displayable"
+            },
+            "description": "displayable: the POIs the app selected as labelling candidates for the current view. all: every POI loaded from the tiles in memory - can be tens of thousands."
+          },
+          {
+            "name": "drawn",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "true: only objects whose label was actually drawn in the last frame."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "the objects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "objects": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "name",
+                          "lat",
+                          "lon",
+                          "drawn"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "peak",
+                              "place",
+                              "alpine_hut",
+                              "piste",
+                              "area"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "lat": {
+                            "type": "number"
+                          },
+                          "lon": {
+                            "type": "number"
+                          },
+                          "elevation_m": {
+                            "type": "number",
+                            "description": "metres above sea level; for an area, its highest point"
+                          },
+                          "prominence_m": {
+                            "type": "number",
+                            "description": "peaks only, when the map data carries it"
+                          },
+                          "tags": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "description": "POIs only: the map's key/value tags"
+                          },
+                          "drawn": {
+                            "type": "boolean",
+                            "description": "the label was on screen in the last frame"
+                          },
+                          "hidden": {
+                            "type": "object",
+                            "description": "POIs only: why a label is not drawn",
+                            "properties": {
+                              "by_mountains": {
+                                "type": "boolean",
+                                "description": "Behind nearer terrain. For areas this is the verdict cached across decision frames, and is also true for an area not yet tested."
+                              },
+                              "behind": {
+                                "type": "boolean"
+                              },
+                              "by_label": {
+                                "type": "boolean"
+                              },
+                              "off_frame": {
+                                "type": "boolean",
+                                "description": "the label passed every gate but lies outside the frame"
+                              }
+                            }
+                          },
+                          "screen": {
+                            "type": "object",
+                            "description": "POIs: the anchor the label line points at, which may lie outside the frame when the summit is above the view. Areas: the label plate; only present when drawn.",
+                            "properties": {
+                              "x": {
+                                "type": "number"
+                              },
+                              "y": {
+                                "type": "number"
+                              },
+                              "width": {
+                                "type": "number"
+                              },
+                              "height": {
+                                "type": "number"
+                              }
+                            }
+                          },
+                          "type": {
+                            "type": "string",
+                            "description": "areas only: range, island, lake, city, ..."
+                          },
+                          "semi_major_km": {
+                            "type": "number"
+                          },
+                          "semi_minor_km": {
+                            "type": "number"
+                          },
+                          "rotation_deg": {
+                            "type": "number"
+                          },
+                          "visible_range_km": {
+                            "type": "number"
+                          },
+                          "population": {
+                            "type": "integer"
+                          },
+                          "candidate": {
+                            "type": "boolean",
+                            "description": "Areas only: survived the geometric culls of the last frame (range, in front of the camera, on screen, summit in view, not behind terrain); only the de-overlap round or a held selection then kept it off the picture."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/gpx": {
+      "post": {
+        "summary": "Draw the paths of a GPX document on the terrain",
+        "description": "Adds the document's tracks and routes to what is drawn, the way the app draws a loaded GPX file - but without flying the camera to frame them: the caller places the camera. Give the document inline as xml, or the path of a file the renderer can read.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "xml": {
+                    "type": "string",
+                    "description": "The GPX document."
+                  },
+                  "path": {
+                    "type": "string",
+                    "description": "A GPX file on the renderer's machine."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Loaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "paths": {
+                      "type": "integer",
+                      "description": "How many paths the document held; 0 means nothing was drawn."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Neither xml nor path given"
           }
         }
       }

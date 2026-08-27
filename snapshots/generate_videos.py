@@ -5,6 +5,8 @@
     python3 snapshots/generate_videos.py --only 'rainier*'
     python3 snapshots/generate_videos.py --overwrite-existing
     python3 snapshots/generate_videos.py --frames 120    # a quick, coarse preview
+    python3 snapshots/generate_videos.py --probe 3       # log what the API reports as
+                                                          # loaded while rendering
 
 Each video is one camera path, of one of two kinds:
 
@@ -40,10 +42,14 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
+import time
+import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VIDEOS_DIR = os.path.join(ROOT, "snapshots", "videos")
 FRAMES_DIR = os.path.join(VIDEOS_DIR, "frames")
+PROBE_DIR = os.path.join(VIDEOS_DIR, "probe")
 JAVA_HOME = os.environ.get("PEAKNAV_JAVA_HOME", "/usr/lib/jvm/java-17-openjdk-amd64")
 
 # The geodesy lives in the snapshot script; one copy of it, not two.
@@ -700,7 +706,7 @@ def geometry_source(kind):
     return "".join(inspect.getsource(f) for f in funcs)
 
 
-def render_frames(video, frames, frame_dir):
+def render_frames(video, frames, frame_dir, probe_every=None):
     """Renders every missing frame of one video, in as many boots as it takes."""
     os.makedirs(frame_dir, exist_ok=True)
     import hashlib as _h
@@ -731,7 +737,7 @@ def render_frames(video, frames, frame_dir):
           f"in {len(chunks)} boot(s) of up to {FRAMES_PER_BOOT}")
     for n, chunk in enumerate(chunks, 1):
         print(f"  boot {n}/{len(chunks)}: frames {chunk[0][0]}-{chunk[-1][0]}", flush=True)
-        if not render_chunk(video, chunk, frame_dir):
+        if not render_chunk(video, chunk, frame_dir, probe_every, n):
             return False
     return True
 
@@ -750,8 +756,84 @@ def boot_position(video, missing):
     return first[0], first[1]
 
 
-def render_chunk(video, missing, frame_dir):
-    """One app boot, rendering the frames it is given."""
+PROBE_COLUMNS = ["utc", "boot", "frames_done", "loading", "areasLoaded", "roadWork",
+                 "textureJoins", "peaks", "peaks_drawn", "peaks_unnamed", "huts",
+                 "huts_drawn", "places", "places_drawn", "pistes", "pistes_drawn",
+                 "areas", "areas_drawn", "areas_unnamed", "drawn_names"]
+
+
+def _probe_row(base_url, boot, frames_done):
+    """One sample of what the renderer says it has loaded: /status plus /objects, reduced
+    to counts per kind. The names actually on the picture are kept too, so a run can be
+    read afterwards for WHICH labels came and went, not just how many."""
+    import json as _json
+    with urllib.request.urlopen(base_url + "/status", timeout=30) as r:
+        status = _json.loads(r.read().decode("utf-8"))
+    with urllib.request.urlopen(base_url + "/objects?scope=displayable", timeout=60) as r:
+        objects = _json.loads(r.read().decode("utf-8"))["objects"]
+    row = {"utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           "boot": boot, "frames_done": frames_done,
+           "loading": status.get("loading"), "areasLoaded": status.get("areasLoaded"),
+           "roadWork": status.get("roadWork"), "textureJoins": status.get("textureJoins")}
+    for kind, column in (("peak", "peaks"), ("alpine_hut", "huts"), ("place", "places"),
+                         ("piste", "pistes"), ("area", "areas")):
+        of_kind = [o for o in objects if o["kind"] == kind]
+        row[column] = len(of_kind)
+        row[column + "_drawn"] = sum(1 for o in of_kind if o.get("drawn"))
+        if column in ("peaks", "areas"):
+            row[column + "_unnamed"] = sum(1 for o in of_kind if not o.get("name"))
+    row["drawn_names"] = "|".join(sorted(o.get("name") or "?" for o in objects
+                                         if o.get("drawn")))
+    return row
+
+
+def _probe_loop(log, out_path, boot, missing, frame_dir, every, stop):
+    """The probe thread: finds the renderer's port in its log, then samples until the
+    boot ends. Errors are written into the table rather than raised - the probe is an
+    observer, and an observer that can kill the render is no use."""
+    base_url = None
+    deadline = time.time() + 900
+    while base_url is None and not stop.is_set() and time.time() < deadline:
+        try:
+            with open(log) as f:
+                for line in f:
+                    if line.startswith("PEAKNAV_SERVE port="):
+                        base_url = "http://127.0.0.1:%d" % int(line.strip().split("=", 1)[1])
+                        break
+        except OSError:
+            pass
+        if base_url is None:
+            stop.wait(1.0)
+    if base_url is None:
+        return
+    new_file = not os.path.exists(out_path)
+    with open(out_path, "a") as out:
+        if new_file:
+            out.write("\t".join(PROBE_COLUMNS) + "\n")
+        while not stop.is_set():
+            done = sum(1 for i, _ in missing
+                       if os.path.exists(os.path.join(frame_dir, f"f{i:05d}.jpg")))
+            try:
+                row = _probe_row(base_url, boot, done)
+                out.write("\t".join(str(row.get(c, "")) for c in PROBE_COLUMNS) + "\n")
+            except Exception as e:  # noqa: BLE001 - observer, see above
+                out.write("\t".join([time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                     str(boot), str(done), "error: " + str(e).replace("\n", " ")])
+                          + "\n")
+            out.flush()
+            stop.wait(every)
+
+
+def render_chunk(video, missing, frame_dir, probe_every=None, boot=0):
+    """One app boot, rendering the frames it is given.
+
+    With probe_every set, the renderer also serves its REST API for the duration of the
+    boot and a thread samples /status and /objects every probe_every seconds into
+    snapshots/videos/probe/<video>.tsv - a record of what the app reported as loaded and
+    drawn while the frames were being taken, for checking that labels keep pace with the
+    camera. The samples are taken between frames on the render thread and change nothing;
+    the frames are the same with or without the probe.
+    """
     blat, blon = boot_position(video, missing)
     # The heap is capped because by default the JVM offers itself a quarter of the
     # machine - 7.9 GB here - and two workers plus a Gradle build put the whole box
@@ -791,18 +873,34 @@ def render_chunk(video, missing, frame_dir):
             "--horizon-compass", "off", "--coordinates", "off", "--corner-compass", "off",
             "--language", LANGUAGE, "--format", "jpg",
             "--labels", video["labels"]]
+    if probe_every:
+        args += ["--serve", "0"]
     for i, (lat, lon, bearing, pitch, altitude) in missing:
         args += ["--frame", f"{lat},{lon},{bearing},{pitch},{altitude}asl,"
                  + os.path.join(frame_dir, f"f{i:05d}.jpg")]
 
     log = os.path.join(frame_dir, "render.log")
+    stop = threading.Event()
+    probe = None
+    if probe_every:
+        os.makedirs(PROBE_DIR, exist_ok=True)
+        out_path = os.path.join(PROBE_DIR, video["name"] + ".tsv")
+        probe = threading.Thread(target=_probe_loop, name="probe", daemon=True,
+                                 args=(log, out_path, boot, missing, frame_dir,
+                                       probe_every, stop))
     with open(log, "w") as lf:
-        result = subprocess.run(args, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(args, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT)
+        if probe:
+            probe.start()
+        proc.wait()
+    stop.set()
+    if probe:
+        probe.join(timeout=120)
     written = sum(1 for i, _ in missing
                   if os.path.exists(os.path.join(frame_dir, f"f{i:05d}.jpg")))
-    if result.returncode != 0 or written < len(missing):
+    if proc.returncode != 0 or written < len(missing):
         print(f"  boot ended early: {written}/{len(missing)} frames "
-              f"(exit {result.returncode}); kept {log}", file=sys.stderr)
+              f"(exit {proc.returncode}); kept {log}", file=sys.stderr)
         return False
     os.remove(log)
     return True
@@ -842,6 +940,10 @@ def main():
                              "delete a frame to have it re-rendered)")
     parser.add_argument("--frames", type=int, metavar="N",
                         help="override the frame count, for a quick coarse preview")
+    parser.add_argument("--probe", type=float, metavar="SECONDS",
+                        help="while rendering, sample the renderer's REST API (/status and "
+                             "/objects) every SECONDS into snapshots/videos/probe/<name>.tsv "
+                             "- what it reported as loaded and drawn, frame by frame")
     args = parser.parse_args()
 
     if not os.environ.get("DISPLAY"):
@@ -868,6 +970,8 @@ def main():
                 cmd += ["--overwrite-existing"]
             if args.frames:
                 cmd += ["--frames", str(args.frames)]
+            if args.probe:
+                cmd += ["--probe", str(args.probe)]
             procs.append(subprocess.Popen(cmd))
         codes = [p.wait() for p in procs]
         return 1 if any(codes) else 0
@@ -892,7 +996,7 @@ def main():
         # degree round, and frame 1 of a 12-frame preview is thirty. Sharing a directory
         # between the two would resume a run with frames from a different orbit.
         frame_dir = os.path.join(FRAMES_DIR, f"{video['name']}.{count}f")
-        if not render_frames(video, frames, frame_dir):
+        if not render_frames(video, frames, frame_dir, args.probe):
             failed += 1
             continue
         encode(video, frame_dir, output)

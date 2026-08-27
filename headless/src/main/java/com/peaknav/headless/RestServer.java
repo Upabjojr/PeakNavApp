@@ -74,8 +74,12 @@ final class RestServer {
                 view(x);
             } else if ("POST".equals(method) && "/wait".equals(path)) {
                 waitQuiet(x);
+            } else if ("POST".equals(method) && "/gpx".equals(path)) {
+                gpx(x);
             } else if ("GET".equals(method) && "/providers".equals(path)) {
                 providers(x);
+            } else if ("GET".equals(method) && "/objects".equals(path)) {
+                objects(x);
             } else if ("GET".equals(method) && "/frame".equals(path)) {
                 frame(x);
             } else if ("POST".equals(method) && "/shutdown".equals(path)) {
@@ -169,6 +173,9 @@ final class RestServer {
             renderer.setSkyTimeMillis(java.time.Instant
                     .parse(body.getString("sky_time")).toEpochMilli());
         }
+        if (body.has("fov")) {
+            renderer.setFieldOfView(body.getFloat("fov"));
+        }
         // Imagery source. By id for one the app knows, or by template for anything else -
         // any XYZ tile server, which is how a caller points the renderer at OpenStreetMap
         // or at a server of their own. Handled before "labels" only because it is a
@@ -235,6 +242,18 @@ final class RestServer {
         json(x, 200, json.toString());
     }
 
+    /**
+     * The loaded objects - peaks, places, alpine huts, pistes, area names - with where their
+     * labels sit on the frame. {@code ?scope=all} widens from the labelling candidates to
+     * every loaded POI; {@code ?drawn=true} narrows to what the last frame actually drew.
+     */
+    private void objects(HttpExchange x) throws IOException {
+        java.util.Map<String, String> q = query(x);
+        String scope = q.containsKey("scope") ? q.get("scope") : "displayable";
+        boolean drawn = "true".equalsIgnoreCase(q.get("drawn"));
+        json(x, 200, renderer.objectsJson(scope, drawn));
+    }
+
     /** The current view as an image - the response body IS the picture. */
     private void frame(HttpExchange x) throws IOException {
         String query = x.getRequestURI().getQuery();
@@ -267,10 +286,48 @@ final class RestServer {
         void set(boolean value);
     }
 
+    /**
+     * Draws the paths of a GPX document: {@code {"xml": "<gpx ...>"}} with the document inline,
+     * or {@code {"path": "/file.gpx"}} naming a file the renderer can read. Loads add to what is
+     * drawn; the camera is left where it is.
+     */
+    private void gpx(HttpExchange x) throws IOException {
+        JsonValue body = body(x);
+        String xml;
+        if (body.has("xml")) {
+            xml = body.getString("xml");
+        } else if (body.has("path")) {
+            xml = new String(Files.readAllBytes(new File(body.getString("path")).toPath()),
+                    StandardCharsets.UTF_8);
+        } else {
+            json(x, 400, "{\"ok\":false,\"error\":\"give xml or path\"}");
+            return;
+        }
+        int paths = renderer.loadGpx(xml);
+        json(x, 200, "{\"ok\":true,\"paths\":" + paths + "}");
+    }
+
     private static void setIf(JsonValue body, String key, BoolSetter setter) {
         if (body.has(key)) {
             setter.set(body.getBoolean(key));
         }
+    }
+
+    private static java.util.Map<String, String> query(HttpExchange x) {
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        String query = x.getRequestURI().getQuery();
+        if (query == null) {
+            return out;
+        }
+        for (String pair : query.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq < 0) {
+                out.put(pair, "");
+            } else {
+                out.put(pair.substring(0, eq), pair.substring(eq + 1));
+            }
+        }
+        return out;
     }
 
     private static JsonValue require(JsonValue body, String key) {

@@ -32,6 +32,22 @@ public final class ResourceStats {
     public static final AtomicLong labelVisibilityRuns = new AtomicLong();
     /** Passes that ran to completion - a refresh frame waits for this, not for the start. */
     public static final AtomicLong labelVisibilityCompleted = new AtomicLong();
+    /**
+     * POI retrievals submitted and not yet finished (completed, or stopped before or while
+     * running). The lazy retrieve replaces the master label lists tile by tile as it goes,
+     * so while one is in flight the lists - and any label pass over them - are partial:
+     * a scripted capture that waits only for the terrain took the first frame of every
+     * chunk without its peak labels.
+     */
+    public static final java.util.concurrent.atomic.AtomicInteger poiRetrievesInFlight =
+            new java.util.concurrent.atomic.AtomicInteger();
+    /**
+     * The highest {@link com.peaknav.viewer.DataRetrieveThreadManager#forceLabelUpdateNow()}
+     * sequence number whose pass has completed. A caller waiting for the pass it asked for
+     * compares against this rather than counting completions: the executor queues passes,
+     * so a completion may belong to an earlier request made from another viewpoint.
+     */
+    public static final AtomicLong labelVisibilityCompletedSequence = new AtomicLong();
 
     /** live = created - disposed; a live count that climbs with every frame is the leak. */
     public static String summary() {
