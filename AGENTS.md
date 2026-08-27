@@ -144,13 +144,17 @@ J=-Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
   What is still missing, and will surface at runtime rather than at compile time:
   `getGraphicFactory()` returns `null` (no mapsforge backend for iOS, so no road
   and path layer — the 3D terrain, satellite imagery, labels and sky do not use
-  it); the gallery/camera pickers and the tutorial report themselves as unbuilt;
-  and search finds only online results until `assets/geonames_index.362` is
-  built. GPS and the gyroscope camera are real, via CoreLocation and CoreMotion
-  (`LocationControllerIOS`, `OrientationPointerControllerIOS`) — the latter is a
-  port of Android's `OrientationPointerController` with CoreMotion's reference
-  frame (X = magnetic north, Y = west) swapped into the app's east-north-up
-  world.
+  it); and search finds only online results until `assets/geonames_index.362` is
+  built. Everything else the shared UI reaches is implemented: GPS and the
+  gyroscope camera via CoreLocation and CoreMotion (`LocationControllerIOS`,
+  `OrientationPointerControllerIOS` — the latter a port of Android's
+  `OrientationPointerController` with CoreMotion's reference frame
+  (X = magnetic north, Y = west) swapped into the app's east-north-up world);
+  the gallery/camera pickers through `UIImagePickerController` (geotags come
+  from the `PHAsset`, since iOS strips GPS EXIF from picked files); the tutorial
+  and app-info pages in a `WKWebView` over the bundled HTML; and GPX both from
+  the in-app document picker and handed over by other apps (Info.plist document
+  type + `IOSLauncher.openURL`).
 
 ### Points vs pixels
 

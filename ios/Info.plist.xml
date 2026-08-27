@@ -77,5 +77,51 @@
     <!-- Termination, not a prompt, if the camera is reached without it - as with motion. -->
     <key>NSCameraUsageDescription</key>
     <string>PeakNav uses the camera to place a photo behind the mountain view.</string>
+    <!-- Registers the app as a .gpx handler, so "Open in PeakNav" appears in Files, Mail
+         and other apps' share sheets - the counterpart of the Android manifest's VIEW/SEND
+         filters. The type is declared here as well as claimed: GPX has no system-known
+         identifier, and an imported declaration is what ties the extension and MIME type
+         to it. Incoming files are copied to Documents/Inbox and arrive in the app
+         delegate's openURL. -->
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>GPX track</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.topografix.gpx</string>
+            </array>
+        </dict>
+    </array>
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.topografix.gpx</string>
+            <key>UTTypeDescription</key>
+            <string>GPX track</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.xml</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>gpx</string>
+                    <string>GPX</string>
+                </array>
+                <key>public.mime-type</key>
+                <array>
+                    <string>application/gpx+xml</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
 </dict>
 </plist>

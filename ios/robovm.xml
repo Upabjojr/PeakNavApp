@@ -47,5 +47,6 @@
     <framework>CoreLocation</framework>
     <framework>CoreMotion</framework>
     <framework>Photos</framework>
+    <framework>WebKit</framework>
   </frameworks>
 </config>

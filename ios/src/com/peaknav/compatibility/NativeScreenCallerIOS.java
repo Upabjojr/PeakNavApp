@@ -7,6 +7,7 @@ import static com.peaknav.utils.PreferencesManager.P;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.utils.Base64Coder;
 
 import com.peaknav.controller.LocationControllerIOS;
 import com.peaknav.controller.OrientationPointerControllerIOS;
@@ -37,14 +38,22 @@ import org.robovm.apple.uikit.UIAlertActionStyle;
 import org.robovm.apple.uikit.UIAlertController;
 import org.robovm.apple.uikit.UIAlertControllerStyle;
 import org.robovm.apple.uikit.UIApplication;
+import org.robovm.apple.uikit.UIBarButtonItem;
+import org.robovm.apple.uikit.UIBarButtonItemStyle;
+import org.robovm.apple.uikit.UIDocumentPickerDelegateAdapter;
+import org.robovm.apple.uikit.UIDocumentPickerMode;
+import org.robovm.apple.uikit.UIDocumentPickerViewController;
 import org.robovm.apple.uikit.UIImage;
 import org.robovm.apple.uikit.UIImagePickerController;
 import org.robovm.apple.uikit.UIImagePickerControllerDelegateAdapter;
 import org.robovm.apple.uikit.UIImagePickerControllerEditingInfo;
 import org.robovm.apple.uikit.UIImagePickerControllerSourceType;
+import org.robovm.apple.uikit.UINavigationController;
+import org.robovm.apple.uikit.UIScreen;
 import org.robovm.apple.uikit.UITextField;
 import org.robovm.apple.uikit.UIViewController;
 import org.robovm.apple.uikit.UIWindow;
+import org.robovm.apple.webkit.WKWebView;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,9 +73,10 @@ import java.util.regex.Pattern;
  * hop happens; forget it and the app dies at some unrelated moment later, which is the
  * worst kind of bug to be handed.
  *
- * <p>Several screens are not built yet and say so plainly rather than doing nothing: an
- * app that silently ignores a tap is indistinguishable from a broken one. See the class
- * comment on {@code IOSLoadFactory} for what remains before this target runs at all.
+ * <p>Every screen the shared UI can ask for is built here: GPS, the gyroscope camera,
+ * the image pickers, the GPX picker, the tutorial and the app-info page. See the class
+ * comment on {@code IOSLoadFactory} for the one thing core treats as absent rather than
+ * broken - there is no mapsforge graphics backend, so there is no road and path layer.
  */
 public class NativeScreenCallerIOS extends NativeScreenCaller {
 
@@ -256,9 +266,38 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                 latitude, longitude, latitude, longitude));
     }
 
+    /**
+     * The licence, privacy statement and third-party notices, in the app - the same
+     * bundled info/app_info.html every platform shows. This must not shell out to a
+     * website: the whole point of the screen is that the legal text is readable exactly
+     * where the app is, offline included.
+     */
     @Override
     public void openAppInfoScreen() {
-        openUrl("https://peaknav.com");
+        onMainThread(() -> {
+            String html = Gdx.files.internal("info/app_info.html").readString();
+            // The page carries no viewport meta (Android's WebView does not need one);
+            // WKWebView without it lays the page out at desktop width and the text
+            // arrives microscopic.
+            html = html.replace("<head>",
+                    "<head>\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+            presentHtml(html);
+        });
+    }
+
+    /** A bundled HTML page, full screen, with a Back button to come home on. */
+    private void presentHtml(final String html) {
+        onMainThread(() -> {
+            WKWebView webView = new WKWebView(UIScreen.getMainScreen().getBounds());
+            webView.loadHTMLString(html, null);
+            UIViewController content = new UIViewController();
+            content.setView(webView);
+            final UINavigationController nav = new UINavigationController(content);
+            content.getNavigationItem().setRightBarButtonItem(new UIBarButtonItem(
+                    s("Back"), UIBarButtonItemStyle.Done,
+                    item -> nav.dismissViewController(true, null)));
+            present(nav);
+        });
     }
 
     private void openUrl(final String url) {
@@ -650,9 +689,89 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         });
     }
 
+    /**
+     * The slideshow tutorial - the same bundled page as Android, with the same trick: the
+     * screenshots are substituted into the page as base64 data URLs, because a page loaded
+     * from a string has no base directory to resolve relative image paths against.
+     */
     @Override
     public void openAppTutorial() {
-        notBuiltYet("The tutorial");
+        onMainThread(() -> {
+            String html = Gdx.files.internal("info/app_tutorial.html").readString();
+            StringBuilder getImage = new StringBuilder("function get_image(k) {\n");
+            String[] imgFiles = {
+                    "imageBase.jpg", "imageOptions.jpg", "imageOptionsSat.jpg", "imageBaseSat.jpg"};
+            for (String imgFile : imgFiles) {
+                byte[] imgBytes = Gdx.files.internal("info/" + imgFile).readBytes();
+                getImage.append("if (k == '").append(imgFile)
+                        .append("') data = 'data:image/jpeg;base64,")
+                        .append(new String(Base64Coder.encode(imgBytes)))
+                        .append("';\n");
+            }
+            getImage.append("\nlet img = new Image();\nimg.src = data;\nreturn img;\n}\n");
+            presentHtml(html.replace("// OVERLOAD::get_image", getImage.toString()));
+        });
+    }
+
+    // ------------------------------------------------------------------ GPX
+
+    /** The presented GPX picker, held strongly until it reports - see the delegate. */
+    private UIDocumentPickerViewController gpxPicker;
+
+    // Strongly held for the same reason as the image picker's delegate below.
+    private final UIDocumentPickerDelegateAdapter gpxPickerDelegate =
+            new UIDocumentPickerDelegateAdapter() {
+
+                @Override
+                public void didPickDocuments(UIDocumentPickerViewController controller,
+                                             NSArray<NSURL> urls) {
+                    gpxPicker = null;
+                    if (urls != null && !urls.isEmpty()) {
+                        loadGpxFrom(urls.first());
+                    }
+                }
+
+                // The pre-iOS-11 single-document form of the same callback.
+                @Override
+                public void didPickDocument(UIDocumentPickerViewController controller, NSURL url) {
+                    gpxPicker = null;
+                    if (url != null) {
+                        loadGpxFrom(url);
+                    }
+                }
+
+                @Override
+                public void wasCancelled(UIDocumentPickerViewController controller) {
+                    gpxPicker = null;
+                }
+            };
+
+    /**
+     * The options menu's "Load GPX file". Import mode copies the chosen file into the
+     * app's own tmp inbox, so no security-scoped bookkeeping survives past the callback.
+     * The types are deliberately broad - GPX has no single agreed identifier, and the
+     * Android picker offers every file for the same reason.
+     */
+    @Override
+    public void pickGpxFile() {
+        onMainThread(() -> {
+            UIDocumentPickerViewController picker = new UIDocumentPickerViewController(
+                    java.util.Arrays.asList("public.xml", "public.data"),
+                    UIDocumentPickerMode.Import);
+            picker.setDelegate(gpxPickerDelegate);
+            gpxPicker = picker;
+            present(picker);
+        });
+    }
+
+    private void loadGpxFrom(NSURL url) {
+        byte[] bytes = readFile(url.getPath());
+        if (bytes == null) {
+            return;
+        }
+        final String xml = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+        // loadFromXml toasts and moves the camera, so it belongs on the render thread.
+        Gdx.app.postRunnable(() -> getC().gpxManager.loadFromXml(xml));
     }
 
     // ------------------------------------------------------------------ picking images
@@ -762,12 +881,4 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         }
     }
 
-    /**
-     * Says what is missing, out loud. The alternative - an empty method - makes a tapped
-     * button look broken, and leaves whoever picks this up next to discover the gap by
-     * reading the source.
-     */
-    private void notBuiltYet(String what) {
-        alert("Not yet on iOS", what + " is not built on this platform yet.", "OK");
-    }
 }
