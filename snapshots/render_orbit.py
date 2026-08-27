@@ -19,7 +19,9 @@ turns. One revolution takes --seconds (36 by default, ten degrees a second).
 Rendering, encoding and the options are shared with render_gpx.py: --vertical for a
 9:16 Reel, --webm for Wikimedia Commons (which takes no MP4), --no-music and
 --no-watermark for a clean upload, --labels for the layers drawn, --probe to sample the
-renderer's API while it works. Frames are banked in snapshots/videos/orbit/frames/<name>/.
+renderer's API while it works. Frames are banked in snapshots/videos/orbit/frames/<name>/;
+--output NAME encodes a differently named file from the same bank, so one render can
+yield both a clean Wikimedia upload and a watermarked, scored cut for social media.
 """
 
 import argparse
@@ -139,6 +141,9 @@ def main():
     parser.add_argument("--altitude", required=True, type=float, metavar="METERS",
                         help="camera height above sea level, held throughout")
     parser.add_argument("--name", help="video name (default: orbit-<lat>-<lon>)")
+    parser.add_argument("--output", metavar="NAME",
+                        help="file name for the encoded video (default: the video name); "
+                             "the frames stay banked under --name")
     parser.add_argument("--seconds", type=float, default=ORBIT_SECONDS,
                         help=f"one revolution takes this long (default {ORBIT_SECONDS:.0f})")
     parser.add_argument("--fps", type=int, default=30)
@@ -172,6 +177,9 @@ def main():
     args.name = args.name or f"orbit-{target[0]:.4f}-{target[1]:.4f}"
     if args.vertical:
         args.name += "-vertical"
+        if args.output:
+            args.output += "-vertical"
+    args.output = args.output or args.name
     args.width = args.width or (_rg.VERTICAL_WIDTH if args.vertical else 1920)
     args.height = args.height or (_rg.VERTICAL_HEIGHT if args.vertical else 1080)
     args.fov = args.fov or (VERTICAL_ORBIT_FIELD_OF_VIEW if args.vertical else ORBIT_FIELD_OF_VIEW)
@@ -193,7 +201,7 @@ def main():
     if args.overwrite and os.path.isdir(frame_dir):
         shutil.rmtree(frame_dir)
     os.makedirs(frame_dir, exist_ok=True)
-    output = os.path.join(OUT_DIR, args.name + ".mp4")
+    output = os.path.join(OUT_DIR, args.output + ".mp4")
     missing = [(i, f) for i, f in enumerate(frames)
                if not os.path.exists(os.path.join(frame_dir, f"f{i:05d}.jpg"))]
     if missing:

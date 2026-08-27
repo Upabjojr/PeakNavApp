@@ -169,7 +169,9 @@ and area labels the renderer has loaded and which of them are on the current fra
 track on the terrain and `--fov` sets the lens; `snapshots/render_gpx.py` uses both to
 turn a GPX file into a 1080p video flown the way the app's own GPX tour flies it, and
 `snapshots/render_orbit.py` circles a summit from a given camera position and altitude;
-both take `--vertical` for a 9:16 Reel and `--webm` for Wikimedia Commons. The
+both take `--vertical` for a 9:16 Reel and `--webm` for Wikimedia Commons, and the orbit
+script's `--output NAME` re-encodes banked frames under another name (a clean upload and
+a scored, watermarked cut from one render). The
 `peaknav` Python package, described in the [Python package](#python-package) section
 above, is exactly such a client; see [`headless/README.md`](./headless/README.md) for
 the Java API and implementation notes.
