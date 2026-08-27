@@ -12,6 +12,7 @@ import java.util.ConcurrentModificationException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 import com.peaknav.utils.StoppableRunnable;
 import com.peaknav.viewer.DataRetrieveThreadManager;
@@ -70,8 +71,13 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
         try {
             mainRun();
             com.peaknav.utils.ResourceStats.labelVisibilityCompleted.incrementAndGet();
-            com.peaknav.utils.ResourceStats.labelVisibilityCompletedSequence
-                    .accumulateAndGet(sequence, Math::max);
+            // Not accumulateAndGet(sequence, Math::max): that takes a LongBinaryOperator,
+            // which RoboVM's runtime does not have. This CAS loop is the same monotonic max.
+            AtomicLong completed = com.peaknav.utils.ResourceStats.labelVisibilityCompletedSequence;
+            long prev = completed.get();
+            while (sequence > prev && !completed.compareAndSet(prev, sequence)) {
+                prev = completed.get();
+            }
         } finally {
             clearEverything();
         }
