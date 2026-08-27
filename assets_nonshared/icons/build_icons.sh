@@ -51,7 +51,6 @@ ICONS=(
   "icon_sky_ecliptic:128:128"
   "icon_sky_labels:128:128"
   "icon_loc_pin:128:256"
-  "ic_launcher:192:192"
   # These eight are loaded by the app exactly like the rest but were missing from this
   # list, so a build from a clean checkout came up short of the icons it asks for.
   "icon_checkbox_sky:128:128"
@@ -75,4 +74,10 @@ for entry in "${ICONS[@]}"; do
     echo "  $name.png ${w}x${h}"
   fi
 done
+
+# The in-app launcher emblem (IntroScreen) is not drawn from an SVG here: it is the
+# PeakNav logo itself, the same artwork peaknav.com serves, kept as a PNG master with
+# its transparency so it sits on the intro screen's own background.
+sips -z 192 192 "$SRC/peaknav_logo.png" --out "$OUT/ic_launcher.png" >/dev/null
+echo "  ic_launcher.png 192x192"
 echo "done."

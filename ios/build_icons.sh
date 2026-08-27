@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Regenerates the iOS app icon and launch-screen artwork from the SVG master in
-# assets_nonshared/icons, the same master assets_nonshared/icons/build_icons.sh renders the
-# in-app icons from. Nothing here is committed: *.png is gitignored repository-wide, so a
-# fresh clone has an asset catalogue full of filenames pointing at files that do not exist,
-# and actool has nothing to compile. Run this before building the iOS target.
+# Regenerates the iOS app icon and launch-screen artwork from the PeakNav logo masters in
+# assets_nonshared/icons - the same artwork peaknav.com and the Play Store listing use:
+#   peaknav_logo_flat.png  512px, opaque  - the engraved compass badge on its paper plate
+#   peaknav_logo.png       256px, alpha   - the badge alone, transparent outside the circle
+# Nothing here is committed: *.png is gitignored repository-wide, so a fresh clone has an
+# asset catalogue full of filenames pointing at files that do not exist, and actool has
+# nothing to compile. Run this before building the iOS target.
 #
 # The sizes are not a free choice - each one is a filename referenced by
 # ios/data/Media.xcassets/AppIcon.appiconset/Contents.json, and a name in Contents.json with
@@ -11,16 +13,18 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SRC="../assets_nonshared/icons/ic_launcher.svg"
+# The opaque master feeds every app icon: iOS app icons may not carry an alpha channel at
+# all - App Store validation rejects them, and a transparent icon renders black on the home
+# screen - which is why the flattened 512px rendition is the source, not the transparent one.
+# Only the 1024px marketing icon is an upscale; every size a device actually displays is a
+# downscale. Rebuild that one from larger artwork before an App Store submission.
+SRC_ICON="../assets_nonshared/icons/peaknav_logo_flat.png"
+# The launch screen sits the emblem on the storyboard's own background, so it keeps its
+# transparency and comes from the alpha-carrying master.
+SRC_LOGO="../assets_nonshared/icons/peaknav_logo.png"
+
 ICONSET="data/Media.xcassets/AppIcon.appiconset"
 LOGOSET="data/Media.xcassets/Logo.imageset"
-
-# The plate the emblem sits on. Shared with Android's ic_launcher_background so the app
-# reads the same on both platforms - and, more to the point, iOS app icons may not carry an
-# alpha channel at all: App Store validation rejects them, and a transparent icon renders
-# black on the home screen. rsvg-convert -b composites onto this and drops the alpha, which
-# is why there is no separate flattening step here.
-BACKGROUND="#CFC7BC"
 
 # filename:pixels - the rendered size, not the point size in Contents.json.
 ICONS=(
@@ -44,28 +48,21 @@ ICONS=(
   "app-store-icon-1024@1x:1024"
 )
 
-# The launch screen emblem. Alpha is fine here - it sits on the storyboard's own background,
-# so it is rendered without -b and keeps its transparency.
 LOGOS=(
   "peaknav@1x:128"
   "peaknav@2x:256"
   "peaknav@3x:384"
 )
 
-command -v rsvg-convert >/dev/null || {
-  echo "rsvg-convert not found - install it with 'brew install librsvg'" >&2
-  exit 1
-}
-
 for entry in "${ICONS[@]}"; do
   IFS=':' read -r name px <<< "$entry"
-  rsvg-convert -w "$px" -h "$px" -b "$BACKGROUND" "$SRC" -o "$ICONSET/$name.png"
+  sips -z "$px" "$px" "$SRC_ICON" --out "$ICONSET/$name.png" >/dev/null
   echo "  $name.png ${px}x${px}"
 done
 
 for entry in "${LOGOS[@]}"; do
   IFS=':' read -r name px <<< "$entry"
-  rsvg-convert -w "$px" -h "$px" "$SRC" -o "$LOGOSET/$name.png"
+  sips -z "$px" "$px" "$SRC_LOGO" --out "$LOGOSET/$name.png" >/dev/null
   echo "  $name.png ${px}x${px}"
 done
 
