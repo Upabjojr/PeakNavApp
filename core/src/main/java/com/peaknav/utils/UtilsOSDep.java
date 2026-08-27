@@ -15,7 +15,13 @@ public abstract class UtilsOSDep {
     public abstract void savePixmapAsJpg(File output, Pixmap pixmap);
 
     protected byte[] writeToPNG(Pixmap pixmap) {
-        boolean flipY = false;
+        // No flip by default: the pixmaps saved through here (ElevationImage) are built in
+        // memory top-down. A framebuffer capture is the opposite - OpenGL reads it
+        // bottom-up - and encodes through the flipY overload.
+        return writeToPNG(pixmap, false);
+    }
+
+    protected byte[] writeToPNG(Pixmap pixmap, boolean flipY) {
         int compression = Deflater.DEFAULT_COMPRESSION;
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try {

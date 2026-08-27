@@ -22,9 +22,14 @@ public class UtilsOSIOS extends UtilsOSDep {
     /** What a snapshot is saved at. Visually lossless for a photograph-like render. */
     private static final double JPEG_QUALITY = 0.92;
 
-    /** The frame as PNG bytes - what the share sheet hands to UIImage. */
+    /**
+     * The frame as PNG bytes - what the share sheet hands to UIImage. Flipped while
+     * encoding: the pixmap is a framebuffer capture and OpenGL reads those bottom-up,
+     * which is also why the Android share path comes out upright - its bare
+     * {@code PixmapIO.PNG} flips by default where {@code writeToPNG} does not.
+     */
     public byte[] encodePng(Pixmap pixmap) {
-        return writeToPNG(pixmap);
+        return writeToPNG(pixmap, true);
     }
 
     @Override
