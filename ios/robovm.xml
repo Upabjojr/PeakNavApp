@@ -46,5 +46,6 @@
     <framework>GameController</framework>
     <framework>CoreLocation</framework>
     <framework>CoreMotion</framework>
+    <framework>Photos</framework>
   </frameworks>
 </config>

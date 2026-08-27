@@ -20,11 +20,17 @@ import com.peaknav.ui.CurrentLocationListener;
 import com.peaknav.ui.TextFieldsCallback;
 import com.peaknav.utils.UtilsOSIOS;
 
+import org.robovm.apple.corelocation.CLLocation;
+import org.robovm.apple.corelocation.CLLocationCoordinate2D;
 import org.robovm.apple.foundation.NSArray;
 import org.robovm.apple.foundation.NSData;
 import org.robovm.apple.foundation.NSObject;
 import org.robovm.apple.foundation.NSProcessInfo;
+import org.robovm.apple.foundation.NSString;
 import org.robovm.apple.foundation.NSURL;
+import org.robovm.apple.photos.PHAsset;
+import org.robovm.apple.photos.PHAuthorizationStatus;
+import org.robovm.apple.photos.PHPhotoLibrary;
 import org.robovm.apple.uikit.UIActivityViewController;
 import org.robovm.apple.uikit.UIAlertAction;
 import org.robovm.apple.uikit.UIAlertActionStyle;
@@ -32,6 +38,10 @@ import org.robovm.apple.uikit.UIAlertController;
 import org.robovm.apple.uikit.UIAlertControllerStyle;
 import org.robovm.apple.uikit.UIApplication;
 import org.robovm.apple.uikit.UIImage;
+import org.robovm.apple.uikit.UIImagePickerController;
+import org.robovm.apple.uikit.UIImagePickerControllerDelegateAdapter;
+import org.robovm.apple.uikit.UIImagePickerControllerEditingInfo;
+import org.robovm.apple.uikit.UIImagePickerControllerSourceType;
 import org.robovm.apple.uikit.UITextField;
 import org.robovm.apple.uikit.UIViewController;
 import org.robovm.apple.uikit.UIWindow;
@@ -162,22 +172,20 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
 
     @Override
     public void warnCannotReadImageLocation() {
-        alert("No location in that photo",
-                "The picture carries no usable coordinates, so there is nowhere to go to.",
-                "OK");
+        alert(s("Image_location_missing_title"), s("Image_location_missing"), s("OK"));
     }
 
     @Override
     public void promptGoToImageLocation(final double lat, final double lon) {
         onMainThread(() -> {
             UIAlertController controller = new UIAlertController(
-                    "Go to the photo's location?",
-                    String.format("%.5f, %.5f", lat, lon), UIAlertControllerStyle.Alert);
-            controller.addAction(new UIAlertAction("Go", UIAlertActionStyle.Default,
+                    s("Image_location_found"),
+                    s("Go_to_image_location_prompt"), UIAlertControllerStyle.Alert);
+            controller.addAction(new UIAlertAction(s("Yes"), UIAlertActionStyle.Default,
                     (UIAlertAction action) -> Gdx.app.postRunnable(
                             () -> com.peaknav.utils.PeakNavUtils.getC().L
                                     .setCurrentTargetCoords(lat, lon, false))));
-            controller.addAction(new UIAlertAction("Stay", UIAlertActionStyle.Cancel,
+            controller.addAction(new UIAlertAction(s("No"), UIAlertActionStyle.Cancel,
                     (UIAlertAction action) -> { }));
             present(controller);
         });
@@ -402,15 +410,36 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
      * The intro screen's download button.
      *
      * <p>The button sets the download consent before calling this, so the workers really
-     * fetch. With no location chosen yet there is nothing sensible to download - the intro is
-     * still let through, and the missing-data prompt takes over once the user picks a place.
+     * fetch. On a first launch nothing is chosen yet, and this is where Android prompts for
+     * GPS (its region-picker wizard asks the moment it opens) - so iOS asks here too, and
+     * with no picker to show, the fix itself chooses the download region. On denial or no
+     * fix the behaviour is exactly the old one: the intro is let through, and the search
+     * dialog / missing-data prompt take over once the user picks a place by hand.
      */
     @Override
     public void openMapDataDownloadChooserWizard() {
+        if (getC().L.isCurrentLocationNotSet()) {
+            // The fix can arrive twice - the cached position first, the fresh one after -
+            // and both may aim the camera, but only one download should start.
+            final AtomicBoolean downloadStarted = new AtomicBoolean(false);
+            ensureLocationPermissions();
+            onMainThread(() -> locationController().getCurrentLocation(
+                    (longitude, latitude) -> {
+                        // Delivered on the render thread (LocationControllerIOS posts), so
+                        // the camera move is safe to make directly.
+                        getC().L.setCurrentTargetCoordsFromGPS(latitude, longitude);
+                        if (downloadStarted.compareAndSet(false, true)) {
+                            getC().submitExecutorGeneric(
+                                    () -> downloadAround(latitude, longitude, false));
+                        }
+                    }));
+            // Let the intro through now rather than after the fix: the permission answer
+            // may never come, and the app must not hang on it.
+            getAppState().setMapDataDownloaded(true);
+            return;
+        }
         getC().submitExecutorGeneric(() -> {
-            if (!getC().L.isCurrentLocationNotSet()) {
-                downloadAround(getC().L.getTargetLatitude(), getC().L.getTargetLongitude(), false);
-            }
+            downloadAround(getC().L.getTargetLatitude(), getC().L.getTargetLongitude(), false);
             getAppState().setMapDataDownloaded(true);
         });
     }
@@ -594,17 +623,143 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
 
     @Override
     public void openCameraPictureView() {
-        notBuiltYet("Taking a photo to place behind the view");
+        onMainThread(() -> {
+            if (!UIImagePickerController.isSourceTypeAvailable(
+                    UIImagePickerControllerSourceType.Camera)) {
+                // The simulator, in practice. Every real target device has a camera.
+                return;
+            }
+            presentImagePicker(UIImagePickerControllerSourceType.Camera);
+        });
     }
 
     @Override
     public void openGalleryPick() {
-        notBuiltYet("Choosing a photo to place behind the view");
+        onMainThread(() -> {
+            // The library permission is asked before the picker, not for the picking - the
+            // picker runs out of process and works unauthorized - but for the geotag: iOS
+            // strips GPS EXIF from the file the picker hands over, so the coordinates only
+            // exist on the PHAsset, and the PHAsset is only present once reading is allowed.
+            // This is Android's ACCESS_MEDIA_LOCATION request before its picker, replayed.
+            if (PHPhotoLibrary.getAuthorizationStatus() == PHAuthorizationStatus.NotDetermined) {
+                PHPhotoLibrary.requestAuthorization(status -> onMainThread(
+                        () -> presentImagePicker(UIImagePickerControllerSourceType.PhotoLibrary)));
+                return;
+            }
+            presentImagePicker(UIImagePickerControllerSourceType.PhotoLibrary);
+        });
     }
 
     @Override
     public void openAppTutorial() {
         notBuiltYet("The tutorial");
+    }
+
+    // ------------------------------------------------------------------ picking images
+
+    /** The presented picker, held strongly until dismissed - see the delegate's comment. */
+    private UIImagePickerController imagePicker;
+
+    // Both the picker and this adapter must stay reachable from Java fields while the
+    // picker is up: the Objective-C back-references are weak, invisible to RoboVM's
+    // collector, and a collected delegate ends the flow with no callback and no error.
+    private final UIImagePickerControllerDelegateAdapter imagePickerDelegate =
+            new UIImagePickerControllerDelegateAdapter() {
+
+                @Override
+                public void didFinishPickingMedia(UIImagePickerController picker,
+                                                  UIImagePickerControllerEditingInfo info) {
+                    boolean fromCamera = picker.getSourceType()
+                            == UIImagePickerControllerSourceType.Camera;
+                    final byte[] bytes = pickedImageBytes(info);
+                    final CLLocation assetLocation = pickedAssetLocation(info);
+                    picker.dismissViewController(true, null);
+                    imagePicker = null;
+                    if (bytes == null) {
+                        return;
+                    }
+                    // Decoding a full-size photo is too much work for the render thread.
+                    getC().submitExecutorGeneric(() -> {
+                        com.peaknav.utils.PeakNavUtils.setBytesAsBackgroundImage(bytes);
+                        if (fromCamera) {
+                            // A photo taken just now was taken right here - Android's
+                            // camera view does not prompt to travel either.
+                            return;
+                        }
+                        if (assetLocation != null) {
+                            CLLocationCoordinate2D coordinate = assetLocation.getCoordinate();
+                            promptGoToImageLocation(
+                                    coordinate.getLatitude(), coordinate.getLongitude());
+                        } else {
+                            // No PHAsset (library access refused, or a very old iOS): the
+                            // shared EXIF reader still catches files whose GPS survived,
+                            // and warns properly when nothing does.
+                            com.peaknav.utils.PeakNavUtils.checkImageGpsAndPrompt(bytes);
+                        }
+                    });
+                }
+
+                @Override
+                public void didCancel(UIImagePickerController picker) {
+                    picker.dismissViewController(true, null);
+                    imagePicker = null;
+                }
+            };
+
+    private void presentImagePicker(UIImagePickerControllerSourceType sourceType) {
+        UIImagePickerController picker = new UIImagePickerController();
+        picker.setSourceType(sourceType);
+        picker.setDelegate(imagePickerDelegate);
+        imagePicker = picker;
+        present(picker);
+    }
+
+    /**
+     * The picked image as undecoded bytes - what core's decoder and EXIF reader both want.
+     *
+     * <p>The original file is preferred: its bytes still carry the EXIF orientation tag,
+     * which core applies itself because libGDX's decoder ignores it. The re-encoded
+     * fallback covers camera captures, which have no file behind them.
+     */
+    private byte[] pickedImageBytes(UIImagePickerControllerEditingInfo info) {
+        NSObject url = info.get(new NSString("UIImagePickerControllerImageURL"));
+        if (url instanceof NSURL && ((NSURL) url).isFileURL()) {
+            byte[] bytes = readFile(((NSURL) url).getPath());
+            if (bytes != null) {
+                return bytes;
+            }
+        }
+        UIImage image = info.getOriginalImage();
+        if (image == null) {
+            return null;
+        }
+        NSData jpeg = image.toJPEGData(0.92);
+        return jpeg == null ? null : jpeg.getBytes();
+    }
+
+    /** Where the photo was taken, from the library's own record - null when unknown. */
+    private CLLocation pickedAssetLocation(UIImagePickerControllerEditingInfo info) {
+        NSObject asset = info.get(new NSString("UIImagePickerControllerPHAsset"));
+        if (asset instanceof PHAsset) {
+            return ((PHAsset) asset).getLocation();
+        }
+        return null;
+    }
+
+    private byte[] readFile(String path) {
+        // Byte-shuffling loop rather than Files.readAllBytes: java.nio.file does not
+        // exist on RoboVM's runtime (see AGENTS.md).
+        try (java.io.FileInputStream in = new java.io.FileInputStream(path)) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+            return out.toByteArray();
+        } catch (java.io.IOException failed) {
+            return null;
+        }
     }
 
     /**
