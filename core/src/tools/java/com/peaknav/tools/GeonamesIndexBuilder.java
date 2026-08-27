@@ -332,7 +332,34 @@ public class GeonamesIndexBuilder {
         // A single segment is smaller on disk and quicker to open on a phone.
         writer.forceMerge(1);
         writer.close();
+        writeFileList(new File(indexDir));
         System.out.println("index written to " + indexDir);
+    }
+
+    /**
+     * The exact segment files on disk, one per line - what {@code LuceneAssetLoader} copies
+     * out of the app package, and its manifest for telling a rebuilt index from the old one.
+     * {@code PeakIndexAppender} rewrites the same file after appending; without this one a
+     * peak-less index simply never loads, since the loader reads the manifest first.
+     */
+    private static void writeFileList(File indexDir) throws IOException {
+        File[] files = indexDir.listFiles();
+        if (files == null) {
+            throw new IOException("cannot list " + indexDir);
+        }
+        List<String> names = new ArrayList<>();
+        for (File f : files) {
+            String n = f.getName();
+            if (!n.equals("filelist.txt") && !n.startsWith(".") && f.isFile()) {
+                names.add(n);
+            }
+        }
+        try (java.io.PrintWriter out = new java.io.PrintWriter(
+                new File(indexDir, "filelist.txt"), "UTF-8")) {
+            for (String n : names) {
+                out.println(n);
+            }
+        }
     }
 
     /**
