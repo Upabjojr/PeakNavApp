@@ -14,7 +14,9 @@ Copyright © Francesco Bonazzi. All rights reserved. Not licensed under the GPL:
 
 * The name **PeakNav**.
 * The **PeakNav logo**.
-* The **application launcher icon**: `assets_nonshared/icons/ic_launcher.svg`,
+* The **application launcher icon and logo**:
+  `assets_nonshared/icons/peaknav_logo.png`,
+  `assets_nonshared/icons/peaknav_logo_flat.png`,
   `assets/icons/ic_launcher.png`, and the launcher resources under `android/res/`
   (`mipmap-*/ic_launcher*`, `drawable/ic_launcher_debug.xml`,
   `values/ic_launcher_background.xml`).

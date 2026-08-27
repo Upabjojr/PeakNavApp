@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- The plate the medallion sits on, for launchers whose mask is wider than a circle.
-         Sampled from the artwork just outside its ring so the two read as one image. -->
-    <color name="ic_launcher_background">#CFC7BC</color>
+         Sampled from the peaknav.com artwork just outside its ring so the two read as one
+         image (assets_nonshared/icons/peaknav_logo_flat.png, edge midpoint - the corners
+         are darkened by the artwork's vignette and would read as a different image). -->
+    <color name="ic_launcher_background">#CDC4B3</color>
 </resources>
