@@ -18,7 +18,18 @@ public class LuceneAssetLoader {
     /** Records which index was unpacked, so a rebuilt one can be told apart from the old one. */
     private static final String MANIFEST_MARKER = ".manifest";
 
+    // One unpack at a time, process-wide: two loaders racing here would interleave one's
+    // wipe with the other's copy, and the result is the same mixed index the manifest
+    // exists to prevent. Static, since each LuceneGeonameSearch creates its own loader.
+    private static final Object UNPACK_LOCK = new Object();
+
     private void copyAssetsToInternalStorage() throws IOException {
+        synchronized (UNPACK_LOCK) {
+            copyAssetsToInternalStorageLocked();
+        }
+    }
+
+    private void copyAssetsToInternalStorageLocked() throws IOException {
 
         if (!localDir.exists()) {
             localDir.mkdirs();
@@ -44,9 +55,17 @@ public class LuceneAssetLoader {
             }
         }
 
-        for (String name : manifest.split("\\r?\\n")) {
-            name = name.trim();
-            if (name.isEmpty()) continue;
+        for (String line : manifest.split("\\r?\\n")) {
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#")) continue;
+            // Each line is "<name>\t<sha-256>": the loader copies by name, and the hash is
+            // there only so the whole manifest changes when a segment's contents change,
+            // even when Lucene has reused the same segment name across a rebuild. Comparing
+            // the manifest verbatim (above) is what turns that into a full wipe; here we
+            // need just the name. A bare-name line (a standalone-built index) has no tab and
+            // is taken whole.
+            int tab = line.indexOf('\t');
+            String name = tab < 0 ? line : line.substring(0, tab);
             FileHandle assetFile = Gdx.files.internal(assetFolderName + "/" + name);
             File dest = new File(localDir, assetFile.name());
             // Re-copy when the file is missing *or* differs in size from the packaged

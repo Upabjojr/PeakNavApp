@@ -59,10 +59,26 @@ project(':core') {
         inputs.dir(assetsDir)
         outputs.file(indexFile)
 
-        def files = assetsDir.listFiles()
-        if (files) {
-            // Exclude the manifest itself so it doesn't list its own name.
-            indexFile.text = files.findAll { it.name != "filelist.txt" }.collect { it.name }.join("\n")
+        doLast {
+            def files = assetsDir.listFiles()
+            if (!files) {
+                return
+            }
+            // Each line is "<name>\t<sha-256>". The name alone is not enough to tell two
+            // builds apart: Lucene reuses segment names across rebuilds, so a changed index
+            // could ship a byte-identical file list, LuceneAssetLoader would see no change,
+            // skip its wipe, and mix the old segments table with the new segment data - the
+            // index that returned duplicate-or-empty results until the app was reinstalled.
+            // Hashing the contents makes the manifest change exactly when the index does.
+            // Sorted so identical content yields an identical manifest on any machine.
+            def lines = files.findAll { it.name != "filelist.txt" && it.isFile() }
+                    .collect { f ->
+                        def digest = java.security.MessageDigest.getInstance("SHA-256")
+                        f.eachByte(1 << 16) { buf, len -> digest.update(buf, 0, len) }
+                        f.name + "\t" + digest.digest().encodeHex().toString()
+                    }
+                    .sort()
+            indexFile.text = lines.join("\n") + "\n"
         }
     }
 }
