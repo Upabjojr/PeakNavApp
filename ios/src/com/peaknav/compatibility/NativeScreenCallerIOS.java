@@ -214,8 +214,12 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                     s("Go_to_image_location_prompt"), UIAlertControllerStyle.Alert);
             controller.addAction(new UIAlertAction(s("Yes"), UIAlertActionStyle.Default,
                     (UIAlertAction action) -> Gdx.app.postRunnable(
+                            // checkMissing = true, matching Android's 2-arg call: travelling to a
+                            // photo's location is a real destination like any other, so an area with
+                            // no downloaded data must raise the missing-data download prompt. The
+                            // false here meant it silently arrived at bare ground and offered nothing.
                             () -> com.peaknav.utils.PeakNavUtils.getC().L
-                                    .setCurrentTargetCoords(lat, lon, false))));
+                                    .setCurrentTargetCoords(lat, lon, true))));
             controller.addAction(new UIAlertAction(s("No"), UIAlertActionStyle.Cancel,
                     (UIAlertAction action) -> { }));
             present(controller);
