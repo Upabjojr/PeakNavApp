@@ -57,22 +57,29 @@ public class ElevationImageProviderManager {
         return executorLoadElevationData.submit(() -> {
             if (!addToLoadInProgress(tileZoomElev))
                 return;
-            ElevationImageProvider provider = new ElevationImageProvider(tileZoomElev);
-            provider.loadElevationData();
+            // The finally matters: a load that throws would otherwise leave its block in
+            // loadInProgress forever - clearProviders() does not touch that set - and the
+            // block could never load again for the rest of the session.
+            ElevationImageProvider provider;
+            try {
+                provider = new ElevationImageProvider(tileZoomElev);
+                provider.loadElevationData();
 
-            synchronized (providers) {
-                providers.put(tileZoomElev, provider);
-                Tile cb = tileZoomElev.tile;
-                if (mapToRescale.containsKey(cb)) {
-                    TileAndZoomElevFactor otherCb = mapToRescale.get(cb);
-                    if (otherCb.zoomElevFactor > tileZoomElev.zoomElevFactor) {
+                synchronized (providers) {
+                    providers.put(tileZoomElev, provider);
+                    Tile cb = tileZoomElev.tile;
+                    if (mapToRescale.containsKey(cb)) {
+                        TileAndZoomElevFactor otherCb = mapToRescale.get(cb);
+                        if (otherCb.zoomElevFactor > tileZoomElev.zoomElevFactor) {
+                            mapToRescale.put(cb, tileZoomElev);
+                        }
+                    } else {
                         mapToRescale.put(cb, tileZoomElev);
                     }
-                } else {
-                    mapToRescale.put(cb, tileZoomElev);
                 }
+            } finally {
+                removeFromLoadInProgress(tileZoomElev);
             }
-            removeFromLoadInProgress(tileZoomElev);
             checkProviderQueue(tileZoomElev, provider);
         });
     }

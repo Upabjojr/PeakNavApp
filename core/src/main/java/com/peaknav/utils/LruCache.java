@@ -119,7 +119,11 @@ public class LruCache<K, V> {
                 // reloaded forever, so it is refused rather than cached as a hole.
                 failure = new IllegalStateException("loader returned null for " + key);
             }
-        } catch (Exception thrown) {
+        } catch (Throwable thrown) {
+            // Throwable, not Exception: an Error escaping here would leave the key in
+            // `loading` and the flight never completed, and every later caller of this
+            // key - including both satellite tile workers, which routinely share one
+            // zoomed-out parent - would park in await() until the app restarts.
             failure = thrown;
         }
 
@@ -143,6 +147,11 @@ public class LruCache<K, V> {
             for (V value : evicted) {
                 evictionListener.onEvicted(value);
             }
+        }
+        if (failure instanceof Error) {
+            // Errors still propagate as themselves - but only now, after the bookkeeping
+            // above has completed the flight and woken every waiter.
+            throw (Error) failure;
         }
         if (failure != null) {
             throw new ExecutionException(failure);

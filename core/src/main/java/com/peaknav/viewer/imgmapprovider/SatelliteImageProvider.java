@@ -236,6 +236,13 @@ public class SatelliteImageProvider {
             String user_agent = "PeakNav-3D-UA";
             URLConnection con = url.openConnection();
             con.setRequestProperty("User-Agent", user_agent);
+            // A URLConnection with the default timeouts blocks forever on a half-open
+            // socket, and this runs on a two-thread pool that nothing interrupts: two hung
+            // sockets and no satellite tile downloads again until the app restarts - the
+            // toggles in the options menu only queue work behind the parked workers. The
+            // values match the map-data downloader's, which is why that path never wedged.
+            con.setConnectTimeout(20_000);
+            con.setReadTimeout(60_000);
 
             PeakNavUtils.copyFile(con.getInputStream(), tmp); // closes both streams
             if (!tmp.renameTo(file)) {
