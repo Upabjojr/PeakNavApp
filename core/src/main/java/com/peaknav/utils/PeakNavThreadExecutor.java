@@ -46,8 +46,12 @@ public class PeakNavThreadExecutor extends ThreadPoolExecutor {
 
     public synchronized void stopLoop() {
         getQueue().clear();
-        while (!submittedStoppableRunnable.isEmpty()) {
-            StoppableRunnable stoppableRunnable = submittedStoppableRunnable.remove();
+        // poll(), not isEmpty()+remove(): worker threads take themselves off this queue
+        // from their finally blocks without holding this monitor, so the element seen by
+        // isEmpty() may be gone by remove() - and the NoSuchElementException would escape
+        // through drawSatelliteLayer(), silently turning a settings toggle into a no-op.
+        StoppableRunnable stoppableRunnable;
+        while ((stoppableRunnable = submittedStoppableRunnable.poll()) != null) {
             stoppableRunnable.stop();
         }
         stopFlag = true;
