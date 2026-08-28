@@ -55,6 +55,11 @@
     <string>LaunchScreen</string>
     <key>CFBundleIconName</key>
     <string>AppIcon</string>
+    <!-- The app's only cryptography is standard HTTPS (exempt), so declare it and skip the
+         export-compliance questionnaire App Store Connect otherwise poses on every upload -
+         which also unblocks TestFlight builds that would sit in "Missing Compliance". -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <!-- NativeScreenCallerIOS.shareSnapshot puts the rendered frame into the system share
          sheet, whose "Save Image" writes to the photo library. iOS terminates an app that
          reaches the library with no usage string in its Info.plist - so the absence of this

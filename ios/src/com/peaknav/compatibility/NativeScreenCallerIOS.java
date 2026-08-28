@@ -21,6 +21,7 @@ import com.peaknav.ui.CurrentLocationListener;
 import com.peaknav.ui.TextFieldsCallback;
 import com.peaknav.utils.UtilsOSIOS;
 
+import org.robovm.apple.coregraphics.CGRect;
 import org.robovm.apple.corelocation.CLLocation;
 import org.robovm.apple.corelocation.CLLocationCoordinate2D;
 import org.robovm.apple.foundation.NSArray;
@@ -50,6 +51,8 @@ import org.robovm.apple.uikit.UIImagePickerControllerDelegateAdapter;
 import org.robovm.apple.uikit.UIImagePickerControllerEditingInfo;
 import org.robovm.apple.uikit.UIImagePickerControllerSourceType;
 import org.robovm.apple.uikit.UINavigationController;
+import org.robovm.apple.uikit.UIPopoverArrowDirection;
+import org.robovm.apple.uikit.UIPopoverPresentationController;
 import org.robovm.apple.uikit.UIScreen;
 import org.robovm.apple.uikit.UITextField;
 import org.robovm.apple.uikit.UIViewController;
@@ -123,9 +126,26 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     private void present(final UIViewController controller) {
         onMainThread(() -> {
             UIViewController root = rootController();
-            if (root != null) {
-                root.presentViewController(controller, true, null);
+            if (root == null) {
+                return;
             }
+            // iPad requires a source anchor for anything that presents as a popover -
+            // UIActivityViewController (the share sheet) and the photo-library picker.
+            // Present one without it and iPad throws NSInvalidArgumentException, which on
+            // this app reads as the Share button crashing the whole app. On iPhone these
+            // controllers are full-screen and getPopoverPresentationController() is null,
+            // so this block is a no-op there. Anchored to the centre of the root view with
+            // no arrow: the app has no button frame to point at from here, and centre is
+            // the least surprising place for a sheet with no origin.
+            UIPopoverPresentationController popover = controller.getPopoverPresentationController();
+            if (popover != null && root.getView() != null) {
+                CGRect bounds = root.getView().getBounds();
+                popover.setSourceView(root.getView());
+                popover.setSourceRect(new CGRect(
+                        bounds.getWidth() / 2, bounds.getHeight() / 2, 0, 0));
+                popover.setPermittedArrowDirections(UIPopoverArrowDirection.None);
+            }
+            root.presentViewController(controller, true, null);
         });
     }
 
