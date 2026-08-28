@@ -285,6 +285,11 @@ public class GeonamesIndexBuilder {
         Directory dir = FSDirectory.open(new File(indexDir));
         Analyzer analyzer = new StandardAnalyzer(Version.LUCENE_36);
         IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_36, analyzer);
+        // CREATE, not the default CREATE_OR_APPEND: a rebuild over an existing directory
+        // must replace the index, not add a second copy of every place to it. The default
+        // appended - run the builder twice and every town came back twice from search,
+        // fused into one segment by the forceMerge below where nothing looked wrong.
+        config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
         // Score without Lucene's usual short-field bonus. It divides by the square root of the
         // number of terms in the field, which here would punish a place for the very thing that
         // makes it findable: Rome carries a dozen names and a hamlet called Rome carries one, so
