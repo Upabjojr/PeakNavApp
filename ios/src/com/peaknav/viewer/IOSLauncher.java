@@ -112,6 +112,15 @@ public class IOSLauncher extends IOSApplication.Delegate {
         // and the touch coordinates - and matches Android, whose convention this shared code
         // was written against. Desktop and Android are untouched by this setting.
         config.hdpiMode = HdpiMode.Pixels;
+
+        // No audio, deliberately: the app plays none, yet libGDX's iOS backend would
+        // otherwise open an OpenAL device and an AVAudioSession at launch (useAudio
+        // defaults true). That native init runs before the first frame, OUTSIDE the only
+        // Throwable guard the app has (MapApp.render), so when CoreAudio is slow to answer
+        // - the alcOpenDevice / AudioUnit RPC timeout seen intermittently - it takes the
+        // whole launch down with a SIGABRT. A launch crash is an App Store rejection;
+        // turning the subsystem off removes the entire failure mode at no cost.
+        config.useAudio = false;
         // Through MapViewerIOSSingleton, not `new MapApp(...)`: shared code looks the running
         // app up via MapViewerSingleton.getAppInstance(), and an instance built around the
         // singleton leaves that null - which made getAppInstance() build a second, broken one.

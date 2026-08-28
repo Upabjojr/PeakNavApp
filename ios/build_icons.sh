@@ -60,6 +60,15 @@ for entry in "${ICONS[@]}"; do
   echo "  $name.png ${px}x${px}"
 done
 
+# The 1024 App Store marketing icon is the one size LARGER than the 512 source art, so a
+# plain resize only magnifies its softness. This dedicated master was produced from the
+# 512 master by a CoreImage Lanczos upscale plus a light unsharp mask (opaque, no alpha),
+# which is as crisp as a 512 source allows - regenerate it from higher-resolution artwork
+# if that ever exists. Every device-displayed size above is a downscale and stays a plain
+# resize of the 512 master.
+cp "../assets_nonshared/icons/peaknav_logo_1024.png" "$ICONSET/app-store-icon-1024@1x.png"
+echo "  app-store-icon-1024@1x.png 1024x1024 (Lanczos master)"
+
 for entry in "${LOGOS[@]}"; do
   IFS=':' read -r name px <<< "$entry"
   sips -z "$px" "$px" "$SRC_LOGO" --out "$LOGOSET/$name.png" >/dev/null
