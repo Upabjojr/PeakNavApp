@@ -166,12 +166,7 @@ together with `--frame`, the server runs alongside the frame loop instead of rep
 it, so a script can watch a video render — `GET /objects` lists the peaks, huts, places
 and area labels the renderer has loaded and which of them are on the current frame
 (`snapshots/generate_videos.py --probe` does exactly that). `--gpx <file>` draws a GPX
-track on the terrain and `--fov` sets the lens; `snapshots/render_gpx.py` uses both to
-turn a GPX file into a 1080p video flown the way the app's own GPX tour flies it, and
-`snapshots/render_orbit.py` circles a summit from a given camera position and altitude;
-both take `--vertical` for a 9:16 Reel and `--webm` for Wikimedia Commons, and the orbit
-script's `--output NAME` re-encodes banked frames under another name (a clean upload and
-a scored, watermarked cut from one render). The
+track on the terrain and `--fov` sets the lens. The
 `peaknav` Python package, described in the [Python package](#python-package) section
 above, is exactly such a client; see [`headless/README.md`](./headless/README.md) for
 the Java API and implementation notes.
