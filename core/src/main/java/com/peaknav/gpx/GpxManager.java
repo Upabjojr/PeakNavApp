@@ -142,6 +142,10 @@ public class GpxManager {
         if (url == null || url.trim().isEmpty()) {
             return;
         }
+        if (com.peaknav.network.HttpsPolicy.isBlockedHttp(url)) {
+            toast(com.peaknav.network.HttpsPolicy.HTTP_BLOCKED_MESSAGE);
+            return;
+        }
         toast(s("Gpx_downloading"));
         Net.HttpRequest request = new Net.HttpRequest(Net.HttpMethods.GET);
         request.setUrl(url.trim());

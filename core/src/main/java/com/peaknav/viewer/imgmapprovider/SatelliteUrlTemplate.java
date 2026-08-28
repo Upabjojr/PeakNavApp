@@ -152,6 +152,9 @@ public final class SatelliteUrlTemplate {
         if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
             return "The URL template must start with http:// or https://";
         }
+        if (com.peaknav.network.HttpsPolicy.isBlockedHttp(trimmed)) {
+            return com.peaknav.network.HttpsPolicy.HTTP_BLOCKED_MESSAGE;
+        }
 
         boolean hasX = false, hasY = false, hasZ = false, hasQuadKey = false, hasBbox = false;
 

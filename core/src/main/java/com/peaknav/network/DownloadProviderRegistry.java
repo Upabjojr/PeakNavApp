@@ -179,6 +179,9 @@ public class DownloadProviderRegistry {
         if (!isHttpUrl(elevationBaseUrl) || !isHttpUrl(mapDataBaseUrl)) {
             return "URLs must start with http:// or https://";
         }
+        if (HttpsPolicy.isBlockedHttp(elevationBaseUrl) || HttpsPolicy.isBlockedHttp(mapDataBaseUrl)) {
+            return HttpsPolicy.HTTP_BLOCKED_MESSAGE;
+        }
         return null;
     }
 
