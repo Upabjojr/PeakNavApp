@@ -262,7 +262,10 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     public void openCoordinate(double latitude, double longitude) {
         // Apple Maps, by the documented URL scheme: this is a "show me where this is"
         // request, and the platform's own map is the least surprising answer to it.
-        openUrl(String.format("https://maps.apple.com/?ll=%f,%f&q=%f,%f",
+        // Locale.ENGLISH is not optional: on a device set to a comma-decimal language,
+        // bare %f writes ll=46,185894,10,640152 - four fields where Maps expects two -
+        // and the button looks simply dead. The Android side formats the same way.
+        openUrl(String.format(java.util.Locale.ENGLISH, "https://maps.apple.com/?ll=%f,%f&q=%f,%f",
                 latitude, longitude, latitude, longitude));
     }
 
