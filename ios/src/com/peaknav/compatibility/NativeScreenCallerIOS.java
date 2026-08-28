@@ -38,6 +38,7 @@ import org.robovm.apple.uikit.UIAlertActionStyle;
 import org.robovm.apple.uikit.UIAlertController;
 import org.robovm.apple.uikit.UIAlertControllerStyle;
 import org.robovm.apple.uikit.UIApplication;
+import org.robovm.apple.uikit.UIApplicationOpenURLOptions;
 import org.robovm.apple.uikit.UIBarButtonItem;
 import org.robovm.apple.uikit.UIBarButtonItemStyle;
 import org.robovm.apple.uikit.UIDocumentPickerDelegateAdapter;
@@ -305,9 +306,22 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
 
     private void openUrl(final String url) {
         onMainThread(() -> {
-            UIApplication application = UIApplication.getSharedApplication();
-            if (application != null) {
-                application.openURL(new NSURL(url));
+            try {
+                UIApplication application = UIApplication.getSharedApplication();
+                if (application == null) {
+                    return;
+                }
+                // The three-argument form, not the one-argument openURL: - that one has
+                // been deprecated since iOS 10, and this call must keep working on iOS
+                // versions newer than the binding. The completion logs the outcome
+                // because a refused open is otherwise indistinguishable from a dead
+                // button, which is the worst kind of report to receive.
+                application.openURL(new NSURL(url), new UIApplicationOpenURLOptions(),
+                        opened -> System.err.println("[openUrl] " + url + " -> " + opened));
+            } catch (Throwable failed) {
+                // The render loop swallows exceptions, so say it here or nowhere.
+                System.err.println("[openUrl] threw for " + url);
+                failed.printStackTrace();
             }
         });
     }
