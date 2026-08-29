@@ -123,11 +123,57 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         return window == null ? null : window.getRootViewController();
     }
 
+    /** How long {@link #present} keeps waiting for an in-flight alert transition to end. */
+    private static final int PRESENT_RETRY_MAX = 27;
+    private static final long PRESENT_RETRY_MS = 150L;
+
     private void present(final UIViewController controller) {
+        presentWhenIdle(controller, 0);
+    }
+
+    /**
+     * Presents from the topmost controller, once no transition is in flight.
+     *
+     * <p>The old version called {@code root.presentViewController} unconditionally, and UIKit
+     * drops that on the floor - a console warning, no dialog - in two situations this app
+     * actually produces. First, chained dialogs: tapping Yes on "go to this photo's location?"
+     * navigates, the arrival raises the missing-data prompt two frames later, and at that
+     * point the first alert is still animating out - root is mid-dismissal, so the prompt
+     * never appeared (the defect this fixes; a debug-hook test missed it because the hook
+     * navigated with no alert on screen). Second, presenting from root while root already
+     * presents something else - an info screen, the photo picker - is refused outright;
+     * UIKit wants the presentation to come from the top of the stack.
+     *
+     * <p>So: walk to the topmost presented controller; a live toast up there is dismissed
+     * rather than presented upon (its auto-dismissal would take any child down with it);
+     * while the top is mid-transition, retry on a short timer; then present from the top.
+     * The retry gives up after {@link #PRESENT_RETRY_MAX} attempts and presents anyway,
+     * which is at worst the old behaviour.
+     */
+    private void presentWhenIdle(final UIViewController controller, final int attempt) {
         onMainThread(() -> {
             UIViewController root = rootController();
             if (root == null) {
                 return;
+            }
+            UIViewController host = root;
+            while (host.getPresentedViewController() != null) {
+                host = host.getPresentedViewController();
+            }
+            if (attempt < PRESENT_RETRY_MAX) {
+                if (host == activeToast) {
+                    // A toast is informational and about to vanish anyway; a dialog wins.
+                    // Dismiss it and come back, rather than presenting on top of a
+                    // controller whose scheduled dismissal would drag the dialog down.
+                    activeToast = null;
+                    host.dismissViewController(true, null);
+                    scheduleRetry(controller, attempt);
+                    return;
+                }
+                if (host.isBeingDismissed() || host.isBeingPresented()) {
+                    scheduleRetry(controller, attempt);
+                    return;
+                }
             }
             // iPad requires a source anchor for anything that presents as a popover -
             // UIActivityViewController (the share sheet) and the photo-library picker.
@@ -145,8 +191,17 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                         bounds.getWidth() / 2, bounds.getHeight() / 2, 0, 0));
                 popover.setPermittedArrowDirections(UIPopoverArrowDirection.None);
             }
-            root.presentViewController(controller, true, null);
+            host.presentViewController(controller, true, null);
         });
+    }
+
+    private void scheduleRetry(final UIViewController controller, final int attempt) {
+        DISMISS_TIMER.schedule(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                presentWhenIdle(controller, attempt + 1);
+            }
+        }, PRESENT_RETRY_MS);
     }
 
     /** An alert with a single dismissing button. */
@@ -179,15 +234,26 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
      * Deliberately brief - it is used for distances and elevations while the user is
      * dragging the view, and anything that had to be tapped away would be an obstacle.
      */
+    /**
+     * The toast currently on screen, if any. {@link #presentWhenIdle} dismisses it rather
+     * than presenting a dialog on top of it - the toast's scheduled dismissal below would
+     * otherwise take the dialog down with it.
+     */
+    private volatile UIViewController activeToast;
+
     @Override
     public void makeToast(final String message) {
         onMainThread(() -> {
             final UIAlertController controller = new UIAlertController(
                     null, message, UIAlertControllerStyle.Alert);
             UIViewController root = rootController();
-            if (root == null) {
+            if (root == null || root.getPresentedViewController() != null) {
+                // Something real is up (a dialog, a screen - or another toast): a toast is
+                // too unimportant to queue behind it, and presenting from busy root was a
+                // silent no-op anyway. Skipping keeps that behaviour, now deliberate.
                 return;
             }
+            activeToast = controller;
             root.presentViewController(controller, true, null);
             // Dismissed on a plain timer that hands the work back to the main thread. The
             // Objective-C way would be performSelector:withObject:afterDelay:, but a
@@ -196,7 +262,13 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
             DISMISS_TIMER.schedule(new java.util.TimerTask() {
                 @Override
                 public void run() {
-                    onMainThread(() -> controller.dismissViewController(true, null));
+                    onMainThread(() -> {
+                        if (activeToast == controller) {
+                            activeToast = null;
+                            controller.dismissViewController(true, null);
+                        }
+                        // else presentWhenIdle already dismissed it to make room.
+                    });
                 }
             }, (long) (TOAST_SECONDS * 1000));
         });
