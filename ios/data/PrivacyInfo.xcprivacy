@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Apple's privacy manifest, required at App Store upload since 2024: an app that
+     touches any "required reason" API must declare which and why, or the upload is
+     flagged (ITMS-91053). RoboVM copies everything in ios/data to the bundle root,
+     which is exactly where Apple looks for this file in an app (frameworks carry
+     their own). The declarations match what actually runs:
+     - UserDefaults: libGDX's IOSPreferences is NSUserDefaults (CA92.1 = the app
+       reads only its own defaults).
+     - FileTimestamp: CacheDirManager ranks cache files by File.lastModified
+       (C617.1 = timestamps of files inside the app's own container).
+     - SystemBootTime: RoboVM's System.nanoTime is mach_absolute_time (35F9.1 =
+       measuring elapsed time inside the app, nothing sent off device).
+     Tracking is off and no data is collected - the same claims as the privacy
+     policy and the App Store privacy label ("Data Not Collected"). -->
+<plist version="1.0">
+<dict>
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
