@@ -165,12 +165,13 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
 
     @Override
     public void alertMessage(String message) {
-        alert("PeakNav", message, "OK");
+        alert("PeakNav", message, s("OK"));
     }
 
     @Override
     public void comingSoon() {
-        alert("PeakNav", "Not in this version yet.", "OK");
+        // The localized string, as Android's comingSoon shows - not hardcoded English.
+        alert("PeakNav", s("Coming_soon"), s("OK"));
     }
 
     /**

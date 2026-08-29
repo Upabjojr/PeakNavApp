@@ -18,10 +18,11 @@ We do not share user-related information with any third party not listed here
 unless required by law, to prevent crime, or to protect the integrity of our
 App and Services.
 
-The App may be installed by a digital service provider, such as Google Play,
-which maintains its own privacy statements:
+The App may be installed by a digital service provider, such as Google Play
+or the Apple App Store, which maintains its own privacy statements:
 
 * [Google Play Services](https://www.google.com/policies/privacy/)
+* [Apple](https://www.apple.com/legal/privacy/)
 
 Users acknowledge and agree to be bound by the respective privacy policies of 
 the following third-party providers, necessary for the content offered in the App:
