@@ -11,6 +11,8 @@
        (C617.1 = timestamps of files inside the app's own container).
      - SystemBootTime: RoboVM's System.nanoTime is mach_absolute_time (35F9.1 =
        measuring elapsed time inside the app, nothing sent off device).
+     - DiskSpace: RoboVM's File.getUsableSpace/getFreeSpace are statvfs/fstatvfs
+       (85F4.1 = checking there is room before writing user-requested map data).
      Tracking is off and no data is collected - the same claims as the privacy
      policy and the App Store privacy label ("Data Not Collected"). -->
 <plist version="1.0">
@@ -45,6 +47,14 @@
             <key>NSPrivacyAccessedAPITypeReasons</key>
             <array>
                 <string>35F9.1</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>85F4.1</string>
             </array>
         </dict>
     </array>

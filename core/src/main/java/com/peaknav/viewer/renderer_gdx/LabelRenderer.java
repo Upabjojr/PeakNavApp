@@ -1485,7 +1485,10 @@ public class LabelRenderer {
 
     public void resize(int width, int height) {
         // spriteBatch.getProjectionMatrix().setToOrtho2D(0, 0, width, height);
-        x = width - widgetUnitStep - w;
-        y = height - widgetUnitStep;
+        // The corner rose is drawn in window pixels, outside the scene2d stage that
+        // MapViewerScreen insets to the safe area - so it steps clear of the iPhone's
+        // Dynamic Island and rounded corner here (the insets are zero elsewhere).
+        x = width - Gdx.graphics.getSafeInsetRight() - widgetUnitStep - w;
+        y = height - Gdx.graphics.getSafeInsetTop() - widgetUnitStep;
     }
 }

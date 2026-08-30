@@ -1250,6 +1250,26 @@ public class MapViewerScreen implements Screen {
 		Gdx.input.setCatchKey(Input.Keys.BACK, false);
 	}
 
+	/**
+	 * Sizes the scene2d viewport to the display's safe area, so no widget sits under
+	 * the iPhone's Dynamic Island / notch or the home indicator. libGDX reports those
+	 * exclusion zones as safe-area insets - in pixels here, matching HdpiMode.Pixels;
+	 * zero on desktop and on Android, which does not draw under the camera cutout, so
+	 * both are bit-identical to a plain {@code update(width, height, true)}. Only the
+	 * widgets move: the 3D map still renders edge to edge underneath them.
+	 */
+	private void updateStageViewportInsideSafeArea(int width, int height) {
+		int insetLeft = Gdx.graphics.getSafeInsetLeft();
+		int insetRight = Gdx.graphics.getSafeInsetRight();
+		int insetTop = Gdx.graphics.getSafeInsetTop();
+		int insetBottom = Gdx.graphics.getSafeInsetBottom();
+		stageViewport.update(
+				Math.max(1, width - insetLeft - insetRight),
+				Math.max(1, height - insetTop - insetBottom),
+				true);
+		stageViewport.setScreenPosition(insetLeft, insetBottom);
+	}
+
 	@Override
 	public void resize(int width, int height) {
 		// spriteBatch = new SpriteBatch();
@@ -1263,7 +1283,7 @@ public class MapViewerScreen implements Screen {
 			// wrong pixel from here on.
 			cam.resizeGeographicCameras(width, height);
 
-			stageViewport.update(width, height, true);
+			updateStageViewportInsideSafeArea(width, height);
 			stageNavigationViewport.update(width, height, true);
 
 			labelRenderer.resize(width, height);
@@ -1531,7 +1551,11 @@ public class MapViewerScreen implements Screen {
 
 		labelRenderer.renderLevelingLine();
 
-		// stageViewport.apply();
+		// The stage viewport is inset to the safe area (see
+		// updateStageViewportInsideSafeArea), and Stage.draw does not apply its
+		// viewport itself - without this the widgets would still be drawn across
+		// the full glViewport while touch handling used the inset bounds.
+		stageViewport.apply();
 		stage.act();
 		try {
 			stage.draw();
@@ -1539,6 +1563,9 @@ public class MapViewerScreen implements Screen {
 			if (stage.getBatch().isDrawing())
 				stage.getBatch().end();
 		}
+		// The 3D pass at the top of the next frame expects the full-window
+		// viewport it was resized to; put it back after the inset UI pass.
+		Gdx.gl.glViewport(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
 	}
 
