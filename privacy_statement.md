@@ -14,6 +14,10 @@ Statement.
 
 ## Collected information
 
+The App collects no personal data from you: your position, your searches and
+the photographs you open are used on your device only, to draw the view you
+asked for, and are never transmitted to us.
+
 We do not share user-related information with any third party not listed here
 unless required by law, to prevent crime, or to protect the integrity of our
 App and Services.
@@ -31,6 +35,9 @@ the following third-party providers, necessary for the content offered in the Ap
 * [U.S. Geological Survey](https://www.usgs.gov/office-of-the-director/privacy-policies)
 * [NASA](https://www.nasa.gov/privacy/)
 * [HuggingFace](https://huggingface.co/privacy)
+
+Any third party with whom we share user data provides similar
+protection of that data as this Privacy Statement requires.
 
 ## *Communication Data Collection*
 
