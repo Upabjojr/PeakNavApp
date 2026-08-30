@@ -36,8 +36,10 @@ the following third-party providers, necessary for the content offered in the Ap
 * [NASA](https://www.nasa.gov/privacy/)
 * [HuggingFace](https://huggingface.co/privacy)
 
-Any third party with whom we share user data provides similar
-protection of that data as this Privacy Statement requires.
+Beyond the requests the App makes to the providers listed above, we share no
+user data with anyone; were we ever to share any, we would share it only with a
+party that provides the same or equal protection of that data as this Privacy
+Statement requires.
 
 ## *Communication Data Collection*
 
