@@ -43,6 +43,10 @@ We retain your information for as long as necessary to fulfill the purposes
 outlined in this Privacy Statement, unless a longer retention period is
 required or permitted by law.
 
+You may withdraw the permissions you granted the App at any time in your
+device's system settings, and remove everything the App holds on your device by
+uninstalling it; to request further deletions, write to peaknav.info@gmail.com .
+
 ## Transferability Clause
 
 In the event of a transfer of ownership or control of PeakNav or its assets,

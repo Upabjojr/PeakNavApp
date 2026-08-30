@@ -2,9 +2,28 @@ from pathlib import Path
 import markdown
 
 
+# Every HTML page below is generated from a Markdown source and must never be edited
+# by hand - see CLAUDE.md.  The styling therefore lives here, in the one template, so
+# that a change survives the next regeneration.
 html_template = """
 <!DOCTYPE html>
 <html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body {{ margin: 0 auto; padding: 1rem; max-width: 44rem;
+       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+       font-size: 1rem; line-height: 1.6; overflow-wrap: break-word; }}
+h1 {{ font-size: 1.5rem; }}
+h2 {{ font-size: 1.2rem; margin-top: 2rem; }}
+h3 {{ font-size: 1.05rem; }}
+/* The license texts reproduced below are pre-formatted; wrap them so they do not force
+   horizontal scrolling on a phone screen. */
+pre {{ white-space: pre-wrap; word-wrap: break-word; font-size: 0.85em; }}
+a {{ overflow-wrap: anywhere; }}
+</style>
+</head>
 <body>
 {body}
 </body>
