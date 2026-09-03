@@ -27,6 +27,15 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
   - `compatibility/` — abstractions each platform implements (`NativeScreenCaller`,
     `LoadFactory`, etc.).
   - `elevation/`, `pbf/`, `database/`, `network/`, `satellite/`, `utils/`.
+  - `skyline/` — matching a photograph's skyline to the terrain: `TerrainHorizon`
+    (the horizon all around a point, from an `ElevationSampler`), `SkylineExtractor`
+    (the sky/ground line in a picture, classical image processing) and
+    `SkylineMatcher` (bearing, pitch and field of view by optimisation, with a
+    calibrated "confident" verdict). Pure Java, no libGDX; `viewer/PhotoSkylineAligner`
+    is the app-side glue that runs it when a geotagged photo is loaded and offers
+    to point the camera. Its accuracy is measured, not assumed: see the
+    `skylineBenchmark` tool below, and keep the thresholds in `SkylineMatcher`
+    tied to what the benchmark reports.
 - **`desktop`** — LWJGL3 launcher (`DesktopLauncher`), Swing-based native screens.
 - **`android`** — Android launcher/activity, fragments, native screens.
 - **`ios`** — RoboVM launcher plus a real `IOSLoadFactory`: logging, caches, file
@@ -244,7 +253,14 @@ Two more RoboVM-side traps, both handled in `ios/build.gradle`:
   (package `com.peaknav.tools`), so nothing they pull in ships in the app. Each is
   exposed as a Gradle task in the `peaknav` group — currently
   `./gradlew :core:buildGeonamesIndex --args="cities500.txt alternateNamesV2.txt out_dir"`,
-  which rebuilds the place-search index. Put new data-prep tools here rather than in
+  which rebuilds the place-search index, and
+  `./gradlew :core:skylineBenchmark --args="path/to/manifest.json"`, which runs the
+  photo skyline matcher over a dataset of geotagged photos with a known camera
+  heading and reports accuracy and the precision of its confident matches. The
+  datasets are built by `tools/skyline_dataset.py` (GeoPose3K, or Wikimedia Commons
+  photos carrying a `heading:`); `TestSkylineDataset` runs the same benchmark when one
+  is installed under `~/.peaknav/skyline_dataset/` or `$PEAKNAV_SKYLINE_DATASET`, and
+  skips otherwise. Put new data-prep tools here rather than in
   a test: an index builder hidden in `TestLuceneGeonames` meant a half-built index
   directory from an earlier run could fail the whole suite.
 

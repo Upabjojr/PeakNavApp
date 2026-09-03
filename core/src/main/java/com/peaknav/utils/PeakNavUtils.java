@@ -277,6 +277,8 @@ public class PeakNavUtils {
         // as landscape pixels + a rotate tag) would come out sideways. Apply it here.
         pixmap = applyExifOrientation(pixmap, ExifReader.extractOrientation(bytesJpeg));
         MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(pixmap);
+        // Keep a reduced copy for the skyline match, before anything can dispose the pixmap.
+        com.peaknav.viewer.PhotoSkylineAligner.onPhotoLoaded(pixmap, bytesJpeg);
     }
 
     /**

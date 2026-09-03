@@ -53,6 +53,12 @@ public abstract class NativeScreenCaller {
      */
     public abstract void warnCannotReadImageLocation();
 
+    /**
+     * A yes/no question in the platform's own dialog. {@code onYes} runs on whatever thread
+     * the platform answers from - hop to the render thread before touching the map.
+     */
+    public abstract void promptYesNo(String title, String message, Runnable onYes);
+
     public abstract void openAppInfoScreen();
 
     public abstract void openAppTutorial();

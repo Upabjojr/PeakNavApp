@@ -171,6 +171,31 @@ track on the terrain and `--fov` sets the lens. The
 above, is exactly such a client; see [`headless/README.md`](./headless/README.md) for
 the Java API and implementation notes.
 
+### Photo skyline matching
+
+When a photograph is placed behind the terrain (gallery or camera buttons) and the app
+knows where it was taken, it tries to work out which way the camera pointed: the skyline
+traced in the picture is matched against the terrain's horizon around that spot, and if
+the match is unambiguous the app offers to turn its camera to the same bearing, pitch and
+field of view, so the mountains line up with the photo. Classical image processing and
+plain optimisation, no neural network; the code is `com.peaknav.skyline` in `core`.
+
+How well it works is measured on photographs with a known camera heading, which
+`tools/skyline_dataset.py` gathers - from [GeoPose3K](https://cphoto.fit.vutbr.cz/geoPose3K/)
+(exact poses, a 38 GB download you point the script at) or from Wikimedia Commons photos
+whose location template carries a `heading:` (downloaded on the spot, with their licences
+recorded) - and the `skylineBenchmark` task reports:
+
+```bash
+python3 tools/skyline_dataset.py commons --category "Mountains of Switzerland" --limit 60
+./gradlew :core:skylineBenchmark --args="~/.peaknav/skyline_dataset/commons/manifest.json"
+```
+
+On GeoPose3K's hand-annotated photos the bearing comes out within 10 degrees for about
+half of them, and when the matcher calls a match confident - the only case in which the
+app asks - it is right 95% of the time. The elevation tiles of the photographed areas
+must be on disk (the app's own `~/.peaknav` cache, or the Python package's).
+
 ### Desktop installers
 
 ```bash

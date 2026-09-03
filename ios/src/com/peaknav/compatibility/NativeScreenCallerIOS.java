@@ -299,6 +299,20 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         });
     }
 
+    @Override
+    public void promptYesNo(final String title, final String message, final Runnable onYes) {
+        onMainThread(() -> {
+            UIAlertController controller = new UIAlertController(
+                    title == null ? "" : title, message == null ? "" : message,
+                    UIAlertControllerStyle.Alert);
+            controller.addAction(new UIAlertAction(s("Yes"), UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> onYes.run()));
+            controller.addAction(new UIAlertAction(s("No"), UIAlertActionStyle.Cancel,
+                    (UIAlertAction action) -> { }));
+            present(controller);
+        });
+    }
+
     /**
      * Asks for a set of values in one alert. iOS alerts take text fields directly, so this
      * is the platform's own dialogue rather than anything hand-built.
@@ -917,10 +931,13 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                         if (fromCamera) {
                             // A photo taken just now was taken right here - Android's
                             // camera view does not prompt to travel either.
+                            com.peaknav.viewer.PhotoSkylineAligner.photoTakenHere();
                             return;
                         }
                         if (assetLocation != null) {
                             CLLocationCoordinate2D coordinate = assetLocation.getCoordinate();
+                            com.peaknav.viewer.PhotoSkylineAligner.setPendingLocation(
+                                    coordinate.getLatitude(), coordinate.getLongitude());
                             promptGoToImageLocation(
                                     coordinate.getLatitude(), coordinate.getLongitude());
                         } else {

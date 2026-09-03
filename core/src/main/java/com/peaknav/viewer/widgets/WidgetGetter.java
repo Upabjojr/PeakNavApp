@@ -314,6 +314,7 @@ public class WidgetGetter {
         }
 
         public void hideTableCameraControl() {
+            com.peaknav.viewer.PhotoSkylineAligner.clear();
             MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(null);
             MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundTexture(null);
             tableCameraControl.setVisible(false);

@@ -82,6 +82,7 @@ public class CameraPictureView extends Fragment {
                         }
 
                         setBytesAsBackgroundImage(buffer.toByteArray());
+                        com.peaknav.viewer.PhotoSkylineAligner.photoTakenHere();
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -310,6 +311,7 @@ public class CameraPictureView extends Fragment {
 
                 byte[] bytesJpeg = outputStream.toByteArray();
                 setBytesAsBackgroundImage(bytesJpeg);
+                com.peaknav.viewer.PhotoSkylineAligner.photoTakenHere();
 
                 finish();
             });

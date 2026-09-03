@@ -375,6 +375,18 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
     }
 
     @Override
+    public void promptYesNo(String title, String message, Runnable onYes) {
+        mainActivity.runOnUiThread(() -> {
+            AlertDialog.Builder alertBuilder = new AlertDialog.Builder(mainActivity);
+            alertBuilder.setTitle(title)
+                    .setMessage(message)
+                    .setPositiveButton(s("Yes"), (dialogInterface, i) -> onYes.run())
+                    .setNegativeButton(s("No"), null);
+            alertBuilder.create().show();
+        });
+    }
+
+    @Override
     public void openAppInfoScreen() {
         runOnUiThread(() -> {
             AppInfoAndroidView fragment = new AppInfoAndroidView();

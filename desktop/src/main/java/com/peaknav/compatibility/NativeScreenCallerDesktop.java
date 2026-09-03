@@ -320,6 +320,17 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     }
 
     @Override
+    public void promptYesNo(String title, String message, Runnable onYes) {
+        SwingUtilities.invokeLater(() -> {
+            int dialogResult = JOptionPane.showConfirmDialog(
+                    null, message, title, JOptionPane.YES_NO_OPTION);
+            if (dialogResult == JOptionPane.YES_OPTION) {
+                onYes.run();
+            }
+        });
+    }
+
+    @Override
     public void warnCannotReadImageLocation() {
         SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
                 null,

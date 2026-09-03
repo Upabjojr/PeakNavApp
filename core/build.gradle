@@ -69,6 +69,10 @@ dependencies {
     // index built here is one the app can open.
     toolsImplementation 'org.apache.lucene:lucene-core:3.6.2'
     toolsImplementation 'org.apache.lucene:lucene-analyzers:3.6.2'
+    // The skyline benchmark runs the app's own matcher (com.peaknav.skyline) over a photo
+    // dataset, so the tools see the shared code; gson reads the dataset manifest.
+    toolsImplementation sourceSets.main.output
+    toolsImplementation 'com.google.code.gson:gson:2.14.0'
 
     // Test dependencies :
     testImplementation "org.junit.jupiter:junit-jupiter-api:5.8.2"
@@ -83,6 +87,9 @@ dependencies {
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
+    // Gradle's 512 MB default is not enough for TestSkylineDataset, which decodes whole
+    // 4096x4096 elevation tiles (32 MB each, a handful cached) for the terrain horizon.
+    maxHeapSize = '2g'
 }
 
 /**
@@ -97,6 +104,25 @@ tasks.withType(Test).configureEach {
  * geonames_index.362 beside them. Lucene is pinned to 3.6.2, the last Android-compatible
  * release, so do not bump it here without bumping it for the app.
  */
+/*
+ * Runs the photo skyline matcher over a dataset of geotagged mountain photographs with a
+ * known camera heading (built by tools/skyline_dataset.py) and reports how often, and how
+ * confidently, it recovers the bearing:
+ *
+ *   ./gradlew :core:skylineBenchmark --args="~/.peaknav/skyline_dataset/geopose3k/manifest.json"
+ *
+ * Needs the elevation tiles of the photographed areas in ~/.peaknav (the app's own cache)
+ * or in the peaknav Python package's cache.
+ */
+tasks.register('skylineBenchmark', JavaExec) {
+    group = 'peaknav'
+    description = 'Benchmarks the photo skyline matcher over a geotagged photo dataset.'
+    classpath = sourceSets.tools.runtimeClasspath
+    mainClass = 'com.peaknav.tools.SkylineBenchmark'
+    maxHeapSize = '3g'   // a horizon touches up to nine 4096x4096 elevation tiles
+    workingDir = rootProject.projectDir
+}
+
 tasks.register('buildGeonamesIndex', JavaExec) {
     group = 'peaknav'
     description = 'Builds the GeoNames place-search index from the GeoNames dumps.'

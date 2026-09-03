@@ -749,4 +749,43 @@ class PeakNavRendererTest {
         assertEquals(0, renderer.pendingRoadWork(),
                 "the wait returned with roads still to draw - a frame taken now has no paths");
     }
+
+    @Test
+    @Order(15)
+    @DisplayName("the photo skyline aligner reads the loaded tiles: a horizon with the Matterhorn in it")
+    void skylineHorizonFromLoadedTiles() {
+        // TestSkylineMatcher and the benchmark read the dataset files directly; this is the
+        // one check that the in-app sampler (the tiles the viewer holds, through the app's
+        // own elevation lookup) agrees with them: units, coverage out to the far tiles, and
+        // the Matterhorn where it stands - 235 degrees from Zermatt, 8 km away, about 16
+        // degrees up with the elevation model's rounded-off summit.
+        float ground = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(LAT, LON);
+        assumeTrue(!Float.isNaN(ground), "no elevation data for Zermatt on this machine");
+        assertTrue(ground > 1500 && ground < 1750, "Zermatt lies at about 1600 m, read " + ground);
+
+        com.peaknav.skyline.TerrainHorizon horizon = null;
+        for (int attempt = 0; attempt < 20; attempt++) {
+            horizon = com.peaknav.skyline.TerrainHorizon.compute(
+                    com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain(), LAT, LON, 20, 720);
+            if (horizon.coverage >= 0.9) {
+                break;
+            }
+            sleepQuietly(2000);
+        }
+        assertTrue(horizon.coverage >= 0.9,
+                "the loaded tiles should cover the ray march; coverage " + horizon.coverage);
+        float matterhorn = horizon.angleAt(235);
+        assertTrue(matterhorn > 12 && matterhorn < 20,
+                "the Matterhorn at 235 deg should stand about 16 degrees up, read " + matterhorn);
+        assertTrue(horizon.angleAt(90) > 10, "the valley side at 90 deg rises steeply, read " + horizon.angleAt(90));
+        assertTrue(horizon.reliefDeg(0, 360) > 3, "Zermatt's horizon is anything but flat");
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 }

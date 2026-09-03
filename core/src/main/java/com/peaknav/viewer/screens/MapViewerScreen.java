@@ -187,6 +187,9 @@ public class MapViewerScreen implements Screen {
 		// The observer moved: recompute Sun/Moon/planet/star positions for the new location.
 		getC().skyModel.invalidate();
 
+		// A photo waiting for its location may now have terrain to be matched against.
+		com.peaknav.viewer.PhotoSkylineAligner.onLocationSettled(latitude, longitude);
+
 		tableTool.setRefreshNeeded(true);
 
 		boolean missingData = getC().checkMissingData.checkMissingIfNotDismissed(latitude, longitude);
