@@ -849,6 +849,34 @@ class PeakNavRendererTest {
                 "the camera should have turned to the photo's bearing, points at " + got);
         Vector3 d = renderer.cameraDirection();
         assertEquals(pitch, Math.toDegrees(Math.asin(d.z)), 1.5, "and taken its pitch");
+
+        // The debug "save sample" button: the photo, the pose the camera now has and the
+        // overlay go into the samples directory, and the manifest gains an entry the
+        // benchmark can read - with the bearing the camera was just turned to.
+        Path samples = Files.createTempDirectory("peaknav-samples");
+        System.setProperty("peaknav.samplesDir", samples.toString());
+        try {
+            com.peaknav.viewer.PhotoSkylineAligner.saveSample();
+            File manifest = samples.resolve("manifest.json").toFile();
+            deadline = System.currentTimeMillis() + 30_000;
+            while (!manifest.exists() && System.currentTimeMillis() < deadline) {
+                sleepQuietly(500);
+            }
+            assertTrue(manifest.exists(), "manifest.json should have been written under " + samples);
+            String json = new String(Files.readAllBytes(manifest.toPath()), "UTF-8");
+            java.util.regex.Matcher hm = java.util.regex.Pattern.compile("\"heading\":\\s*([0-9.]+)").matcher(json);
+            assertTrue(hm.find(), "manifest entry should carry a heading: " + json);
+            double saved = Double.parseDouble(hm.group(1));
+            assertEquals(0, Math.abs(((saved - bearing + 540) % 360) - 180), 2.0, "saved heading " + saved);
+            File[] dirs = samples.toFile().listFiles(File::isDirectory);
+            assertTrue(dirs != null && dirs.length == 1, "one sample directory");
+            assertTrue(new File(dirs[0], "photo.png").length() > 1000, "the photo file as loaded");
+            String sample = new String(Files.readAllBytes(new File(dirs[0], "sample.json").toPath()), "UTF-8");
+            assertTrue(sample.contains("\"ridgeRows\"") && sample.contains("\"angleDeg\""),
+                    "sample.json should hold the overlay and the horizon");
+        } finally {
+            System.clearProperty("peaknav.samplesDir");
+        }
     }
 
     private static int clamp255(float v) {

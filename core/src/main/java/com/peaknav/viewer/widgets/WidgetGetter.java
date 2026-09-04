@@ -309,6 +309,21 @@ public class WidgetGetter {
             tableCameraControl.add(sliderCameraAlpha).width(3*widgetUnitStep).height(widgetUnitStep)
                     .padLeft(borderPad).padBottom(borderPad);
 
+            if (com.peaknav.utils.PeakNavUtils.getLoadFactory() != null
+                    && com.peaknav.utils.PeakNavUtils.getLoadFactory().isDebugBuild()) {
+                // Debug builds: save this photo with the camera's pose as a dataset sample.
+                Button buttonSaveSample = getC().widgetTextures.getButtonWithIcon(
+                        "icons/icon_save_sample.png", null);
+                buttonSaveSample.addListener(new ChangeListener() {
+                    @Override
+                    public void changed(ChangeEvent event, Actor actor) {
+                        com.peaknav.viewer.PhotoSkylineAligner.saveSample();
+                    }
+                });
+                tableCameraControl.add(buttonSaveSample).width(widgetUnitStep).height(widgetUnitStep)
+                        .padLeft(borderPad).padBottom(borderPad);
+            }
+
             Button buttonCameraCancel = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_x.png", null
             );

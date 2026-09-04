@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Save sample" (debug builds): a mountain skyline dropping into a labelled box. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <!-- skyline card -->
+  <rect x="52" y="40" width="136" height="88" rx="10" fill="#bfe0f8" stroke="#2c4358" stroke-width="4"/>
+  <path d="M56 124 L84 82 L104 100 L128 64 L154 96 L170 84 L184 104 L184 124 Z" fill="#4f6d8a"/>
+  <!-- arrow down into the box -->
+  <path d="M120 132 V172 M100 154 L120 176 L140 154" fill="none" stroke="#d23b32" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- box -->
+  <path d="M60 184 H180 V206 a6 6 0 0 1 -6 6 H66 a6 6 0 0 1 -6 -6 Z" fill="#2b333c"/>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#10202b" stroke-width="3"/>
+</svg>

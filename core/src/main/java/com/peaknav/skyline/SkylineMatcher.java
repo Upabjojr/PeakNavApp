@@ -299,9 +299,10 @@ public final class SkylineMatcher {
 
     /**
      * Projects the horizon through a pinhole camera and returns the predicted skyline row
-     * per column ({@code NaN} where the horizon does not cover the column).
+     * per column ({@code NaN} where the horizon does not cover the column) - the ridge line
+     * a photo taken with that pose would show, in this matcher's image size.
      */
-    float[] projectHorizon(double bearingDeg, double pitchDeg, double vfovDeg, double rollDeg) {
+    public float[] projectHorizon(double bearingDeg, double pitchDeg, double vfovDeg, double rollDeg) {
         double f = focalPx(vfovDeg);
         double th = Math.toRadians(bearingDeg);
         double ph = Math.toRadians(pitchDeg);

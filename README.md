@@ -194,6 +194,19 @@ python3 tools/skyline_dataset.py commons --category "Mountains of Switzerland" -
 ./gradlew :core:skylineBenchmark --args="~/.peaknav/skyline_dataset/commons/manifest.json"
 ```
 
+Debug builds have one more button on the photo bar: it saves the current photo with the
+camera's pose and the terrain overlay as a dataset sample (`skyline_samples/` in the app's
+private storage, with a `manifest.json` the benchmark reads directly) - line the picture up
+by hand, press it, and the pose at that moment becomes that photo's truth. From a phone:
+
+```bash
+adb exec-out run-as com.peaknav.debug tar c files/skyline_samples > samples.tar
+./gradlew :core:skylineBenchmark --args="skyline_samples/manifest.json"
+```
+
+On the desktop the button appears with `-Dpeaknav.debug=true` and writes to
+`~/.peaknav/skyline_samples/`.
+
 On GeoPose3K's hand-annotated photos the bearing comes out within 10 degrees for about
 half of them, and when the matcher calls a match confident - the only case in which the
 app asks - it is right 95% of the time. The elevation tiles of the photographed areas

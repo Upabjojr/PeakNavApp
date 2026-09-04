@@ -67,17 +67,22 @@ public final class PhotoSkylineAligner {
         final int photoWidth;
         final int photoHeight;
         final float verticalFovDeg;
+        /** The file as loaded, kept for {@link #saveSample}; null for a pixmap without one. */
+        final byte[] bytes;
         double latitude = Double.NaN;
         double longitude = Double.NaN;
         boolean started;
+        volatile SkylineMatcher.Match lastMatch;
 
-        Pending(int[] rgb, int width, int height, int photoWidth, int photoHeight, float verticalFovDeg) {
+        Pending(int[] rgb, int width, int height, int photoWidth, int photoHeight, float verticalFovDeg,
+                byte[] bytes) {
             this.rgb = rgb;
             this.width = width;
             this.height = height;
             this.photoWidth = photoWidth;
             this.photoHeight = photoHeight;
             this.verticalFovDeg = verticalFovDeg;
+            this.bytes = bytes;
         }
 
         boolean hasLocation() {
@@ -112,7 +117,7 @@ public final class PhotoSkylineAligner {
             vfov = info.verticalFovDeg(photo.getWidth(), photo.getHeight());
             latLon = ExifReader.extractLatLon(jpeg);
         }
-        Pending p = new Pending(rgb, size[0], size[1], photo.getWidth(), photo.getHeight(), vfov);
+        Pending p = new Pending(rgb, size[0], size[1], photo.getWidth(), photo.getHeight(), vfov, jpeg);
         synchronized (LOCK) {
             pending = p;
         }
@@ -213,6 +218,215 @@ public final class PhotoSkylineAligner {
                 }
             }
         });
+    }
+
+    /**
+     * Debug builds only: saves the current photo together with the camera's pose and the
+     * terrain overlay it is shown against, as one more sample for the skyline dataset. The
+     * idea is that the user lines the picture up by hand (or accepts a match and corrects
+     * it), then presses the button: the pose the camera has at that moment is the truth
+     * for that photo. Written under {@code LoadFactory.getDebugSamplesDir()}:
+     *
+     * <pre>
+     * skyline_samples/
+     *   manifest.json                 what tools/skyline_dataset.py writes: file, lat, lon,
+     *                                 heading, pitch, roll, fov/vfov, focal35 - so the
+     *                                 benchmark and TestSkylineDataset read it as is
+     *   20260904_213012/photo.jpg     the file as it was loaded, EXIF and all
+     *   20260904_213012/sample.json   the pose in full, the horizon, the projected ridge,
+     *                                 the extracted skyline and the last automatic match
+     * </pre>
+     *
+     * The pose is read on the render thread; the files are written on a worker.
+     */
+    public static void saveSample() {
+        final Pending p;
+        synchronized (LOCK) {
+            p = pending;
+        }
+        if (p == null || getC() == null || getC().getMapViewerScreen() == null) {
+            return;
+        }
+        Gdx.app.postRunnable(new Runnable() {
+            @Override
+            public void run() {
+                final MapViewerScreen screen = getC().getMapViewerScreen();
+                final Vector3 direction = new Vector3(screen.cam.direction);
+                final float cameraFov = screen.cam.fieldOfView;
+                final double lat = getC().L.getCurrentLatitude();
+                final double lon = getC().L.getCurrentLongitude();
+                final double altitude = Units.convertLatitsToMeters(screen.cam.position.z);
+                final double aboveGround = MapViewerScreen.GROUND_CLEARANCE_METERS
+                        + Math.max(0, screen.getCameraElevationMeters());
+                final int sw = Gdx.graphics.getWidth(), sh = Gdx.graphics.getHeight();
+                Thread worker = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            java.io.File dir = writeSample(p, direction, cameraFov, lat, lon, altitude, aboveGround, sw, sh);
+                            toast(s("Sample_saved") + " " + dir.getName());
+                        } catch (Throwable t) {
+                            getLogger().error(TAG, "saving the sample failed: " + t);
+                            toast(s("Sample_save_failed"));
+                        }
+                    }
+                }, "skyline-sample");
+                worker.setDaemon(true);
+                worker.start();
+            }
+        });
+    }
+
+    private static java.io.File writeSample(Pending p, Vector3 dir, float cameraFov, double lat, double lon,
+                                            double altitude, double aboveGround, int sw, int sh)
+            throws java.io.IOException {
+        double bearing = (Math.toDegrees(Math.atan2(dir.x, dir.y)) + 360) % 360;
+        double pitch = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, dir.z))));
+        // The photo's own vertical field of view: the inverse of apply()'s screen fit.
+        double drawnHeight = sw > sh ? sh : sw * (double) p.photoHeight / Math.max(1, p.photoWidth);
+        double vfov = Math.toDegrees(2 * Math.atan(Math.tan(Math.toRadians(cameraFov) / 2) * drawnHeight / sh));
+        double fovWide = p.photoWidth >= p.photoHeight
+                ? Math.toDegrees(2 * Math.atan(Math.tan(Math.toRadians(vfov) / 2) * p.photoWidth / (double) p.photoHeight))
+                : vfov;
+
+        java.io.File root = com.peaknav.utils.PeakNavUtils.getLoadFactory().getDebugSamplesDir();
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.ENGLISH)
+                .format(new java.util.Date());
+        java.io.File dirOut = new java.io.File(root, stamp);
+        for (int n = 1; dirOut.exists(); n++) {
+            dirOut = new java.io.File(root, stamp + "_" + n);
+        }
+        if (!dirOut.mkdirs()) {
+            throw new java.io.IOException("cannot create " + dirOut);
+        }
+        String photoName = p.bytes != null && p.bytes.length > 8
+                && (p.bytes[0] & 0xFF) == 0x89 && p.bytes[1] == 'P' ? "photo.png" : "photo.jpg";
+        if (p.bytes != null) {
+            java.io.FileOutputStream out = new java.io.FileOutputStream(new java.io.File(dirOut, photoName));
+            try {
+                out.write(p.bytes);
+            } finally {
+                out.close();
+            }
+        }
+
+        TerrainHorizon horizon = TerrainHorizon.compute(LOADED_TERRAIN, lat, lon, aboveGround, HORIZON_BINS);
+        SkylineExtractor.Skyline skyline = SkylineExtractor.extract(p.rgb, p.width, p.height);
+        SkylineMatcher matcher = new SkylineMatcher(horizon, skyline.rows, skyline.confidence, p.width, p.height);
+        float[] ridge = matcher.projectHorizon(bearing, pitch, vfov, 0);
+
+        com.google.gson.JsonObject sample = new com.google.gson.JsonObject();
+        sample.addProperty("photo", photoName);
+        sample.addProperty("photoWidth", p.photoWidth);
+        sample.addProperty("photoHeight", p.photoHeight);
+        com.google.gson.JsonObject camera = new com.google.gson.JsonObject();
+        camera.addProperty("lat", lat);
+        camera.addProperty("lon", lon);
+        camera.addProperty("altitudeMeters", altitude);
+        camera.addProperty("aboveGroundMeters", aboveGround);
+        camera.addProperty("bearingDeg", bearing);
+        camera.addProperty("pitchDeg", pitch);
+        camera.addProperty("rollDeg", 0.0);
+        camera.addProperty("photoVerticalFovDeg", vfov);
+        camera.addProperty("photoWideSideFovDeg", fovWide);
+        camera.addProperty("viewerFovDeg", cameraFov);
+        camera.addProperty("viewerWidth", sw);
+        camera.addProperty("viewerHeight", sh);
+        sample.add("camera", camera);
+        com.google.gson.JsonObject exif = new com.google.gson.JsonObject();
+        if (p.hasLocation()) {
+            exif.addProperty("lat", p.latitude);
+            exif.addProperty("lon", p.longitude);
+        }
+        if (!Float.isNaN(p.verticalFovDeg)) {
+            exif.addProperty("verticalFovDeg", p.verticalFovDeg);
+        }
+        sample.add("exif", exif);
+        com.google.gson.JsonObject hz = new com.google.gson.JsonObject();
+        hz.addProperty("bins", horizon.bins);
+        hz.addProperty("eyeMeters", horizon.eyeMeters);
+        hz.addProperty("coverage", horizon.coverage);
+        hz.add("angleDeg", floats(horizon.angleDeg));
+        hz.add("distanceM", floats(horizon.distanceM));
+        sample.add("horizon", hz);
+        com.google.gson.JsonObject overlay = new com.google.gson.JsonObject();
+        overlay.addProperty("width", p.width);
+        overlay.addProperty("height", p.height);
+        overlay.add("ridgeRows", floats(ridge));
+        overlay.add("skylineRows", floats(skyline.rows));
+        overlay.add("skylineConfidence", floats(skyline.confidence));
+        sample.add("overlay", overlay);
+        if (p.lastMatch != null) {
+            com.google.gson.JsonObject m = new com.google.gson.JsonObject();
+            m.addProperty("bearingDeg", p.lastMatch.bearingDeg);
+            m.addProperty("pitchDeg", p.lastMatch.pitchDeg);
+            m.addProperty("verticalFovDeg", p.lastMatch.verticalFovDeg);
+            m.addProperty("rollDeg", p.lastMatch.rollDeg);
+            m.addProperty("cost", p.lastMatch.cost);
+            m.addProperty("ratio", p.lastMatch.ratio());
+            m.addProperty("confident", p.lastMatch.isConfident());
+            sample.add("lastMatch", m);
+        }
+        writeText(new java.io.File(dirOut, "sample.json"), new com.google.gson.GsonBuilder().create().toJson(sample));
+
+        // One more entry in the manifest the dataset tools read.
+        java.io.File manifestFile = new java.io.File(root, "manifest.json");
+        com.google.gson.JsonArray manifest = new com.google.gson.JsonArray();
+        if (manifestFile.exists()) {
+            try {
+                manifest = new com.google.gson.JsonParser().parse(readText(manifestFile)).getAsJsonArray();
+            } catch (RuntimeException e) {
+                getLogger().warn(TAG, "manifest.json unreadable, starting a new one: " + e);
+            }
+        }
+        com.google.gson.JsonObject entry = new com.google.gson.JsonObject();
+        entry.addProperty("file", dirOut.getName() + "/" + photoName);
+        entry.addProperty("lat", lat);
+        entry.addProperty("lon", lon);
+        entry.addProperty("heading", bearing);
+        entry.addProperty("pitch", pitch);
+        entry.addProperty("roll", 0.0);
+        entry.addProperty("vfov", vfov);
+        entry.addProperty("fov", fovWide);
+        entry.addProperty("elevation", altitude);
+        entry.addProperty("source", "app");
+        entry.addProperty("page", dirOut.getName());
+        manifest.add(entry);
+        writeText(manifestFile, new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(manifest));
+        getLogger().info(TAG, "sample saved to " + dirOut);
+        return dirOut;
+    }
+
+    private static com.google.gson.JsonArray floats(float[] values) {
+        com.google.gson.JsonArray a = new com.google.gson.JsonArray();
+        for (float v : values) {
+            a.add(Float.isNaN(v) ? null : Float.valueOf(v));
+        }
+        return a;
+    }
+
+    private static void writeText(java.io.File file, String text) throws java.io.IOException {
+        java.io.OutputStream out = new java.io.FileOutputStream(file);
+        try {
+            out.write(text.getBytes("UTF-8"));
+        } finally {
+            out.close();
+        }
+    }
+
+    private static String readText(java.io.File file) throws java.io.IOException {
+        java.io.InputStream in = new java.io.FileInputStream(file);
+        try {
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int n;
+            while ((n = in.read(chunk)) > 0) {
+                buf.write(chunk, 0, n);
+            }
+            return new String(buf.toByteArray(), "UTF-8");
+        } finally {
+            in.close();
+        }
     }
 
     /** Forgets the pending photo (the background picture was removed). */
@@ -341,6 +555,7 @@ public final class PhotoSkylineAligner {
         SkylineExtractor.Skyline skyline = SkylineExtractor.extract(p.rgb, p.width, p.height);
         SkylineMatcher matcher = new SkylineMatcher(horizon, skyline.rows, skyline.confidence, p.width, p.height);
         SkylineMatcher.Match m = Float.isNaN(p.verticalFovDeg) ? matcher.match() : matcher.match(p.verticalFovDeg);
+        p.lastMatch = m;
         getLogger().info(TAG, String.format(java.util.Locale.ENGLISH,
                 "photo skyline at %.5f,%.5f eye %.0f m, horizon coverage %.2f, %dx%d px: %s",
                 latitude, longitude, eye, horizon.coverage, p.width, p.height, m));

@@ -33,7 +33,9 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     `SkylineMatcher` (bearing, pitch and field of view by optimisation, with a
     calibrated "confident" verdict). Pure Java, no libGDX; `viewer/PhotoSkylineAligner`
     is the app-side glue that runs it when a geotagged photo is loaded and offers
-    to point the camera, or on demand from the photo bar's match button. Its accuracy is measured, not assumed: see the
+    to point the camera, or on demand from the photo bar's match button; debug
+    builds (`LoadFactory.isDebugBuild()`) get a third button that saves the photo,
+    pose and overlay as a dataset sample under `LoadFactory.getDebugSamplesDir()`. Its accuracy is measured, not assumed: see the
     `skylineBenchmark` tool below, and keep the thresholds in `SkylineMatcher`
     tied to what the benchmark reports.
 - **`desktop`** — LWJGL3 launcher (`DesktopLauncher`), Swing-based native screens.
