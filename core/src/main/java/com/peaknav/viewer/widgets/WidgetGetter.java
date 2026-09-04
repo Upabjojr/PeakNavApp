@@ -313,20 +313,15 @@ public class WidgetGetter {
                     // .padLeft(borderPad).padBottom(borderPad);
                     //.row();
 
-            // The photo bar: one row across the bottom of the screen - the match button,
-            // the outline-visibility bar stretched between, and the X that closes the
-            // picture at the right edge - one widget above the bottom row, where the gyro
-            // button (left) and the copyright, help and here widgets (right) already are.
+            // The photo bar, exactly as before with the match button added at its left:
+            // in the gyro button's row, so it lines up with the gyro, "?" and here buttons.
             tableCameraControl = new Table();
-            tableCameraControl.setFillParent(true);
-            tableCameraControl.bottom();
             Slider.SliderStyle sliderStyleCA = new Slider.SliderStyle();
             float w = Gdx.graphics.getHeight()*0.05f;
             sliderStyleCA.knob = getC().widgetTextures.getTextureRegionDrawable("icons/icon_slider_alpha.png");
             sliderStyleCA.knob.setMinHeight(w);
             sliderStyleCA.knob.setMinWidth(w);
             sliderStyleCA.background = getC().widgetTextures.getNinePatchDrawable("icons/slider_nine_patch.png");
-            float barPadBottom = widgetUnitStep + 2 * borderPad;
 
             Button buttonMatchPhoto = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_match_photo.png", null);
@@ -337,7 +332,7 @@ public class WidgetGetter {
                 }
             });
             tableCameraControl.add(buttonMatchPhoto).width(widgetUnitStep).height(widgetUnitStep)
-                    .padLeft(borderPad).padBottom(barPadBottom);
+                    .padLeft(borderPad).padBottom(borderPad);
 
             sliderCameraAlpha = new Slider(0f, 1f, 0.05f, false, sliderStyleCA);
             sliderCameraAlpha.setVisualPercent(1.0f);
@@ -348,8 +343,8 @@ public class WidgetGetter {
                     MapViewerSingleton.getViewerInstance().labelRenderer.setBackgroundAlpha(alpha);
                 }
             });
-            tableCameraControl.add(sliderCameraAlpha).expandX().fillX().minWidth(2 * widgetUnitStep)
-                    .height(widgetUnitStep).padLeft(borderPad).padRight(borderPad).padBottom(barPadBottom);
+            tableCameraControl.add(sliderCameraAlpha).width(3*widgetUnitStep).height(widgetUnitStep)
+                    .padLeft(borderPad).padBottom(borderPad);
 
             Button buttonCameraCancel = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_x.png", null
@@ -361,8 +356,10 @@ public class WidgetGetter {
                 }
             });
             tableCameraControl.add(buttonCameraCancel).width(widgetUnitStep).height(widgetUnitStep)
-                    .padRight(borderPad).padBottom(barPadBottom);
+                    .padLeft(borderPad).padBottom(borderPad);
             tableCameraControl.setVisible(false);
+
+            table.add(tableCameraControl);
         }
 
         public void hideTableCameraControl() {
