@@ -253,15 +253,31 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		byte[] data = pendingShareData;
 		boolean isGpx = pendingShareIsGpx;
 		pendingShareData = null;
-		try {
-			if (isGpx) {
+		if (isGpx) {
+			try {
 				getC().gpxManager.loadFromXml(new String(data, java.nio.charset.StandardCharsets.UTF_8));
-			} else {
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+			return;
+		}
+		// Decoded on a worker with the "Loading..." screen up, as a picked photo is.
+		setPhotoLoading(true);
+		getC().submitExecutorGeneric(() -> {
+			try {
 				setBytesAsBackgroundImage(data);
 				checkImageGpsAndPrompt(data);
+			} catch (Exception e) {
+				e.printStackTrace();
+				setPhotoLoading(false);
 			}
-		} catch (Exception e) {
-			e.printStackTrace();
+		});
+	}
+
+	/** The map's "Loading..." screen while a photo is read and decoded; safe from any thread. */
+	private static void setPhotoLoading(boolean loading) {
+		if (getC() != null && getC().getMapViewerScreen() != null) {
+			getC().getMapViewerScreen().setPhotoLoading(loading);
 		}
 	}
 
@@ -358,28 +374,37 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 				}
 			}
 
-			// A deleted file, revoked permission, or corrupt image must fail
-			// gracefully here rather than crash the app.
-			try (InputStream inputStream = getContentResolver().openInputStream(imageUri)) {
-				if (inputStream == null) {
-					return;
+			// Read and decoded on a worker, not here: this runs before the activity resumes,
+			// so the render thread is still paused and would show nothing - not even the
+			// "Loading..." screen - until the whole file had been read and decoded.
+			final Uri pickedUri = imageUri;
+			setPhotoLoading(true);
+			getC().submitExecutorGeneric(() -> {
+				// A deleted file, revoked permission, or corrupt image must fail
+				// gracefully here rather than crash the app.
+				try (InputStream inputStream = getContentResolver().openInputStream(pickedUri)) {
+					if (inputStream == null) {
+						setPhotoLoading(false);
+						return;
+					}
+					ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+
+					int numRead;
+					byte[] d = new byte[16384];
+
+					while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
+						buffer.write(d, 0, numRead);
+					}
+
+					byte[] b = buffer.toByteArray();
+
+					setBytesAsBackgroundImage(b);
+					checkImageGpsAndPrompt(b);
+				} catch (Exception e) {
+					e.printStackTrace();
+					setPhotoLoading(false);
 				}
-				ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-
-				int numRead;
-				byte[] d = new byte[16384];
-
-				while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
-					buffer.write(d, 0, numRead);
-				}
-
-				byte[] b = buffer.toByteArray();
-
-				setBytesAsBackgroundImage(b);
-				checkImageGpsAndPrompt(b);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+			});
 		}
 
 		if (requestCode == PICK_GPX && resultCode == RESULT_OK

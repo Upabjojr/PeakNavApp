@@ -951,7 +951,11 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                     if (bytes == null) {
                         return;
                     }
-                    // Decoding a full-size photo is too much work for the render thread.
+                    // The map's "Loading..." screen from now until the picture is up; the
+                    // decoding is too much work for the render thread, so it goes to a worker.
+                    if (getC().getMapViewerScreen() != null) {
+                        getC().getMapViewerScreen().setPhotoLoading(true);
+                    }
                     getC().submitExecutorGeneric(() -> {
                         com.peaknav.utils.PeakNavUtils.setBytesAsBackgroundImage(bytes);
                         if (fromCamera) {
