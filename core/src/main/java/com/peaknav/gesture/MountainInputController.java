@@ -85,14 +85,6 @@ public class MountainInputController extends CameraInputController {
             // Picking a new point ends an orbit around the old one.
             mapViewerScreen.stopOrbit();
 
-            if (mapViewerScreen.backgroundPicManager.getBackgroundPixmap() != null) {
-                // With a photo behind the terrain a tap pins, it does not measure: the
-                // direction under the finger is fastened to that spot of the screen and
-                // the gestures turn and zoom the terrain around it (see PhotoPin).
-                PhotoPin.set(x, y, camera.getPickRayStable(x, y).direction);
-                mapViewerScreen.toast(" " + com.peaknav.utils.PeakNavUtils.s("Photo_pinned") + " ");
-                return true;
-            }
 
             mapViewerScreen.impact = mapViewerScreen.detectClicked3DPosition(x, y);
             boolean valid = mapViewerScreen.updateImpact();
@@ -104,9 +96,16 @@ public class MountainInputController extends CameraInputController {
 
         @Override
         public boolean longPress(float x, float y) {
+            // With a photo behind the terrain a long press pins: the direction under the
+            // finger is fastened to that spot of the screen and the gestures turn and zoom
+            // the terrain around it (see PhotoPin). The next long press releases it. The
+            // red ring says which state it is in; no text.
             if (PhotoPin.isActive()) {
                 PhotoPin.clear();
-                mapViewerScreen.toast(" " + com.peaknav.utils.PeakNavUtils.s("Photo_pin_released") + " ");
+                return true;
+            }
+            if (mapViewerScreen.backgroundPicManager.getBackgroundPixmap() != null) {
+                PhotoPin.set(x, y, camera.getPickRayStable(x, y).direction);
                 return true;
             }
             return false;

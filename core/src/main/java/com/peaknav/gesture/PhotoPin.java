@@ -5,13 +5,13 @@ import com.badlogic.gdx.math.Vector3;
 /**
  * A point of the picture pinned to the terrain behind it.
  *
- * <p>While a photo is shown behind the terrain, a tap pins the terrain direction under
- * the finger to that spot of the screen. From then on dragging rotates the view
+ * <p>While a photo is shown behind the terrain, a long press pins the terrain direction
+ * under the finger to that spot of the screen. From then on dragging rotates the view
  * <em>around</em> the pin - the camera turns about the pinned direction, so the ridge
  * under the finger stays put and the rest of the terrain swings around it - and
  * pinching zooms while the pin is kept in place, which is how a photo gets lined up:
- * fix one summit, then turn and stretch the terrain until the others fall in. A long
- * press releases the pin and hands the usual gestures back.
+ * fix one summit, then turn and stretch the terrain until the others fall in. The next
+ * long press releases the pin and hands the usual gestures back; a tap keeps measuring.
  *
  * <p>One pin, app-wide, like the background picture it serves. Screen coordinates are
  * the touch convention (y down).
