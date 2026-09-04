@@ -1631,8 +1631,9 @@ public class MapViewerScreen implements Screen {
 			}
 			 */
 			Pixmap snapshot = getSnapshotForSharing();
+			final com.peaknav.utils.SnapshotInfo info = snapshotInfo(snapshot.getWidth(), snapshot.getHeight());
 			getC().submitExecutorGeneric(() -> {
-				mapApp.nativeScreenCaller.shareSnapshot(snapshot);
+				mapApp.nativeScreenCaller.shareSnapshot(snapshot, info);
 			});
 		}
 
@@ -1681,6 +1682,23 @@ public class MapViewerScreen implements Screen {
 	 */
 	public void captureFrame(FrameCapture capture) {
 		pendingFrameCapture = capture;
+	}
+
+	/**
+	 * Where and how the view is taken, for the EXIF block of a saved picture of the given
+	 * size: the camera's position, height, bearing and pitch, and the vertical field of
+	 * view of that picture - the camera's covers the window height, a picture cropped to a
+	 * photo's drawn height sees proportionally less.
+	 */
+	com.peaknav.utils.SnapshotInfo snapshotInfo(int outWidth, int outHeight) {
+		Vector3 dir = cam.direction;
+		double bearing = Math.toDegrees(Math.atan2(dir.x, dir.y));
+		double pitch = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, dir.z))));
+		double half = Math.tan(Math.toRadians(cam.fieldOfView) / 2) * outHeight / Math.max(1, Gdx.graphics.getHeight());
+		double vfov = Math.toDegrees(2 * Math.atan(half));
+		double altitude = Units.convertLatitsToMeters(cam.position.z);
+		return new com.peaknav.utils.SnapshotInfo(getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude(),
+				altitude, bearing, pitch, vfov, outWidth, outHeight, backgroundPicManager.getBackgroundPixmap() != null);
 	}
 
 	private Pixmap getSnapshotForSharing() {

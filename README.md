@@ -185,7 +185,11 @@ the unpin button that appears above the elevation bar, releases the pin). A sing
 pick a point to fly or orbit to while a photo is up. The terrain is drawn as outlines only
 over the photo; the vertical bar above the share button fades the rendered terrain in, up
 to opaque, and the photo bar at the bottom holds the match button, the outline-visibility
-bar and the X that closes the picture. A button on the photo's control
+bar and the X that closes the picture. A picture saved or shared from the app - with or
+without a photo behind the terrain - carries where and how it was taken in its EXIF
+block: position, altitude, the bearing it looks in and its field of view (as a 35 mm
+focal length), so it keeps its place in a photo library and, loaded back into the app,
+lines up again by itself. A button on the photo's control
 bar does the same on demand - at the current position, whether or not the match is
 sure - for photos without a location, a moved view, or a suggestion that never came.
 Classical image processing, a small learned pixel classifier (a forest of decision

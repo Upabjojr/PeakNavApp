@@ -69,7 +69,11 @@ public abstract class NativeScreenCaller {
 
     public abstract void askForDownloadScreen(double lat, double lon);
 
-    public abstract void shareSnapshot(Pixmap pixmap);
+    /**
+     * Saves or shares a captured view. {@code info} says where and how it was taken, for
+     * the picture's EXIF block ({@link com.peaknav.utils.ExifWriter}); may be null.
+     */
+    public abstract void shareSnapshot(Pixmap pixmap, com.peaknav.utils.SnapshotInfo info);
 
     public abstract void makeToast(String message);
 

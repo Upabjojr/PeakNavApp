@@ -358,15 +358,41 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
      * Photos, Messages, or anywhere else the user has.
      */
     @Override
-    public void shareSnapshot(final Pixmap pixmap) {
+    public void shareSnapshot(final Pixmap pixmap, final com.peaknav.utils.SnapshotInfo info) {
         // Encoded on the calling thread: it is megabytes of work and the main thread is
         // also the render thread here, so doing it there would stall the picture.
         final byte[] png = new UtilsOSIOS().encodePng(pixmap);
         onMainThread(() -> {
             UIImage image = new UIImage(new NSData(png));
-            NSArray<NSObject> items = new NSArray<>(image);
-            UIActivityViewController sheet = new UIActivityViewController(items, null);
-            present(sheet);
+            // Shared as a JPEG file rather than a UIImage: the file keeps the EXIF block
+            // with the view's position and pose (a UIImage is re-encoded on the way out
+            // and loses it).
+            NSData jpegData = image.toJPEGData(0.92);
+            if (jpegData == null) {
+                present(new UIActivityViewController(new NSArray<NSObject>(image), null));
+                return;
+            }
+            byte[] jpeg = jpegData.getBytes();
+            if (info != null) {
+                jpeg = com.peaknav.utils.ExifWriter.embedInJpeg(jpeg, info);
+            }
+            try {
+                java.io.File dir = new java.io.File(System.getProperty("java.io.tmpdir"), "peaknav_share");
+                dir.mkdirs();
+                String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.ENGLISH)
+                        .format(new java.util.Date());
+                java.io.File file = new java.io.File(dir, "PeakNav_" + stamp + ".jpg");
+                java.io.FileOutputStream out = new java.io.FileOutputStream(file);
+                try {
+                    out.write(jpeg);
+                } finally {
+                    out.close();
+                }
+                NSArray<NSObject> items = new NSArray<NSObject>(new NSURL(file));
+                present(new UIActivityViewController(items, null));
+            } catch (java.io.IOException e) {
+                present(new UIActivityViewController(new NSArray<NSObject>(image), null));
+            }
         });
     }
 

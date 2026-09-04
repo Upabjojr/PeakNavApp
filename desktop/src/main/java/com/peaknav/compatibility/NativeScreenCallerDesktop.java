@@ -498,7 +498,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     }
 
     @Override
-    public void shareSnapshot(Pixmap pixmap) {
+    public void shareSnapshot(Pixmap pixmap, com.peaknav.utils.SnapshotInfo info) {
         if (pixmap == null) {
             return;
         }
@@ -554,7 +554,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                 final boolean asJpeg = jpeg;
                 Thread saver = new Thread(() -> {
                     try {
-                        savePixmapToFile(pixmap, target, asJpeg);
+                        savePixmapToFile(pixmap, target, asJpeg, info);
                         SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
                                 null, s("Image_saved") + ":\n" + target.getAbsolutePath()));
                     } catch (Exception e) {
@@ -583,6 +583,13 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     // so that a scripted capture and the share button produce byte-identical images.
     protected static void savePixmapToFile(Pixmap pixmap, java.io.File file, boolean jpeg)
             throws java.io.IOException {
+        savePixmapToFile(pixmap, file, jpeg, null);
+    }
+
+    /** As above, with the view's position and pose written into the file's EXIF block when given. */
+    protected static void savePixmapToFile(Pixmap pixmap, java.io.File file, boolean jpeg,
+                                           com.peaknav.utils.SnapshotInfo info)
+            throws java.io.IOException {
         int w = pixmap.getWidth(), h = pixmap.getHeight();
         java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(
                 w, h, jpeg ? java.awt.image.BufferedImage.TYPE_INT_RGB
@@ -607,8 +614,20 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         if (parent != null) {
             parent.mkdirs();
         }
-        if (!javax.imageio.ImageIO.write(image, jpeg ? "jpg" : "png", file)) {
+        java.io.ByteArrayOutputStream encoded = new java.io.ByteArrayOutputStream(w * h);
+        if (!javax.imageio.ImageIO.write(image, jpeg ? "jpg" : "png", encoded)) {
             throw new java.io.IOException("no ImageIO writer for " + (jpeg ? "JPEG" : "PNG"));
+        }
+        byte[] bytes = encoded.toByteArray();
+        if (info != null) {
+            bytes = jpeg ? com.peaknav.utils.ExifWriter.embedInJpeg(bytes, info)
+                    : com.peaknav.utils.ExifWriter.embedInPng(bytes, info);
+        }
+        java.io.FileOutputStream out = new java.io.FileOutputStream(file);
+        try {
+            out.write(bytes);
+        } finally {
+            out.close();
         }
     }
 
