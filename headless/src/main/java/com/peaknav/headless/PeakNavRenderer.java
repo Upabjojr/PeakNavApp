@@ -1326,6 +1326,14 @@ public final class PeakNavRenderer implements AutoCloseable {
     }
 
     /** Runs {@code action} on the render thread and waits for it, surfacing any failure. */
+    /**
+     * Runs an action on the render thread and waits for it - for tests that drive parts of
+     * the app which assume that thread (the input controller, the camera).
+     */
+    public void runOnRenderThread(final Runnable action) {
+        onRenderThread(action);
+    }
+
     private void onRenderThread(final Runnable action) {
         final CountDownLatch done = new CountDownLatch(1);
         final AtomicReference<Throwable> thrown = new AtomicReference<>();

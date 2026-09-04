@@ -233,6 +233,8 @@ public final class PhotoSkylineAligner {
      *                                 heading, pitch, roll, fov/vfov, focal35 - so the
      *                                 benchmark and TestSkylineDataset read it as is
      *   20260904_213012/photo.jpg     the file as it was loaded, EXIF and all
+     *   20260904_213012/view.png      the view as the app drew it: the photo with the
+     *                                 terrain outlines over it
      *   20260904_213012/sample.json   the pose in full, the horizon, the projected ridge,
      *                                 the extracted skyline and the last automatic match
      * </pre>
@@ -259,11 +261,36 @@ public final class PhotoSkylineAligner {
                 final double aboveGround = MapViewerScreen.GROUND_CLEARANCE_METERS
                         + Math.max(0, screen.getCameraElevationMeters());
                 final int sw = Gdx.graphics.getWidth(), sh = Gdx.graphics.getHeight();
+                // The view as the app draws it - photo with the terrain outlines over it - is
+                // captured by the next frame and written beside the photo.
+                final java.util.concurrent.atomic.AtomicReference<Pixmap> frame = new java.util.concurrent.atomic.AtomicReference<Pixmap>();
+                final java.util.concurrent.CountDownLatch frameReady = new java.util.concurrent.CountDownLatch(1);
+                screen.captureFrame(new MapViewerScreen.FrameCapture() {
+                    @Override
+                    public void onFrame(Pixmap f) {
+                        frame.set(f);
+                        frameReady.countDown();
+                    }
+                });
                 Thread worker = new Thread(new Runnable() {
                     @Override
                     public void run() {
                         try {
                             java.io.File dir = writeSample(p, direction, cameraFov, lat, lon, altitude, aboveGround, sw, sh);
+                            if (frameReady.await(5, java.util.concurrent.TimeUnit.SECONDS) && frame.get() != null) {
+                                Pixmap f = frame.get();
+                                try {
+                                    com.badlogic.gdx.graphics.PixmapIO.writePNG(
+                                            Gdx.files.absolute(new java.io.File(dir, "view.png").getAbsolutePath()), f);
+                                } finally {
+                                    Gdx.app.postRunnable(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            f.dispose();
+                                        }
+                                    });
+                                }
+                            }
                             toast(s("Sample_saved") + " " + dir.getName());
                         } catch (Throwable t) {
                             getLogger().error(TAG, "saving the sample failed: " + t);
@@ -434,6 +461,7 @@ public final class PhotoSkylineAligner {
         synchronized (LOCK) {
             pending = null;
         }
+        com.peaknav.gesture.PhotoPin.clear();
     }
 
     private static boolean isNear(Pending p, double latitude, double longitude) {
@@ -577,6 +605,7 @@ public final class PhotoSkylineAligner {
         if (screen == null) {
             return;
         }
+        com.peaknav.gesture.PhotoPin.clear();   // the pose is replaced wholesale
         // World axes are east, north, up (see PeakNavRenderer.aim for the same construction).
         double bearing = Math.toRadians(m.bearingDeg);
         double pitch = Math.toRadians(m.pitchDeg);

@@ -871,12 +871,64 @@ class PeakNavRendererTest {
             File[] dirs = samples.toFile().listFiles(File::isDirectory);
             assertTrue(dirs != null && dirs.length == 1, "one sample directory");
             assertTrue(new File(dirs[0], "photo.png").length() > 1000, "the photo file as loaded");
+            File view = new File(dirs[0], "view.png");
+            deadline = System.currentTimeMillis() + 15_000;
+            while (!(view.exists() && view.length() > 1000) && System.currentTimeMillis() < deadline) {
+                sleepQuietly(500);
+            }
+            assertTrue(view.length() > 1000, "the rendered view should be saved beside the photo");
             String sample = new String(Files.readAllBytes(new File(dirs[0], "sample.json").toPath()), "UTF-8");
             assertTrue(sample.contains("\"ridgeRows\"") && sample.contains("\"angleDeg\""),
                     "sample.json should hold the overlay and the horizon");
         } finally {
             System.clearProperty("peaknav.samplesDir");
         }
+    }
+
+    @Test
+    @Order(17)
+    @DisplayName("a pinned point of the photo stays under the finger through a drag and a zoom")
+    void photoPinHoldsThePoint() throws Exception {
+        // Any picture will do: the pin only needs a photo to be shown.
+        BufferedImage tiny = new BufferedImage(64, 48, BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        ImageIO.write(tiny, "png", bytes);
+        com.peaknav.utils.PeakNavUtils.setBytesAsBackgroundImage(bytes.toByteArray());
+        renderer.aim(300f, 10f);
+
+        final float px = 320f, py = 200f;              // the pin, touch coordinates (y down)
+        final float sx = px + 120f, sy = py;           // finger start, right of the pin
+        final float ex = px, ey = py + 120f;           // finger end, a quarter turn around it
+        final Vector3 pinned = new Vector3(), atStart = new Vector3(), check = new Vector3();
+        final float[] fov = new float[2];
+        renderer.runOnRenderThread(() -> {
+            com.peaknav.viewer.screens.MapViewerScreen screen = com.peaknav.viewer.MapViewerSingleton.getViewerInstance();
+            pinned.set(screen.cam.getPickRayStable(px, py).direction);
+            com.peaknav.gesture.PhotoPin.set(px, py, pinned);
+            atStart.set(screen.cam.getPickRayStable(sx, sy).direction);
+            screen.controller.touchDown((int) sx, (int) sy, 0, 0);
+            screen.controller.touchDragged((int) ex, (int) ey, 0);
+            screen.controller.touchUp((int) ex, (int) ey, 0, 0);
+            check.set(screen.cam.getPickRayStable(px, py).direction);
+        });
+        assertTrue(check.dot(pinned) > 0.9999f, "the pinned direction must stay on its pixel after a drag: " + check.dot(pinned));
+        renderer.runOnRenderThread(() -> {
+            com.peaknav.viewer.screens.MapViewerScreen screen = com.peaknav.viewer.MapViewerSingleton.getViewerInstance();
+            check.set(screen.cam.getPickRayStable(ex, ey).direction);
+        });
+        assertTrue(check.dot(atStart) > 0.999f,
+                "the terrain that was under the finger should have followed it round the pin: " + check.dot(atStart));
+
+        renderer.runOnRenderThread(() -> {
+            com.peaknav.viewer.screens.MapViewerScreen screen = com.peaknav.viewer.MapViewerSingleton.getViewerInstance();
+            fov[0] = screen.cam.fieldOfView;
+            screen.controller.zoom(0.01f);
+            fov[1] = screen.cam.fieldOfView;
+            check.set(screen.cam.getPickRayStable(px, py).direction);
+        });
+        assertTrue(Math.abs(fov[1] - fov[0]) > 0.5f, "the pinch should have changed the field of view");
+        assertTrue(check.dot(pinned) > 0.99999f, "and the pin must still be on its pixel: " + check.dot(pinned));
+        com.peaknav.gesture.PhotoPin.clear();
     }
 
     private static int clamp255(float v) {

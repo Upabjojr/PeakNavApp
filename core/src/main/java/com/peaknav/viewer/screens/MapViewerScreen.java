@@ -1553,6 +1553,14 @@ public class MapViewerScreen implements Screen {
 		}
 
 		labelRenderer.renderLevelingLine();
+		if (com.peaknav.gesture.PhotoPin.isActive() && backgroundPicManager.getBackgroundPixmap() != null) {
+			labelRenderer.renderPhotoPin();
+		}
+		if (pendingFrameCapture != null) {
+			FrameCapture capture = pendingFrameCapture;
+			pendingFrameCapture = null;
+			capture.onFrame(getSnapshotForSharing());
+		}
 
 		// The stage viewport is inset to the safe area (see
 		// updateStageViewportInsideSafeArea), and Stage.draw does not apply its
@@ -1570,6 +1578,21 @@ public class MapViewerScreen implements Screen {
 		// viewport it was resized to; put it back after the inset UI pass.
 		Gdx.gl.glViewport(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
+	}
+
+	/** Receives one rendered frame; the pixmap is the receiver's to dispose. */
+	public interface FrameCapture {
+		void onFrame(Pixmap frame);
+	}
+
+	private volatile FrameCapture pendingFrameCapture;
+
+	/**
+	 * Hands the next rendered frame - cropped to the photo when one is shown, as the shared
+	 * snapshot is - to {@code capture}, on the render thread. Any thread may ask.
+	 */
+	public void captureFrame(FrameCapture capture) {
+		pendingFrameCapture = capture;
 	}
 
 	private Pixmap getSnapshotForSharing() {

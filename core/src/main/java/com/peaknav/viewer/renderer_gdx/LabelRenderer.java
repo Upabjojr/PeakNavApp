@@ -308,6 +308,22 @@ public class LabelRenderer {
         }
     }
 
+    /** The pinned spot of the photo: a red ring with a dot, in screen coordinates. */
+    public void renderPhotoPin() {
+        float x = com.peaknav.gesture.PhotoPin.getScreenX();
+        float y = Gdx.graphics.getHeight() - com.peaknav.gesture.PhotoPin.getScreenY();
+        float r = 0.3f * widgetUnitStep;
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        shapeRenderer.setColor(Color.RED);
+        shapeRenderer.circle(x, y, r);
+        shapeRenderer.circle(x, y, r + 1);
+        shapeRenderer.end();
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(Color.RED);
+        shapeRenderer.circle(x, y, 0.06f * widgetUnitStep);
+        shapeRenderer.end();
+    }
+
     private void renderLoading(float deltaTime) {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
