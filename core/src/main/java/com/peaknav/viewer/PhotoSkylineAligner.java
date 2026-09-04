@@ -185,7 +185,9 @@ public final class PhotoSkylineAligner {
         if (p == null || getC() == null || getC().L == null || getC().L.isCurrentLocationNotSet()) {
             return;
         }
-        toast(s("Match_photo_direction_running"));
+        // held on screen until the result replaces it: the two forests and the pose
+        // search take a few seconds on a phone
+        toast(s("Match_photo_direction_running"), true);
         Thread worker = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -193,14 +195,15 @@ public final class PhotoSkylineAligner {
                     SkylineMatcher.Match m = match(p, getC().L.getCurrentLatitude(),
                             getC().L.getCurrentLongitude(), 1);
                     if (m == null) {
-                        toast(s("Match_photo_direction_failed"));
+                        toast(s("Match_photo_direction_failed"), false);
                         return;
                     }
                     apply(m, p);
                     toast(s("Match_photo_direction_applied") + " " + Math.round(m.bearingDeg) + "\u00b0"
-                            + (m.isConfident() ? "" : " (" + s("Match_photo_direction_uncertain") + ")"));
+                            + (m.isConfident() ? "" : " (" + s("Match_photo_direction_uncertain") + ")"), false);
                 } catch (Throwable t) {
                     getLogger().error(TAG, "forced skyline match failed: " + t);
+                    releaseToast();
                 }
             }
         }, "skyline-match");
@@ -209,12 +212,33 @@ public final class PhotoSkylineAligner {
     }
 
     private static void toast(final String text) {
+        toast(text, false);
+    }
+
+    /** Shows a toast on the render thread; {@code hold} keeps it until the next one. */
+    private static void toast(final String text, final boolean hold) {
         Gdx.app.postRunnable(new Runnable() {
             @Override
             public void run() {
                 MapViewerScreen screen = getC().getMapViewerScreen();
                 if (screen != null) {
-                    screen.toast(" " + text + " ");
+                    if (hold) {
+                        screen.toastUntilReleased(" " + text + " ");
+                    } else {
+                        screen.toast(" " + text + " ");
+                    }
+                }
+            }
+        });
+    }
+
+    private static void releaseToast() {
+        Gdx.app.postRunnable(new Runnable() {
+            @Override
+            public void run() {
+                MapViewerScreen screen = getC().getMapViewerScreen();
+                if (screen != null) {
+                    screen.releaseToast();
                 }
             }
         });

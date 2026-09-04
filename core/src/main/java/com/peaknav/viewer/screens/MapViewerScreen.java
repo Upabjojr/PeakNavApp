@@ -997,6 +997,29 @@ public class MapViewerScreen implements Screen {
 	}
 
 	public void toast(String text) {
+		toastHeld = false;
+		showToast(text);
+	}
+
+	/**
+	 * A toast that stays on screen until the next {@link #toast} or {@link #releaseToast}
+	 * instead of fading after a second: for work in progress, so "Matching the photo..."
+	 * is still there when the result replaces it, however long the matching takes.
+	 */
+	public void toastUntilReleased(String text) {
+		showToast(text);
+		toastHeld = true;
+	}
+
+	/** Lets a held toast fade as usual from now. */
+	public void releaseToast() {
+		toastHeld = false;
+		lastElevationChange = System.currentTimeMillis();
+	}
+
+	private boolean toastHeld;
+
+	private void showToast(String text) {
 		// Short texts (a distance, a height) keep the one-line pill; anything wider than the
 		// screen wraps onto as many lines as it needs, instead of running off both edges.
 		float maxWidth = 0.9f * Gdx.graphics.getWidth();
@@ -1495,7 +1518,7 @@ public class MapViewerScreen implements Screen {
 
 		// getC().tileManager.startDrawLayerThread();
 
-		if (tableCenter.isVisible()) {
+		if (tableCenter.isVisible() && !toastHeld) {
 			long currentTime = System.currentTimeMillis();
 			if (currentTime - lastElevationChange > 1000) {
 				tableCenter.setVisible(false);
