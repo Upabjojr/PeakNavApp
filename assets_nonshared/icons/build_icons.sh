@@ -49,7 +49,6 @@ ICONS=(
   "icon_match_photo:128:128"
   "icon_save_sample:128:128"
   "icon_unpin:128:128"
-  "icon_spinner:128:128"
   "icon_open_coordinate:128:128"
   "icon_sky_grid:128:128"
   "icon_sky_ecliptic:128:128"

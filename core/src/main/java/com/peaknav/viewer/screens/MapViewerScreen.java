@@ -1004,7 +1004,6 @@ public class MapViewerScreen implements Screen {
 	public void toast(String text, long millis) {
 		toastHeld = false;
 		toastMillis = millis;
-		setToastSpinning(false);
 		showToast(text);
 	}
 
@@ -1019,14 +1018,12 @@ public class MapViewerScreen implements Screen {
 	public void toastUntilReleased(String text) {
 		showToast(text);
 		toastHeld = true;
-		setToastSpinning(true);
 	}
 
 	/** Lets a held toast fade as usual from now. */
 	public void releaseToast() {
 		toastHeld = false;
 		toastMillis = TOAST_MILLIS;
-		setToastSpinning(false);
 		lastElevationChange = System.currentTimeMillis();
 	}
 
@@ -1054,26 +1051,28 @@ public class MapViewerScreen implements Screen {
 	private final com.badlogic.gdx.graphics.g2d.GlyphLayout toastGlyph = new com.badlogic.gdx.graphics.g2d.GlyphLayout();
 	private com.badlogic.gdx.scenes.scene2d.ui.Cell<Label> toastCell;
 	private float toastLineHeight;
-	private com.badlogic.gdx.scenes.scene2d.ui.Image toastSpinner;
-	private com.badlogic.gdx.scenes.scene2d.ui.Cell<com.badlogic.gdx.scenes.scene2d.ui.Image> toastSpinnerCell;
+	/**
+	 * Whether the app is visibly busy on the user's behalf - a toast held while the
+	 * matching runs, or a picked photo being decoded - which the label renderer shows
+	 * with the same ring of blue balls as the map's own "Loading...".
+	 */
+	public boolean isBusy() {
+		return toastHeld || photoLoading;
+	}
 
-	/** Spins the ring beside the toast, or stops and hides it. */
-	private void setToastSpinning(boolean spinning) {
-		if (toastSpinner == null || toastSpinner.isVisible() == spinning) {
-			return;
-		}
-		toastSpinner.clearActions();
-		toastSpinner.setVisible(spinning);
-		float size = spinning ? 0.7f * toastLineHeight : 0;
-		toastSpinnerCell.size(size).padRight(spinning ? 0.3f * toastLineHeight : 0);
-		if (spinning) {
-			toastSpinner.setOrigin(size / 2, size / 2);
-			toastSpinner.addAction(com.badlogic.gdx.scenes.scene2d.actions.Actions.forever(
-					com.badlogic.gdx.scenes.scene2d.actions.Actions.rotateBy(-360, 1.6f)));
-		} else {
-			toastSpinner.setRotation(0);
-		}
-		tableCenter.invalidate();
+	private volatile boolean photoLoading;
+
+	/** Shows or hides the "Loading..." screen for a photo being decoded; any thread. */
+	public void setPhotoLoading(final boolean loading) {
+		photoLoading = loading;
+		Gdx.app.postRunnable(new Runnable() {
+			@Override
+			public void run() {
+				if (labelLoading != null) {
+					labelLoading.setPhotoLoading(loading);
+				}
+			}
+		});
 	}
 
 	public void takeSnapshot() {
@@ -1231,17 +1230,11 @@ public class MapViewerScreen implements Screen {
 		labelElevationChange = new Label("", getC().styleSingleton.getLabelStyle());
 		// labelElevationChange.setFontScale(3f);
 		toastLineHeight = widgetUnitStep;
-		// The app's ring of blue balls, small and spinning before the text of a held
-		// toast - the sign, while the matching runs, that the app is working and not
-		// frozen. Its cell has no size until a toast is held.
-		toastSpinner = new com.badlogic.gdx.scenes.scene2d.ui.Image(
-				getC().widgetTextures.getTextureRegionDrawable("icons/icon_spinner.png"));
-		toastSpinner.setVisible(false);
-		toastSpinnerCell = tableCenter.add(toastSpinner).size(0);
 		toastCell = tableCenter.add(labelElevationChange).height(widgetUnitStep);
 		tableCenter.row();
 
 		stage.addActor(tableTool.getTable());
+		stage.addActor(tableTool.tableCameraControl);
 		stage.addActor(tableCenter);
 
 		labelLoading = new LabelLoading(widgetUnitStep);

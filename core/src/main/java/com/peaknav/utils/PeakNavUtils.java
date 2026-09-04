@@ -272,10 +272,20 @@ public class PeakNavUtils {
     }
 
     public static void setBytesAsBackgroundImage(byte[] bytesJpeg) {
-        Pixmap pixmap = new Pixmap(bytesJpeg, 0, bytesJpeg.length);
-        // libGDX's decoder ignores the EXIF orientation tag, so a portrait photo (stored
-        // as landscape pixels + a rotate tag) would come out sideways. Apply it here.
-        pixmap = applyExifOrientation(pixmap, ExifReader.extractOrientation(bytesJpeg));
+        // The map's "Loading..." screen while the picture is decoded and turned upright;
+        // BackgroundPicManager takes it down once the texture is on screen.
+        MapViewerSingleton.getViewerInstance().setPhotoLoading(true);
+        Pixmap pixmap;
+        try {
+            pixmap = new Pixmap(bytesJpeg, 0, bytesJpeg.length);
+            // libGDX's decoder ignores the EXIF orientation tag, so a portrait photo (stored
+            // as landscape pixels + a rotate tag) would come out sideways. Apply it here.
+            pixmap = applyExifOrientation(pixmap, ExifReader.extractOrientation(bytesJpeg));
+        } catch (RuntimeException e) {
+            // an unreadable file: no picture, and no "Loading..." left on screen
+            MapViewerSingleton.getViewerInstance().setPhotoLoading(false);
+            throw e;
+        }
         MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(pixmap);
         // Keep a reduced copy for the skyline match, before anything can dispose the pixmap.
         com.peaknav.viewer.PhotoSkylineAligner.onPhotoLoaded(pixmap, bytesJpeg);

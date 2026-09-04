@@ -31,6 +31,7 @@ import com.peaknav.viewer.labels.DrawLabel;
 import com.peaknav.viewer.labels.DrawLabelCategory;
 import com.peaknav.viewer.render_tiles.ImpactPixmap;
 import com.peaknav.viewer.screens.BackgroundPicManager;
+import com.peaknav.viewer.screens.MapViewerScreen;
 
 import java.util.List;
 
@@ -114,7 +115,8 @@ public class LabelRenderer {
         renderLabelLines();
         renderLabelTexts();
         renderHorizonCompass();
-        if (getAppState().isLoadingMapData()) {
+        MapViewerScreen viewer = MapViewerSingleton.getViewerInstance();
+        if (getAppState().isLoadingMapData() || (viewer != null && viewer.isBusy())) {
             renderLoading(deltaTime);
         } else {
             angle = 0;

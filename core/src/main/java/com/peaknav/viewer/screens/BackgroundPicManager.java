@@ -17,6 +17,7 @@ public class BackgroundPicManager {
     public void setBackgroundTexture(Texture texture) {
         if (texture != null) {
             MapViewerSingleton.getViewerInstance().tableTool.setPhotoShown(true);
+            MapViewerSingleton.getViewerInstance().setPhotoLoading(false);
         }
         backgroundTexture = texture;
 

@@ -251,9 +251,11 @@ public class WidgetGetter {
                 }
             });
             buttonUnpin.setVisible(false);
-            unpinCell = table.add(buttonUnpin).width(widgetUnitStep).height(0).left()
-                    .padLeft(borderPad);
-            table.row();
+            // One column with the elevation bar, so the button sits right on top of the
+            // bar wherever the bar's expanding cell centres it.
+            Table leftColumn = new Table();
+            unpinCell = leftColumn.add(buttonUnpin).width(widgetUnitStep).height(0).left();
+            leftColumn.row();
 
             Slider.SliderStyle sliderStyle = getC().styleSingleton.getSliderStyle();
             sliderElevation = new Slider(0f, 100f, 0.1f, true, sliderStyle);
@@ -268,8 +270,8 @@ public class WidgetGetter {
                             " +" + formatDistanceToUnitSystem(eleMeters) + " ");
                 }
             });
-            table.add(sliderElevation).expandY()
-                    .width(widgetUnitStep).left().height(widgetUnitStep *6)
+            leftColumn.add(sliderElevation).width(widgetUnitStep).left().height(widgetUnitStep *6);
+            table.add(leftColumn).expandY().left()
                     .padLeft(borderPad)
                     .row();
 
@@ -295,9 +297,13 @@ public class WidgetGetter {
                     // .padLeft(borderPad).padBottom(borderPad);
                     //.row();
 
-            // The photo bar, exactly as before with the match button added at its left:
-            // in the gyro button's row, so it lines up with the gyro, "?" and here buttons.
+            // The photo bar, exactly as before with the match button added at its left,
+            // centred on the screen: the outline bar in the middle, a button either side,
+            // on the line of the gyro, "?" and here buttons (its own table, so the gyro
+            // button's column does not push it off centre).
             tableCameraControl = new Table();
+            tableCameraControl.setFillParent(true);
+            tableCameraControl.bottom();
             Slider.SliderStyle sliderStyleCA = new Slider.SliderStyle();
             float w = Gdx.graphics.getHeight()*0.05f;
             sliderStyleCA.knob = getC().widgetTextures.getTextureRegionDrawable("icons/icon_slider_alpha.png");
@@ -314,7 +320,7 @@ public class WidgetGetter {
                 }
             });
             tableCameraControl.add(buttonMatchPhoto).width(widgetUnitStep).height(widgetUnitStep)
-                    .padLeft(borderPad).padBottom(borderPad);
+                    .padRight(borderPad).padBottom(borderPad);
 
             sliderCameraAlpha = new Slider(0f, 1f, 0.05f, false, sliderStyleCA);
             sliderCameraAlpha.setVisualPercent(1.0f);
@@ -326,7 +332,7 @@ public class WidgetGetter {
                 }
             });
             tableCameraControl.add(sliderCameraAlpha).width(3*widgetUnitStep).height(widgetUnitStep)
-                    .padLeft(borderPad).padBottom(borderPad);
+                    .padBottom(borderPad);
 
             Button buttonCameraCancel = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_x.png", null
@@ -340,10 +346,6 @@ public class WidgetGetter {
             tableCameraControl.add(buttonCameraCancel).width(widgetUnitStep).height(widgetUnitStep)
                     .padLeft(borderPad).padBottom(borderPad);
             tableCameraControl.setVisible(false);
-
-            // Centred in what is left of the row between the gyro button and the copyright,
-            // help and here widgets at the bottom right.
-            table.add(tableCameraControl).expandX().center().padRight(3.5f * widgetUnitStep);
         }
 
         public void hideTableCameraControl() {
@@ -369,7 +371,7 @@ public class WidgetGetter {
             }
             buttonUnpin.setVisible(pinned);
             unpinCell.height(pinned ? widgetUnitStep : 0).padBottom(pinned ? borderPad : 0);
-            table.invalidate();
+            table.invalidateHierarchy();
         }
 
         public void setRefreshNeeded(boolean refreshNeeded) {
