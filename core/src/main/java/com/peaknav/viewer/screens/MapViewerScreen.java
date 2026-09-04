@@ -1545,7 +1545,14 @@ public class MapViewerScreen implements Screen {
 		getC().mapTilePixmapToTexturesHandler.renderTextureJoinerAllTiles();
 
 		if (backgroundPicManager.getBackgroundPixmap() != null) {
-			if (tableTool.isRefreshNeeded()) {
+			float terrainAlpha = labelRenderer.getTerrainAlpha();
+			if (terrainAlpha > 0f) {
+				// The terrain-opacity bar is up: draw sky and terrain as usual and the photo
+				// over them at the complementary opacity, which is the same picture as the
+				// terrain at that opacity over the photo.
+				skyRenderer.render();
+				tileBatchRenderer.render();
+			} else if (tableTool.isRefreshNeeded()) {
 				tileBatchRenderer.render();
 				boolean refreshNeeded = false;
 				for (MapTile mapTile : getC().mapTileStorage.getMapTiles()) {
@@ -1559,7 +1566,7 @@ public class MapViewerScreen implements Screen {
 				}
 				tableTool.setRefreshNeeded(refreshNeeded);
 			}
-			labelRenderer.renderBackgroundPixmap();
+			labelRenderer.renderBackgroundPixmap(1f - terrainAlpha);
 		} else {
 			// Sky objects are drawn before the terrain so opaque terrain occludes anything below a
 			// ridge (correct horizon hiding for free). The Sun is always drawn; the other objects are
@@ -1606,8 +1613,12 @@ public class MapViewerScreen implements Screen {
 		}
 
 		labelRenderer.renderLevelingLine();
-		if (com.peaknav.gesture.PhotoPin.isActive() && backgroundPicManager.getBackgroundPixmap() != null) {
+		boolean pinned = com.peaknav.gesture.PhotoPin.isActive() && backgroundPicManager.getBackgroundPixmap() != null;
+		if (pinned) {
 			labelRenderer.renderPhotoPin();
+		}
+		if (tableTool != null && tableTool.buttonUnpin.isVisible() != pinned) {
+			tableTool.buttonUnpin.setVisible(pinned);
 		}
 		if (pendingFrameCapture != null) {
 			FrameCapture capture = pendingFrameCapture;

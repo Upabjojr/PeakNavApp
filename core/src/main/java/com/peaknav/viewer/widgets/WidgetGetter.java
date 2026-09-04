@@ -207,6 +207,8 @@ public class WidgetGetter {
         public final Table tableCameraControl;
         public final Slider sliderCameraAlpha;
         public final Button buttonOrientation;
+        /** Releases the photo pin; shown at the left edge only while a point is pinned. */
+        public final Button buttonUnpin;
         private boolean refreshNeeded;
 
         TableTool() {
@@ -252,6 +254,19 @@ public class WidgetGetter {
             });
             table.add(sliderElevation).expandY()
                     .width(widgetUnitStep).left().height(widgetUnitStep *6)
+                    .padLeft(borderPad);
+
+            // Beside the elevation bar, at the left edge: the way out of the pinned mode
+            // (a double tap releases too, but a button is found without being told).
+            buttonUnpin = getC().widgetTextures.getButtonWithIcon("icons/icon_unpin.png", null);
+            buttonUnpin.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    com.peaknav.gesture.PhotoPin.clear();
+                }
+            });
+            buttonUnpin.setVisible(false);
+            table.add(buttonUnpin).width(widgetUnitStep).height(widgetUnitStep).left()
                     .padLeft(borderPad)
                     .row();
 
@@ -285,22 +300,10 @@ public class WidgetGetter {
             sliderStyleCA.knob.setMinWidth(w);
             sliderStyleCA.background = getC().widgetTextures.getNinePatchDrawable("icons/slider_nine_patch.png");
 
-            // Two rows: the widget unit is a tenth of the screen's shorter side, so on a
-            // phone held upright this bar plus the gyro button beside it would run past the
-            // right edge in one row. The X that closes the picture ends the first row and the
-            // match button opens the second, so the two are never neighbours.
-            sliderCameraAlpha = new Slider(0f, 1f, 0.05f, false, sliderStyleCA);
-            sliderCameraAlpha.setVisualPercent(1.0f);
-            sliderCameraAlpha.addListener(new ChangeListener() {
-                @Override
-                public void changed(ChangeEvent event, Actor actor) {
-                    float alpha = sliderCameraAlpha.getVisualPercent();
-                    MapViewerSingleton.getViewerInstance().labelRenderer.setBackgroundAlpha(alpha);
-                }
-            });
-            tableCameraControl.add(sliderCameraAlpha).width(3*widgetUnitStep).height(widgetUnitStep)
-                    .padLeft(borderPad).padBottom(borderPad);
-
+            // Two rows: the buttons in a line on top - close, match, and in debug builds
+            // save - and the outline-visibility bar alone at the bottom. The widget unit is
+            // a tenth of the screen's shorter side, so on a phone held upright the bar and
+            // the buttons side by side would run past the right edge.
             Button buttonCameraCancel = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_x.png", null
             );
@@ -310,9 +313,9 @@ public class WidgetGetter {
                     hideTableCameraControl();
                 }
             });
-            tableCameraControl.add(buttonCameraCancel).width(widgetUnitStep).height(widgetUnitStep)
+            Table buttons = new Table();
+            buttons.add(buttonCameraCancel).width(widgetUnitStep).height(widgetUnitStep)
                     .padLeft(borderPad).padBottom(borderPad);
-            tableCameraControl.row();
 
             Button buttonMatchPhoto = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_match_photo.png", null);
@@ -322,8 +325,8 @@ public class WidgetGetter {
                     com.peaknav.viewer.PhotoSkylineAligner.matchNow();
                 }
             });
-            tableCameraControl.add(buttonMatchPhoto).width(widgetUnitStep).height(widgetUnitStep)
-                    .padLeft(borderPad).padBottom(borderPad).left();
+            buttons.add(buttonMatchPhoto).width(widgetUnitStep).height(widgetUnitStep)
+                    .padLeft(borderPad).padBottom(borderPad);
 
             if (com.peaknav.utils.PeakNavUtils.getLoadFactory() != null
                     && com.peaknav.utils.PeakNavUtils.getLoadFactory().isDebugBuild()) {
@@ -336,9 +339,23 @@ public class WidgetGetter {
                         com.peaknav.viewer.PhotoSkylineAligner.saveSample();
                     }
                 });
-                tableCameraControl.add(buttonSaveSample).width(widgetUnitStep).height(widgetUnitStep)
-                        .padLeft(borderPad).padBottom(borderPad).left();
+                buttons.add(buttonSaveSample).width(widgetUnitStep).height(widgetUnitStep)
+                        .padLeft(borderPad).padBottom(borderPad);
             }
+            tableCameraControl.add(buttons).left();
+            tableCameraControl.row();
+
+            sliderCameraAlpha = new Slider(0f, 1f, 0.05f, false, sliderStyleCA);
+            sliderCameraAlpha.setVisualPercent(1.0f);
+            sliderCameraAlpha.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    float alpha = sliderCameraAlpha.getVisualPercent();
+                    MapViewerSingleton.getViewerInstance().labelRenderer.setBackgroundAlpha(alpha);
+                }
+            });
+            tableCameraControl.add(sliderCameraAlpha).width(3*widgetUnitStep).height(widgetUnitStep)
+                    .padLeft(borderPad).padBottom(borderPad).left();
             tableCameraControl.setVisible(false);
 
             table.add(tableCameraControl);
@@ -349,6 +366,8 @@ public class WidgetGetter {
             MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(null);
             MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundTexture(null);
             tableCameraControl.setVisible(false);
+            buttonUnpin.setVisible(false);
+            MapViewerSingleton.getViewerInstance().tableLocation.setPhotoShown(false);
         }
 
         public void setRefreshNeeded(boolean refreshNeeded) {
@@ -425,6 +444,8 @@ public class WidgetGetter {
         public final Button buttonOpenCoordinate;
         private final Button buttonCancelGoToDest;
         public final Table tableCancelGoToDest;
+        /** Opacity of the rendered terrain over a photo; shown only while a photo is up. */
+        public final Slider sliderTerrainAlpha;
         public final Button buttonGpxFly; // cinematic tour of the loaded GPX; shown only when one is loaded
         public final Button buttonGpxClear; // discards the loaded GPX; shown alongside buttonGpxFly
         public final Label copyrightLabel;
@@ -669,6 +690,25 @@ public class WidgetGetter {
                     .padRight(borderPad)
                     .row();
 
+            // Over a photo the terrain is not drawn - only its outlines - unless this bar
+            // is raised: it fades the rendered terrain in over the picture, up to opaque.
+            // Vertical, at the right edge just above the share button, and only while a
+            // photo is shown.
+            sliderTerrainAlpha = new Slider(0f, 1f, 0.05f, true, getC().styleSingleton.getSliderStyle());
+            sliderTerrainAlpha.setVisualPercent(0f);
+            sliderTerrainAlpha.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    MapViewerSingleton.getViewerInstance().labelRenderer
+                            .setTerrainAlpha(sliderTerrainAlpha.getVisualPercent());
+                }
+            });
+            sliderTerrainAlpha.setVisible(false);
+            table.add(sliderTerrainAlpha).width(widgetUnitStep).height(3 * widgetUnitStep)
+                    .right()
+                    .padRight(borderPad)
+                    .row();
+
             Button shareButton = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_share.png", null);
             shareButton.addListener(new ChangeListener() {
@@ -724,6 +764,15 @@ public class WidgetGetter {
                     .padBottom(borderPad)
                     .padRight(borderPad)
                     .row();
+        }
+
+        /** Shows the terrain-opacity bar with a photo and hides it, back at zero, without. */
+        public void setPhotoShown(boolean shown) {
+            if (!shown) {
+                sliderTerrainAlpha.setValue(0f);
+                MapViewerSingleton.getViewerInstance().labelRenderer.setTerrainAlpha(0f);
+            }
+            sliderTerrainAlpha.setVisible(shown);
         }
     }
 

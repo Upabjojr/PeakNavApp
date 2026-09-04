@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Unpin": the red ring and dot that mark a pinned point on the photo, crossed out. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <circle cx="120" cy="120" r="52" fill="none" stroke="#d62828" stroke-width="14"/>
+  <circle cx="120" cy="120" r="14" fill="#d62828"/>
+  <line x1="52" y1="188" x2="188" y2="52" stroke="#2b333c" stroke-width="20" stroke-linecap="round"/>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#2b333c" stroke-width="3"/>
+</svg>

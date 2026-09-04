@@ -97,6 +97,11 @@ public class MountainInputController extends CameraInputController {
                     return true;
                 }
             }
+            // Over a photo a tap does not pick a point to measure, fly or orbit to: the
+            // terrain is being lined up with the picture, not travelled.
+            if (mapViewerScreen.backgroundPicManager.getBackgroundPixmap() != null) {
+                return false;
+            }
             // Picking a new point ends an orbit around the old one.
             mapViewerScreen.stopOrbit();
 

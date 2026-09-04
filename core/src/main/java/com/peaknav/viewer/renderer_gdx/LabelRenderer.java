@@ -44,6 +44,8 @@ public class LabelRenderer {
     private float x, y;
     private final float w, h;
     private float backgroundAlpha = 0.6f;
+    /** Opacity of the rendered terrain over a photo: 0 draws outlines only (the default). */
+    private float terrainAlpha = 0f;
     private float angle = 0;
     private float timeElapsed = 0;
     private static final float TILT_LIMIT = 0.9995f;
@@ -356,6 +358,14 @@ public class LabelRenderer {
     }
 
     public void renderBackgroundPixmap() {
+        renderBackgroundPixmap(1f);
+    }
+
+    /**
+     * Draws the photo with the given opacity. Over terrain drawn first, an opacity of
+     * {@code 1 - t} shows the terrain at opacity {@code t}: the blend is symmetric.
+     */
+    public void renderBackgroundPixmap(float alpha) {
         BackgroundPicManager backgroundPicManager = MapViewerSingleton.getViewerInstance().backgroundPicManager;
         Texture background = backgroundPicManager.getBackgroundTexture();
         if (background == null) {
@@ -370,7 +380,7 @@ public class LabelRenderer {
 
         backgroundTextureRegion.setRegion(background);
         spriteBatch.begin();
-        spriteBatch.setColor(1, 1, 1, 1);  // getBackgroundAlpha();
+        spriteBatch.setColor(1, 1, 1, alpha);
         spriteBatch.draw(
                 backgroundTextureRegion,
                 (sw - iw)/2f, (sh - ih)/2f,
@@ -1497,6 +1507,14 @@ public class LabelRenderer {
 
     public float getBackgroundAlpha() {
         return backgroundAlpha;
+    }
+
+    public void setTerrainAlpha(float terrainAlpha) {
+        this.terrainAlpha = Math.max(0f, Math.min(1f, terrainAlpha));
+    }
+
+    public float getTerrainAlpha() {
+        return terrainAlpha;
     }
 
     public void resize(int width, int height) {
