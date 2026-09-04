@@ -997,9 +997,18 @@ public class MapViewerScreen implements Screen {
 	}
 
 	public void toast(String text) {
+		toast(text, TOAST_MILLIS);
+	}
+
+	/** A toast that stays for {@code millis} instead of the usual second. */
+	public void toast(String text, long millis) {
 		toastHeld = false;
+		toastMillis = millis;
 		showToast(text);
 	}
+
+	private static final long TOAST_MILLIS = 1000;
+	private long toastMillis = TOAST_MILLIS;
 
 	/**
 	 * A toast that stays on screen until the next {@link #toast} or {@link #releaseToast}
@@ -1014,6 +1023,7 @@ public class MapViewerScreen implements Screen {
 	/** Lets a held toast fade as usual from now. */
 	public void releaseToast() {
 		toastHeld = false;
+		toastMillis = TOAST_MILLIS;
 		lastElevationChange = System.currentTimeMillis();
 	}
 
@@ -1520,8 +1530,9 @@ public class MapViewerScreen implements Screen {
 
 		if (tableCenter.isVisible() && !toastHeld) {
 			long currentTime = System.currentTimeMillis();
-			if (currentTime - lastElevationChange > 1000) {
+			if (currentTime - lastElevationChange > toastMillis) {
 				tableCenter.setVisible(false);
+				toastMillis = TOAST_MILLIS;
 			}
 		}
 

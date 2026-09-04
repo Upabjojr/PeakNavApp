@@ -211,8 +211,24 @@ public final class PhotoSkylineAligner {
         worker.start();
     }
 
+    /** How long a confirmation that the user might look away from stays up. */
+    private static final long RESULT_TOAST_MILLIS = 3000;
+
     private static void toast(final String text) {
         toast(text, false);
+    }
+
+    /** Shows a toast on the render thread for {@code millis}. */
+    private static void toast(final String text, final long millis) {
+        Gdx.app.postRunnable(new Runnable() {
+            @Override
+            public void run() {
+                MapViewerScreen screen = getC().getMapViewerScreen();
+                if (screen != null) {
+                    screen.toast(" " + text + " ", millis);
+                }
+            }
+        });
     }
 
     /** Shows a toast on the render thread; {@code hold} keeps it until the next one. */
@@ -273,6 +289,9 @@ public final class PhotoSkylineAligner {
         if (p == null || getC() == null || getC().getMapViewerScreen() == null) {
             return;
         }
+        // held until the files are written: the view is captured by the next frame and
+        // the confirmation waits for it
+        toast(s("Sample_saving"), true);
         Gdx.app.postRunnable(new Runnable() {
             @Override
             public void run() {
@@ -315,10 +334,10 @@ public final class PhotoSkylineAligner {
                                     });
                                 }
                             }
-                            toast(s("Sample_saved") + " " + dir.getName());
+                            toast(s("Sample_saved") + " " + dir.getName(), RESULT_TOAST_MILLIS);
                         } catch (Throwable t) {
                             getLogger().error(TAG, "saving the sample failed: " + t);
-                            toast(s("Sample_save_failed"));
+                            toast(s("Sample_save_failed"), RESULT_TOAST_MILLIS);
                         }
                     }
                 }, "skyline-sample");
