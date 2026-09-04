@@ -802,37 +802,10 @@ class PeakNavRendererTest {
         // skyline inside the frame. No EXIF, so the aligner has no location for it and the
         // button must assume "here".
         final float bearing = 300f, pitch = 22f, vfov = 50f;
-        final int w = 640, h = 480;
-        float[] ridge;
-        {
-            com.peaknav.skyline.SkylineMatcher m = new com.peaknav.skyline.SkylineMatcher(
-                    horizon, new float[w], new float[w], w, h);
-            java.lang.reflect.Method pm = com.peaknav.skyline.SkylineMatcher.class.getDeclaredMethod(
-                    "projectHorizon", double.class, double.class, double.class, double.class);
-            pm.setAccessible(true);
-            ridge = (float[]) pm.invoke(m, (double) bearing, (double) pitch, (double) vfov, 0.0);
-        }
-        java.util.Random rng = new java.util.Random(5);
-        BufferedImage photo = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                boolean sky = y < ridge[x];
-                float n = (float) rng.nextGaussian() * 0.03f;
-                float r, g, b;
-                if (sky) {
-                    r = 0.55f + 0.2f * y / h + n; g = 0.7f + 0.15f * y / h + n; b = 0.95f + n;
-                } else {
-                    float t = rng.nextFloat() * 0.25f;
-                    r = 0.35f + t + n; g = 0.33f + t + n; b = 0.3f + t + n;
-                }
-                photo.setRGB(x, y, (clamp255(r) << 16) | (clamp255(g) << 8) | clamp255(b));
-            }
-        }
-        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
-        ImageIO.write(photo, "png", bytes);
+        byte[] png = syntheticPhotoPng(horizon, bearing, pitch, vfov);
 
         renderer.aim(90f, 0f);   // start somewhere else entirely
-        com.peaknav.utils.PeakNavUtils.setBytesAsBackgroundImage(bytes.toByteArray());
+        com.peaknav.utils.PeakNavUtils.setBytesAsBackgroundImage(png);
         com.peaknav.viewer.PhotoSkylineAligner.matchNow();
 
         double got = Double.NaN;
@@ -929,6 +902,224 @@ class PeakNavRendererTest {
         assertTrue(Math.abs(fov[1] - fov[0]) > 0.5f, "the pinch should have changed the field of view");
         assertTrue(check.dot(pinned) > 0.99999f, "and the pin must still be on its pixel: " + check.dot(pinned));
         com.peaknav.gesture.PhotoPin.clear();
+    }
+
+    /**
+     * A "photograph" painted from the terrain's own horizon at a pose: sky above the ridge,
+     * textured ground below, no EXIF - what the matcher must recover the pose from.
+     */
+    private static byte[] syntheticPhotoPng(com.peaknav.skyline.TerrainHorizon horizon, float bearing,
+                                            float pitch, float vfov) throws Exception {
+        final int w = 640, h = 480;
+        com.peaknav.skyline.SkylineMatcher m = new com.peaknav.skyline.SkylineMatcher(
+                horizon, new float[w], new float[w], w, h);
+        float[] ridge = m.projectHorizon(bearing, pitch, vfov, 0.0);
+        java.util.Random rng = new java.util.Random(5);
+        BufferedImage photo = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                boolean sky = y < ridge[x];
+                float n = (float) rng.nextGaussian() * 0.03f;
+                float r, g, b;
+                if (sky) {
+                    r = 0.55f + 0.2f * y / h + n; g = 0.7f + 0.15f * y / h + n; b = 0.95f + n;
+                } else {
+                    float t = rng.nextFloat() * 0.25f;
+                    r = 0.35f + t + n; g = 0.33f + t + n; b = 0.3f + t + n;
+                }
+                photo.setRGB(x, y, (clamp255(r) << 16) | (clamp255(g) << 8) | clamp255(b));
+            }
+        }
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        ImageIO.write(photo, "png", bytes);
+        return bytes.toByteArray();
+    }
+
+    private static double bearingError(double got, double want) {
+        return Math.abs(((got - want + 540) % 360) - 180);
+    }
+
+    /** One HTTP call to the test's own REST server; the body as text. */
+    private static String http(int port, String method, String path, String jsonBody) throws Exception {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection)
+                new java.net.URL("http://127.0.0.1:" + port + path).openConnection();
+        c.setRequestMethod(method);
+        c.setConnectTimeout(10_000);
+        c.setReadTimeout(180_000);
+        if (jsonBody != null) {
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json");
+            try (java.io.OutputStream out = c.getOutputStream()) {
+                out.write(jsonBody.getBytes("UTF-8"));
+            }
+        }
+        int status = c.getResponseCode();
+        java.io.InputStream in = status < 400 ? c.getInputStream() : c.getErrorStream();
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        byte[] chunk = new byte[8192];
+        int n;
+        while (in != null && (n = in.read(chunk)) > 0) {
+            buffer.write(chunk, 0, n);
+        }
+        String body = buffer.toString("UTF-8");
+        assertTrue(status == 200, method + " " + path + " -> " + status + ": " + body);
+        return body;
+    }
+
+    private static double jsonNumber(String json, String key) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"" + key + "\":\\s*(-?[0-9.]+)").matcher(json);
+        assertTrue(m.find(), "no " + key + " in " + json);
+        return Double.parseDouble(m.group(1));
+    }
+
+    @Test
+    @Order(18)
+    @DisplayName("the API tags a photo: load, match, frame with the pose in its EXIF - directly and over REST")
+    void photoApiTagsAPhoto() throws Exception {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(120_000);
+        renderer.setElevationMeters(0);
+        com.peaknav.skyline.ElevationSampler terrain = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain();
+        assumeTrue(!Float.isNaN(terrain.elevationMeters(LAT, LON)), "no elevation data for Zermatt on this machine");
+        com.peaknav.skyline.TerrainHorizon horizon = com.peaknav.skyline.TerrainHorizon.compute(terrain, LAT, LON, 20, 720);
+        assumeTrue(horizon.coverage >= 0.9, "terrain not loaded far enough");
+        final float bearing = 300f, pitch = 22f, vfov = 50f;
+        byte[] png = syntheticPhotoPng(horizon, bearing, pitch, vfov);
+
+        // The renderer's own API.
+        renderer.aim(90f, 0f);
+        renderer.loadPhoto(png, 30_000);
+        assertTrue(renderer.hasPhoto());
+        assertTrue(renderer.photoLocation() == null, "a synthetic PNG carries no position");
+        com.peaknav.skyline.SkylineMatcher.Match match = renderer.matchPhoto(1);
+        assertTrue(match != null, "the match should run at the viewer's own position");
+        assertEquals(0, bearingError(match.bearingDeg, bearing), 2.0, "matched bearing " + match.bearingDeg);
+        Vector3 d = renderer.cameraDirection();
+        assertEquals(0, bearingError((Math.toDegrees(Math.atan2(d.x, d.y)) + 360) % 360, bearing), 2.0,
+                "the camera should have been turned");
+        renderer.setPhotoOverlay(1f, 0.5f);
+        renderer.settle(300);
+        File tagged = Files.createTempDirectory("peaknav-tagged").resolve("tagged.jpg").toFile();
+        renderer.setImageFormat("jpg");
+        renderer.capture(tagged);
+        renderer.setImageFormat("png");
+        byte[] jpeg = Files.readAllBytes(tagged.toPath());
+        double[] where = com.peaknav.utils.ExifReader.extractLatLon(jpeg);
+        assertTrue(where != null, "the saved frame should carry the position in its EXIF");
+        assertEquals(LAT, where[0], 1e-3);
+        assertEquals(LON, where[1], 1e-3);
+        com.peaknav.utils.ExifReader.CameraInfo camera = com.peaknav.utils.ExifReader.extractCameraInfo(jpeg);
+        assertTrue(camera != null && !Float.isNaN(camera.imageDirectionDeg), "and the direction");
+        assertEquals(0, bearingError(camera.imageDirectionDeg, bearing), 2.5, "EXIF direction " + camera.imageDirectionDeg);
+        renderer.clearPhoto();
+        assertTrue(!renderer.hasPhoto());
+
+        // The same over REST, the way the Python client does it.
+        RestServer server = new RestServer(renderer, "png");
+        int port = server.start(0);
+        try {
+            renderer.aim(90f, 0f);
+            String loaded = http(port, "POST", "/photo",
+                    "{\"image_base64\":\"" + java.util.Base64.getEncoder().encodeToString(png) + "\"}");
+            assertTrue(loaded.contains("\"ok\":true") && loaded.contains("\"location\":null"), loaded);
+            assertEquals(640, (int) jsonNumber(loaded, "width"));
+            String matched = http(port, "POST", "/photo/match", "{\"attempts\":1}");
+            assertTrue(matched.contains("\"matched\":true"), matched);
+            assertEquals(0, bearingError(jsonNumber(matched, "bearing_deg"), bearing), 2.0, matched);
+            http(port, "POST", "/photo/overlay", "{\"outline_alpha\":0.8,\"terrain_alpha\":0.2}");
+            http(port, "DELETE", "/photo", null);
+            assertTrue(!renderer.hasPhoto());
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    @Order(19)
+    @DisplayName("over a photo: a double tap pins and unpins, a single tap picks nothing; held toasts and the loading screen")
+    void photoGesturesAndBusyStates() throws Exception {
+        BufferedImage tiny = new BufferedImage(64, 48, BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        ImageIO.write(tiny, "png", bytes);
+        renderer.loadPhoto(bytes.toByteArray(), 30_000);
+        renderer.aim(300f, 10f);
+        renderer.settle(200);
+        com.peaknav.gesture.PhotoPin.clear();
+
+        final com.peaknav.viewer.screens.MapViewerScreen screen = com.peaknav.viewer.MapViewerSingleton.getViewerInstance();
+        final int x = 320, y = 200;
+        // a quick double tap: two down/up pairs on the same spot within the tap interval
+        renderer.runOnRenderThread(() -> {
+            screen.impact = null;
+            screen.controller.touchDown(x, y, 0, 0);
+            screen.controller.touchUp(x, y, 0, 0);
+            screen.controller.touchDown(x, y, 0, 0);
+            screen.controller.touchUp(x, y, 0, 0);
+        });
+        assertTrue(com.peaknav.gesture.PhotoPin.isActive(), "a double tap over a photo pins");
+        assertTrue(screen.impact == null, "and picks no point to fly to");
+        sleepQuietly(600);   // past the tap interval, so the next tap is a fresh single one
+        renderer.runOnRenderThread(() -> {
+            screen.controller.touchDown(x + 100, y, 0, 0);
+            screen.controller.touchUp(x + 100, y, 0, 0);
+        });
+        sleepQuietly(600);
+        assertTrue(com.peaknav.gesture.PhotoPin.isActive(), "a single tap leaves the pin alone");
+        assertTrue(screen.impact == null, "and still picks nothing over a photo");
+        renderer.runOnRenderThread(() -> {
+            screen.controller.touchDown(x, y, 0, 0);
+            screen.controller.touchUp(x, y, 0, 0);
+            screen.controller.touchDown(x, y, 0, 0);
+            screen.controller.touchUp(x, y, 0, 0);
+        });
+        assertTrue(!com.peaknav.gesture.PhotoPin.isActive(), "the next double tap releases the pin");
+
+        // A held toast outlives the one-second fade and shows the busy ring; the next
+        // toast replaces it and fades as usual.
+        renderer.runOnRenderThread(() -> screen.toastUntilReleased("working"));
+        renderer.settle(1_500);
+        final boolean[] state = new boolean[3];
+        renderer.runOnRenderThread(() -> {
+            state[0] = screen.tableCenter.isVisible();
+            state[1] = screen.isBusy();
+        });
+        assertTrue(state[0], "a held toast stays past a second");
+        assertTrue(state[1], "and counts as busy (the blue balls)");
+        renderer.runOnRenderThread(() -> screen.toast("done"));
+        renderer.settle(1_500);
+        renderer.runOnRenderThread(() -> {
+            state[0] = screen.tableCenter.isVisible();
+            state[1] = screen.isBusy();
+        });
+        assertTrue(!state[0], "a plain toast fades after a second");
+        assertTrue(!state[1], "and nothing is busy any more");
+
+        // The photo loading screen is the map's own "Loading..." and comes down on demand.
+        screen.setPhotoLoading(true);
+        renderer.settle(300);
+        renderer.runOnRenderThread(() -> {
+            state[0] = screen.labelLoading.getTableCenterNoData().isVisible();
+            state[1] = screen.isBusy();
+        });
+        assertTrue(state[0] && state[1], "loading a photo shows the loading screen and the ring");
+        screen.setPhotoLoading(false);
+        renderer.settle(300);
+        renderer.runOnRenderThread(() -> state[1] = screen.isBusy());
+        assertTrue(!state[1], "and it is gone once the photo is up");
+
+        // Terrain opacity: with the bar up the frame changes.
+        File dir = Files.createTempDirectory("peaknav-opacity").toFile();
+        renderer.setPhotoOverlay(1f, 0f);
+        renderer.settle(300);
+        File outlines = new File(dir, "outlines.png");
+        renderer.capture(outlines);
+        renderer.setPhotoOverlay(1f, 1f);
+        renderer.settle(300);
+        File terrain = new File(dir, "terrain.png");
+        renderer.capture(terrain);
+        assertTrue(!java.util.Arrays.equals(Files.readAllBytes(outlines.toPath()), Files.readAllBytes(terrain.toPath())),
+                "the rendered terrain at full opacity must change the picture");
+        renderer.clearPhoto();
     }
 
     private static int clamp255(float v) {

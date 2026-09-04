@@ -161,7 +161,12 @@ The same jar is attached to every [GitHub release](https://github.com/Upabjojr/P
 as `peaknav-headless-<version>.jar`, so rendering from a script does not require building
 the project. It still needs a display connection (the window is created hidden, but GL
 needs one), and `--serve [port]` starts a REST server describing itself at
-`/openapi.json`, so it can be driven from Python — or anything that speaks HTTP. Given
+`/openapi.json`, so it can be driven from Python — or anything that speaks HTTP. The
+server also tags photographs the way the app does: `POST /photo` puts a picture behind
+the terrain (and moves to its EXIF position), `POST /photo/match` points the camera by
+its skyline, `POST /photo/overlay` sets how the terrain is drawn over it, and `GET
+/frame` then returns the photo with the labels over it and the pose in its EXIF block;
+the Python client wraps the sequence in one `tag_photo()` call. Given
 together with `--frame`, the server runs alongside the frame loop instead of replacing
 it, so a script can watch a video render — `GET /objects` lists the peaks, huts, places
 and area labels the renderer has loaded and which of them are on the current frame

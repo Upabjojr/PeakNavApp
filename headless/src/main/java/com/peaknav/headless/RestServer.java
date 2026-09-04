@@ -57,6 +57,14 @@ final class RestServer {
         return server.getAddress().getPort();
     }
 
+    /** Stops listening (the renderer stays up); for tests that start a server of their own. */
+    void stop() {
+        if (server != null) {
+            server.stop(0);
+            server = null;
+        }
+    }
+
     private void route(HttpExchange x) throws IOException {
         String path = x.getRequestURI().getPath();
         String method = x.getRequestMethod();
@@ -80,6 +88,15 @@ final class RestServer {
                 providers(x);
             } else if ("GET".equals(method) && "/objects".equals(path)) {
                 objects(x);
+            } else if ("POST".equals(method) && "/photo".equals(path)) {
+                photo(x);
+            } else if ("DELETE".equals(method) && "/photo".equals(path)) {
+                renderer.clearPhoto();
+                json(x, 200, "{\"ok\":true}");
+            } else if ("POST".equals(method) && "/photo/match".equals(path)) {
+                photoMatch(x);
+            } else if ("POST".equals(method) && "/photo/overlay".equals(path)) {
+                photoOverlay(x);
             } else if ("GET".equals(method) && "/frame".equals(path)) {
                 frame(x);
             } else if ("POST".equals(method) && "/shutdown".equals(path)) {
@@ -252,6 +269,78 @@ final class RestServer {
         String scope = q.containsKey("scope") ? q.get("scope") : "displayable";
         boolean drawn = "true".equalsIgnoreCase(q.get("drawn"));
         json(x, 200, renderer.objectsJson(scope, drawn));
+    }
+
+    /**
+     * Puts a photograph behind the terrain: {@code {"path": "/photo.jpg"}} naming a file the
+     * renderer can read, or {@code {"image_base64": "..."}} with the JPEG or PNG inline. With
+     * {@code go_to_exif} (default true) and a GPS position in the file, the viewpoint moves
+     * there first, downloading and waiting as /position does when asked.
+     */
+    private void photo(HttpExchange x) throws IOException {
+        JsonValue body = body(x);
+        byte[] bytes;
+        if (body.has("image_base64")) {
+            bytes = java.util.Base64.getDecoder().decode(body.getString("image_base64"));
+        } else if (body.has("path")) {
+            bytes = Files.readAllBytes(new File(body.getString("path")).toPath());
+        } else {
+            throw new IllegalArgumentException("give path or image_base64");
+        }
+        renderer.loadPhoto(bytes, body.getLong("load_timeout_ms", 60_000L));
+        double[] location = renderer.photoLocation();
+        boolean moved = false, downloaded = true, quiet = true;
+        if (location != null && body.getBoolean("go_to_exif", true)) {
+            renderer.moveTo(location[0], location[1]);
+            moved = true;
+            if (body.has("download_timeout_ms")) {
+                downloaded = renderer.downloadMissingData(location[0], location[1], body.getLong("download_timeout_ms"));
+            }
+            if (body.has("await_tiles_ms")) {
+                quiet = renderer.awaitTilesLoaded(body.getLong("await_tiles_ms"));
+            }
+        }
+        float[] size = renderer.photoSize();
+        StringBuilder json = new StringBuilder("{\"ok\":true");
+        if (size != null) {
+            json.append(",\"width\":").append((int) size[0]).append(",\"height\":").append((int) size[1]);
+            json.append(",\"vertical_fov_deg\":").append(Float.isNaN(size[2]) ? "null" : String.valueOf(size[2]));
+        }
+        json.append(",\"location\":").append(location == null ? "null"
+                : String.format(Locale.ENGLISH, "{\"lat\":%.6f,\"lon\":%.6f}", location[0], location[1]));
+        json.append(",\"moved\":").append(moved).append(",\"downloaded\":").append(downloaded)
+                .append(",\"quiet\":").append(quiet).append('}');
+        json(x, 200, json.toString());
+    }
+
+    /**
+     * Runs the skyline matcher for the loaded photo at the current position and turns the
+     * camera to the best pose; {@code attempts} (default 3) retries a few seconds apart
+     * while the terrain around the viewpoint is still streaming in.
+     */
+    private void photoMatch(HttpExchange x) throws IOException {
+        JsonValue body = body(x);
+        if (!renderer.hasPhoto()) {
+            throw new IllegalArgumentException("no photo loaded (POST /photo first)");
+        }
+        com.peaknav.skyline.SkylineMatcher.Match m = renderer.matchPhoto(body.getInt("attempts", 3));
+        if (m == null) {
+            json(x, 200, "{\"ok\":true,\"matched\":false,\"error\":\"no position, or the terrain never loaded far enough\"}");
+            return;
+        }
+        json(x, 200, String.format(Locale.ENGLISH,
+                "{\"ok\":true,\"matched\":true,\"bearing_deg\":%.2f,\"pitch_deg\":%.2f,\"vertical_fov_deg\":%.2f,"
+                        + "\"roll_deg\":%.2f,\"cost\":%.6f,\"ratio\":%.3f,\"relief_deg\":%.2f,\"confident\":%s}",
+                m.bearingDeg, m.pitchDeg, m.verticalFovDeg, m.rollDeg, m.cost, m.ratio(), m.reliefDeg, m.isConfident()));
+    }
+
+    /** How the terrain is drawn over the photo: {@code outline_alpha} and {@code terrain_alpha}, 0..1. */
+    private void photoOverlay(HttpExchange x) throws IOException {
+        JsonValue body = body(x);
+        Float outline = body.has("outline_alpha") ? Float.valueOf(body.getFloat("outline_alpha")) : null;
+        Float terrain = body.has("terrain_alpha") ? Float.valueOf(body.getFloat("terrain_alpha")) : null;
+        renderer.setPhotoOverlay(outline, terrain);
+        json(x, 200, "{\"ok\":true}");
     }
 
     /** The current view as an image - the response body IS the picture. */

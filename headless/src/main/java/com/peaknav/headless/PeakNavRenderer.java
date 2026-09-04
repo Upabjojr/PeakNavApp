@@ -1305,6 +1305,98 @@ public final class PeakNavRenderer implements AutoCloseable {
      *
      * @param output written as JPEG when the name ends in .jpg or .jpeg, otherwise PNG
      */
+    // ------------------------------------------------------------------ photographs
+
+    /**
+     * Puts a photograph behind the terrain, as the app's gallery button does: the bytes
+     * of a JPEG or PNG, EXIF orientation honoured. Blocks until the picture is on
+     * screen. The automatic "point the camera?" prompt is off in the headless renderer;
+     * {@link #matchPhoto} runs the matcher on request instead.
+     */
+    public PeakNavRenderer loadPhoto(final byte[] bytes, long timeoutMillis) {
+        com.peaknav.viewer.PhotoSkylineAligner.setAutomatic(false);
+        com.peaknav.utils.PeakNavUtils.setBytesAsBackgroundImage(bytes);
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (mapApp.mapViewerScreen.backgroundPicManager.getBackgroundTexture() == null) {
+            if (System.currentTimeMillis() > deadline) {
+                throw new IllegalStateException("the photo was not on screen within " + timeoutMillis + " ms");
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted while the photo loaded", e);
+            }
+        }
+        return this;
+    }
+
+    /** Whether a photograph is shown behind the terrain. */
+    public boolean hasPhoto() {
+        return com.peaknav.viewer.PhotoSkylineAligner.hasPhoto();
+    }
+
+    /** The loaded photo's own position from its EXIF, {latitude, longitude}, or null. */
+    public double[] photoLocation() {
+        return com.peaknav.viewer.PhotoSkylineAligner.photoLocation();
+    }
+
+    /** {width, height, vertical field of view in degrees or NaN} of the loaded photo, or null. */
+    public float[] photoSize() {
+        return com.peaknav.viewer.PhotoSkylineAligner.photoSize();
+    }
+
+    /**
+     * Matches the loaded photo's skyline against the terrain around the current position
+     * and turns the camera to the best pose (whether or not it is confident: the caller
+     * decides what to make of {@code isConfident()}). Blocks for the matching and the
+     * turn. Null when there is no photo, no position, or the terrain around it never
+     * loaded far enough within {@code attempts} tries a few seconds apart.
+     */
+    public com.peaknav.skyline.SkylineMatcher.Match matchPhoto(int attempts) {
+        try {
+            com.peaknav.skyline.SkylineMatcher.Match m = com.peaknav.viewer.PhotoSkylineAligner.matchHere(attempts);
+            if (m != null) {
+                // the pose is applied as an animated camera move; wait for it to land
+                long deadline = System.currentTimeMillis() + 15_000;
+                while (System.currentTimeMillis() < deadline) {
+                    Vector3 d = cameraDirection();
+                    double bearing = (Math.toDegrees(Math.atan2(d.x, d.y)) + 360) % 360;
+                    double pitch = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, d.z))));
+                    double db = Math.abs(((bearing - m.bearingDeg + 540) % 360) - 180);
+                    if (db < 0.2 && Math.abs(pitch - m.pitchDeg) < 0.2) {
+                        break;
+                    }
+                    Thread.sleep(50);
+                }
+            }
+            settle(300);
+            return m;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while matching the photo", e);
+        }
+    }
+
+    /** How the terrain is drawn over the photo: outline opacity and rendered-terrain opacity, 0..1 (null = unchanged). */
+    public PeakNavRenderer setPhotoOverlay(final Float outlineAlpha, final Float terrainAlpha) {
+        onRenderThread(() -> {
+            if (outlineAlpha != null) {
+                mapApp.mapViewerScreen.labelRenderer.setBackgroundAlpha(Math.max(0f, Math.min(1f, outlineAlpha)));
+            }
+            if (terrainAlpha != null) {
+                mapApp.mapViewerScreen.labelRenderer.setTerrainAlpha(terrainAlpha);
+            }
+        });
+        return this;
+    }
+
+    /** Takes the photograph down, as the X on the photo bar does. */
+    public PeakNavRenderer clearPhoto() {
+        onRenderThread(() -> mapApp.mapViewerScreen.tableTool.hideTableCameraControl());
+        return this;
+    }
+
     public PeakNavRenderer capture(final File output) {
         File parent = output.getAbsoluteFile().getParentFile();
         if (parent != null) {

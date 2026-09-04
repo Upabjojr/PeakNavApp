@@ -20,6 +20,7 @@ Requires only the standard library. The spawned JVM needs a session display (the
 is created hidden, but GLFW needs a display connection to make the GL context).
 """
 
+import base64
 import json
 import os
 import queue
@@ -254,6 +255,74 @@ class PeakNavHeadless:
         with open(path, "wb") as f:
             f.write(data)
         return path
+
+    # ------------------------------------------------------------------ photographs
+
+    def load_photo(self, path=None, *, image=None, go_to_exif=True,
+                   download_timeout_ms=None, await_tiles_ms=None):
+        """Puts a photograph behind the terrain, as the app's gallery button does. ``path``
+        is read here and sent inline (``image`` gives the JPEG/PNG bytes directly), so it
+        need not be visible to the renderer's process. With ``go_to_exif`` and a GPS
+        position in the file, the viewpoint moves there first - give the two timeouts to
+        download and wait for the terrain as ``move_to`` does. Returns the server's
+        summary: width, height, vertical_fov_deg, location, moved, downloaded, quiet."""
+        if image is None:
+            if path is None:
+                raise ValueError("give a path or image bytes")
+            with open(path, "rb") as f:
+                image = f.read()
+        payload = {"image_base64": base64.b64encode(image).decode("ascii"),
+                   "go_to_exif": bool(go_to_exif)}
+        if download_timeout_ms is not None:
+            payload["download_timeout_ms"] = download_timeout_ms
+        if await_tiles_ms is not None:
+            payload["await_tiles_ms"] = await_tiles_ms
+        return self._request("POST", "/photo", payload)
+
+    def match_photo(self, *, attempts=3):
+        """Matches the loaded photo's skyline against the terrain around the current position
+        and turns the camera to the best pose. Returns the match: bearing_deg, pitch_deg,
+        vertical_fov_deg, roll_deg, cost, ratio, relief_deg and ``confident`` - the
+        verdict the app uses before asking the user; or ``{"matched": False, ...}``."""
+        return self._request("POST", "/photo/match", {"attempts": attempts})
+
+    def set_photo_overlay(self, *, outline_alpha=None, terrain_alpha=None):
+        """How the terrain is drawn over the photo: the outlines' opacity and the rendered
+        terrain's (0 = outlines only, the default), both 0..1."""
+        payload = {}
+        if outline_alpha is not None:
+            payload["outline_alpha"] = outline_alpha
+        if terrain_alpha is not None:
+            payload["terrain_alpha"] = terrain_alpha
+        return self._request("POST", "/photo/overlay", payload)
+
+    def clear_photo(self):
+        """Takes the photograph down."""
+        return self._request("DELETE", "/photo")
+
+    def tag_photo(self, path, out_path, *, labels=("peaks",), download_timeout_ms=600_000,
+                  await_tiles_ms=120_000, settle_ms=1_000, attempts=3, outline_alpha=None,
+                  terrain_alpha=None):
+        """The whole thing in one call: loads the photo, goes to where it was taken (its EXIF
+        position), waits for the terrain, matches the skyline, and saves the photo with the
+        terrain's labels drawn over it to ``out_path`` - a picture that also carries the
+        matched pose in its EXIF block. Returns the match dict (check ``confident``).
+        Raises PeakNavError when the photo has no position or nothing could be matched."""
+        info = self.load_photo(path, go_to_exif=True, download_timeout_ms=download_timeout_ms,
+                               await_tiles_ms=await_tiles_ms)
+        if not info.get("location"):
+            raise PeakNavError("the photo carries no GPS position; move_to() where it was "
+                               "taken, then load_photo(go_to_exif=False) and match_photo()")
+        if labels is not None:
+            self.set_view(labels=list(labels))
+        match = self.match_photo(attempts=attempts)
+        if not match.get("matched"):
+            raise PeakNavError(match.get("error", "no match"))
+        if outline_alpha is not None or terrain_alpha is not None:
+            self.set_photo_overlay(outline_alpha=outline_alpha, terrain_alpha=terrain_alpha)
+        self.wait(settle_ms=settle_ms)
+        self.save_frame(out_path)
+        return match
 
     def providers(self):
         """The imagery sources this renderer can be pointed at: [{"id", "name"}, ...].

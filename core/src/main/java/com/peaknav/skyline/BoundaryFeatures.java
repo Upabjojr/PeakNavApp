@@ -142,6 +142,15 @@ public final class BoundaryFeatures {
         return out;
     }
 
+    // Test seams: the package-private helpers, reachable from the default-package tests.
+    public static double[] columnCumulativeForTest(float[] src, int width, int height) {
+        return columnCumulative(src, width, height);
+    }
+
+    public static void windowMeansForTest(double[] cum, int width, int height, int k, float[] above, float[] below) {
+        windowMeans(cum, width, height, k, above, below);
+    }
+
     /** {@code (height + 1) x width} cumulative sums down each column; row 0 is zero. */
     static double[] columnCumulative(float[] src, int width, int height) {
         double[] cum = new double[(height + 1) * width];

@@ -172,9 +172,73 @@ public final class PhotoSkylineAligner {
         synchronized (LOCK) {
             p = pending;
         }
-        if (p != null && p.hasLocation() && isNear(p, latitude, longitude)) {
+        if (automatic && p != null && p.hasLocation() && isNear(p, latitude, longitude)) {
             start(p);
         }
+    }
+
+    /** Off, the location settling near a photo's own does not start a match on its own (the headless API drives it). */
+    private static volatile boolean automatic = true;
+
+    public static void setAutomatic(boolean on) {
+        automatic = on;
+    }
+
+    /** Whether a photo is loaded behind the terrain. */
+    public static boolean hasPhoto() {
+        synchronized (LOCK) {
+            return pending != null;
+        }
+    }
+
+    /** The loaded photo's own position, {latitude, longitude} from its EXIF, or null. */
+    public static double[] photoLocation() {
+        Pending p;
+        synchronized (LOCK) {
+            p = pending;
+        }
+        return p != null && p.hasLocation() ? new double[]{p.latitude, p.longitude} : null;
+    }
+
+    /** {width, height, vertical field of view in degrees or NaN} of the loaded photo, or null. */
+    public static float[] photoSize() {
+        Pending p;
+        synchronized (LOCK) {
+            p = pending;
+        }
+        return p == null ? null : new float[]{p.photoWidth, p.photoHeight, p.verticalFovDeg};
+    }
+
+    /**
+     * Matches the loaded photo at the viewer's position and turns the camera to the best
+     * pose, blocking until the camera has been turned: the headless API's version of the
+     * match button, with no toast. Returns the match, or null when there is no photo, no
+     * position, or the terrain never loaded far enough within {@code attempts} tries.
+     */
+    public static SkylineMatcher.Match matchHere(int attempts) throws InterruptedException {
+        final Pending p;
+        synchronized (LOCK) {
+            p = pending;
+        }
+        if (p == null || getC() == null || getC().L == null || getC().L.isCurrentLocationNotSet()) {
+            return null;
+        }
+        SkylineMatcher.Match m = match(p, getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude(),
+                Math.max(1, attempts));
+        if (m == null) {
+            return null;
+        }
+        apply(m, p);
+        // apply() posts to the render thread; a runnable posted after it runs after it
+        final java.util.concurrent.CountDownLatch applied = new java.util.concurrent.CountDownLatch(1);
+        Gdx.app.postRunnable(new Runnable() {
+            @Override
+            public void run() {
+                applied.countDown();
+            }
+        });
+        applied.await(30, java.util.concurrent.TimeUnit.SECONDS);
+        return m;
     }
 
     /**
