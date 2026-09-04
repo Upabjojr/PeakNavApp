@@ -705,7 +705,15 @@ public class WidgetGetter {
             // is raised: it fades the rendered terrain in over the picture, up to opaque.
             // Vertical, at the right edge just above the share button, and only while a
             // photo is shown.
-            sliderTerrainAlpha = new Slider(0f, 1f, 0.05f, true, getC().styleSingleton.getSliderStyle());
+            // Same knob as the outline-visibility bar at the bottom (the round alpha knob),
+            // not the elevation bar's.
+            Slider.SliderStyle terrainStyle = new Slider.SliderStyle();
+            float knob = Gdx.graphics.getHeight() * 0.05f;
+            terrainStyle.knob = getC().widgetTextures.getTextureRegionDrawable("icons/icon_slider_alpha.png");
+            terrainStyle.knob.setMinHeight(knob);
+            terrainStyle.knob.setMinWidth(knob);
+            terrainStyle.background = getC().widgetTextures.getNinePatchDrawable("icons/slider_nine_patch.png");
+            sliderTerrainAlpha = new Slider(0f, 1f, 0.05f, true, terrainStyle);
             sliderTerrainAlpha.setVisualPercent(0f);
             sliderTerrainAlpha.addListener(new ChangeListener() {
                 @Override
