@@ -89,29 +89,56 @@ public final class SkylineBenchmark {
     }
 
     public static void main(String[] args) throws IOException {
-        if (args.length < 1) {
-            System.err.println("usage: SkylineBenchmark manifest.json [limit]");
+        File annotate = null;
+        List<String> plain = new ArrayList<>();
+        for (int i = 0; i < args.length; i++) {
+            if (args[i].equals("--annotate") && i + 1 < args.length) {
+                annotate = new File(args[++i].replaceFirst("^~", System.getProperty("user.home")));
+            } else {
+                plain.add(args[i]);
+            }
+        }
+        if (plain.isEmpty()) {
+            System.err.println("usage: SkylineBenchmark [--annotate outDir] manifest.json [limit]");
             System.exit(2);
         }
-        File manifest = new File(args[0].replaceFirst("^~", System.getProperty("user.home")));
-        int limit = args.length > 1 ? Integer.parseInt(args[1]) : Integer.MAX_VALUE;
+        File manifest = new File(plain.get(0).replaceFirst("^~", System.getProperty("user.home")));
+        int limit = plain.size() > 1 ? Integer.parseInt(plain.get(1)) : Integer.MAX_VALUE;
         Summary summary = new Summary();
-        run(manifest, limit, new DatasetElevation(), System.out, summary);
+        run(manifest, limit, new DatasetElevation(), System.out, summary, annotate);
         System.out.println(summary);
+    }
+
+    public static List<Result> run(File manifest, int limit, DatasetElevation dem, PrintStream out,
+                                   Summary summary) throws IOException {
+        return run(manifest, limit, dem, out, summary, null);
     }
 
     /**
      * Runs every photo of a manifest, printing one line each to {@code out} and filling in
-     * {@code summary}; returns the individual results.
+     * {@code summary}; returns the individual results. With {@code annotate} set, also
+     * writes one PNG per photo into that
+     * directory - the reduced photo with the extracted skyline in red, the matched pose's
+     * ridge in green and, when the manifest carries the truth pose, its ridge in blue -
+     * plus an {@code index.html} listing them with their numbers, for checking by eye.
      */
     public static List<Result> run(File manifest, int limit, DatasetElevation dem, PrintStream out,
-                                   Summary summary) throws IOException {
+                                   Summary summary, File annotate) throws IOException {
         List<Map<String, Object>> entries;
         try (Reader reader = new FileReader(manifest)) {
             entries = new Gson().fromJson(reader, new TypeToken<List<Map<String, Object>>>() { }.getType());
         }
         File base = manifest.getAbsoluteFile().getParentFile();
         List<Result> results = new ArrayList<>();
+        StringBuilder index = new StringBuilder();
+        if (annotate != null) {
+            annotate.mkdirs();
+            index.append("<!doctype html><meta charset=utf-8><title>skyline check</title>"
+                    + "<style>body{font-family:sans-serif;background:#222;color:#ddd}figure{display:inline-block;margin:8px}"
+                    + "img{max-width:480px;display:block}figcaption{font-size:12px;max-width:480px}"
+                    + ".bad{color:#f66}.ok{color:#8f8}</style>"
+                    + "<p>red = skyline the extractor traced; green = ridge of the matched pose; blue = ridge of the truth pose (when known)</p>\n");
+        }
         for (Map<String, Object> e : entries) {
             if (results.size() >= limit) {
                 break;
@@ -128,9 +155,8 @@ public final class SkylineBenchmark {
                 continue;
             }
             long t0 = System.nanoTime();
-            int[] rgb = new int[SkylineExtractor.DEFAULT_WIDTH * 4];
             int[] size = new int[2];
-            rgb = toSmallRgb(image, SkylineExtractor.DEFAULT_WIDTH, size);
+            int[] rgb = toSmallRgb(image, SkylineExtractor.DEFAULT_WIDTH, size);
             int w = size[0], h = size[1];
 
             TerrainHorizon horizon = TerrainHorizon.compute(dem, lat, lon, EYE_ABOVE_GROUND_M, HORIZON_BINS);
@@ -154,8 +180,69 @@ public final class SkylineBenchmark {
                     truncate(photo.getParentFile().getName().equals(base.getName())
                             ? photo.getName() : photo.getParentFile().getName(), 36),
                     truth, match.bearingDeg, err, match, seconds));
+            if (annotate != null) {
+                String stem = photo.getParentFile().getName().equals(base.getName())
+                        ? photo.getName().replaceAll("\\.[^.]+$", "") : photo.getParentFile().getName();
+                stem = stem.replaceAll("[^A-Za-z0-9._-]", "_");
+                File png = new File(annotate, stem + ".png");
+                Float[] truthPose = truthPose(e, w, h);
+                writeAnnotated(png, rgb, w, h, skyline, matcher, match, truthPose);
+                index.append(String.format(Locale.ENGLISH,
+                        "<figure><img src=\"%s\"><figcaption class=\"%s\">%s<br>truth %.1f, got %.1f (err %.1f), %s</figcaption></figure>\n",
+                        png.getName(), err < 10 ? "ok" : "bad", stem, truth, match.bearingDeg, err, match));
+            }
+        }
+        if (annotate != null) {
+            try (java.io.Writer wr = new java.io.OutputStreamWriter(
+                    new java.io.FileOutputStream(new File(annotate, "index.html")), "UTF-8")) {
+                wr.write(index.toString());
+            }
         }
         return results;
+    }
+
+    /**
+     * {bearing, pitch, vfov, roll} of the manifest's truth pose, or null without pitch and
+     * FOV. GeoPose3K's roll goes in with its own sign: the roll that best fits each photo
+     * correlates +0.75 with it (and -0.75 with its negative), so the two conventions agree.
+     */
+    private static Float[] truthPose(Map<String, Object> e, int w, int h) {
+        Object pitch = e.get("pitch");
+        Float vfov = knownVerticalFov(e, w, h);
+        if (!(pitch instanceof Number) || vfov == null) {
+            return null;
+        }
+        Object roll = e.get("roll");
+        float rollDeg = roll instanceof Number ? ((Number) roll).floatValue() : 0f;
+        return new Float[]{(float) number(e, "heading"), ((Number) pitch).floatValue(), vfov, rollDeg};
+    }
+
+    private static void writeAnnotated(File png, int[] rgb, int w, int h, SkylineExtractor.Skyline skyline,
+                                       SkylineMatcher matcher, SkylineMatcher.Match match, Float[] truthPose)
+            throws IOException {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        img.setRGB(0, 0, w, h, rgb, 0, w);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        if (truthPose != null) {
+            drawRows(g, matcher.projectHorizon(truthPose[0], truthPose[1], truthPose[2], truthPose[3]), new java.awt.Color(60, 140, 255), 2f);
+        }
+        drawRows(g, matcher.projectHorizon(match.bearingDeg, match.pitchDeg, match.verticalFovDeg, match.rollDeg),
+                new java.awt.Color(40, 220, 60), 2f);
+        drawRows(g, skyline.rows, java.awt.Color.RED, 2f);
+        g.dispose();
+        ImageIO.write(img, "png", png);
+    }
+
+    private static void drawRows(Graphics2D g, float[] rows, java.awt.Color color, float stroke) {
+        g.setColor(color);
+        g.setStroke(new java.awt.BasicStroke(stroke));
+        for (int x = 1; x < rows.length; x++) {
+            if (Float.isNaN(rows[x - 1]) || Float.isNaN(rows[x])) {
+                continue;
+            }
+            g.drawLine(x - 1, Math.round(rows[x - 1]), x, Math.round(rows[x]));
+        }
     }
 
     /**

@@ -506,8 +506,14 @@ public final class PhotoSkylineAligner {
         public float elevationMeters(double latitude, double longitude) {
             Tile index = CheckMissingData.getTileAtZoomLevel(latitude, longitude, MapTile.ZOOM_LEVEL_MAX);
             MapTile mapTile = getC().mapTileStorage.getFromMapIndexLessEq(index);
-            if (mapTile == null || mapTile.isDisposed() || mapTile.elevationImage == null
-                    || mapTile.getMapTileState() == MapTile.MapTileState.ELEVATION_DATA_NOT_LOADED) {
+            if (mapTile == null || mapTile.isDisposed() || mapTile.elevationImage == null) {
+                return Float.NaN;
+            }
+            // Only tiles whose elevations are already decoded: a tile still loading would
+            // have this thread decode its pixmaps, which the render thread may be about to
+            // dispose - reading freed native memory is a hang or a crash, not an exception.
+            MapTile.MapTileState state = mapTile.getMapTileState();
+            if (state != MapTile.MapTileState.CAN_DRAW && state != MapTile.MapTileState.IS_DRAWN) {
                 return Float.NaN;
             }
             return Units.convertLatitsToMeters(
@@ -631,8 +637,11 @@ public final class PhotoSkylineAligner {
     }
 
     /**
-     * Area-averaged reduction of a pixmap to {@code width} pixels wide, as packed RGB.
-     * Reads the pixel buffer directly for the formats a decoded photo comes in.
+     * Reduction of a pixmap to {@code width} pixels wide, as packed RGB. Reads the pixel
+     * buffer directly for the formats a decoded photo comes in, and touches only a few
+     * pixels per output pixel (a 2x2 patch at the block's centre) rather than every one
+     * of them: this runs on whatever thread loaded the photo, which on Android can be
+     * the interface thread, and a 12-megapixel walk there is a visible stall.
      */
     static int[] downscale(Pixmap src, int width, int[] sizeOut) {
         int w = src.getWidth(), h = src.getHeight();
@@ -645,27 +654,34 @@ public final class PhotoSkylineAligner {
         ByteBuffer buffer = bytesPerPixel > 0 ? src.getPixels() : null;
         long[] sumR = new long[nw * nh], sumG = new long[nw * nh], sumB = new long[nw * nh];
         int[] count = new int[nw * nh];
-        for (int y = 0; y < h; y++) {
-            int ty = Math.min(nh - 1, (int) (y * (long) nh / h));
-            for (int x = 0; x < w; x++) {
-                int tx = Math.min(nw - 1, (int) (x * (long) nw / w));
-                int r, g, b;
-                if (buffer != null) {
-                    int i = (y * w + x) * bytesPerPixel;
-                    r = buffer.get(i) & 0xFF;
-                    g = buffer.get(i + 1) & 0xFF;
-                    b = buffer.get(i + 2) & 0xFF;
-                } else {
-                    int p = src.getPixel(x, y); // RGBA8888
-                    r = (p >>> 24) & 0xFF;
-                    g = (p >>> 16) & 0xFF;
-                    b = (p >>> 8) & 0xFF;
-                }
+        double sx = w / (double) nw, sy = h / (double) nh;
+        for (int ty = 0; ty < nh; ty++) {
+            int y0 = Math.min(h - 2, (int) ((ty + 0.5) * sy) - 1);
+            for (int tx = 0; tx < nw; tx++) {
+                int x0 = Math.min(w - 2, (int) ((tx + 0.5) * sx) - 1);
                 int t = ty * nw + tx;
-                sumR[t] += r;
-                sumG[t] += g;
-                sumB[t] += b;
-                count[t]++;
+                for (int dy = 0; dy < 2; dy++) {
+                    int y = Math.max(0, y0 + dy);
+                    for (int dx = 0; dx < 2; dx++) {
+                        int x = Math.max(0, x0 + dx);
+                        int r, g, b;
+                        if (buffer != null) {
+                            int i = (y * w + x) * bytesPerPixel;
+                            r = buffer.get(i) & 0xFF;
+                            g = buffer.get(i + 1) & 0xFF;
+                            b = buffer.get(i + 2) & 0xFF;
+                        } else {
+                            int p = src.getPixel(x, y); // RGBA8888
+                            r = (p >>> 24) & 0xFF;
+                            g = (p >>> 16) & 0xFF;
+                            b = (p >>> 8) & 0xFF;
+                        }
+                        sumR[t] += r;
+                        sumG[t] += g;
+                        sumB[t] += b;
+                        count[t]++;
+                    }
+                }
             }
         }
         int[] out = new int[nw * nh];

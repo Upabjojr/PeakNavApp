@@ -195,7 +195,12 @@ recorded) - and the `skylineBenchmark` task reports:
 ```bash
 python3 tools/skyline_dataset.py commons --category "Mountains of Switzerland" --limit 60
 ./gradlew :core:skylineBenchmark --args="~/.peaknav/skyline_dataset/commons/manifest.json"
+./gradlew :core:skylineBenchmark --args="--annotate out/ path/to/manifest.json"   # + one PNG per photo
 ```
+
+With `--annotate`, every photo is also written out with the traced skyline in red, the
+matched pose's ridge in green and the truth pose's ridge in blue, plus an `index.html`
+listing them - the quickest way to see where the extractor goes wrong.
 
 Debug builds have one more button on the photo bar: it saves the current photo with the
 camera's pose and the terrain overlay as a dataset sample (`skyline_samples/` in the app's
