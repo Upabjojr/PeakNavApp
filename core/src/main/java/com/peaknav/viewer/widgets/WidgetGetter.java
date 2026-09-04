@@ -462,10 +462,16 @@ public class WidgetGetter {
         public final Table tableCancelGoToDest;
         /** Opacity of the rendered terrain over a photo; shown only while a photo is up. */
         public final Slider sliderTerrainAlpha;
-        private final Cell<Slider> terrainCell;
         /** Debug builds only: saves the photo, pose and overlay as a dataset sample; null otherwise. */
         public final Button buttonSaveSample;
-        private final Cell<Button> saveCell;
+        /**
+         * The photo-only widgets of the right edge - the terrain-opacity bar and, in debug
+         * builds, the save button above it - in a group of their own, placed just above
+         * the share button by {@link #placePhotoColumn} rather than laid out in the
+         * column, so the share and here buttons never move for them.
+         */
+        public final Table photoColumn;
+        private Button shareButton;
         public final Button buttonGpxFly; // cinematic tour of the loaded GPX; shown only when one is loaded
         public final Button buttonGpxClear; // discards the loaded GPX; shown alongside buttonGpxFly
         public final Label copyrightLabel;
@@ -731,12 +737,11 @@ public class WidgetGetter {
                             .setTerrainAlpha(sliderTerrainAlpha.getVisualPercent());
                 }
             });
-            // Both cells collapse to nothing while hidden, so the share button below keeps
-            // its usual place without a photo.
+            photoColumn = new Table();
             if (com.peaknav.utils.PeakNavUtils.getLoadFactory() != null
                     && com.peaknav.utils.PeakNavUtils.getLoadFactory().isDebugBuild()) {
                 // Debug builds: save this photo with the camera's pose as a dataset sample,
-                // just above the terrain-opacity bar in its column.
+                // just above the terrain-opacity bar.
                 buttonSaveSample = getC().widgetTextures.getButtonWithIcon(
                         "icons/icon_save_sample.png", null);
                 buttonSaveSample.addListener(new ChangeListener() {
@@ -745,22 +750,17 @@ public class WidgetGetter {
                         com.peaknav.viewer.PhotoSkylineAligner.saveSample();
                     }
                 });
-                buttonSaveSample.setVisible(false);
-                saveCell = table.add(buttonSaveSample).width(widgetUnitStep).height(0)
-                        .right()
-                        .padRight(borderPad);
-                table.row();
+                photoColumn.add(buttonSaveSample).width(widgetUnitStep).height(widgetUnitStep)
+                        .padBottom(borderPad);
+                photoColumn.row();
             } else {
                 buttonSaveSample = null;
-                saveCell = null;
             }
-            sliderTerrainAlpha.setVisible(false);
-            terrainCell = table.add(sliderTerrainAlpha).width(widgetUnitStep).height(0)
-                    .right()
-                    .padRight(borderPad);
-            table.row();
+            photoColumn.add(sliderTerrainAlpha).width(widgetUnitStep).height(3 * widgetUnitStep);
+            photoColumn.pack();
+            photoColumn.setVisible(false);
 
-            Button shareButton = getC().widgetTextures.getButtonWithIcon(
+            shareButton = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_share.png", null);
             shareButton.addListener(new ChangeListener() {
                 @Override
@@ -826,13 +826,26 @@ public class WidgetGetter {
                 sliderTerrainAlpha.setValue(0f);
                 MapViewerSingleton.getViewerInstance().labelRenderer.setTerrainAlpha(0f);
             }
-            sliderTerrainAlpha.setVisible(shown);
-            terrainCell.height(shown ? 3 * widgetUnitStep : 0).padBottom(shown ? borderPad : 0);
-            if (buttonSaveSample != null) {
-                buttonSaveSample.setVisible(shown);
-                saveCell.height(shown ? widgetUnitStep : 0).padBottom(shown ? borderPad : 0);
+            photoColumn.setVisible(shown);
+            if (shown) {
+                placePhotoColumn();
             }
-            table.invalidate();
+        }
+
+        private final com.badlogic.gdx.math.Vector2 photoColumnAnchor = new com.badlogic.gdx.math.Vector2();
+
+        /** Puts the photo-only group on the share button's column, one pad above its top. */
+        public void placePhotoColumn() {
+            if (shareButton == null) {
+                return;
+            }
+            photoColumnAnchor.set(0, shareButton.getHeight());
+            shareButton.localToStageCoordinates(photoColumnAnchor);
+            float x = photoColumnAnchor.x + (shareButton.getWidth() - photoColumn.getWidth()) / 2;
+            float y = photoColumnAnchor.y + borderPad;
+            if (photoColumn.getX() != x || photoColumn.getY() != y) {
+                photoColumn.setPosition(x, y);
+            }
         }
     }
 

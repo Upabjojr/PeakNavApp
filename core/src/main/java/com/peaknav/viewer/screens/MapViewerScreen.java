@@ -1173,6 +1173,7 @@ public class MapViewerScreen implements Screen {
 
 		tableLocation = widgetGetter.getTableLocation();
 		stage.addActor(tableLocation.getTable());
+		stage.addActor(tableLocation.photoColumn);
 
 		Table tableCopyright = widgetGetter.getTableCopyright();
 		stageCopyright.addActor(tableCopyright);
@@ -1645,6 +1646,9 @@ public class MapViewerScreen implements Screen {
 		}
 		if (tableTool != null) {
 			tableTool.setPinned(pinned);
+		}
+		if (tableLocation != null && backgroundPicManager.getBackgroundPixmap() != null) {
+			tableLocation.placePhotoColumn();   // follows the share button through resizes
 		}
 		if (pendingFrameCapture != null) {
 			FrameCapture capture = pendingFrameCapture;
