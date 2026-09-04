@@ -285,18 +285,10 @@ public class WidgetGetter {
             sliderStyleCA.knob.setMinWidth(w);
             sliderStyleCA.background = getC().widgetTextures.getNinePatchDrawable("icons/slider_nine_patch.png");
 
-            // Leftmost, away from the X that closes the picture: the two must not be neighbours.
-            Button buttonMatchPhoto = getC().widgetTextures.getButtonWithIcon(
-                    "icons/icon_match_photo.png", null);
-            buttonMatchPhoto.addListener(new ChangeListener() {
-                @Override
-                public void changed(ChangeEvent event, Actor actor) {
-                    com.peaknav.viewer.PhotoSkylineAligner.matchNow();
-                }
-            });
-            tableCameraControl.add(buttonMatchPhoto).width(widgetUnitStep).height(widgetUnitStep)
-                    .padLeft(borderPad).padBottom(borderPad);
-
+            // Two rows: the widget unit is a tenth of the screen's shorter side, so on a
+            // phone held upright this bar plus the gyro button beside it would run past the
+            // right edge in one row. The X that closes the picture ends the first row and the
+            // match button opens the second, so the two are never neighbours.
             sliderCameraAlpha = new Slider(0f, 1f, 0.05f, false, sliderStyleCA);
             sliderCameraAlpha.setVisualPercent(1.0f);
             sliderCameraAlpha.addListener(new ChangeListener() {
@@ -308,6 +300,30 @@ public class WidgetGetter {
             });
             tableCameraControl.add(sliderCameraAlpha).width(3*widgetUnitStep).height(widgetUnitStep)
                     .padLeft(borderPad).padBottom(borderPad);
+
+            Button buttonCameraCancel = getC().widgetTextures.getButtonWithIcon(
+                    "icons/icon_x.png", null
+            );
+            buttonCameraCancel.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    hideTableCameraControl();
+                }
+            });
+            tableCameraControl.add(buttonCameraCancel).width(widgetUnitStep).height(widgetUnitStep)
+                    .padLeft(borderPad).padBottom(borderPad);
+            tableCameraControl.row();
+
+            Button buttonMatchPhoto = getC().widgetTextures.getButtonWithIcon(
+                    "icons/icon_match_photo.png", null);
+            buttonMatchPhoto.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    com.peaknav.viewer.PhotoSkylineAligner.matchNow();
+                }
+            });
+            tableCameraControl.add(buttonMatchPhoto).width(widgetUnitStep).height(widgetUnitStep)
+                    .padLeft(borderPad).padBottom(borderPad).left();
 
             if (com.peaknav.utils.PeakNavUtils.getLoadFactory() != null
                     && com.peaknav.utils.PeakNavUtils.getLoadFactory().isDebugBuild()) {
@@ -321,20 +337,8 @@ public class WidgetGetter {
                     }
                 });
                 tableCameraControl.add(buttonSaveSample).width(widgetUnitStep).height(widgetUnitStep)
-                        .padLeft(borderPad).padBottom(borderPad);
+                        .padLeft(borderPad).padBottom(borderPad).left();
             }
-
-            Button buttonCameraCancel = getC().widgetTextures.getButtonWithIcon(
-                    "icons/icon_x.png", null
-            );
-            buttonCameraCancel.addListener(new ChangeListener() {
-                @Override
-                public void changed(ChangeEvent event, Actor actor) {
-                    hideTableCameraControl();
-                }
-            });
-            tableCameraControl.add(buttonCameraCancel).width(widgetUnitStep).height(widgetUnitStep)
-                    .padLeft(borderPad).padBottom(borderPad);
             tableCameraControl.setVisible(false);
 
             table.add(tableCameraControl);

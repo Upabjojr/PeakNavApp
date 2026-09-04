@@ -997,10 +997,27 @@ public class MapViewerScreen implements Screen {
 	}
 
 	public void toast(String text) {
+		// Short texts (a distance, a height) keep the one-line pill; anything wider than the
+		// screen wraps onto as many lines as it needs, instead of running off both edges.
+		float maxWidth = 0.9f * Gdx.graphics.getWidth();
+		toastGlyph.setText(labelElevationChange.getStyle().font, text);
+		if (toastGlyph.width > maxWidth) {
+			labelElevationChange.setWrap(true);
+			labelElevationChange.setAlignment(com.badlogic.gdx.utils.Align.center);
+			toastCell.width(maxWidth).height(com.badlogic.gdx.scenes.scene2d.ui.Value.prefHeight);
+		} else {
+			labelElevationChange.setWrap(false);
+			toastCell.width(com.badlogic.gdx.scenes.scene2d.ui.Value.prefWidth).height(toastLineHeight);
+		}
 		labelElevationChange.setText(text);
+		tableCenter.invalidate();
 		tableCenter.setVisible(true);
 		lastElevationChange = System.currentTimeMillis();
 	}
+
+	private final com.badlogic.gdx.graphics.g2d.GlyphLayout toastGlyph = new com.badlogic.gdx.graphics.g2d.GlyphLayout();
+	private com.badlogic.gdx.scenes.scene2d.ui.Cell<Label> toastCell;
+	private float toastLineHeight;
 
 	public void takeSnapshot() {
 		flagTakeSnapshot = true;
@@ -1156,7 +1173,9 @@ public class MapViewerScreen implements Screen {
 		tableCenter.center();
 		labelElevationChange = new Label("", getC().styleSingleton.getLabelStyle());
 		// labelElevationChange.setFontScale(3f);
-		tableCenter.add(labelElevationChange).height(widgetUnitStep).row();
+		toastLineHeight = widgetUnitStep;
+		toastCell = tableCenter.add(labelElevationChange).height(widgetUnitStep);
+		tableCenter.row();
 
 		stage.addActor(tableTool.getTable());
 		stage.addActor(tableCenter);
