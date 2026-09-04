@@ -177,10 +177,11 @@ When a photograph is placed behind the terrain (gallery or camera buttons) and t
 knows where it was taken, it tries to work out which way the camera pointed: the skyline
 traced in the picture is matched against the terrain's horizon around that spot, and if
 the match is unambiguous the app offers to turn its camera to the same bearing, pitch and
-field of view, so the mountains line up with the photo. While a photo is shown, a long press pins the terrain under the finger to
-that spot of the picture (a red ring marks it); dragging then turns the terrain around the
-pin and pinching zooms with the pin held, which is how a summit is fixed first and the rest
-lined up by hand (another long press releases the pin). A button on the photo's control
+field of view, so the mountains line up with the photo. While a photo is shown, a quick
+double tap pins the terrain under the finger to that spot of the picture (a red ring marks
+it); dragging then turns the terrain around the pin and pinching zooms with the pin held,
+which is how a summit is fixed first and the rest lined up by hand (another double tap
+releases the pin). A button on the photo's control
 bar does the same on demand - at the current position, whether or not the match is
 sure - for photos without a location, a moved view, or a suggestion that never came.
 Classical image processing, a small learned pixel classifier (a forest of decision

@@ -82,9 +82,23 @@ public class MountainInputController extends CameraInputController {
 
         @Override
         public boolean tap(float x, float y, int count, int button) {
+            // With a photo behind the terrain a quick double tap pins: the direction under
+            // the finger is fastened to that spot of the screen and the gestures turn and
+            // zoom the terrain around it (see PhotoPin). The next double tap releases it.
+            // The red ring says which state it is in; no text. (The first of the two taps
+            // has already measured, as any tap does; that is harmless.)
+            if (count == 2) {
+                if (PhotoPin.isActive()) {
+                    PhotoPin.clear();
+                    return true;
+                }
+                if (mapViewerScreen.backgroundPicManager.getBackgroundPixmap() != null) {
+                    PhotoPin.set(x, y, camera.getPickRayStable(x, y).direction);
+                    return true;
+                }
+            }
             // Picking a new point ends an orbit around the old one.
             mapViewerScreen.stopOrbit();
-
 
             mapViewerScreen.impact = mapViewerScreen.detectClicked3DPosition(x, y);
             boolean valid = mapViewerScreen.updateImpact();
@@ -92,23 +106,6 @@ public class MountainInputController extends CameraInputController {
                 mapViewerScreen.impactToastDistance();
             }
             return valid;
-        }
-
-        @Override
-        public boolean longPress(float x, float y) {
-            // With a photo behind the terrain a long press pins: the direction under the
-            // finger is fastened to that spot of the screen and the gestures turn and zoom
-            // the terrain around it (see PhotoPin). The next long press releases it. The
-            // red ring says which state it is in; no text.
-            if (PhotoPin.isActive()) {
-                PhotoPin.clear();
-                return true;
-            }
-            if (mapViewerScreen.backgroundPicManager.getBackgroundPixmap() != null) {
-                PhotoPin.set(x, y, camera.getPickRayStable(x, y).direction);
-                return true;
-            }
-            return false;
         }
 
         private final static float rotFactor = 1f/500.f;
