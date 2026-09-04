@@ -209,6 +209,8 @@ public class WidgetGetter {
         public final Button buttonOrientation;
         /** Releases the photo pin; shown at the left edge only while a point is pinned. */
         public final Button buttonUnpin;
+        /** Debug builds only: saves the photo, pose and overlay as a dataset sample; null otherwise. */
+        public final Button buttonSaveSample;
         private boolean refreshNeeded;
 
         TableTool() {
@@ -267,8 +269,27 @@ public class WidgetGetter {
             });
             buttonUnpin.setVisible(false);
             table.add(buttonUnpin).width(widgetUnitStep).height(widgetUnitStep).left()
-                    .padLeft(borderPad)
-                    .row();
+                    .padLeft(borderPad);
+
+            if (com.peaknav.utils.PeakNavUtils.getLoadFactory() != null
+                    && com.peaknav.utils.PeakNavUtils.getLoadFactory().isDebugBuild()) {
+                // Debug builds: save this photo with the camera's pose as a dataset sample.
+                // Away from the photo bar, so the bar reads the same in every build.
+                buttonSaveSample = getC().widgetTextures.getButtonWithIcon(
+                        "icons/icon_save_sample.png", null);
+                buttonSaveSample.addListener(new ChangeListener() {
+                    @Override
+                    public void changed(ChangeEvent event, Actor actor) {
+                        com.peaknav.viewer.PhotoSkylineAligner.saveSample();
+                    }
+                });
+                buttonSaveSample.setVisible(false);
+                table.add(buttonSaveSample).width(widgetUnitStep).height(widgetUnitStep).left()
+                        .padLeft(borderPad);
+            } else {
+                buttonSaveSample = null;
+            }
+            table.row();
 
             buttonOrientation = getC().widgetTextures.getButtonWithIcon("icons/icon_gyro.png", "icons/icon_gyro_pressed.png");
             // buttonOrientation.setProgrammaticChangeEvents(false);
@@ -292,30 +313,20 @@ public class WidgetGetter {
                     // .padLeft(borderPad).padBottom(borderPad);
                     //.row();
 
+            // The photo bar: one row across the bottom of the screen - the match button,
+            // the outline-visibility bar stretched between, and the X that closes the
+            // picture at the right edge - one widget above the bottom row, where the gyro
+            // button (left) and the copyright, help and here widgets (right) already are.
             tableCameraControl = new Table();
+            tableCameraControl.setFillParent(true);
+            tableCameraControl.bottom();
             Slider.SliderStyle sliderStyleCA = new Slider.SliderStyle();
             float w = Gdx.graphics.getHeight()*0.05f;
             sliderStyleCA.knob = getC().widgetTextures.getTextureRegionDrawable("icons/icon_slider_alpha.png");
             sliderStyleCA.knob.setMinHeight(w);
             sliderStyleCA.knob.setMinWidth(w);
             sliderStyleCA.background = getC().widgetTextures.getNinePatchDrawable("icons/slider_nine_patch.png");
-
-            // Two rows: the buttons in a line on top - close, match, and in debug builds
-            // save - and the outline-visibility bar alone at the bottom. The widget unit is
-            // a tenth of the screen's shorter side, so on a phone held upright the bar and
-            // the buttons side by side would run past the right edge.
-            Button buttonCameraCancel = getC().widgetTextures.getButtonWithIcon(
-                    "icons/icon_x.png", null
-            );
-            buttonCameraCancel.addListener(new ChangeListener() {
-                @Override
-                public void changed(ChangeEvent event, Actor actor) {
-                    hideTableCameraControl();
-                }
-            });
-            Table buttons = new Table();
-            buttons.add(buttonCameraCancel).width(widgetUnitStep).height(widgetUnitStep)
-                    .padLeft(borderPad).padBottom(borderPad);
+            float barPadBottom = widgetUnitStep + 2 * borderPad;
 
             Button buttonMatchPhoto = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_match_photo.png", null);
@@ -325,25 +336,8 @@ public class WidgetGetter {
                     com.peaknav.viewer.PhotoSkylineAligner.matchNow();
                 }
             });
-            buttons.add(buttonMatchPhoto).width(widgetUnitStep).height(widgetUnitStep)
-                    .padLeft(borderPad).padBottom(borderPad);
-
-            if (com.peaknav.utils.PeakNavUtils.getLoadFactory() != null
-                    && com.peaknav.utils.PeakNavUtils.getLoadFactory().isDebugBuild()) {
-                // Debug builds: save this photo with the camera's pose as a dataset sample.
-                Button buttonSaveSample = getC().widgetTextures.getButtonWithIcon(
-                        "icons/icon_save_sample.png", null);
-                buttonSaveSample.addListener(new ChangeListener() {
-                    @Override
-                    public void changed(ChangeEvent event, Actor actor) {
-                        com.peaknav.viewer.PhotoSkylineAligner.saveSample();
-                    }
-                });
-                buttons.add(buttonSaveSample).width(widgetUnitStep).height(widgetUnitStep)
-                        .padLeft(borderPad).padBottom(borderPad);
-            }
-            tableCameraControl.add(buttons).left();
-            tableCameraControl.row();
+            tableCameraControl.add(buttonMatchPhoto).width(widgetUnitStep).height(widgetUnitStep)
+                    .padLeft(borderPad).padBottom(barPadBottom);
 
             sliderCameraAlpha = new Slider(0f, 1f, 0.05f, false, sliderStyleCA);
             sliderCameraAlpha.setVisualPercent(1.0f);
@@ -354,20 +348,40 @@ public class WidgetGetter {
                     MapViewerSingleton.getViewerInstance().labelRenderer.setBackgroundAlpha(alpha);
                 }
             });
-            tableCameraControl.add(sliderCameraAlpha).width(3*widgetUnitStep).height(widgetUnitStep)
-                    .padLeft(borderPad).padBottom(borderPad).left();
-            tableCameraControl.setVisible(false);
+            tableCameraControl.add(sliderCameraAlpha).expandX().fillX().minWidth(2 * widgetUnitStep)
+                    .height(widgetUnitStep).padLeft(borderPad).padRight(borderPad).padBottom(barPadBottom);
 
-            table.add(tableCameraControl);
+            Button buttonCameraCancel = getC().widgetTextures.getButtonWithIcon(
+                    "icons/icon_x.png", null
+            );
+            buttonCameraCancel.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    hideTableCameraControl();
+                }
+            });
+            tableCameraControl.add(buttonCameraCancel).width(widgetUnitStep).height(widgetUnitStep)
+                    .padRight(borderPad).padBottom(barPadBottom);
+            tableCameraControl.setVisible(false);
         }
 
         public void hideTableCameraControl() {
             com.peaknav.viewer.PhotoSkylineAligner.clear();
             MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(null);
             MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundTexture(null);
-            tableCameraControl.setVisible(false);
-            buttonUnpin.setVisible(false);
-            MapViewerSingleton.getViewerInstance().tableLocation.setPhotoShown(false);
+            setPhotoShown(false);
+        }
+
+        /** Shows or hides everything that only makes sense with a photo behind the terrain. */
+        public void setPhotoShown(boolean shown) {
+            tableCameraControl.setVisible(shown);
+            if (buttonSaveSample != null) {
+                buttonSaveSample.setVisible(shown);
+            }
+            if (!shown) {
+                buttonUnpin.setVisible(false);
+            }
+            MapViewerSingleton.getViewerInstance().tableLocation.setPhotoShown(shown);
         }
 
         public void setRefreshNeeded(boolean refreshNeeded) {

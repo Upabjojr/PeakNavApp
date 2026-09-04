@@ -184,7 +184,8 @@ which is how a summit is fixed first and the rest lined up by hand (another doub
 the unpin button that appears at the left edge, releases the pin). A single tap does not
 pick a point to fly or orbit to while a photo is up. The terrain is drawn as outlines only
 over the photo; the vertical bar above the share button fades the rendered terrain in, up
-to opaque, and the bar under the photo buttons sets how visible the outlines are. A button on the photo's control
+to opaque, and the photo bar along the bottom holds the match button, the
+outline-visibility bar and the X that closes the picture. A button on the photo's control
 bar does the same on demand - at the current position, whether or not the match is
 sure - for photos without a location, a moved view, or a suggestion that never came.
 Classical image processing, a small learned pixel classifier (a forest of decision
