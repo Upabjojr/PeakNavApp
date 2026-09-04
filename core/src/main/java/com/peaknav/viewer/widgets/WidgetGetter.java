@@ -285,6 +285,18 @@ public class WidgetGetter {
             sliderStyleCA.knob.setMinWidth(w);
             sliderStyleCA.background = getC().widgetTextures.getNinePatchDrawable("icons/slider_nine_patch.png");
 
+            // Leftmost, away from the X that closes the picture: the two must not be neighbours.
+            Button buttonMatchPhoto = getC().widgetTextures.getButtonWithIcon(
+                    "icons/icon_match_photo.png", null);
+            buttonMatchPhoto.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    com.peaknav.viewer.PhotoSkylineAligner.matchNow();
+                }
+            });
+            tableCameraControl.add(buttonMatchPhoto).width(widgetUnitStep).height(widgetUnitStep)
+                    .padLeft(borderPad).padBottom(borderPad);
+
             sliderCameraAlpha = new Slider(0f, 1f, 0.05f, false, sliderStyleCA);
             sliderCameraAlpha.setVisualPercent(1.0f);
             sliderCameraAlpha.addListener(new ChangeListener() {

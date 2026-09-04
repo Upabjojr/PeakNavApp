@@ -41,6 +41,10 @@ import java.nio.ByteBuffer;
  * ray march. Everything heavy happens on its own thread; only the camera change goes
  * back to the render thread.
  *
+ * <p>The camera-control bar also has a button for doing it by hand ({@link #matchNow}):
+ * at the viewer's current position, applied without asking, confident or not - for a
+ * declined or never-offered automatic match, a moved view, or a photo with no location.
+ *
  * <p>Static, like the background picture it belongs to: there is one photo behind the
  * terrain at a time, and {@link #clear} forgets it when that picture is removed.
  */
@@ -160,6 +164,57 @@ public final class PhotoSkylineAligner {
         }
     }
 
+    /**
+     * Matches the current background photo right now, at the viewer's own position, and
+     * turns the camera to the best pose whether or not the match is confident: the user
+     * pressed the button, so the choice is theirs. Repeats freely - after the automatic
+     * match was declined or never offered, after the view was moved, or for a photo that
+     * carries no location at all (it is then assumed to have been taken where the viewer
+     * stands). Reports through the map's toast.
+     */
+    public static void matchNow() {
+        final Pending p;
+        synchronized (LOCK) {
+            p = pending;
+        }
+        if (p == null || getC() == null || getC().L == null || getC().L.isCurrentLocationNotSet()) {
+            return;
+        }
+        toast(s("Match_photo_direction_running"));
+        Thread worker = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    SkylineMatcher.Match m = match(p, getC().L.getCurrentLatitude(),
+                            getC().L.getCurrentLongitude(), 1);
+                    if (m == null) {
+                        toast(s("Match_photo_direction_failed"));
+                        return;
+                    }
+                    apply(m, p);
+                    toast(s("Match_photo_direction_applied") + " " + Math.round(m.bearingDeg) + "\u00b0"
+                            + (m.isConfident() ? "" : " (" + s("Match_photo_direction_uncertain") + ")"));
+                } catch (Throwable t) {
+                    getLogger().error(TAG, "forced skyline match failed: " + t);
+                }
+            }
+        }, "skyline-match");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private static void toast(final String text) {
+        Gdx.app.postRunnable(new Runnable() {
+            @Override
+            public void run() {
+                MapViewerScreen screen = getC().getMapViewerScreen();
+                if (screen != null) {
+                    screen.toast(" " + text + " ");
+                }
+            }
+        });
+    }
+
     /** Forgets the pending photo (the background picture was removed). */
     public static void clear() {
         synchronized (LOCK) {
@@ -228,34 +283,8 @@ public final class PhotoSkylineAligner {
     }
 
     private static void match(Pending p) throws InterruptedException {
-        MapViewerScreen screen = getC().getMapViewerScreen();
-        if (screen == null) {
-            return;
-        }
-        // The camera's own height: the ground clearance plus whatever the elevation bar adds.
-        double eye = MapViewerScreen.GROUND_CLEARANCE_METERS + Math.max(0, screen.getCameraElevationMeters());
-        TerrainHorizon horizon = null;
-        for (int attempt = 0; attempt < COVERAGE_RETRIES; attempt++) {
-            synchronized (LOCK) {
-                if (pending != p) {
-                    return; // another photo took over, or the picture was closed
-                }
-            }
-            horizon = TerrainHorizon.compute(LOADED_TERRAIN, p.latitude, p.longitude, eye, HORIZON_BINS);
-            if (horizon.coverage >= MIN_COVERAGE) {
-                break;
-            }
-            Thread.sleep(RETRY_MILLIS);
-        }
-        if (horizon == null || horizon.coverage < MIN_COVERAGE) {
-            getLogger().info(TAG, "terrain never loaded far enough for a skyline match");
-            return;
-        }
-        SkylineExtractor.Skyline skyline = SkylineExtractor.extract(p.rgb, p.width, p.height);
-        SkylineMatcher matcher = new SkylineMatcher(horizon, skyline.rows, skyline.confidence, p.width, p.height);
-        final SkylineMatcher.Match m = Float.isNaN(p.verticalFovDeg) ? matcher.match() : matcher.match(p.verticalFovDeg);
-        getLogger().info(TAG, "photo skyline: " + m);
-        if (!m.isConfident()) {
+        final SkylineMatcher.Match m = match(p, p.latitude, p.longitude, COVERAGE_RETRIES);
+        if (m == null || !m.isConfident()) {
             return;
         }
         synchronized (LOCK) {
@@ -271,18 +300,64 @@ public final class PhotoSkylineAligner {
         caller.promptYesNo(s("Photo_direction_found"), s("Point_camera_to_photo_prompt"), new Runnable() {
             @Override
             public void run() {
-                Gdx.app.postRunnable(new Runnable() {
-                    @Override
-                    public void run() {
-                        apply(m, photo);
-                    }
-                });
+                apply(m, photo);
             }
         });
     }
 
-    /** Turns the camera to the matched pose. Render thread. */
-    static void apply(SkylineMatcher.Match m, Pending p) {
+    /**
+     * The horizon at a position from the loaded tiles, waiting for them to cover the ray
+     * march, then the extracted skyline matched against it. Null when the terrain never
+     * loaded far enough (or the photo was replaced meanwhile); the match otherwise, whether
+     * confident or not.
+     */
+    private static SkylineMatcher.Match match(Pending p, double latitude, double longitude, int attempts)
+            throws InterruptedException {
+        MapViewerScreen screen = getC().getMapViewerScreen();
+        if (screen == null) {
+            return null;
+        }
+        // The camera's own height: the ground clearance plus whatever the elevation bar adds.
+        double eye = MapViewerScreen.GROUND_CLEARANCE_METERS + Math.max(0, screen.getCameraElevationMeters());
+        TerrainHorizon horizon = null;
+        for (int attempt = 0; attempt < attempts; attempt++) {
+            synchronized (LOCK) {
+                if (pending != p) {
+                    return null; // another photo took over, or the picture was closed
+                }
+            }
+            horizon = TerrainHorizon.compute(LOADED_TERRAIN, latitude, longitude, eye, HORIZON_BINS);
+            if (horizon.coverage >= MIN_COVERAGE) {
+                break;
+            }
+            if (attempt + 1 < attempts) {
+                Thread.sleep(RETRY_MILLIS);
+            }
+        }
+        if (horizon == null || horizon.coverage < MIN_COVERAGE) {
+            getLogger().info(TAG, "terrain never loaded far enough for a skyline match");
+            return null;
+        }
+        SkylineExtractor.Skyline skyline = SkylineExtractor.extract(p.rgb, p.width, p.height);
+        SkylineMatcher matcher = new SkylineMatcher(horizon, skyline.rows, skyline.confidence, p.width, p.height);
+        SkylineMatcher.Match m = Float.isNaN(p.verticalFovDeg) ? matcher.match() : matcher.match(p.verticalFovDeg);
+        getLogger().info(TAG, String.format(java.util.Locale.ENGLISH,
+                "photo skyline at %.5f,%.5f eye %.0f m, horizon coverage %.2f, %dx%d px: %s",
+                latitude, longitude, eye, horizon.coverage, p.width, p.height, m));
+        return m;
+    }
+
+    /** Turns the camera to the matched pose, from any thread. */
+    static void apply(final SkylineMatcher.Match m, final Pending p) {
+        Gdx.app.postRunnable(new Runnable() {
+            @Override
+            public void run() {
+                applyOnRenderThread(m, p);
+            }
+        });
+    }
+
+    private static void applyOnRenderThread(SkylineMatcher.Match m, Pending p) {
         MapViewerScreen screen = getC().getMapViewerScreen();
         if (screen == null) {
             return;

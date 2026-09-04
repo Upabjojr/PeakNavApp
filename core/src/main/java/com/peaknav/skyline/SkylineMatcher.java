@@ -222,12 +222,22 @@ public final class SkylineMatcher {
     }
 
     /**
-     * Every bearing at every field of view, pitch solved as the median offset. Small-pitch
-     * approximation: a column maps to a bearing offset, a row to an elevation offset.
-     * Returns {cost, bearing, pitch, vfov} sorted by cost.
+     * Every bearing at every field of view, pitch solved as the median offset. Two passes
+     * per pair, and BOTH are kept as candidates: first the small-pitch approximation - a
+     * column is a bearing offset, a row an elevation offset - then, with the pitch that
+     * gave, the exact direction of every skyline pixel through a camera pitched that much.
+     * The approximation alone loses the true pose once the camera looks well above the
+     * horizon (a village view up at 20-30 degree ridges): the columns of a pitched camera
+     * sweep bearings faster than {@code atan(x/f)} says, and the residual of the right
+     * bearing looked worse than that of a wrong one. The exact pass alone, though, scored
+     * slightly worse on GeoPose3K than the approximation (its pitch estimate can drift
+     * when the skyline is partly wrong), so the refinement gets the union and the exact
+     * cost decides. Returns {cost, bearing, pitch, vfov} sorted by cost.
      */
     private List<double[]> coarseSearch(float[] vfovs) {
         List<double[]> results = new ArrayList<>();
+        double[] xc = new double[width];
+        double[] yc = new double[width];
         double[] colAz = new double[width];
         double[] rowEl = new double[width];
         double[] diff = new double[width];
@@ -235,19 +245,38 @@ public final class SkylineMatcher {
         for (float vfov : vfovs) {
             double f = focalPx(vfov);
             for (int x = 0; x < width; x++) {
-                colAz[x] = Math.toDegrees(Math.atan((x + 0.5 - width / 2.0) / f));
-                rowEl[x] = Math.toDegrees(Math.atan((height / 2.0 - skylineRows[x]) / f));
+                xc[x] = (x + 0.5 - width / 2.0) / f;
+                yc[x] = (height / 2.0 - skylineRows[x]) / f;
+                colAz[x] = Math.toDegrees(Math.atan(xc[x]));
+                rowEl[x] = Math.toDegrees(Math.atan(yc[x]));
             }
             for (double bearing = 0; bearing < 360; bearing += COARSE_STEP_DEG) {
+                // pass 1: small-pitch approximation
                 for (int x = 0; x < width; x++) {
                     diff[x] = horizon.angleAt(bearing + colAz[x]) - rowEl[x];
                 }
-                System.arraycopy(diff, 0, sorted, 0, width);
-                Arrays.sort(sorted);
-                double pitch = sorted[width / 2];
-                double cost = 0;
+                double pitch = median(diff, sorted);
+                double cost1 = 0;
                 for (int x = 0; x < width; x++) {
                     double r = f * Math.toRadians(diff[x] - pitch) / height;
+                    cost1 += weights[x] * huber(r);
+                }
+                results.add(new double[]{cost1 / width, bearing, pitch, vfov});
+                // pass 2: exact pixel directions for a camera pitched by that much
+                double ph = Math.toRadians(pitch);
+                double cosP = Math.cos(ph), sinP = Math.sin(ph);
+                for (int x = 0; x < width; x++) {
+                    double forward = cosP - yc[x] * sinP;
+                    double up = sinP + yc[x] * cosP;
+                    double azOff = Math.toDegrees(Math.atan2(xc[x], forward));
+                    double elObs = Math.toDegrees(Math.atan2(up, Math.hypot(xc[x], forward)));
+                    diff[x] = horizon.angleAt(bearing + azOff) - elObs;
+                }
+                double shift = median(diff, sorted);
+                pitch += shift;
+                double cost = 0;
+                for (int x = 0; x < width; x++) {
+                    double r = f * Math.toRadians(diff[x] - shift) / height;
                     cost += weights[x] * huber(r);
                 }
                 results.add(new double[]{cost / width, bearing, pitch, vfov});
@@ -260,6 +289,12 @@ public final class SkylineMatcher {
             }
         });
         return results;
+    }
+
+    private static double median(double[] values, double[] scratch) {
+        System.arraycopy(values, 0, scratch, 0, values.length);
+        Arrays.sort(scratch);
+        return scratch[values.length / 2];
     }
 
     /**

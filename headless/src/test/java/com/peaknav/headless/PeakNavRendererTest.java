@@ -781,6 +781,80 @@ class PeakNavRendererTest {
         assertTrue(horizon.reliefDeg(0, 360) > 3, "Zermatt's horizon is anything but flat");
     }
 
+    @Test
+    @Order(16)
+    @DisplayName("the match button turns the camera to a photo's direction, end to end")
+    void matchButtonTurnsTheCamera() throws Exception {
+        // Earlier tests leave the viewpoint elsewhere and high up (the GPX framing, the
+        // altitude checks); the button matches at the viewer's own position and height,
+        // so put the camera back on the ground at Zermatt first.
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(120_000);
+        renderer.setElevationMeters(0);
+        com.peaknav.skyline.ElevationSampler terrain = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain();
+        assumeTrue(!Float.isNaN(terrain.elevationMeters(LAT, LON)), "no elevation data for Zermatt on this machine");
+        com.peaknav.skyline.TerrainHorizon horizon = com.peaknav.skyline.TerrainHorizon.compute(terrain, LAT, LON, 20, 720);
+        assumeTrue(horizon.coverage >= 0.9, "terrain not loaded far enough");
+
+        // A "photograph" painted from the app's own horizon: sky above the ridge, textured
+        // ground below, looking WNW at the ridges above the Zmutt valley - which stand 20-30
+        // degrees up from the village, hence the steep pitch and wide lens that keep the
+        // skyline inside the frame. No EXIF, so the aligner has no location for it and the
+        // button must assume "here".
+        final float bearing = 300f, pitch = 22f, vfov = 50f;
+        final int w = 640, h = 480;
+        float[] ridge;
+        {
+            com.peaknav.skyline.SkylineMatcher m = new com.peaknav.skyline.SkylineMatcher(
+                    horizon, new float[w], new float[w], w, h);
+            java.lang.reflect.Method pm = com.peaknav.skyline.SkylineMatcher.class.getDeclaredMethod(
+                    "projectHorizon", double.class, double.class, double.class, double.class);
+            pm.setAccessible(true);
+            ridge = (float[]) pm.invoke(m, (double) bearing, (double) pitch, (double) vfov, 0.0);
+        }
+        java.util.Random rng = new java.util.Random(5);
+        BufferedImage photo = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                boolean sky = y < ridge[x];
+                float n = (float) rng.nextGaussian() * 0.03f;
+                float r, g, b;
+                if (sky) {
+                    r = 0.55f + 0.2f * y / h + n; g = 0.7f + 0.15f * y / h + n; b = 0.95f + n;
+                } else {
+                    float t = rng.nextFloat() * 0.25f;
+                    r = 0.35f + t + n; g = 0.33f + t + n; b = 0.3f + t + n;
+                }
+                photo.setRGB(x, y, (clamp255(r) << 16) | (clamp255(g) << 8) | clamp255(b));
+            }
+        }
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        ImageIO.write(photo, "png", bytes);
+
+        renderer.aim(90f, 0f);   // start somewhere else entirely
+        com.peaknav.utils.PeakNavUtils.setBytesAsBackgroundImage(bytes.toByteArray());
+        com.peaknav.viewer.PhotoSkylineAligner.matchNow();
+
+        double got = Double.NaN;
+        long deadline = System.currentTimeMillis() + 60_000;
+        while (System.currentTimeMillis() < deadline) {
+            Vector3 d = renderer.cameraDirection();
+            got = (Math.toDegrees(Math.atan2(d.x, d.y)) + 360) % 360;
+            if (Math.abs(((got - bearing + 540) % 360) - 180) < 2) {
+                break;
+            }
+            sleepQuietly(1000);
+        }
+        assertEquals(0, Math.abs(((got - bearing + 540) % 360) - 180), 2.0,
+                "the camera should have turned to the photo's bearing, points at " + got);
+        Vector3 d = renderer.cameraDirection();
+        assertEquals(pitch, Math.toDegrees(Math.asin(d.z)), 1.5, "and taken its pitch");
+    }
+
+    private static int clamp255(float v) {
+        return Math.max(0, Math.min(255, Math.round(v * 255)));
+    }
+
     private static void sleepQuietly(long millis) {
         try {
             Thread.sleep(millis);

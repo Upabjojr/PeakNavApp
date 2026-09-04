@@ -177,8 +177,11 @@ When a photograph is placed behind the terrain (gallery or camera buttons) and t
 knows where it was taken, it tries to work out which way the camera pointed: the skyline
 traced in the picture is matched against the terrain's horizon around that spot, and if
 the match is unambiguous the app offers to turn its camera to the same bearing, pitch and
-field of view, so the mountains line up with the photo. Classical image processing and
-plain optimisation, no neural network; the code is `com.peaknav.skyline` in `core`.
+field of view, so the mountains line up with the photo. A button on the photo's control
+bar does the same on demand - at the current position, whether or not the match is
+sure - for photos without a location, a moved view, or a suggestion that never came.
+Classical image processing and plain optimisation, no neural network; the code is
+`com.peaknav.skyline` in `core`.
 
 How well it works is measured on photographs with a known camera heading, which
 `tools/skyline_dataset.py` gathers - from [GeoPose3K](https://cphoto.fit.vutbr.cz/geoPose3K/)
