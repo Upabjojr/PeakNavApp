@@ -181,7 +181,7 @@ field of view, so the mountains line up with the photo. While a photo is shown, 
 double tap pins the terrain under the finger to that spot of the picture (a red ring marks
 it); dragging then turns the terrain around the pin and pinching zooms with the pin held,
 which is how a summit is fixed first and the rest lined up by hand (another double tap, or
-the unpin button that appears at the left edge, releases the pin). A single tap does not
+the unpin button that appears above the elevation bar, releases the pin). A single tap does not
 pick a point to fly or orbit to while a photo is up. The terrain is drawn as outlines only
 over the photo; the vertical bar above the share button fades the rendered terrain in, up
 to opaque, and the photo bar at the bottom holds the match button, the outline-visibility

@@ -207,10 +207,9 @@ public class WidgetGetter {
         public final Table tableCameraControl;
         public final Slider sliderCameraAlpha;
         public final Button buttonOrientation;
-        /** Releases the photo pin; shown at the left edge only while a point is pinned. */
+        /** Releases the photo pin; above the elevation bar, only while a point is pinned. */
         public final Button buttonUnpin;
-        /** Debug builds only: saves the photo, pose and overlay as a dataset sample; null otherwise. */
-        public final Button buttonSaveSample;
+        private final Cell<Button> unpinCell;
         private boolean refreshNeeded;
 
         TableTool() {
@@ -241,6 +240,21 @@ public class WidgetGetter {
                     //.padLeft(borderPad)
                     .row();
 
+            // Just above the elevation bar, in its column: the way out of the pinned mode
+            // (a double tap releases too, but a button is found without being told). Its
+            // row collapses to nothing while hidden, so the bar keeps its usual top.
+            buttonUnpin = getC().widgetTextures.getButtonWithIcon("icons/icon_unpin.png", null);
+            buttonUnpin.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    com.peaknav.gesture.PhotoPin.clear();
+                }
+            });
+            buttonUnpin.setVisible(false);
+            unpinCell = table.add(buttonUnpin).width(widgetUnitStep).height(0).left()
+                    .padLeft(borderPad);
+            table.row();
+
             Slider.SliderStyle sliderStyle = getC().styleSingleton.getSliderStyle();
             sliderElevation = new Slider(0f, 100f, 0.1f, true, sliderStyle);
             sliderElevation.addListener(new ChangeListener() {
@@ -256,40 +270,8 @@ public class WidgetGetter {
             });
             table.add(sliderElevation).expandY()
                     .width(widgetUnitStep).left().height(widgetUnitStep *6)
-                    .padLeft(borderPad);
-
-            // Beside the elevation bar, at the left edge: the way out of the pinned mode
-            // (a double tap releases too, but a button is found without being told).
-            buttonUnpin = getC().widgetTextures.getButtonWithIcon("icons/icon_unpin.png", null);
-            buttonUnpin.addListener(new ChangeListener() {
-                @Override
-                public void changed(ChangeEvent event, Actor actor) {
-                    com.peaknav.gesture.PhotoPin.clear();
-                }
-            });
-            buttonUnpin.setVisible(false);
-            table.add(buttonUnpin).width(widgetUnitStep).height(widgetUnitStep).left()
-                    .padLeft(borderPad);
-
-            if (com.peaknav.utils.PeakNavUtils.getLoadFactory() != null
-                    && com.peaknav.utils.PeakNavUtils.getLoadFactory().isDebugBuild()) {
-                // Debug builds: save this photo with the camera's pose as a dataset sample.
-                // Away from the photo bar, so the bar reads the same in every build.
-                buttonSaveSample = getC().widgetTextures.getButtonWithIcon(
-                        "icons/icon_save_sample.png", null);
-                buttonSaveSample.addListener(new ChangeListener() {
-                    @Override
-                    public void changed(ChangeEvent event, Actor actor) {
-                        com.peaknav.viewer.PhotoSkylineAligner.saveSample();
-                    }
-                });
-                buttonSaveSample.setVisible(false);
-                table.add(buttonSaveSample).width(widgetUnitStep).height(widgetUnitStep).left()
-                        .padLeft(borderPad);
-            } else {
-                buttonSaveSample = null;
-            }
-            table.row();
+                    .padLeft(borderPad)
+                    .row();
 
             buttonOrientation = getC().widgetTextures.getButtonWithIcon("icons/icon_gyro.png", "icons/icon_gyro_pressed.png");
             // buttonOrientation.setProgrammaticChangeEvents(false);
@@ -359,7 +341,9 @@ public class WidgetGetter {
                     .padLeft(borderPad).padBottom(borderPad);
             tableCameraControl.setVisible(false);
 
-            table.add(tableCameraControl);
+            // Centred in what is left of the row between the gyro button and the copyright,
+            // help and here widgets at the bottom right.
+            table.add(tableCameraControl).expandX().center().padRight(3.5f * widgetUnitStep);
         }
 
         public void hideTableCameraControl() {
@@ -372,13 +356,20 @@ public class WidgetGetter {
         /** Shows or hides everything that only makes sense with a photo behind the terrain. */
         public void setPhotoShown(boolean shown) {
             tableCameraControl.setVisible(shown);
-            if (buttonSaveSample != null) {
-                buttonSaveSample.setVisible(shown);
-            }
             if (!shown) {
-                buttonUnpin.setVisible(false);
+                setPinned(false);
             }
             MapViewerSingleton.getViewerInstance().tableLocation.setPhotoShown(shown);
+        }
+
+        /** Shows the unpin button while a point is pinned; its row takes no room otherwise. */
+        public void setPinned(boolean pinned) {
+            if (buttonUnpin.isVisible() == pinned) {
+                return;
+            }
+            buttonUnpin.setVisible(pinned);
+            unpinCell.height(pinned ? widgetUnitStep : 0).padBottom(pinned ? borderPad : 0);
+            table.invalidate();
         }
 
         public void setRefreshNeeded(boolean refreshNeeded) {
@@ -457,6 +448,10 @@ public class WidgetGetter {
         public final Table tableCancelGoToDest;
         /** Opacity of the rendered terrain over a photo; shown only while a photo is up. */
         public final Slider sliderTerrainAlpha;
+        private final Cell<Slider> terrainCell;
+        /** Debug builds only: saves the photo, pose and overlay as a dataset sample; null otherwise. */
+        public final Button buttonSaveSample;
+        private final Cell<Button> saveCell;
         public final Button buttonGpxFly; // cinematic tour of the loaded GPX; shown only when one is loaded
         public final Button buttonGpxClear; // discards the loaded GPX; shown alongside buttonGpxFly
         public final Label copyrightLabel;
@@ -722,11 +717,34 @@ public class WidgetGetter {
                             .setTerrainAlpha(sliderTerrainAlpha.getVisualPercent());
                 }
             });
+            // Both cells collapse to nothing while hidden, so the share button below keeps
+            // its usual place without a photo.
+            if (com.peaknav.utils.PeakNavUtils.getLoadFactory() != null
+                    && com.peaknav.utils.PeakNavUtils.getLoadFactory().isDebugBuild()) {
+                // Debug builds: save this photo with the camera's pose as a dataset sample,
+                // just above the terrain-opacity bar in its column.
+                buttonSaveSample = getC().widgetTextures.getButtonWithIcon(
+                        "icons/icon_save_sample.png", null);
+                buttonSaveSample.addListener(new ChangeListener() {
+                    @Override
+                    public void changed(ChangeEvent event, Actor actor) {
+                        com.peaknav.viewer.PhotoSkylineAligner.saveSample();
+                    }
+                });
+                buttonSaveSample.setVisible(false);
+                saveCell = table.add(buttonSaveSample).width(widgetUnitStep).height(0)
+                        .right()
+                        .padRight(borderPad);
+                table.row();
+            } else {
+                buttonSaveSample = null;
+                saveCell = null;
+            }
             sliderTerrainAlpha.setVisible(false);
-            table.add(sliderTerrainAlpha).width(widgetUnitStep).height(3 * widgetUnitStep)
+            terrainCell = table.add(sliderTerrainAlpha).width(widgetUnitStep).height(0)
                     .right()
-                    .padRight(borderPad)
-                    .row();
+                    .padRight(borderPad);
+            table.row();
 
             Button shareButton = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_share.png", null);
@@ -785,13 +803,22 @@ public class WidgetGetter {
                     .row();
         }
 
-        /** Shows the terrain-opacity bar with a photo and hides it, back at zero, without. */
+        /**
+         * Shows the terrain-opacity bar (and, in debug builds, the save button above it)
+         * with a photo and hides them, the bar back at zero, without.
+         */
         public void setPhotoShown(boolean shown) {
             if (!shown) {
                 sliderTerrainAlpha.setValue(0f);
                 MapViewerSingleton.getViewerInstance().labelRenderer.setTerrainAlpha(0f);
             }
             sliderTerrainAlpha.setVisible(shown);
+            terrainCell.height(shown ? 3 * widgetUnitStep : 0).padBottom(shown ? borderPad : 0);
+            if (buttonSaveSample != null) {
+                buttonSaveSample.setVisible(shown);
+                saveCell.height(shown ? widgetUnitStep : 0).padBottom(shown ? borderPad : 0);
+            }
+            table.invalidate();
         }
     }
 
