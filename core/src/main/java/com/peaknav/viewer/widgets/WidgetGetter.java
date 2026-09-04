@@ -207,10 +207,12 @@ public class WidgetGetter {
         public final Table tableCameraControl;
         public final Slider sliderCameraAlpha;
         public final Button buttonOrientation;
-        /** Releases the photo pin; above the elevation bar, only while a point is pinned. */
+        /**
+         * Releases the photo pin; only while a point is pinned. Not in the layout: it is
+         * placed just above the elevation bar's top by {@link #placeUnpin}, so the bar
+         * itself never moves to make room for it.
+         */
         public final Button buttonUnpin;
-        private final Cell<Button> unpinCell;
-        private final Table unpinColumn;
         private boolean refreshNeeded;
 
         TableTool() {
@@ -252,12 +254,7 @@ public class WidgetGetter {
                 }
             });
             buttonUnpin.setVisible(false);
-            // One column with the elevation bar, so the button sits right on top of the
-            // bar wherever the bar's expanding cell centres it.
-            Table leftColumn = new Table();
-            unpinColumn = leftColumn;
-            unpinCell = leftColumn.add(buttonUnpin).width(widgetUnitStep).height(0).left();
-            leftColumn.row();
+            buttonUnpin.setSize(widgetUnitStep, widgetUnitStep);
 
             Slider.SliderStyle sliderStyle = getC().styleSingleton.getSliderStyle();
             sliderElevation = new Slider(0f, 100f, 0.1f, true, sliderStyle);
@@ -272,8 +269,8 @@ public class WidgetGetter {
                             " +" + formatDistanceToUnitSystem(eleMeters) + " ");
                 }
             });
-            leftColumn.add(sliderElevation).width(widgetUnitStep).left().height(widgetUnitStep *6);
-            table.add(leftColumn).expandY().left()
+            table.add(sliderElevation).expandY()
+                    .width(widgetUnitStep).left().height(widgetUnitStep *6)
                     .padLeft(borderPad)
                     .row();
 
@@ -366,17 +363,27 @@ public class WidgetGetter {
             MapViewerSingleton.getViewerInstance().tableLocation.setPhotoShown(shown);
         }
 
-        /** Shows the unpin button while a point is pinned; its row takes no room otherwise. */
+        /** Shows the unpin button while a point is pinned, just above the elevation bar. */
         public void setPinned(boolean pinned) {
-            if (buttonUnpin.isVisible() == pinned) {
-                return;
+            if (buttonUnpin.isVisible() != pinned) {
+                buttonUnpin.setVisible(pinned);
             }
-            buttonUnpin.setVisible(pinned);
-            unpinCell.height(pinned ? widgetUnitStep : 0).padBottom(pinned ? borderPad : 0);
-            // the cell belongs to the column table: that is what must lay out again (and
-            // its parents with it) - invalidating the outer table alone left the button
-            // at zero height
-            unpinColumn.invalidateHierarchy();
+            if (pinned) {
+                placeUnpin();
+            }
+        }
+
+        private final com.badlogic.gdx.math.Vector2 unpinAnchor = new com.badlogic.gdx.math.Vector2();
+
+        /** Puts the unpin button on the elevation bar's column, one pad above its top. */
+        private void placeUnpin() {
+            unpinAnchor.set(0, sliderElevation.getHeight());
+            sliderElevation.localToStageCoordinates(unpinAnchor);
+            float x = unpinAnchor.x + (sliderElevation.getWidth() - buttonUnpin.getWidth()) / 2;
+            float y = unpinAnchor.y + borderPad;
+            if (buttonUnpin.getX() != x || buttonUnpin.getY() != y) {
+                buttonUnpin.setPosition(x, y);
+            }
         }
 
         public void setRefreshNeeded(boolean refreshNeeded) {

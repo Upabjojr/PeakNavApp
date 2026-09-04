@@ -1235,6 +1235,7 @@ public class MapViewerScreen implements Screen {
 
 		stage.addActor(tableTool.getTable());
 		stage.addActor(tableTool.tableCameraControl);
+		stage.addActor(tableTool.buttonUnpin);
 		stage.addActor(tableCenter);
 
 		labelLoading = new LabelLoading(widgetUnitStep);
