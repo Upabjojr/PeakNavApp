@@ -4,7 +4,8 @@ import java.util.Arrays;
 
 /**
  * Traces the skyline - the boundary between sky and ground - across a photograph, one row
- * per column. Classical image processing only, no learned model:
+ * per column. Classical image processing plus, when the build ships one, a small learned
+ * pixel classifier ({@link SkyClassifier}):
  *
  * <ol>
  * <li>a gradient magnitude image (Sobel on a blurred luminance and on a blue-yellow chroma,
@@ -14,8 +15,13 @@ import java.util.Arrays;
  *     gradient threshold the border is the first strong edge down every column, and the
  *     threshold kept is the one whose sky and ground halves are most distinct in colour
  *     relative to how varied each is;</li>
- * <li>a Gaussian colour model of each half from that guess, giving every pixel a sky
- *     likelihood;</li>
+ * <li>a sky probability for every pixel - from {@link SkyClassifier}'s trees over
+ *     {@link SkyFeatures} (colour, texture, edge softness, contrast with the sky above),
+ *     which is what separates snow from cloud and a hazy ridge from the sky; or, in a
+ *     build without the model, from a Gaussian colour model of each half of that guess;</li>
+ * <li>with the classifier, a second forest ({@link BoundaryFeatures}) scoring every
+ *     position as "the skyline passes here" from what lies just above and below it,
+ *     blended into the edge term;</li>
  * <li>a minimum-cost path through the columns (Viterbi) that likes strong edges, dislikes
  *     non-sky pixels above it and sky pixels just below it, and pays for vertical jumps -
  *     an L1 penalty, which the two-pass min-convolution applies in linear time.</li>
@@ -38,8 +44,24 @@ public final class SkylineExtractor {
     private static final float REGION_WEIGHT = 1.0f;
     private static final float REGION_PIXELS = 0.05f;   // fraction of the image height
     private static final float JUMP_PENALTY = 0.04f;
-    /** Depth of the band below a candidate row checked for sky-coloured pixels, as a fraction of height. */
-    private static final float BELOW_BAND = 0.15f;
+    /**
+     * Depth of the band below a candidate row checked for sky pixels, as a fraction of
+     * height, without the boundary model: the whole picture, which with the pixel
+     * classifier's probabilities is what keeps the path off a cloud (there is sky under a
+     * cloud, never under a ridge).
+     */
+    private static final float BELOW_BAND = 1.0f;
+    // With the boundary model the path cost is the one tuned on hand-traced skylines
+    // (study/ALGORITHM.md section 4): the edge is 0.7 boundary log-probability + 0.3
+    // gradient with weight 2, the region terms saturate at 0.5 so a blob of misread sky
+    // above the ridge cannot outweigh the ridge's edge, the band below is 0.15 H again,
+    // and the jump penalty is 0.3 per pixel.
+    private static final float BOUNDARY_MIX = 0.7f;
+    private static final float BOUNDARY_EDGE_WEIGHT = 2.0f;
+    private static final float BOUNDARY_REGION_CAP = 0.5f;
+    private static final float BOUNDARY_BELOW_BAND = 0.15f;
+    private static final float BOUNDARY_JUMP_PENALTY = 0.3f;
+    private static final double BOUNDARY_FLOOR = 0.02;
     /** Discourages the trivial "everything is ground" path unless the image supports it. */
     private static final float TOP_ROW_PENALTY = 0.5f;
     private static final int THRESHOLD_STEPS = 24;
@@ -51,16 +73,30 @@ public final class SkylineExtractor {
         public final float[] confidence;
         public final int width;
         public final int height;
+        /** Per-pixel probability of sky the path was traced through, for inspection; may be null. */
+        public final float[] skyProbability;
 
-        Skyline(float[] rows, float[] confidence, int width, int height) {
+        Skyline(float[] rows, float[] confidence, int width, int height, float[] skyProbability) {
             this.rows = rows;
             this.confidence = confidence;
             this.width = width;
             this.height = height;
+            this.skyProbability = skyProbability;
         }
     }
 
+    /**
+     * Whether to use the shipped {@link SkyClassifier} for the per-pixel sky probability;
+     * off, the colour-model fallback runs. {@code -Dpeaknav.skyline.classifier=false} turns
+     * it off for benchmark comparisons.
+     */
+    static volatile boolean useClassifier = !"false".equals(System.getProperty("peaknav.skyline.classifier"));
+
     private SkylineExtractor() {
+    }
+
+    public static void setUseClassifier(boolean on) {
+        useClassifier = on;
     }
 
     /**
@@ -140,23 +176,52 @@ public final class SkylineExtractor {
             // degenerate image: no usable split; report a flat, unconfident skyline
             float[] rows = new float[width];
             Arrays.fill(rows, height / 2f);
-            return new Skyline(rows, new float[width], width, height);
+            return new Skyline(rows, new float[width], width, height, null);
         }
 
-        // 3. sky likelihood from the Gaussian colour models of the two halves
-        double[] invSky = invert3(bestStats, 3);
-        double[] invGround = invert3(bestStats, 15);
-        float[] pSky = new float[n];
-        for (int i = 0; i < n; i++) {
-            double ms = mahalanobis(r[i], g[i], b[i], bestStats, 0, invSky);
-            double mg = mahalanobis(r[i], g[i], b[i], bestStats, 12, invGround);
-            double es = Math.exp(-0.5 * ms), eg = Math.exp(-0.5 * mg);
-            pSky[i] = (float) (es / (es + eg + 1e-9));
+        // 3. sky probability per pixel: the learned classifier when the build ships one,
+        //    else the Gaussian colour models of the two halves
+        float[] pSky;
+        float[][] planes = null;
+        SkyClassifier classifier = useClassifier ? SkyClassifier.shipped() : null;
+        if (classifier != null) {
+            planes = SkyFeatures.compute(r, g, b, width, height);
+            pSky = classifier.probabilities(planes, n);
+        } else {
+            double[] invSky = invert3(bestStats, 3);
+            double[] invGround = invert3(bestStats, 15);
+            pSky = new float[n];
+            for (int i = 0; i < n; i++) {
+                double ms = mahalanobis(r[i], g[i], b[i], bestStats, 0, invSky);
+                double mg = mahalanobis(r[i], g[i], b[i], bestStats, 12, invGround);
+                double es = Math.exp(-0.5 * ms), eg = Math.exp(-0.5 * mg);
+                pSky[i] = (float) (es / (es + eg + 1e-9));
+            }
         }
 
-        // 4. path cost: -edge + region terms, then Viterbi with an L1 jump penalty
+        // 4. the edge term: the gradient alone, or blended with the boundary model's
+        //    log-probability that the skyline passes through each pixel
+        float[] edge = normalised;
+        float[] boundaryProbability = null;
+        float edgeWeight = EDGE_WEIGHT, jump = JUMP_PENALTY, cap = 0, bandFraction = BELOW_BAND;
+        SkyClassifier boundary = planes != null ? SkyClassifier.shippedBoundary() : null;
+        if (boundary != null) {
+            boundaryProbability = boundary.probabilities(BoundaryFeatures.compute(planes, pSky, width, height), n);
+            edge = new float[n];
+            double scale = -Math.log(BOUNDARY_FLOOR);
+            for (int i = 0; i < n; i++) {
+                double eq = 1 + Math.log(boundaryProbability[i] + BOUNDARY_FLOOR) / scale;   // in (0, 1]
+                edge[i] = (float) (BOUNDARY_MIX * eq + (1 - BOUNDARY_MIX) * normalised[i]);
+            }
+            edgeWeight = BOUNDARY_EDGE_WEIGHT;
+            jump = BOUNDARY_JUMP_PENALTY;
+            cap = BOUNDARY_REGION_CAP;
+            bandFraction = BOUNDARY_BELOW_BAND;
+        }
+
+        // 5. path cost: -edge + region terms, then Viterbi with an L1 jump penalty
         float[] cost = new float[n];
-        int band = Math.max(2, (int) (BELOW_BAND * height));
+        int band = Math.max(2, (int) (bandFraction * height));
         float perPixel = 1f / (REGION_PIXELS * height);
         float[] cumNonSky = new float[height + 1];
         float[] cumSky = new float[height + 1];
@@ -172,21 +237,26 @@ public final class SkylineExtractor {
                 float above = cumNonSky[y] * perPixel;                       // non-sky in rows [0, y)
                 int end = Math.min(height - 1, y + band);
                 float below = (cumSky[end] - cumSky[y]) * perPixel;          // sky in rows [y, end)
-                float c = -EDGE_WEIGHT * normalised[y * width + x] + REGION_WEIGHT * (above + below);
+                float region = REGION_WEIGHT * (above + below);
+                if (cap > 0) {
+                    region = Math.min(region, cap);
+                }
+                float c = -edgeWeight * edge[y * width + x] + region;
                 if (y == 0) {
                     c += TOP_ROW_PENALTY;
                 }
                 cost[y * width + x] = c;
             }
         }
-        int[] path = viterbi(cost, width, height, JUMP_PENALTY);
+        int[] path = viterbi(cost, width, height, jump);
         float[] rows = new float[width];
         float[] confidence = new float[width];
         for (int x = 0; x < width; x++) {
             rows[x] = path[x];
-            confidence[x] = normalised[path[x] * width + x];
+            confidence[x] = boundaryProbability != null
+                    ? boundaryProbability[path[x] * width + x] : normalised[path[x] * width + x];
         }
-        return new Skyline(rows, confidence, width, height);
+        return new Skyline(rows, confidence, width, height, pSky);
     }
 
     /**
@@ -305,6 +375,39 @@ public final class SkylineExtractor {
     }
 
     static float[] gaussianBlur(float[] src, int width, int height, double sigma) {
+        return gaussianBlur(src, width, height, sigma, sigma);
+    }
+
+    /** Separable Gaussian blur with clamped borders and its own sigma per axis. */
+    static float[] gaussianBlur(float[] src, int width, int height, double sigmaX, double sigmaY) {
+        float[] kx = kernel(sigmaX), ky = kernel(sigmaY);
+        int rx = kx.length / 2, ry = ky.length / 2;
+        float[] tmp = new float[src.length];
+        float[] out = new float[src.length];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                float v = 0;
+                for (int k = -rx; k <= rx; k++) {
+                    int xx = Math.min(width - 1, Math.max(0, x + k));
+                    v += kx[k + rx] * src[y * width + xx];
+                }
+                tmp[y * width + x] = v;
+            }
+        }
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                float v = 0;
+                for (int k = -ry; k <= ry; k++) {
+                    int yy = Math.min(height - 1, Math.max(0, y + k));
+                    v += ky[k + ry] * tmp[yy * width + x];
+                }
+                out[y * width + x] = v;
+            }
+        }
+        return out;
+    }
+
+    private static float[] kernel(double sigma) {
         int radius = (int) Math.ceil(3 * sigma);
         float[] kernel = new float[2 * radius + 1];
         float sum = 0;
@@ -315,29 +418,7 @@ public final class SkylineExtractor {
         for (int i = 0; i < kernel.length; i++) {
             kernel[i] /= sum;
         }
-        float[] tmp = new float[src.length];
-        float[] out = new float[src.length];
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                float v = 0;
-                for (int k = -radius; k <= radius; k++) {
-                    int xx = Math.min(width - 1, Math.max(0, x + k));
-                    v += kernel[k + radius] * src[y * width + xx];
-                }
-                tmp[y * width + x] = v;
-            }
-        }
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                float v = 0;
-                for (int k = -radius; k <= radius; k++) {
-                    int yy = Math.min(height - 1, Math.max(0, y + k));
-                    v += kernel[k + radius] * tmp[yy * width + x];
-                }
-                out[y * width + x] = v;
-            }
-        }
-        return out;
+        return kernel;
     }
 
     /** Sobel gradient magnitude with clamped borders. */

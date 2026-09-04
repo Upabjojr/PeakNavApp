@@ -137,7 +137,8 @@ public final class SkylineBenchmark {
                     + "<style>body{font-family:sans-serif;background:#222;color:#ddd}figure{display:inline-block;margin:8px}"
                     + "img{max-width:480px;display:block}figcaption{font-size:12px;max-width:480px}"
                     + ".bad{color:#f66}.ok{color:#8f8}</style>"
-                    + "<p>red = skyline the extractor traced; green = ridge of the matched pose; blue = ridge of the truth pose (when known)</p>\n");
+                    + "<p>red = skyline the extractor traced; green = ridge of the matched pose; blue = ridge of the truth pose (when known);"
+                    + " second picture = the classifier's sky probability (cyan sky, magenta ground, grey undecided)</p>\n");
         }
         for (Map<String, Object> e : entries) {
             if (results.size() >= limit) {
@@ -149,7 +150,7 @@ public final class SkylineBenchmark {
                 out.println(photo.getName() + ": no elevation tile, skipped");
                 continue;
             }
-            BufferedImage image = ImageIO.read(photo);
+            BufferedImage image = readOriented(photo);
             if (image == null) {
                 out.println(photo.getName() + ": unreadable, skipped");
                 continue;
@@ -187,9 +188,15 @@ public final class SkylineBenchmark {
                 File png = new File(annotate, stem + ".png");
                 Float[] truthPose = truthPose(e, w, h);
                 writeAnnotated(png, rgb, w, h, skyline, matcher, match, truthPose);
+                String probability = "";
+                if (skyline.skyProbability != null) {
+                    File sky = new File(annotate, stem + "_sky.png");
+                    writeProbability(sky, rgb, w, h, skyline.skyProbability);
+                    probability = "<img src=\"" + sky.getName() + "\">";
+                }
                 index.append(String.format(Locale.ENGLISH,
-                        "<figure><img src=\"%s\"><figcaption class=\"%s\">%s<br>truth %.1f, got %.1f (err %.1f), %s</figcaption></figure>\n",
-                        png.getName(), err < 10 ? "ok" : "bad", stem, truth, match.bearingDeg, err, match));
+                        "<figure><img src=\"%s\">%s<figcaption class=\"%s\">%s<br>truth %.1f, got %.1f (err %.1f), %s</figcaption></figure>\n",
+                        png.getName(), probability, err < 10 ? "ok" : "bad", stem, truth, match.bearingDeg, err, match));
             }
         }
         if (annotate != null) {
@@ -234,6 +241,22 @@ public final class SkylineBenchmark {
         ImageIO.write(img, "png", png);
     }
 
+    /** The photo tinted by the sky probability: cyan where sure it is sky, magenta where sure it is not. */
+    private static void writeProbability(File png, int[] rgb, int w, int h, float[] p) throws IOException {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        int[] out = new int[w * h];
+        for (int i = 0; i < w * h; i++) {
+            int r = (rgb[i] >> 16) & 0xFF, g = (rgb[i] >> 8) & 0xFF, b = rgb[i] & 0xFF;
+            int grey = (r * 299 + g * 587 + b * 114) / 1000;
+            float q = p[i];
+            int tr = Math.round(255 * (1 - q)), tg = Math.round(255 * q), tb = 255;
+            int rr = (grey + tr) / 2, gg = (grey + tg) / 2, bb = (grey + tb) / 2;
+            out[i] = (rr << 16) | (gg << 8) | bb;
+        }
+        img.setRGB(0, 0, w, h, out, 0, w);
+        ImageIO.write(img, "png", png);
+    }
+
     private static void drawRows(Graphics2D g, float[] rows, java.awt.Color color, float stroke) {
         g.setColor(color);
         g.setStroke(new java.awt.BasicStroke(stroke));
@@ -265,6 +288,41 @@ public final class SkylineBenchmark {
             return (float) Math.toDegrees(2 * Math.atan(Math.tan(halfDiag) * h / Math.hypot(w, h)));
         }
         return null;
+    }
+
+    /**
+     * Reads a photo the way it is meant to be seen: ImageIO ignores the EXIF orientation
+     * tag, so a picture stored on its side (as cameras do) is turned upright here, as the
+     * app does with {@code PeakNavUtils.applyExifOrientation}.
+     */
+    public static BufferedImage readOriented(File photo) throws IOException {
+        byte[] bytes = java.nio.file.Files.readAllBytes(photo.toPath());
+        BufferedImage image = ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+        if (image == null) {
+            return null;
+        }
+        int orientation = com.peaknav.utils.ExifReader.extractOrientation(bytes);
+        if (orientation <= 1 || orientation > 8) {
+            return image;
+        }
+        int w = image.getWidth(), h = image.getHeight();
+        boolean quarter = orientation >= 5;
+        BufferedImage out = new BufferedImage(quarter ? h : w, quarter ? w : h, BufferedImage.TYPE_INT_RGB);
+        java.awt.geom.AffineTransform t = new java.awt.geom.AffineTransform();
+        switch (orientation) {
+            case 2: t.translate(w, 0); t.scale(-1, 1); break;
+            case 3: t.translate(w, h); t.rotate(Math.PI); break;
+            case 4: t.translate(0, h); t.scale(1, -1); break;
+            case 5: t.rotate(Math.PI / 2); t.scale(1, -1); break;
+            case 6: t.translate(h, 0); t.rotate(Math.PI / 2); break;
+            case 7: t.translate(h, 0); t.rotate(Math.PI / 2); t.translate(w, 0); t.scale(-1, 1); break;
+            case 8: t.translate(0, w); t.rotate(-Math.PI / 2); break;
+            default: break;
+        }
+        Graphics2D g = out.createGraphics();
+        g.drawImage(image, t, null);
+        g.dispose();
+        return out;
     }
 
     /** Downscales to {@code width} pixels wide (area averaging) and packs RGB ints. */

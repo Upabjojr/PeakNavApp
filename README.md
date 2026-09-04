@@ -183,8 +183,9 @@ pin and pinching zooms with the pin held, which is how a summit is fixed first a
 lined up by hand (another long press releases the pin). A button on the photo's control
 bar does the same on demand - at the current position, whether or not the match is
 sure - for photos without a location, a moved view, or a suggestion that never came.
-Classical image processing and plain optimisation, no neural network; the code is
-`com.peaknav.skyline` in `core`.
+Classical image processing, a small learned pixel classifier (a forest of decision
+trees, no neural network) and plain optimisation; the code is `com.peaknav.skyline` in
+`core`.
 
 How well it works is measured on photographs with a known camera heading, which
 `tools/skyline_dataset.py` gathers - from [GeoPose3K](https://cphoto.fit.vutbr.cz/geoPose3K/)
@@ -215,10 +216,46 @@ adb exec-out run-as com.peaknav.debug tar c files/skyline_samples > samples.tar
 On the desktop the button appears with `-Dpeaknav.debug=true` and writes to
 `~/.peaknav/skyline_samples/`.
 
-On GeoPose3K's hand-annotated photos the bearing comes out within 10 degrees for about
-half of them, and when the matcher calls a match confident - the only case in which the
-app asks - it is right 95% of the time. The elevation tiles of the photographed areas
-must be on disk (the app's own `~/.peaknav` cache, or the Python package's).
+On GeoPose3K's 339 hand-posed photos the bearing comes out within 10 degrees for 62% of
+them (49% with the classical extractor), and when the matcher calls a match confident -
+the only case in which the app asks - it is right 97% of the time, for 98 of the 339
+photos (was 70). On the hand-traced skylines of the CH1 and web sets the whole skyline
+is within 5 px of the truth for 94% and 95% of the pictures (51% and 90% classical); the
+residual misses are haze, where a faint far range stands above a stronger near ridge.
+The elevation tiles of the photographed areas must be on disk (the app's own
+`~/.peaknav` cache, or the Python package's).
+
+The hard part is not the matching but telling sky from ground in the picture - snow from
+cloud, a hazy far ridge from the sky it stands against. Two gradient-boosted forests do
+that (`SkyClassifier`, plain threshold comparisons, shipped as resources next to it):
+the first gives every pixel a sky probability from 42 hand-designed features
+(`SkyFeatures`: colour, position, edges at several scales and relative to the local
+contrast, texture, the pixel against a per-column model of the sky, and what lies above
+it in its column); the second scores every position as "the skyline passes here" from
+what lies just above and below it (`BoundaryFeatures`). The path search then blends the
+boundary probability with the image gradient and keeps the sky/ground region terms
+capped, so a glare or cloud blob above the ridge cannot outweigh the ridge's edge. The
+design and its constants come from the skyline study kept with the dataset
+(`study/ALGORITHM.md`, `study/REPORT.md`). Retraining uses the app's own feature code
+to write the rows, so training and inference cannot disagree:
+
+```bash
+./gradlew :core:skylineTrainingDump --args="--ridge geopose3k/manifest.json ridge.jsonl"   # truth ridges, once
+./gradlew :core:skylineTrainingDump --args="--from-ridge ridge.jsonl rows.csv.gz --exclude-manifest geopose3k_manual/manifest.json --exclude-prefix eth_ch1_"
+python3 tools/skyline_train.py rows.csv.gz --trees 300 -o core/src/main/resources/com/peaknav/skyline/sky_model.bin --check check.csv
+./gradlew :core:skylineTrainingDump --args="--check core/src/main/resources/com/peaknav/skyline/sky_model.bin check.csv"
+./gradlew :core:skylineTrainingDump --args="--boundary-rows core/src/main/resources/com/peaknav/skyline/sky_model.bin ridge.jsonl rows2.csv.gz --exclude-manifest geopose3k_manual/manifest.json --exclude-prefix eth_ch1_"
+python3 tools/skyline_train.py rows2.csv.gz --trees 300 -o core/src/main/resources/com/peaknav/skyline/boundary_model.bin
+```
+
+The hand-posed photos and the CH1 pictures are kept out of training: they are the test
+sets. Rows can also come from pictures with a sky mask
+(`--mask-set dir` with `images/` and `ground_truth/<stem>-mask.png`).
+
+The extractor alone is scored on hand-traced skylines (the CH1, Basalt Hills and Web sets
+of Ahmad et al., IJCNN 2021) by `./gradlew :core:skylineMaskEval --args="[--annotate out/] dataset/CH1/cvg ..."`,
+which counts, per picture, the columns where the traced line is grossly off - on a cloud
+or a snow-line rather than the ridge - since a few pixels either way do not matter.
 
 ### Desktop installers
 

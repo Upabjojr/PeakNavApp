@@ -120,7 +120,39 @@ tasks.register('skylineBenchmark', JavaExec) {
     classpath = sourceSets.tools.runtimeClasspath
     mainClass = 'com.peaknav.tools.SkylineBenchmark'
     maxHeapSize = '3g'   // a horizon touches up to nine 4096x4096 elevation tiles
+    // -Dpeaknav.skyline.classifier=false compares against the colour-model fallback
+    systemProperties System.properties.findAll { it.key.toString().startsWith('peaknav.') }
     workingDir = rootProject.projectDir
+}
+
+/**
+ * Writes the sky/ground training rows for tools/skyline_train.py from a dataset manifest
+ * with full camera poses (GeoPose3K), or checks an exported model against the trainer:
+ *
+ *   ./gradlew :core:skylineTrainingDump --args="manifest.json rows.csv.gz"
+ *   ./gradlew :core:skylineTrainingDump --args="--check sky_model.bin check.csv"
+ */
+tasks.register('skylineTrainingDump', JavaExec) {
+    group = 'peaknav'
+    description = 'Dumps per-pixel sky/ground training rows for the skyline classifier.'
+    classpath = sourceSets.tools.runtimeClasspath
+    mainClass = 'com.peaknav.tools.SkylineTrainingDump'
+    maxHeapSize = '3g'
+    workingDir = rootProject.projectDir
+}
+
+/**
+ * Scores the skyline extractor alone against hand-traced skylines (Ahmad et al.'s CH1,
+ * Basalt and Web sets): ./gradlew :core:skylineMaskEval --args="[--annotate DIR] dataset/CH1/cvg ..."
+ */
+tasks.register('skylineMaskEval', JavaExec) {
+    group = 'peaknav'
+    description = 'Scores the skyline extractor against hand-traced skylines.'
+    classpath = sourceSets.tools.runtimeClasspath
+    mainClass = 'com.peaknav.tools.SkylineMaskEval'
+    maxHeapSize = '2g'
+    workingDir = rootProject.projectDir
+    systemProperties System.properties.findAll { it.key.toString().startsWith('peaknav.') }
 }
 
 tasks.register('buildGeonamesIndex', JavaExec) {
