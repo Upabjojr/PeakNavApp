@@ -210,6 +210,7 @@ public class WidgetGetter {
         /** Releases the photo pin; above the elevation bar, only while a point is pinned. */
         public final Button buttonUnpin;
         private final Cell<Button> unpinCell;
+        private final Table unpinColumn;
         private boolean refreshNeeded;
 
         TableTool() {
@@ -254,6 +255,7 @@ public class WidgetGetter {
             // One column with the elevation bar, so the button sits right on top of the
             // bar wherever the bar's expanding cell centres it.
             Table leftColumn = new Table();
+            unpinColumn = leftColumn;
             unpinCell = leftColumn.add(buttonUnpin).width(widgetUnitStep).height(0).left();
             leftColumn.row();
 
@@ -371,7 +373,10 @@ public class WidgetGetter {
             }
             buttonUnpin.setVisible(pinned);
             unpinCell.height(pinned ? widgetUnitStep : 0).padBottom(pinned ? borderPad : 0);
-            table.invalidateHierarchy();
+            // the cell belongs to the column table: that is what must lay out again (and
+            // its parents with it) - invalidating the outer table alone left the button
+            // at zero height
+            unpinColumn.invalidateHierarchy();
         }
 
         public void setRefreshNeeded(boolean refreshNeeded) {
