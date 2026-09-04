@@ -60,6 +60,9 @@ public final class PhotoSkylineAligner {
     private static final long RETRY_MILLIS = 2500;
 
     /** A loaded photograph waiting to be matched. */
+    /** Within this (about a metre) a cached horizon is the horizon of the current spot. */
+    private static final double SAME_SPOT_DEG = 1e-5;
+
     private static final class Pending {
         final int[] rgb;
         final int width;
@@ -73,6 +76,11 @@ public final class PhotoSkylineAligner {
         double longitude = Double.NaN;
         boolean started;
         volatile SkylineMatcher.Match lastMatch;
+        /** The skyline traced in this photo: depends on the picture alone, so computed once. */
+        volatile SkylineExtractor.Skyline skyline;
+        /** The horizon of the last match and where it was computed, reused by {@link #saveSample}. */
+        volatile TerrainHorizon horizon;
+        volatile double horizonLat, horizonLon, horizonEye;
 
         Pending(int[] rgb, int width, int height, int photoWidth, int photoHeight, float verticalFovDeg,
                 byte[] bytes) {
@@ -275,8 +283,10 @@ public final class PhotoSkylineAligner {
      *   20260904_213012/photo.jpg     the file as it was loaded, EXIF and all
      *   20260904_213012/view.png      the view as the app drew it: the photo with the
      *                                 terrain outlines over it
-     *   20260904_213012/sample.json   the pose in full, the horizon, the projected ridge,
-     *                                 the extracted skyline and the last automatic match
+     *   20260904_213012/sample.json   the pose in full and the last automatic match; the
+     *                                 horizon, projected ridge and extracted skyline too when
+     *                                 a match was run at this spot (they are not recomputed:
+     *                                 saving stays quick, the benchmark rebuilds them anyway)
      * </pre>
      *
      * The pose is read on the render thread; the files are written on a worker.
@@ -323,8 +333,15 @@ public final class PhotoSkylineAligner {
                             if (frameReady.await(5, java.util.concurrent.TimeUnit.SECONDS) && frame.get() != null) {
                                 Pixmap f = frame.get();
                                 try {
-                                    com.badlogic.gdx.graphics.PixmapIO.writePNG(
-                                            Gdx.files.absolute(new java.io.File(dir, "view.png").getAbsolutePath()), f);
+                                    // fastest deflate: a phone screen is a few megabytes and the
+                                    // default level costs a second or two for a smaller file nobody needs
+                                    com.badlogic.gdx.graphics.PixmapIO.PNG png = new com.badlogic.gdx.graphics.PixmapIO.PNG();
+                                    try {
+                                        png.setCompression(java.util.zip.Deflater.BEST_SPEED);
+                                        png.write(Gdx.files.absolute(new java.io.File(dir, "view.png").getAbsolutePath()), f);
+                                    } finally {
+                                        png.dispose();
+                                    }
                                 } finally {
                                     Gdx.app.postRunnable(new Runnable() {
                                         @Override
@@ -380,10 +397,21 @@ public final class PhotoSkylineAligner {
             }
         }
 
-        TerrainHorizon horizon = TerrainHorizon.compute(LOADED_TERRAIN, lat, lon, aboveGround, HORIZON_BINS);
-        SkylineExtractor.Skyline skyline = SkylineExtractor.extract(p.rgb, p.width, p.height);
-        SkylineMatcher matcher = new SkylineMatcher(horizon, skyline.rows, skyline.confidence, p.width, p.height);
-        float[] ridge = matcher.projectHorizon(bearing, pitch, vfov, 0);
+        // The horizon and the traced skyline go in when they are already known - from a
+        // match at this very spot - and are left out otherwise: saving must be quick, and
+        // the benchmark recomputes both from the photo and the pose anyway.
+        TerrainHorizon horizon = p.horizon;
+        if (horizon != null && (Math.abs(p.horizonLat - lat) > SAME_SPOT_DEG
+                || Math.abs(p.horizonLon - lon) > SAME_SPOT_DEG || Math.abs(p.horizonEye - aboveGround) > 0.5)) {
+            horizon = null;
+        }
+        SkylineExtractor.Skyline skyline = p.skyline;
+        float[] ridge = null;
+        if (horizon != null) {
+            float[] none = new float[p.width];
+            SkylineMatcher matcher = new SkylineMatcher(horizon, none, none, p.width, p.height);
+            ridge = matcher.projectHorizon(bearing, pitch, vfov, 0);
+        }
 
         com.google.gson.JsonObject sample = new com.google.gson.JsonObject();
         sample.addProperty("photo", photoName);
@@ -412,19 +440,25 @@ public final class PhotoSkylineAligner {
             exif.addProperty("verticalFovDeg", p.verticalFovDeg);
         }
         sample.add("exif", exif);
-        com.google.gson.JsonObject hz = new com.google.gson.JsonObject();
-        hz.addProperty("bins", horizon.bins);
-        hz.addProperty("eyeMeters", horizon.eyeMeters);
-        hz.addProperty("coverage", horizon.coverage);
-        hz.add("angleDeg", floats(horizon.angleDeg));
-        hz.add("distanceM", floats(horizon.distanceM));
-        sample.add("horizon", hz);
+        if (horizon != null) {
+            com.google.gson.JsonObject hz = new com.google.gson.JsonObject();
+            hz.addProperty("bins", horizon.bins);
+            hz.addProperty("eyeMeters", horizon.eyeMeters);
+            hz.addProperty("coverage", horizon.coverage);
+            hz.add("angleDeg", floats(horizon.angleDeg));
+            hz.add("distanceM", floats(horizon.distanceM));
+            sample.add("horizon", hz);
+        }
         com.google.gson.JsonObject overlay = new com.google.gson.JsonObject();
         overlay.addProperty("width", p.width);
         overlay.addProperty("height", p.height);
-        overlay.add("ridgeRows", floats(ridge));
-        overlay.add("skylineRows", floats(skyline.rows));
-        overlay.add("skylineConfidence", floats(skyline.confidence));
+        if (ridge != null) {
+            overlay.add("ridgeRows", floats(ridge));
+        }
+        if (skyline != null) {
+            overlay.add("skylineRows", floats(skyline.rows));
+            overlay.add("skylineConfidence", floats(skyline.confidence));
+        }
         sample.add("overlay", overlay);
         if (p.lastMatch != null) {
             com.google.gson.JsonObject m = new com.google.gson.JsonObject();
@@ -602,6 +636,21 @@ public final class PhotoSkylineAligner {
      * loaded far enough (or the photo was replaced meanwhile); the match otherwise, whether
      * confident or not.
      */
+    /** The photo's skyline, traced on first use: the two forests over the whole picture take seconds on a phone. */
+    private static SkylineExtractor.Skyline skylineOf(Pending p) {
+        SkylineExtractor.Skyline skyline = p.skyline;
+        if (skyline == null) {
+            synchronized (p) {
+                skyline = p.skyline;
+                if (skyline == null) {
+                    skyline = SkylineExtractor.extract(p.rgb, p.width, p.height);
+                    p.skyline = skyline;
+                }
+            }
+        }
+        return skyline;
+    }
+
     private static SkylineMatcher.Match match(Pending p, double latitude, double longitude, int attempts)
             throws InterruptedException {
         MapViewerScreen screen = getC().getMapViewerScreen();
@@ -629,10 +678,14 @@ public final class PhotoSkylineAligner {
             getLogger().info(TAG, "terrain never loaded far enough for a skyline match");
             return null;
         }
-        SkylineExtractor.Skyline skyline = SkylineExtractor.extract(p.rgb, p.width, p.height);
+        SkylineExtractor.Skyline skyline = skylineOf(p);
         SkylineMatcher matcher = new SkylineMatcher(horizon, skyline.rows, skyline.confidence, p.width, p.height);
         SkylineMatcher.Match m = Float.isNaN(p.verticalFovDeg) ? matcher.match() : matcher.match(p.verticalFovDeg);
         p.lastMatch = m;
+        p.horizon = horizon;
+        p.horizonLat = latitude;
+        p.horizonLon = longitude;
+        p.horizonEye = eye;
         getLogger().info(TAG, String.format(java.util.Locale.ENGLISH,
                 "photo skyline at %.5f,%.5f eye %.0f m, horizon coverage %.2f, %dx%d px: %s",
                 latitude, longitude, eye, horizon.coverage, p.width, p.height, m));
