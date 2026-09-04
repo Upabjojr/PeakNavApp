@@ -119,4 +119,14 @@ public class IOSLoadFactory implements LoadFactory {
     public CrashLogger getCrashLogger(Throwable throwable, String fileNamePrefix) {
         return new CrashLoggerIOS(throwable, fileNamePrefix);
     }
+
+    @Override
+    public boolean isDebugBuild() {
+        return false;
+    }
+
+    @Override
+    public java.io.File getDebugSamplesDir() {
+        return com.badlogic.gdx.Gdx.files.local("skyline_samples").file();
+    }
 }

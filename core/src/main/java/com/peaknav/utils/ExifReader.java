@@ -2,8 +2,10 @@ package com.peaknav.utils;
 
 /**
  * Minimal, dependency-free reader for the bits of JPEG EXIF metadata the app needs:
- * the GPS coordinates a photo was taken at, and its display orientation. Works from the
- * raw image bytes so it can be shared across all platforms (desktop / android / ios).
+ * the GPS coordinates a photo was taken at, its display orientation, and what the skyline
+ * matcher wants to know about the camera - the focal length and, when a phone recorded
+ * one, the compass direction it was pointing. Works from the raw image bytes so it can be
+ * shared across all platforms (desktop / android / ios).
  *
  * Only the handful of tags required are parsed; anything unexpected or malformed makes
  * a reader return a safe default ({@code null} / orientation 1) rather than throw.
@@ -22,6 +24,11 @@ public final class ExifReader {
     private static final int TAG_GPS_LAT = 0x0002;
     private static final int TAG_GPS_LON_REF = 0x0003;
     private static final int TAG_GPS_LON = 0x0004;
+    private static final int TAG_GPS_IMG_DIRECTION_REF = 0x0010;
+    private static final int TAG_GPS_IMG_DIRECTION = 0x0011;
+    private static final int TAG_EXIF_IFD = 0x8769;
+    private static final int TAG_FOCAL_LENGTH = 0x920A;
+    private static final int TAG_FOCAL_LENGTH_35MM = 0xA405;
 
     /** The EXIF "normal" orientation: no rotation or flip needed. */
     public static final int ORIENTATION_NORMAL = 1;
@@ -72,6 +79,91 @@ public final class ExifReader {
         } catch (Throwable t) {
             return ORIENTATION_NORMAL;
         }
+    }
+
+    /**
+     * What the EXIF block says about the camera. Every field is {@code NaN} when the tag is
+     * absent or unreadable.
+     */
+    public static final class CameraInfo {
+        /** Focal length in millimetres, as the lens reports it. */
+        public final float focalLengthMm;
+        /** Focal length converted to a 35 mm (36x24 mm frame) equivalent - the field of view. */
+        public final float focalLength35mm;
+        /**
+         * Compass bearing the camera pointed at, degrees clockwise from north (magnetic
+         * readings are taken as they are; the difference is a few degrees). Phones write it,
+         * cameras rarely do.
+         */
+        public final float imageDirectionDeg;
+
+        CameraInfo(float focalLengthMm, float focalLength35mm, float imageDirectionDeg) {
+            this.focalLengthMm = focalLengthMm;
+            this.focalLength35mm = focalLength35mm;
+            this.imageDirectionDeg = imageDirectionDeg;
+        }
+
+        /**
+         * The vertical field of view of an image, degrees, from the 35 mm-equivalent focal
+         * length (which is defined on the frame diagonal, 43.27 mm, so it does not depend on
+         * the sensor's aspect ratio) - or {@code NaN} when there is no such focal length.
+         */
+        public float verticalFovDeg(int width, int height) {
+            if (Float.isNaN(focalLength35mm) || focalLength35mm <= 0 || width <= 0 || height <= 0) {
+                return Float.NaN;
+            }
+            double halfDiagonal = Math.atan(43.27 / 2 / focalLength35mm);
+            return (float) Math.toDegrees(2 * Math.atan(Math.tan(halfDiagonal) * height
+                    / Math.hypot(width, height)));
+        }
+    }
+
+    /** Reads the camera tags; never throws, absent tags come back as {@code NaN}. */
+    public static CameraInfo extractCameraInfo(byte[] jpeg) {
+        float focal = Float.NaN, focal35 = Float.NaN, direction = Float.NaN;
+        int tiff = tiffStartOf(jpeg);
+        if (tiff >= 0) {
+            try {
+                Boolean little = endianness(jpeg, tiff);
+                if (little != null) {
+                    int ifd0 = tiff + (int) read32(jpeg, tiff + 4, little);
+                    int exifOffset = findEntryValue(jpeg, ifd0, TAG_EXIF_IFD, little);
+                    if (exifOffset > 0) {
+                        int exif = tiff + exifOffset;
+                        focal = (float) findRationalValue(jpeg, tiff, exif, TAG_FOCAL_LENGTH, little);
+                        int f35 = findShortValue(jpeg, exif, TAG_FOCAL_LENGTH_35MM, little);
+                        if (f35 > 0) {
+                            focal35 = f35;
+                        }
+                    }
+                    int gpsOffset = findEntryValue(jpeg, ifd0, TAG_GPS_IFD, little);
+                    if (gpsOffset > 0) {
+                        double dir = findRationalValue(jpeg, tiff, tiff + gpsOffset, TAG_GPS_IMG_DIRECTION, little);
+                        if (!Double.isNaN(dir) && dir >= 0 && dir <= 360) {
+                            direction = (float) (dir % 360.0);
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                // Malformed metadata: keep whatever was read before the damage.
+            }
+        }
+        return new CameraInfo(focal, focal35, direction);
+    }
+
+    /** The value of a single RATIONAL entry (stored by offset), or NaN if absent/degenerate. */
+    private static double findRationalValue(byte[] d, int tiff, int ifd, int tag, boolean little) {
+        int count = read16(d, ifd, little);
+        for (int i = 0; i < count; i++) {
+            int entry = ifd + 2 + i * 12;
+            if (read16(d, entry, little) == tag) {
+                int base = tiff + (int) read32(d, entry + 8, little);
+                long num = read32(d, base, little);
+                long den = read32(d, base + 4, little);
+                return den == 0 ? Double.NaN : (double) num / den;
+            }
+        }
+        return Double.NaN;
     }
 
     /** Validates the JPEG/Exif header and returns the TIFF start offset, or -1. */

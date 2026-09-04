@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * Sends the app's snapshots to a file instead of to the share dialog.
  *
  * <p>{@code MapViewerScreen} finishes a snapshot by calling
- * {@code NativeScreenCaller.shareSnapshot(Pixmap)}. On desktop that opens a save dialog and
+ * {@code NativeScreenCaller.shareSnapshot(Pixmap, SnapshotInfo)}. On desktop that opens a save dialog and
  * waits for a person. Swapping in this subclass leaves the whole snapshot path untouched -
  * the flag, the moment it is taken in the frame, the crop - and only redirects where the
  * finished image ends up.
@@ -151,7 +151,7 @@ final class FileSnapshotWriter extends NativeScreenCallerDesktop {
     }
 
     @Override
-    public void shareSnapshot(Pixmap pixmap) {
+    public void shareSnapshot(Pixmap pixmap, com.peaknav.utils.SnapshotInfo info) {
         // Called on one of the app's generic executor threads, not the render thread.
         CountDownLatch latch = pending.getAndSet(null);
         File output = target.getAndSet(null);
@@ -168,7 +168,7 @@ final class FileSnapshotWriter extends NativeScreenCallerDesktop {
             // The same method the share button uses: it takes the bottom-up RGBA8888
             // pixmap straight from glReadPixels, flips the rows and writes via ImageIO.
             // Reimplementing any of that here is how the images came out upside down.
-            savePixmapToFile(pixmap, output, jpeg);
+            savePixmapToFile(pixmap, output, jpeg, info);
         } catch (Throwable t) {
             failure.set(t);
         } finally {

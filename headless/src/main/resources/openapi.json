@@ -616,6 +616,127 @@
           }
         }
       }
+    },
+    "/photo": {
+      "post": {
+        "summary": "Put a photograph behind the terrain",
+        "description": "As the app's gallery button: the picture is shown behind the terrain, drawn as outlines over it, EXIF orientation honoured. With go_to_exif (default true) and a GPS position in the file the viewpoint moves there first, downloading and waiting as /position does when the two timeouts are given. Then POST /photo/match to point the camera the way the photo looks, and GET /frame for the picture with the terrain's labels over it - it is cropped to the photo's drawn size and carries the pose in its EXIF block.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "A JPEG or PNG file the renderer's process can read."
+                  },
+                  "image_base64": {
+                    "type": "string",
+                    "description": "The JPEG or PNG bytes inline, base64."
+                  },
+                  "go_to_exif": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "download_timeout_ms": {
+                    "type": "integer"
+                  },
+                  "await_tiles_ms": {
+                    "type": "integer"
+                  },
+                  "load_timeout_ms": {
+                    "type": "integer",
+                    "default": 60000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "{ok, width, height, vertical_fov_deg|null (from the EXIF focal length), location {lat, lon}|null, moved, downloaded, quiet}"
+          },
+          "400": {
+            "description": "Neither path nor image_base64, or an unreadable picture"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Take the photograph down",
+        "responses": {
+          "200": {
+            "description": "Removed"
+          }
+        }
+      }
+    },
+    "/photo/match": {
+      "post": {
+        "summary": "Match the photo's skyline and turn the camera",
+        "description": "Runs the skyline matcher for the loaded photo against the terrain around the current position and turns the camera to the best pose, confident or not - the response says which. Blocks for the matching (a few seconds) and the turn.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "attempts": {
+                    "type": "integer",
+                    "default": 3,
+                    "description": "Retries a few seconds apart while the terrain is still streaming in."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "{ok, matched, bearing_deg, pitch_deg, vertical_fov_deg, roll_deg, cost, ratio, relief_deg, confident} - or matched false with an error"
+          },
+          "400": {
+            "description": "No photo loaded"
+          }
+        }
+      }
+    },
+    "/photo/overlay": {
+      "post": {
+        "summary": "How the terrain is drawn over the photo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "outline_alpha": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Opacity of the terrain outlines (the photo bar's slider)."
+                  },
+                  "terrain_alpha": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Opacity of the rendered terrain over the photo; 0 draws outlines only."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Applied"
+          }
+        }
+      }
     }
   }
 }

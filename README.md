@@ -161,7 +161,12 @@ The same jar is attached to every [GitHub release](https://github.com/Upabjojr/P
 as `peaknav-headless-<version>.jar`, so rendering from a script does not require building
 the project. It still needs a display connection (the window is created hidden, but GL
 needs one), and `--serve [port]` starts a REST server describing itself at
-`/openapi.json`, so it can be driven from Python — or anything that speaks HTTP. Given
+`/openapi.json`, so it can be driven from Python — or anything that speaks HTTP. The
+server also tags photographs the way the app does: `POST /photo` puts a picture behind
+the terrain (and moves to its EXIF position), `POST /photo/match` points the camera by
+its skyline, `POST /photo/overlay` sets how the terrain is drawn over it, and `GET
+/frame` then returns the photo with the labels over it and the pose in its EXIF block;
+the Python client wraps the sequence in one `tag_photo()` call. Given
 together with `--frame`, the server runs alongside the frame loop instead of replacing
 it, so a script can watch a video render — `GET /objects` lists the peaks, huts, places
 and area labels the renderer has loaded and which of them are on the current frame
@@ -170,6 +175,101 @@ track on the terrain and `--fov` sets the lens. The
 `peaknav` Python package, described in the [Python package](#python-package) section
 above, is exactly such a client; see [`headless/README.md`](./headless/README.md) for
 the Java API and implementation notes.
+
+### Photo skyline matching
+
+When a photograph is placed behind the terrain (gallery or camera buttons) and the app
+knows where it was taken, it tries to work out which way the camera pointed: the skyline
+traced in the picture is matched against the terrain's horizon around that spot, and if
+the match is unambiguous the app offers to turn its camera to the same bearing, pitch and
+field of view, so the mountains line up with the photo. While a photo is shown, a quick
+double tap pins the terrain under the finger to that spot of the picture (a red ring marks
+it); dragging then turns the terrain around the pin and pinching zooms with the pin held,
+which is how a summit is fixed first and the rest lined up by hand (another double tap, or
+the unpin button that appears above the elevation bar, releases the pin). A single tap does not
+pick a point to fly or orbit to while a photo is up. The terrain is drawn as outlines only
+over the photo; the vertical bar above the share button fades the rendered terrain in, up
+to opaque, and the photo bar at the bottom holds the match button, the outline-visibility
+bar and the X that closes the picture. A picture saved or shared from the app - with or
+without a photo behind the terrain - carries where and how it was taken in its EXIF
+block: position, altitude, the bearing it looks in and its field of view (as a 35 mm
+focal length), so it keeps its place in a photo library and, loaded back into the app,
+lines up again by itself. A button on the photo's control
+bar does the same on demand - at the current position, whether or not the match is
+sure - for photos without a location, a moved view, or a suggestion that never came.
+Classical image processing, a small learned pixel classifier (a forest of decision
+trees, no neural network) and plain optimisation; the code is `com.peaknav.skyline` in
+`core`.
+
+How well it works is measured on photographs with a known camera heading, which
+`tools/skyline_dataset.py` gathers - from [GeoPose3K](https://cphoto.fit.vutbr.cz/geoPose3K/)
+(exact poses, a 38 GB download you point the script at) or from Wikimedia Commons photos
+whose location template carries a `heading:` (downloaded on the spot, with their licences
+recorded) - and the `skylineBenchmark` task reports:
+
+```bash
+python3 tools/skyline_dataset.py commons --category "Mountains of Switzerland" --limit 60
+./gradlew :core:skylineBenchmark --args="~/.peaknav/skyline_dataset/commons/manifest.json"
+./gradlew :core:skylineBenchmark --args="--annotate out/ path/to/manifest.json"   # + one PNG per photo
+```
+
+With `--annotate`, every photo is also written out with the traced skyline in red, the
+matched pose's ridge in green and the truth pose's ridge in blue, plus an `index.html`
+listing them - the quickest way to see where the extractor goes wrong.
+
+Debug builds have one more button on the photo bar: it saves the current photo with the
+camera's pose and the terrain overlay as a dataset sample (`skyline_samples/` in the app's
+private storage, with a `manifest.json` the benchmark reads directly) - line the picture up
+by hand, press it, and the pose at that moment becomes that photo's truth. From a phone:
+
+```bash
+adb exec-out run-as com.peaknav.debug tar c files/skyline_samples > samples.tar
+./gradlew :core:skylineBenchmark --args="skyline_samples/manifest.json"
+```
+
+On the desktop the button appears with `-Dpeaknav.debug=true` and writes to
+`~/.peaknav/skyline_samples/`.
+
+On GeoPose3K's 339 hand-posed photos the bearing comes out within 10 degrees for 62% of
+them (49% with the classical extractor), and when the matcher calls a match confident -
+the only case in which the app asks - it is right 97% of the time, for 98 of the 339
+photos (was 70). On the hand-traced skylines of the CH1 and web sets the whole skyline
+is within 5 px of the truth for 94% and 95% of the pictures (51% and 90% classical); the
+residual misses are haze, where a faint far range stands above a stronger near ridge.
+The elevation tiles of the photographed areas must be on disk (the app's own
+`~/.peaknav` cache, or the Python package's).
+
+The hard part is not the matching but telling sky from ground in the picture - snow from
+cloud, a hazy far ridge from the sky it stands against. Two gradient-boosted forests do
+that (`SkyClassifier`, plain threshold comparisons, shipped as resources next to it):
+the first gives every pixel a sky probability from 42 hand-designed features
+(`SkyFeatures`: colour, position, edges at several scales and relative to the local
+contrast, texture, the pixel against a per-column model of the sky, and what lies above
+it in its column); the second scores every position as "the skyline passes here" from
+what lies just above and below it (`BoundaryFeatures`). The path search then blends the
+boundary probability with the image gradient and keeps the sky/ground region terms
+capped, so a glare or cloud blob above the ridge cannot outweigh the ridge's edge. The
+design and its constants come from the skyline study kept with the dataset
+(`study/ALGORITHM.md`, `study/REPORT.md`). Retraining uses the app's own feature code
+to write the rows, so training and inference cannot disagree:
+
+```bash
+./gradlew :core:skylineTrainingDump --args="--ridge geopose3k/manifest.json ridge.jsonl"   # truth ridges, once
+./gradlew :core:skylineTrainingDump --args="--from-ridge ridge.jsonl rows.csv.gz --exclude-manifest geopose3k_manual/manifest.json --exclude-prefix eth_ch1_"
+python3 tools/skyline_train.py rows.csv.gz --trees 300 -o core/src/main/resources/com/peaknav/skyline/sky_model.bin --check check.csv
+./gradlew :core:skylineTrainingDump --args="--check core/src/main/resources/com/peaknav/skyline/sky_model.bin check.csv"
+./gradlew :core:skylineTrainingDump --args="--boundary-rows core/src/main/resources/com/peaknav/skyline/sky_model.bin ridge.jsonl rows2.csv.gz --exclude-manifest geopose3k_manual/manifest.json --exclude-prefix eth_ch1_"
+python3 tools/skyline_train.py rows2.csv.gz --trees 300 -o core/src/main/resources/com/peaknav/skyline/boundary_model.bin
+```
+
+The hand-posed photos and the CH1 pictures are kept out of training: they are the test
+sets. Rows can also come from pictures with a sky mask
+(`--mask-set dir` with `images/` and `ground_truth/<stem>-mask.png`).
+
+The extractor alone is scored on hand-traced skylines (the CH1, Basalt Hills and Web sets
+of Ahmad et al., IJCNN 2021) by `./gradlew :core:skylineMaskEval --args="[--annotate out/] dataset/CH1/cvg ..."`,
+which counts, per picture, the columns where the traced line is grossly off - on a cloud
+or a snow-line rather than the ridge - since a few pixels either way do not matter.
 
 ### Desktop installers
 

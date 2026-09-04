@@ -59,6 +59,19 @@ public class MapViewerAndroidSingleton extends MapViewerSingleton {
             }
 
             @Override
+            public boolean isDebugBuild() {
+                return (context.getApplicationInfo().flags
+                        & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+            }
+
+            @Override
+            public java.io.File getDebugSamplesDir() {
+                // Private storage, but a debug build's is readable from a computer:
+                //   adb exec-out run-as com.peaknav.debug tar c files/skyline_samples > samples.tar
+                return new java.io.File(context.getFilesDir(), "skyline_samples");
+            }
+
+            @Override
             public PeakNavCaches getCaches() {
                 return new PeakNavCaches() {
                     @Override

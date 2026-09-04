@@ -68,6 +68,22 @@ public class MapViewerDesktopSingleton extends MapViewerSingleton {
             }
 
             @Override
+            public boolean isDebugBuild() {
+                // No build types on desktop: opt in with -Dpeaknav.debug=true.
+                return Boolean.getBoolean("peaknav.debug");
+            }
+
+            @Override
+            public java.io.File getDebugSamplesDir() {
+                // -Dpeaknav.samplesDir=... redirects the samples (the headless tests use it).
+                String override = System.getProperty("peaknav.samplesDir");
+                if (override != null) {
+                    return new java.io.File(override);
+                }
+                return com.badlogic.gdx.Gdx.files.external("skyline_samples").file();
+            }
+
+            @Override
             public PeakNavCaches getCaches() {
                 return new PeakNavCaches() {
                     private Path tempDir;

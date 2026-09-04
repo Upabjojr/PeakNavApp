@@ -59,9 +59,16 @@ public class CameraPictureView extends Fragment {
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         if (requestCode == PICK_IMAGE && resultCode == RESULT_OK) {
             if (data != null && data.getData() != null) {
+                // The map's "Loading..." screen while the worker reads and decodes.
+                if (getC() != null && getC().getMapViewerScreen() != null) {
+                    getC().getMapViewerScreen().setPhotoLoading(true);
+                }
                 getC().submitExecutorGeneric(() -> {
                     FragmentActivity activity = getActivity();
                     if (activity == null) {
+                        if (getC().getMapViewerScreen() != null) {
+                            getC().getMapViewerScreen().setPhotoLoading(false);
+                        }
                         return;
                     }
                     // Any failure here (detached fragment, unreadable URI, corrupt
@@ -82,6 +89,7 @@ public class CameraPictureView extends Fragment {
                         }
 
                         setBytesAsBackgroundImage(buffer.toByteArray());
+                        com.peaknav.viewer.PhotoSkylineAligner.photoTakenHere();
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -298,20 +306,33 @@ public class CameraPictureView extends Fragment {
         click.setText(s("Click"));
         click.setOnClickListener(v -> {
             camera.takePicture(null, null, (data, camera) -> {
-                Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
-
-                int rotation = getRotationDegrees();
-                Matrix matrix = new Matrix();
-                matrix.postRotate(rotation);
-                Bitmap rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
-
-                ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-                rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
-
-                byte[] bytesJpeg = outputStream.toByteArray();
-                setBytesAsBackgroundImage(bytesJpeg);
-
+                // Back to the map at once, with its "Loading..." screen up while the
+                // picture is turned upright, encoded and decoded on a worker.
+                final int rotation = getRotationDegrees();
+                if (getC() != null && getC().getMapViewerScreen() != null) {
+                    getC().getMapViewerScreen().setPhotoLoading(true);
+                }
                 finish();
+                getC().submitExecutorGeneric(() -> {
+                    try {
+                        Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
+                        Matrix matrix = new Matrix();
+                        matrix.postRotate(rotation);
+                        Bitmap rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+
+                        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+                        rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
+
+                        byte[] bytesJpeg = outputStream.toByteArray();
+                        setBytesAsBackgroundImage(bytesJpeg);
+                        com.peaknav.viewer.PhotoSkylineAligner.photoTakenHere();
+                    } catch (RuntimeException e) {
+                        e.printStackTrace();
+                        if (getC() != null && getC().getMapViewerScreen() != null) {
+                            getC().getMapViewerScreen().setPhotoLoading(false);
+                        }
+                    }
+                });
             });
         });
 

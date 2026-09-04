@@ -299,6 +299,20 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         });
     }
 
+    @Override
+    public void promptYesNo(final String title, final String message, final Runnable onYes) {
+        onMainThread(() -> {
+            UIAlertController controller = new UIAlertController(
+                    title == null ? "" : title, message == null ? "" : message,
+                    UIAlertControllerStyle.Alert);
+            controller.addAction(new UIAlertAction(s("Yes"), UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> onYes.run()));
+            controller.addAction(new UIAlertAction(s("No"), UIAlertActionStyle.Cancel,
+                    (UIAlertAction action) -> { }));
+            present(controller);
+        });
+    }
+
     /**
      * Asks for a set of values in one alert. iOS alerts take text fields directly, so this
      * is the platform's own dialogue rather than anything hand-built.
@@ -344,15 +358,41 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
      * Photos, Messages, or anywhere else the user has.
      */
     @Override
-    public void shareSnapshot(final Pixmap pixmap) {
+    public void shareSnapshot(final Pixmap pixmap, final com.peaknav.utils.SnapshotInfo info) {
         // Encoded on the calling thread: it is megabytes of work and the main thread is
         // also the render thread here, so doing it there would stall the picture.
         final byte[] png = new UtilsOSIOS().encodePng(pixmap);
         onMainThread(() -> {
             UIImage image = new UIImage(new NSData(png));
-            NSArray<NSObject> items = new NSArray<>(image);
-            UIActivityViewController sheet = new UIActivityViewController(items, null);
-            present(sheet);
+            // Shared as a JPEG file rather than a UIImage: the file keeps the EXIF block
+            // with the view's position and pose (a UIImage is re-encoded on the way out
+            // and loses it).
+            NSData jpegData = image.toJPEGData(0.92);
+            if (jpegData == null) {
+                present(new UIActivityViewController(new NSArray<NSObject>(image), null));
+                return;
+            }
+            byte[] jpeg = jpegData.getBytes();
+            if (info != null) {
+                jpeg = com.peaknav.utils.ExifWriter.embedInJpeg(jpeg, info);
+            }
+            try {
+                java.io.File dir = new java.io.File(System.getProperty("java.io.tmpdir"), "peaknav_share");
+                dir.mkdirs();
+                String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.ENGLISH)
+                        .format(new java.util.Date());
+                java.io.File file = new java.io.File(dir, "PeakNav_" + stamp + ".jpg");
+                java.io.FileOutputStream out = new java.io.FileOutputStream(file);
+                try {
+                    out.write(jpeg);
+                } finally {
+                    out.close();
+                }
+                NSArray<NSObject> items = new NSArray<NSObject>(new NSURL(file));
+                present(new UIActivityViewController(items, null));
+            } catch (java.io.IOException e) {
+                present(new UIActivityViewController(new NSArray<NSObject>(image), null));
+            }
         });
     }
 
@@ -911,16 +951,23 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                     if (bytes == null) {
                         return;
                     }
-                    // Decoding a full-size photo is too much work for the render thread.
+                    // The map's "Loading..." screen from now until the picture is up; the
+                    // decoding is too much work for the render thread, so it goes to a worker.
+                    if (getC().getMapViewerScreen() != null) {
+                        getC().getMapViewerScreen().setPhotoLoading(true);
+                    }
                     getC().submitExecutorGeneric(() -> {
                         com.peaknav.utils.PeakNavUtils.setBytesAsBackgroundImage(bytes);
                         if (fromCamera) {
                             // A photo taken just now was taken right here - Android's
                             // camera view does not prompt to travel either.
+                            com.peaknav.viewer.PhotoSkylineAligner.photoTakenHere();
                             return;
                         }
                         if (assetLocation != null) {
                             CLLocationCoordinate2D coordinate = assetLocation.getCoordinate();
+                            com.peaknav.viewer.PhotoSkylineAligner.setPendingLocation(
+                                    coordinate.getLatitude(), coordinate.getLongitude());
                             promptGoToImageLocation(
                                     coordinate.getLatitude(), coordinate.getLongitude());
                         } else {

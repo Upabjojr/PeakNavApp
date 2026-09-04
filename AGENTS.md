@@ -27,6 +27,23 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
   - `compatibility/` — abstractions each platform implements (`NativeScreenCaller`,
     `LoadFactory`, etc.).
   - `elevation/`, `pbf/`, `database/`, `network/`, `satellite/`, `utils/`.
+  - `skyline/` — matching a photograph's skyline to the terrain: `TerrainHorizon`
+    (the horizon all around a point, from an `ElevationSampler`), `SkylineExtractor`
+    (the sky/ground line in a picture: `SkyFeatures` + `SkyClassifier`, a
+    gradient-boosted forest read from the resource `sky_model.bin` next to it, give
+    every pixel a sky probability; `BoundaryFeatures` + `boundary_model.bin` score
+    every position as "the skyline passes here"; a minimum-cost path traces the
+    boundary; both forests are trained by `tools/skyline_train.py`) and
+    `SkylineMatcher` (bearing, pitch and field of view by optimisation, with a
+    calibrated "confident" verdict). Pure Java, no libGDX; `viewer/PhotoSkylineAligner`
+    is the app-side glue that runs it when a geotagged photo is loaded and offers
+    to point the camera, or on demand from the photo bar's match button; debug
+    builds (`LoadFactory.isDebugBuild()`) get a third button that saves the photo,
+    pose and overlay as a dataset sample under `LoadFactory.getDebugSamplesDir()`.
+    `gesture/PhotoPin` is the pinned-point state the input controller rotates and
+    zooms around while a photo is shown. Its accuracy is measured, not assumed: see the
+    `skylineBenchmark` tool below, and keep the thresholds in `SkylineMatcher`
+    tied to what the benchmark reports.
 - **`desktop`** — LWJGL3 launcher (`DesktopLauncher`), Swing-based native screens.
 - **`android`** — Android launcher/activity, fragments, native screens.
 - **`ios`** — RoboVM launcher plus a real `IOSLoadFactory`: logging, caches, file
@@ -244,7 +261,22 @@ Two more RoboVM-side traps, both handled in `ios/build.gradle`:
   (package `com.peaknav.tools`), so nothing they pull in ships in the app. Each is
   exposed as a Gradle task in the `peaknav` group — currently
   `./gradlew :core:buildGeonamesIndex --args="cities500.txt alternateNamesV2.txt out_dir"`,
-  which rebuilds the place-search index. Put new data-prep tools here rather than in
+  which rebuilds the place-search index, and
+  `./gradlew :core:skylineBenchmark --args="path/to/manifest.json"`, which runs the
+  photo skyline matcher over a dataset of geotagged photos with a known camera
+  heading and reports accuracy and the precision of its confident matches. The
+  datasets are built by `tools/skyline_dataset.py` (GeoPose3K, or Wikimedia Commons
+  photos carrying a `heading:`); `TestSkylineDataset` runs the same benchmark when one
+  is installed under `~/.peaknav/skyline_dataset/` or `$PEAKNAV_SKYLINE_DATASET`, and
+  skips otherwise. `skylineTrainingDump` writes the two forests' training rows (from
+  a truth-ridge file made once from posed photos, or from pictures with a sky mask)
+  with the app's own feature code, `tools/skyline_train.py` fits and exports a
+  forest, and `skylineMaskEval` scores the extractor alone against hand-traced
+  skylines (CH1 and the web set, never used for training). Changing `SkyFeatures` or
+  `BoundaryFeatures` means retraining both: a model file records its feature count
+  and the loader ignores a mismatch. Measure any change to the extractor on both the
+  bearing benchmark and the mask score before keeping it; the numbers that matter are
+  gross misses, not pixels. Put new data-prep tools here rather than in
   a test: an index builder hidden in `TestLuceneGeonames` meant a half-built index
   directory from an earlier run could fail the whole suite.
 

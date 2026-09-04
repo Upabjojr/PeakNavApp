@@ -50,6 +50,24 @@ The renderer speaks plain HTTP, self-described at `/openapi.json` — anything t
 can `curl` can drive it; this client adds process lifecycle (the JVM dies with the
 `with` block) and nothing magical.
 
+A photograph can be tagged the way the app does it - shown behind the terrain, its
+skyline matched to point the camera, and saved with the peaks' names over it and the
+matched pose in its EXIF block:
+
+```python
+with PeakNavHeadless(45.9763, 7.6586) as nav:
+    match = nav.tag_photo("IMG_2041.jpg", "IMG_2041_peaks.jpg")   # goes to the photo's GPS position
+    print(match["bearing_deg"], match["confident"])
+
+    # or step by step, for a photo without GPS: go where it was taken first
+    nav.move_to(45.9763, 7.6586, download_timeout_ms=600_000, await_tiles_ms=120_000)
+    nav.load_photo("old_scan.jpg", go_to_exif=False)
+    nav.match_photo()
+    nav.set_photo_overlay(terrain_alpha=0.3)      # fade the rendered terrain in over the picture
+    nav.save_frame("old_scan_peaks.jpg")
+    nav.clear_photo()
+```
+
 ## Install
 
 ```bash

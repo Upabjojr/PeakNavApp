@@ -375,6 +375,18 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
     }
 
     @Override
+    public void promptYesNo(String title, String message, Runnable onYes) {
+        mainActivity.runOnUiThread(() -> {
+            AlertDialog.Builder alertBuilder = new AlertDialog.Builder(mainActivity);
+            alertBuilder.setTitle(title)
+                    .setMessage(message)
+                    .setPositiveButton(s("Yes"), (dialogInterface, i) -> onYes.run())
+                    .setNegativeButton(s("No"), null);
+            alertBuilder.create().show();
+        });
+    }
+
+    @Override
     public void openAppInfoScreen() {
         runOnUiThread(() -> {
             AppInfoAndroidView fragment = new AppInfoAndroidView();
@@ -611,7 +623,7 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
     }
 
     @Override
-    public void shareSnapshot(Pixmap pixmap) {
+    public void shareSnapshot(Pixmap pixmap, com.peaknav.utils.SnapshotInfo info) {
         PixmapIO.PNG writer = new PixmapIO.PNG(pixmap.getWidth() * pixmap.getHeight());
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try {
@@ -631,8 +643,20 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             Uri uri = context.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     values);
 
+            // Encoded to memory first, so the view's position and pose go into the file's
+            // EXIF block before it is written out.
+            ByteArrayOutputStream jpegStream = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, jpegStream);
+            byte[] jpeg = jpegStream.toByteArray();
+            if (info != null) {
+                jpeg = com.peaknav.utils.ExifWriter.embedInJpeg(jpeg, info);
+            }
             OutputStream bytes = context.getContentResolver().openOutputStream(uri);
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, bytes);
+            try {
+                bytes.write(jpeg);
+            } finally {
+                bytes.close();
+            }
 
             intentShare.putExtra(Intent.EXTRA_STREAM, uri);
             Intent intentChooser = Intent.createChooser(intentShare, "Share This Image");

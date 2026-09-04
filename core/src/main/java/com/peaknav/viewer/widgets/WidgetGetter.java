@@ -207,6 +207,12 @@ public class WidgetGetter {
         public final Table tableCameraControl;
         public final Slider sliderCameraAlpha;
         public final Button buttonOrientation;
+        /**
+         * Releases the photo pin; only while a point is pinned. Not in the layout: it is
+         * placed just above the elevation bar's top by {@link #placeUnpin}, so the bar
+         * itself never moves to make room for it.
+         */
+        public final Button buttonUnpin;
         private boolean refreshNeeded;
 
         TableTool() {
@@ -236,6 +242,19 @@ public class WidgetGetter {
                     .padTop(borderPad)
                     //.padLeft(borderPad)
                     .row();
+
+            // Just above the elevation bar, in its column: the way out of the pinned mode
+            // (a double tap releases too, but a button is found without being told). Its
+            // row collapses to nothing while hidden, so the bar keeps its usual top.
+            buttonUnpin = getC().widgetTextures.getButtonWithIcon("icons/icon_unpin.png", null);
+            buttonUnpin.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    com.peaknav.gesture.PhotoPin.clear();
+                }
+            });
+            buttonUnpin.setVisible(false);
+            buttonUnpin.setSize(widgetUnitStep, widgetUnitStep);
 
             Slider.SliderStyle sliderStyle = getC().styleSingleton.getSliderStyle();
             sliderElevation = new Slider(0f, 100f, 0.1f, true, sliderStyle);
@@ -277,13 +296,30 @@ public class WidgetGetter {
                     // .padLeft(borderPad).padBottom(borderPad);
                     //.row();
 
+            // The photo bar, exactly as before with the match button added at its left,
+            // centred on the screen: the outline bar in the middle, a button either side,
+            // on the line of the gyro, "?" and here buttons (its own table, so the gyro
+            // button's column does not push it off centre).
             tableCameraControl = new Table();
+            tableCameraControl.setFillParent(true);
+            tableCameraControl.bottom();
             Slider.SliderStyle sliderStyleCA = new Slider.SliderStyle();
             float w = Gdx.graphics.getHeight()*0.05f;
             sliderStyleCA.knob = getC().widgetTextures.getTextureRegionDrawable("icons/icon_slider_alpha.png");
             sliderStyleCA.knob.setMinHeight(w);
             sliderStyleCA.knob.setMinWidth(w);
             sliderStyleCA.background = getC().widgetTextures.getNinePatchDrawable("icons/slider_nine_patch.png");
+
+            Button buttonMatchPhoto = getC().widgetTextures.getButtonWithIcon(
+                    "icons/icon_match_photo.png", null);
+            buttonMatchPhoto.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    com.peaknav.viewer.PhotoSkylineAligner.matchNow();
+                }
+            });
+            tableCameraControl.add(buttonMatchPhoto).width(widgetUnitStep).height(widgetUnitStep)
+                    .padRight(borderPad).padBottom(borderPad);
 
             sliderCameraAlpha = new Slider(0f, 1f, 0.05f, false, sliderStyleCA);
             sliderCameraAlpha.setVisualPercent(1.0f);
@@ -295,7 +331,7 @@ public class WidgetGetter {
                 }
             });
             tableCameraControl.add(sliderCameraAlpha).width(3*widgetUnitStep).height(widgetUnitStep)
-                    .padLeft(borderPad).padBottom(borderPad);
+                    .padBottom(borderPad);
 
             Button buttonCameraCancel = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_x.png", null
@@ -309,14 +345,45 @@ public class WidgetGetter {
             tableCameraControl.add(buttonCameraCancel).width(widgetUnitStep).height(widgetUnitStep)
                     .padLeft(borderPad).padBottom(borderPad);
             tableCameraControl.setVisible(false);
-
-            table.add(tableCameraControl);
         }
 
         public void hideTableCameraControl() {
+            com.peaknav.viewer.PhotoSkylineAligner.clear();
             MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(null);
             MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundTexture(null);
-            tableCameraControl.setVisible(false);
+            setPhotoShown(false);
+        }
+
+        /** Shows or hides everything that only makes sense with a photo behind the terrain. */
+        public void setPhotoShown(boolean shown) {
+            tableCameraControl.setVisible(shown);
+            if (!shown) {
+                setPinned(false);
+            }
+            MapViewerSingleton.getViewerInstance().tableLocation.setPhotoShown(shown);
+        }
+
+        /** Shows the unpin button while a point is pinned, just above the elevation bar. */
+        public void setPinned(boolean pinned) {
+            if (buttonUnpin.isVisible() != pinned) {
+                buttonUnpin.setVisible(pinned);
+            }
+            if (pinned) {
+                placeUnpin();
+            }
+        }
+
+        private final com.badlogic.gdx.math.Vector2 unpinAnchor = new com.badlogic.gdx.math.Vector2();
+
+        /** Puts the unpin button on the elevation bar's column, one pad above its top. */
+        private void placeUnpin() {
+            unpinAnchor.set(0, sliderElevation.getHeight());
+            sliderElevation.localToStageCoordinates(unpinAnchor);
+            float x = unpinAnchor.x + (sliderElevation.getWidth() - buttonUnpin.getWidth()) / 2;
+            float y = unpinAnchor.y + borderPad;
+            if (buttonUnpin.getX() != x || buttonUnpin.getY() != y) {
+                buttonUnpin.setPosition(x, y);
+            }
         }
 
         public void setRefreshNeeded(boolean refreshNeeded) {
@@ -393,6 +460,18 @@ public class WidgetGetter {
         public final Button buttonOpenCoordinate;
         private final Button buttonCancelGoToDest;
         public final Table tableCancelGoToDest;
+        /** Opacity of the rendered terrain over a photo; shown only while a photo is up. */
+        public final Slider sliderTerrainAlpha;
+        /** Debug builds only: saves the photo, pose and overlay as a dataset sample; null otherwise. */
+        public final Button buttonSaveSample;
+        /**
+         * The photo-only widgets of the right edge - the terrain-opacity bar and, in debug
+         * builds, the save button above it - in a group of their own, placed just above
+         * the share button by {@link #placePhotoColumn} rather than laid out in the
+         * column, so the share and here buttons never move for them.
+         */
+        public final Table photoColumn;
+        private Button shareButton;
         public final Button buttonGpxFly; // cinematic tour of the loaded GPX; shown only when one is loaded
         public final Button buttonGpxClear; // discards the loaded GPX; shown alongside buttonGpxFly
         public final Label copyrightLabel;
@@ -637,7 +716,51 @@ public class WidgetGetter {
                     .padRight(borderPad)
                     .row();
 
-            Button shareButton = getC().widgetTextures.getButtonWithIcon(
+            // Over a photo the terrain is not drawn - only its outlines - unless this bar
+            // is raised: it fades the rendered terrain in over the picture, up to opaque.
+            // Vertical, at the right edge just above the share button, and only while a
+            // photo is shown.
+            // Same knob as the outline-visibility bar at the bottom (the round alpha knob),
+            // not the elevation bar's.
+            Slider.SliderStyle terrainStyle = new Slider.SliderStyle();
+            float knob = Gdx.graphics.getHeight() * 0.05f;
+            terrainStyle.knob = getC().widgetTextures.getTextureRegionDrawable("icons/icon_slider_alpha.png");
+            terrainStyle.knob.setMinHeight(knob);
+            terrainStyle.knob.setMinWidth(knob);
+            terrainStyle.background = getC().widgetTextures.getNinePatchDrawable("icons/slider_nine_patch.png");
+            sliderTerrainAlpha = new Slider(0f, 1f, 0.05f, true, terrainStyle);
+            sliderTerrainAlpha.setVisualPercent(0f);
+            sliderTerrainAlpha.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    MapViewerSingleton.getViewerInstance().labelRenderer
+                            .setTerrainAlpha(sliderTerrainAlpha.getVisualPercent());
+                }
+            });
+            photoColumn = new Table();
+            if (com.peaknav.utils.PeakNavUtils.getLoadFactory() != null
+                    && com.peaknav.utils.PeakNavUtils.getLoadFactory().isDebugBuild()) {
+                // Debug builds: save this photo with the camera's pose as a dataset sample,
+                // just above the terrain-opacity bar.
+                buttonSaveSample = getC().widgetTextures.getButtonWithIcon(
+                        "icons/icon_save_sample.png", null);
+                buttonSaveSample.addListener(new ChangeListener() {
+                    @Override
+                    public void changed(ChangeEvent event, Actor actor) {
+                        com.peaknav.viewer.PhotoSkylineAligner.saveSample();
+                    }
+                });
+                photoColumn.add(buttonSaveSample).width(widgetUnitStep).height(widgetUnitStep)
+                        .padBottom(borderPad);
+                photoColumn.row();
+            } else {
+                buttonSaveSample = null;
+            }
+            photoColumn.add(sliderTerrainAlpha).width(widgetUnitStep).height(3 * widgetUnitStep);
+            photoColumn.pack();
+            photoColumn.setVisible(false);
+
+            shareButton = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_share.png", null);
             shareButton.addListener(new ChangeListener() {
                 @Override
@@ -692,6 +815,37 @@ public class WidgetGetter {
                     .padBottom(borderPad)
                     .padRight(borderPad)
                     .row();
+        }
+
+        /**
+         * Shows the terrain-opacity bar (and, in debug builds, the save button above it)
+         * with a photo and hides them, the bar back at zero, without.
+         */
+        public void setPhotoShown(boolean shown) {
+            if (!shown) {
+                sliderTerrainAlpha.setValue(0f);
+                MapViewerSingleton.getViewerInstance().labelRenderer.setTerrainAlpha(0f);
+            }
+            photoColumn.setVisible(shown);
+            if (shown) {
+                placePhotoColumn();
+            }
+        }
+
+        private final com.badlogic.gdx.math.Vector2 photoColumnAnchor = new com.badlogic.gdx.math.Vector2();
+
+        /** Puts the photo-only group on the share button's column, one pad above its top. */
+        public void placePhotoColumn() {
+            if (shareButton == null) {
+                return;
+            }
+            photoColumnAnchor.set(0, shareButton.getHeight());
+            shareButton.localToStageCoordinates(photoColumnAnchor);
+            float x = photoColumnAnchor.x + (shareButton.getWidth() - photoColumn.getWidth()) / 2;
+            float y = photoColumnAnchor.y + borderPad;
+            if (photoColumn.getX() != x || photoColumn.getY() != y) {
+                photoColumn.setPosition(x, y);
+            }
         }
     }
 

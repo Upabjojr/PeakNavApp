@@ -53,6 +53,12 @@ public abstract class NativeScreenCaller {
      */
     public abstract void warnCannotReadImageLocation();
 
+    /**
+     * A yes/no question in the platform's own dialog. {@code onYes} runs on whatever thread
+     * the platform answers from - hop to the render thread before touching the map.
+     */
+    public abstract void promptYesNo(String title, String message, Runnable onYes);
+
     public abstract void openAppInfoScreen();
 
     public abstract void openAppTutorial();
@@ -63,7 +69,11 @@ public abstract class NativeScreenCaller {
 
     public abstract void askForDownloadScreen(double lat, double lon);
 
-    public abstract void shareSnapshot(Pixmap pixmap);
+    /**
+     * Saves or shares a captured view. {@code info} says where and how it was taken, for
+     * the picture's EXIF block ({@link com.peaknav.utils.ExifWriter}); may be null.
+     */
+    public abstract void shareSnapshot(Pixmap pixmap, com.peaknav.utils.SnapshotInfo info);
 
     public abstract void makeToast(String message);
 

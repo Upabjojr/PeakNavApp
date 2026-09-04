@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Match photo direction": a mountain skyline caught in a viewfinder's crosshair. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+    <linearGradient id="sky" x1="0" y1="40" x2="0" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#bfe0f8"/>
+      <stop offset="1" stop-color="#e9f4fb"/>
+    </linearGradient>
+  </defs>
+  <circle cx="120" cy="120" r="120" fill="url(#sky)"/>
+  <g clip-path="url(#disc)">
+    <!-- skyline -->
+    <path d="M0 175 L45 118 L72 140 L110 78 L140 120 L165 100 L200 150 L240 130 L240 240 L0 240 Z"
+          fill="#4f6d8a" stroke="#2c4358" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M100 95 L110 78 L122 96 L114 92 Z" fill="#ffffff" opacity="0.9"/>
+    <!-- viewfinder corners -->
+    <g fill="none" stroke="#d23b32" stroke-width="10" stroke-linecap="round">
+      <path d="M44 74 V44 H74"/>
+      <path d="M166 44 H196 V74"/>
+      <path d="M196 166 V196 H166"/>
+      <path d="M74 196 H44 V166"/>
+    </g>
+    <!-- crosshair on the summit -->
+    <circle cx="110" cy="78" r="16" fill="none" stroke="#d23b32" stroke-width="6"/>
+    <path d="M110 52 V62 M110 94 V104 M84 78 H94 M126 78 H136" stroke="#d23b32" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#10202b" stroke-width="3"/>
+</svg>

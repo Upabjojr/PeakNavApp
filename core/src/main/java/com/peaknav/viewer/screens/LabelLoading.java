@@ -61,4 +61,17 @@ public class LabelLoading {
     public Table getTableCenterNoData() {
         return tableCenterNoData;
     }
+
+    /**
+     * The same "Loading..." screen while a picked photo is decoded; off, the map-data
+     * state shows again as it stands.
+     */
+    public void setPhotoLoading(boolean loading) {
+        if (loading) {
+            labelNoDataInThisArea.setText(s("Loading"));
+            tableCenterNoData.setVisible(true);
+        } else {
+            setState(state);
+        }
+    }
 }

@@ -82,3 +82,31 @@ def test_boot_render_shutdown(tmp_path):
 
     # Leaving the block shut the JVM down; its exit is the proof.
     assert nav._proc is None
+
+
+def _tiny_png():
+    """A 4x3 grey PNG, from the standard library alone: enough to load, not to match."""
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    w, h = 4, 3
+    raw = b"".join(b"\x00" + bytes([120, 130, 140] * w) for _ in range(h))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def test_photo_endpoints_round_trip():
+    with PeakNavHeadless(*ZERMATT) as nav:
+        info = nav.load_photo(image=_tiny_png())
+        assert info["ok"] and info["width"] == 4 and info["location"] is None
+        # no position in the picture, so nothing moved; the match runs where we stand
+        # and, on a flat grey picture, has nothing to hold on to - but it must answer
+        result = nav.match_photo(attempts=1)
+        assert "matched" in result
+        nav.set_photo_overlay(outline_alpha=0.5, terrain_alpha=0.2)
+        assert nav.clear_photo()["ok"]
+

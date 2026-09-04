@@ -187,6 +187,9 @@ public class MapViewerScreen implements Screen {
 		// The observer moved: recompute Sun/Moon/planet/star positions for the new location.
 		getC().skyModel.invalidate();
 
+		// A photo waiting for its location may now have terrain to be matched against.
+		com.peaknav.viewer.PhotoSkylineAligner.onLocationSettled(latitude, longitude);
+
 		tableTool.setRefreshNeeded(true);
 
 		boolean missingData = getC().checkMissingData.checkMissingIfNotDismissed(latitude, longitude);
@@ -994,9 +997,82 @@ public class MapViewerScreen implements Screen {
 	}
 
 	public void toast(String text) {
+		toast(text, TOAST_MILLIS);
+	}
+
+	/** A toast that stays for {@code millis} instead of the usual second. */
+	public void toast(String text, long millis) {
+		toastHeld = false;
+		toastMillis = millis;
+		showToast(text);
+	}
+
+	private static final long TOAST_MILLIS = 1000;
+	private long toastMillis = TOAST_MILLIS;
+
+	/**
+	 * A toast that stays on screen until the next {@link #toast} or {@link #releaseToast}
+	 * instead of fading after a second: for work in progress, so "Matching the photo..."
+	 * is still there when the result replaces it, however long the matching takes.
+	 */
+	public void toastUntilReleased(String text) {
+		showToast(text);
+		toastHeld = true;
+	}
+
+	/** Lets a held toast fade as usual from now. */
+	public void releaseToast() {
+		toastHeld = false;
+		toastMillis = TOAST_MILLIS;
+		lastElevationChange = System.currentTimeMillis();
+	}
+
+	private boolean toastHeld;
+
+	private void showToast(String text) {
+		// Short texts (a distance, a height) keep the one-line pill; anything wider than the
+		// screen wraps onto as many lines as it needs, instead of running off both edges.
+		float maxWidth = 0.9f * Gdx.graphics.getWidth();
+		toastGlyph.setText(labelElevationChange.getStyle().font, text);
+		if (toastGlyph.width > maxWidth) {
+			labelElevationChange.setWrap(true);
+			labelElevationChange.setAlignment(com.badlogic.gdx.utils.Align.center);
+			toastCell.width(maxWidth).height(com.badlogic.gdx.scenes.scene2d.ui.Value.prefHeight);
+		} else {
+			labelElevationChange.setWrap(false);
+			toastCell.width(com.badlogic.gdx.scenes.scene2d.ui.Value.prefWidth).height(toastLineHeight);
+		}
 		labelElevationChange.setText(text);
+		tableCenter.invalidate();
 		tableCenter.setVisible(true);
 		lastElevationChange = System.currentTimeMillis();
+	}
+
+	private final com.badlogic.gdx.graphics.g2d.GlyphLayout toastGlyph = new com.badlogic.gdx.graphics.g2d.GlyphLayout();
+	private com.badlogic.gdx.scenes.scene2d.ui.Cell<Label> toastCell;
+	private float toastLineHeight;
+	/**
+	 * Whether the app is visibly busy on the user's behalf - a toast held while the
+	 * matching runs, or a picked photo being decoded - which the label renderer shows
+	 * with the same ring of blue balls as the map's own "Loading...".
+	 */
+	public boolean isBusy() {
+		return toastHeld || photoLoading;
+	}
+
+	private volatile boolean photoLoading;
+
+	/** Shows or hides the "Loading..." screen for a photo being decoded; any thread. */
+	public void setPhotoLoading(final boolean loading) {
+		photoLoading = loading;
+		Gdx.app.postRunnable(new Runnable() {
+			@Override
+			public void run() {
+				if (labelLoading != null) {
+					labelLoading.setPhotoLoading(loading);
+				}
+			}
+		});
 	}
 
 	public void takeSnapshot() {
@@ -1097,6 +1173,7 @@ public class MapViewerScreen implements Screen {
 
 		tableLocation = widgetGetter.getTableLocation();
 		stage.addActor(tableLocation.getTable());
+		stage.addActor(tableLocation.photoColumn);
 
 		Table tableCopyright = widgetGetter.getTableCopyright();
 		stageCopyright.addActor(tableCopyright);
@@ -1153,9 +1230,13 @@ public class MapViewerScreen implements Screen {
 		tableCenter.center();
 		labelElevationChange = new Label("", getC().styleSingleton.getLabelStyle());
 		// labelElevationChange.setFontScale(3f);
-		tableCenter.add(labelElevationChange).height(widgetUnitStep).row();
+		toastLineHeight = widgetUnitStep;
+		toastCell = tableCenter.add(labelElevationChange).height(widgetUnitStep);
+		tableCenter.row();
 
 		stage.addActor(tableTool.getTable());
+		stage.addActor(tableTool.tableCameraControl);
+		stage.addActor(tableTool.buttonUnpin);
 		stage.addActor(tableCenter);
 
 		labelLoading = new LabelLoading(widgetUnitStep);
@@ -1473,10 +1554,11 @@ public class MapViewerScreen implements Screen {
 
 		// getC().tileManager.startDrawLayerThread();
 
-		if (tableCenter.isVisible()) {
+		if (tableCenter.isVisible() && !toastHeld) {
 			long currentTime = System.currentTimeMillis();
-			if (currentTime - lastElevationChange > 1000) {
+			if (currentTime - lastElevationChange > toastMillis) {
 				tableCenter.setVisible(false);
+				toastMillis = TOAST_MILLIS;
 			}
 		}
 
@@ -1489,7 +1571,14 @@ public class MapViewerScreen implements Screen {
 		getC().mapTilePixmapToTexturesHandler.renderTextureJoinerAllTiles();
 
 		if (backgroundPicManager.getBackgroundPixmap() != null) {
-			if (tableTool.isRefreshNeeded()) {
+			float terrainAlpha = labelRenderer.getTerrainAlpha();
+			if (terrainAlpha > 0f) {
+				// The terrain-opacity bar is up: draw sky and terrain as usual and the photo
+				// over them at the complementary opacity, which is the same picture as the
+				// terrain at that opacity over the photo.
+				skyRenderer.render();
+				tileBatchRenderer.render();
+			} else if (tableTool.isRefreshNeeded()) {
 				tileBatchRenderer.render();
 				boolean refreshNeeded = false;
 				for (MapTile mapTile : getC().mapTileStorage.getMapTiles()) {
@@ -1503,7 +1592,7 @@ public class MapViewerScreen implements Screen {
 				}
 				tableTool.setRefreshNeeded(refreshNeeded);
 			}
-			labelRenderer.renderBackgroundPixmap();
+			labelRenderer.renderBackgroundPixmap(1f - terrainAlpha);
 		} else {
 			// Sky objects are drawn before the terrain so opaque terrain occludes anything below a
 			// ridge (correct horizon hiding for free). The Sun is always drawn; the other objects are
@@ -1544,12 +1633,28 @@ public class MapViewerScreen implements Screen {
 			}
 			 */
 			Pixmap snapshot = getSnapshotForSharing();
+			final com.peaknav.utils.SnapshotInfo info = snapshotInfo(snapshot.getWidth(), snapshot.getHeight());
 			getC().submitExecutorGeneric(() -> {
-				mapApp.nativeScreenCaller.shareSnapshot(snapshot);
+				mapApp.nativeScreenCaller.shareSnapshot(snapshot, info);
 			});
 		}
 
 		labelRenderer.renderLevelingLine();
+		boolean pinned = com.peaknav.gesture.PhotoPin.isActive() && backgroundPicManager.getBackgroundPixmap() != null;
+		if (pinned) {
+			labelRenderer.renderPhotoPin();
+		}
+		if (tableTool != null) {
+			tableTool.setPinned(pinned);
+		}
+		if (tableLocation != null && backgroundPicManager.getBackgroundPixmap() != null) {
+			tableLocation.placePhotoColumn();   // follows the share button through resizes
+		}
+		if (pendingFrameCapture != null) {
+			FrameCapture capture = pendingFrameCapture;
+			pendingFrameCapture = null;
+			capture.onFrame(getSnapshotForSharing());
+		}
 
 		// The stage viewport is inset to the safe area (see
 		// updateStageViewportInsideSafeArea), and Stage.draw does not apply its
@@ -1567,6 +1672,38 @@ public class MapViewerScreen implements Screen {
 		// viewport it was resized to; put it back after the inset UI pass.
 		Gdx.gl.glViewport(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
+	}
+
+	/** Receives one rendered frame; the pixmap is the receiver's to dispose. */
+	public interface FrameCapture {
+		void onFrame(Pixmap frame);
+	}
+
+	private volatile FrameCapture pendingFrameCapture;
+
+	/**
+	 * Hands the next rendered frame - cropped to the photo when one is shown, as the shared
+	 * snapshot is - to {@code capture}, on the render thread. Any thread may ask.
+	 */
+	public void captureFrame(FrameCapture capture) {
+		pendingFrameCapture = capture;
+	}
+
+	/**
+	 * Where and how the view is taken, for the EXIF block of a saved picture of the given
+	 * size: the camera's position, height, bearing and pitch, and the vertical field of
+	 * view of that picture - the camera's covers the window height, a picture cropped to a
+	 * photo's drawn height sees proportionally less.
+	 */
+	com.peaknav.utils.SnapshotInfo snapshotInfo(int outWidth, int outHeight) {
+		Vector3 dir = cam.direction;
+		double bearing = Math.toDegrees(Math.atan2(dir.x, dir.y));
+		double pitch = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, dir.z))));
+		double half = Math.tan(Math.toRadians(cam.fieldOfView) / 2) * outHeight / Math.max(1, Gdx.graphics.getHeight());
+		double vfov = Math.toDegrees(2 * Math.atan(half));
+		double altitude = Units.convertLatitsToMeters(cam.position.z);
+		return new com.peaknav.utils.SnapshotInfo(getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude(),
+				altitude, bearing, pitch, vfov, outWidth, outHeight, backgroundPicManager.getBackgroundPixmap() != null);
 	}
 
 	private Pixmap getSnapshotForSharing() {

@@ -82,6 +82,26 @@ public class MountainInputController extends CameraInputController {
 
         @Override
         public boolean tap(float x, float y, int count, int button) {
+            // With a photo behind the terrain a quick double tap pins: the direction under
+            // the finger is fastened to that spot of the screen and the gestures turn and
+            // zoom the terrain around it (see PhotoPin). The next double tap releases it.
+            // The red ring says which state it is in; no text. (The first of the two taps
+            // has already measured, as any tap does; that is harmless.)
+            if (count == 2) {
+                if (PhotoPin.isActive()) {
+                    PhotoPin.clear();
+                    return true;
+                }
+                if (mapViewerScreen.backgroundPicManager.getBackgroundPixmap() != null) {
+                    PhotoPin.set(x, y, camera.getPickRayStable(x, y).direction);
+                    return true;
+                }
+            }
+            // Over a photo a tap does not pick a point to measure, fly or orbit to: the
+            // terrain is being lined up with the picture, not travelled.
+            if (mapViewerScreen.backgroundPicManager.getBackgroundPixmap() != null) {
+                return false;
+            }
             // Picking a new point ends an orbit around the old one.
             mapViewerScreen.stopOrbit();
 
@@ -94,12 +114,23 @@ public class MountainInputController extends CameraInputController {
         }
 
         private final static float rotFactor = 1f/500.f;
+        private final Vector3 pinAxis = new Vector3();
 
         @Override
         public boolean pinch(Vector2 initialPointer1, Vector2 initialPointer2, Vector2 pointer1, Vector2 pointer2) {
             tmpV1.set(initialPointer2).sub(initialPointer1).nor();
             tmpV2.set(pointer2).sub(pointer1).nor();
             float rotationDeg = (float) Math.toDegrees(Math.asin(tmpV1.crs(tmpV2)));
+
+            if (PhotoPin.isActive()) {
+                // Twisting two fingers turns the terrain about the pin, no tilt limit: a
+                // photo may well have been taken with the camera rolled.
+                if (Math.abs(rotationDeg) > 3.0) {
+                    camera.rotateAround(camera.position, PhotoPin.getDirection(pinAxis), -rotationDeg * rotFactor);
+                    camera.update();
+                }
+                return true;
+            }
 
             if (Math.abs(rotationDeg) > 3.0) {
                 camera.rotateAround(camera.position, camera.direction, -rotationDeg*rotFactor);
@@ -138,11 +169,81 @@ public class MountainInputController extends CameraInputController {
         return new MountainInputController(listener, camera, positionChangeListeners, mapViewerScreen);
     }
 
+    // Where the finger was and is, for turning the view about a pinned point (see PhotoPin):
+    // the parent class only hands process() the deltas, but the rotation about the pin is
+    // the angle the finger sweeps around it, which needs the positions.
+    private float dragPrevX, dragPrevY, dragX, dragY;
+    private final Vector3 pinAxis = new Vector3();
+
+    @Override
+    public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+        dragPrevX = dragX = screenX;
+        dragPrevY = dragY = screenY;
+        return super.touchDown(screenX, screenY, pointer, button);
+    }
+
+    @Override
+    public boolean touchDragged(int screenX, int screenY, int pointer) {
+        dragPrevX = dragX;
+        dragPrevY = dragY;
+        dragX = screenX;
+        dragY = screenY;
+        return super.touchDragged(screenX, screenY, pointer);
+    }
+
+    /**
+     * Turns the camera about the pinned direction by the angle the finger swept around
+     * the pin on screen. The axis passes through the camera, so the pinned direction
+     * keeps projecting onto the same pixel whatever the angle.
+     */
+    private boolean rotateAboutPin() {
+        float px = PhotoPin.getScreenX(), py = PhotoPin.getScreenY();
+        double a0 = Math.atan2(dragPrevY - py, dragPrevX - px);
+        double a1 = Math.atan2(dragY - py, dragX - px);
+        double swept = Math.toDegrees(a1 - a0);
+        if (swept > 180) swept -= 360;
+        if (swept < -180) swept += 360;
+        if (Math.hypot(dragPrevX - px, dragPrevY - py) < 8 || Math.hypot(dragX - px, dragY - py) < 8) {
+            return false; // too close to the pin to define an angle
+        }
+        // Screen y points down, so a sweep that looks clockwise has a positive angle here;
+        // a positive rotation about the forward axis turns the CAMERA clockwise, i.e. the
+        // terrain anticlockwise - hence the sign, so the terrain follows the finger.
+        camera.rotateAround(camera.position, PhotoPin.getDirection(pinAxis), (float) -swept);
+        if (autoUpdate) camera.update();
+        return true;
+    }
+
+    /**
+     * After a zoom, puts the pinned direction back on its pixel: the change of focal
+     * length moved every off-centre point, so the camera is turned by the rotation that
+     * carries the direction now under the pin's pixel onto the pinned one.
+     */
+    private void keepPinAfterZoom() {
+        camera.update();
+        Vector3 under = perspectiveCamera.getPickRayStable(PhotoPin.getScreenX(), PhotoPin.getScreenY()).direction;
+        Vector3 pinned = PhotoPin.getDirection(pinAxis);
+        float dot = Math.max(-1f, Math.min(1f, under.dot(pinned)));
+        float angle = (float) Math.toDegrees(Math.acos(dot));
+        if (angle < 1e-3f) {
+            return;
+        }
+        Vector3 axis = under.crs(pinned);
+        if (axis.len2() < 1e-12f) {
+            return;
+        }
+        camera.rotateAround(camera.position, axis.nor(), angle);
+        camera.update();
+    }
+
     protected boolean process(float deltaX, float deltaY, int button) {
         // Taking hold of the view ends the orbit: two things steering one camera only
         // produces a fight, and the person with their hand on it should win.
         mapViewerScreen.stopOrbit();
         boolean processed = false;
+        if (button == rotateButton && PhotoPin.isActive()) {
+            return rotateAboutPin();
+        }
         if (button == rotateButton) {
             tmpV1.set(camera.direction).crs(camera.up);
             camera.rotateAround(camera.position, tmpV1, -deltaY * rotationFactor * rotateAngle);
@@ -369,6 +470,9 @@ public class MountainInputController extends CameraInputController {
             positionChangeListener.onZoomChanged(newFieldOfView);
         }
         if (autoUpdate) camera.update();
+        if (PhotoPin.isActive()) {
+            keepPinAfterZoom();
+        }
         return true;
     }
 
