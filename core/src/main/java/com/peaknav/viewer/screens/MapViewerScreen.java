@@ -1079,6 +1079,57 @@ public class MapViewerScreen implements Screen {
 		flagTakeSnapshot = true;
 	}
 
+	private volatile boolean flagTakeSnapshotWithUi = false;
+
+	/** As {@link #takeSnapshot}, but after the widgets are drawn: the picture includes the UI (screenshots, the tutorial). */
+	public void takeSnapshotWithUi() {
+		flagTakeSnapshotWithUi = true;
+	}
+
+	/**
+	 * Where the named widgets are on screen, as JSON {@code {"name": {"x", "y", "w", "h"}, ...}}
+	 * in window pixels with y downwards - what a screenshot's annotations are placed by.
+	 * Only widgets that are visible (with all their parents) are listed. Render thread.
+	 */
+	public String widgetBoundsJson() {
+		StringBuilder json = new StringBuilder("{\"width\":").append(Gdx.graphics.getWidth())
+				.append(",\"height\":").append(Gdx.graphics.getHeight()).append(",\"widgets\":{");
+		boolean[] first = {true};
+		for (com.badlogic.gdx.scenes.scene2d.Actor root : stage.getActors()) {
+			collectWidgetBounds(root, json, first);
+		}
+		return json.append("}}").toString();
+	}
+
+	private final com.badlogic.gdx.math.Vector2 boundsCorner = new com.badlogic.gdx.math.Vector2();
+
+	private void collectWidgetBounds(com.badlogic.gdx.scenes.scene2d.Actor actor, StringBuilder json, boolean[] first) {
+		if (!actor.isVisible()) {
+			return;
+		}
+		if (actor.getName() != null && actor.getWidth() > 0 && actor.getHeight() > 0) {
+			boundsCorner.set(0, actor.getHeight());
+			actor.localToStageCoordinates(boundsCorner);
+			stage.stageToScreenCoordinates(boundsCorner);   // y downwards from here
+			float x = boundsCorner.x, y = boundsCorner.y;
+			boundsCorner.set(actor.getWidth(), 0);
+			actor.localToStageCoordinates(boundsCorner);
+			stage.stageToScreenCoordinates(boundsCorner);
+			float w = boundsCorner.x - x, h = boundsCorner.y - y;
+			if (!first[0]) {
+				json.append(',');
+			}
+			first[0] = false;
+			json.append(String.format(java.util.Locale.ENGLISH, "\"%s\":{\"x\":%.1f,\"y\":%.1f,\"w\":%.1f,\"h\":%.1f}",
+					actor.getName(), x, y, w, h));
+		}
+		if (actor instanceof com.badlogic.gdx.scenes.scene2d.Group) {
+			for (com.badlogic.gdx.scenes.scene2d.Actor child : ((com.badlogic.gdx.scenes.scene2d.Group) actor).getChildren()) {
+				collectWidgetBounds(child, json, first);
+			}
+		}
+	}
+
 	/**
 	 * Shows the keyboard-controls overlay. Kept separate from the tutorial: it is
 	 * raised when the user presses a key that has no binding (see
@@ -1672,6 +1723,15 @@ public class MapViewerScreen implements Screen {
 		// viewport it was resized to; put it back after the inset UI pass.
 		Gdx.gl.glViewport(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
+		if (flagTakeSnapshotWithUi) {
+			flagTakeSnapshotWithUi = false;
+			// The whole window, widgets included, never cropped to a photo: a screenshot.
+			Pixmap snapshot = Pixmap.createFromFrameBuffer(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+			final com.peaknav.utils.SnapshotInfo info = snapshotInfo(snapshot.getWidth(), snapshot.getHeight());
+			getC().submitExecutorGeneric(() -> {
+				mapApp.nativeScreenCaller.shareSnapshot(snapshot, info);
+			});
+		}
 	}
 
 	/** Receives one rendered frame; the pixmap is the receiver's to dispose. */

@@ -1397,6 +1397,66 @@ public final class PeakNavRenderer implements AutoCloseable {
         return this;
     }
 
+    /** The current view with the widgets drawn over it - a screenshot rather than a picture. */
+    public PeakNavRenderer captureWithUi(final File output) {
+        File parent = output.getAbsoluteFile().getParentFile();
+        if (parent != null) {
+            parent.mkdirs();
+        }
+        CountDownLatch written = snapshotWriter.expect(output);
+        onRenderThread(mapApp.mapViewerScreen::takeSnapshotWithUi);
+        try {
+            if (!written.await(ACTION_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("no snapshot arrived within " + ACTION_TIMEOUT_SECONDS + "s for " + output);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while capturing " + output, e);
+        }
+        snapshotWriter.rethrowFailure();
+        return this;
+    }
+
+    /** Where the named widgets are on screen, as JSON (see MapViewerScreen.widgetBoundsJson). */
+    public String widgetsJson() {
+        final String[] out = new String[1];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.widgetBoundsJson());
+        return out[0];
+    }
+
+    /** Opens or closes the options pane, as the options button does. */
+    public PeakNavRenderer setOptionsPane(final boolean shown) {
+        onRenderThread(() -> {
+            if (shown) {
+                mapApp.mapViewerScreen.optionPane.show();
+            } else {
+                mapApp.mapViewerScreen.optionPane.hide();
+            }
+        });
+        return this;
+    }
+
+    /** A tap on the screen at window pixels (y downwards), as a finger would: picks a point, or over a photo does nothing. */
+    public PeakNavRenderer tap(final int x, final int y) {
+        onRenderThread(() -> {
+            mapApp.mapViewerScreen.controller.touchDown(x, y, 0, 0);
+            mapApp.mapViewerScreen.controller.touchUp(x, y, 0, 0);
+        });
+        return this;
+    }
+
+    /** Pins the terrain under window pixel (x, y) to that spot of the photo, as a double tap does. */
+    public PeakNavRenderer pinPhoto(final float x, final float y) {
+        onRenderThread(() -> com.peaknav.gesture.PhotoPin.set(x, y,
+                mapApp.mapViewerScreen.cam.getPickRayStable(x, y).direction));
+        return this;
+    }
+
+    public PeakNavRenderer unpinPhoto() {
+        onRenderThread(com.peaknav.gesture.PhotoPin::clear);
+        return this;
+    }
+
     public PeakNavRenderer capture(final File output) {
         File parent = output.getAbsoluteFile().getParentFile();
         if (parent != null) {

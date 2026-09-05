@@ -253,6 +253,10 @@
                   "fov": {
                     "type": "number",
                     "description": "Vertical field of view in degrees. The app's map uses 30; its GPX tour 62, to keep the mountains either side of a track in shot. Holds until set again."
+                  },
+                  "options_pane": {
+                    "type": "boolean",
+                    "description": "Open or close the options pane, as the options button does."
                   }
                 }
               }
@@ -331,6 +335,15 @@
               ],
               "default": "png"
             }
+          },
+          {
+            "name": "ui",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Draw the widgets too: a screenshot of the app rather than a picture of the view."
           }
         ],
         "responses": {
@@ -734,6 +747,91 @@
         "responses": {
           "200": {
             "description": "Applied"
+          }
+        }
+      }
+    },
+    "/widgets": {
+      "get": {
+        "summary": "Where the named widgets are on screen",
+        "description": "{width, height, widgets: {name: {x, y, w, h}}} in window pixels, y downwards, for the widgets currently visible - what places the tutorial's markers on a screenshot.",
+        "responses": {
+          "200": {
+            "description": "The bounds"
+          }
+        }
+      }
+    },
+    "/tap": {
+      "post": {
+        "summary": "A tap on the screen",
+        "description": "A finger's tap at window pixels (y downwards): picks a point on the terrain (the go-to strip appears), or over a photo does nothing.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Done"
+          }
+        }
+      }
+    },
+    "/photo/pin": {
+      "post": {
+        "summary": "Pin a point of the photo",
+        "description": "Pins the terrain under window pixel (x, y) to that spot of the photo, as a double tap does; the red ring marks it.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pinned"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Release the pin",
+        "responses": {
+          "200": {
+            "description": "Released"
           }
         }
       }
