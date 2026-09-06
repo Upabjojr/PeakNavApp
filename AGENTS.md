@@ -276,7 +276,12 @@ Two more RoboVM-side traps, both handled in `ios/build.gradle`:
   `BoundaryFeatures` means retraining both: a model file records its feature count
   and the loader ignores a mismatch. Measure any change to the extractor on both the
   bearing benchmark and the mask score before keeping it; the numbers that matter are
-  gross misses, not pixels. Put new data-prep tools here rather than in
+  gross misses, not pixels. The "?" tutorial (`assets/info/app_tutorial.html`) is
+  screenshots of the app with a ring on the widget each slide is about: after a UI
+  change, rebuild the jar and run `tools/tutorial_screenshots.py`, which takes the
+  pictures over the REST API (`/frame?ui=true`, `/widgets`) and rewrites the slide
+  data between the page's SLIDES markers; the captions live in that script, and the
+  screenshot file names in the three platforms' tutorial code. Put new data-prep tools here rather than in
   a test: an index builder hidden in `TestLuceneGeonames` meant a half-built index
   directory from an earlier run could fail the whole suite.
 

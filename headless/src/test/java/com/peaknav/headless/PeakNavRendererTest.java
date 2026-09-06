@@ -1027,6 +1027,19 @@ class PeakNavRendererTest {
             assertTrue(matched.contains("\"matched\":true"), matched);
             assertEquals(0, bearingError(jsonNumber(matched, "bearing_deg"), bearing), 2.0, matched);
             http(port, "POST", "/photo/overlay", "{\"outline_alpha\":0.8,\"terrain_alpha\":0.2}");
+            // the tutorial's tools: widget bounds, a pin by coordinates, a screenshot with the UI
+            String widgets = http(port, "GET", "/widgets", null);
+            assertTrue(widgets.contains("\"photo_match\"") && widgets.contains("\"gallery\""), widgets);
+            http(port, "POST", "/photo/pin", "{\"x\":320,\"y\":200}");
+            assertTrue(com.peaknav.gesture.PhotoPin.isActive(), "pinned over REST");
+            assertTrue(http(port, "GET", "/widgets", null).contains("\"unpin\""), "the unpin button shows while pinned");
+            http(port, "DELETE", "/photo/pin", null);
+            assertTrue(!com.peaknav.gesture.PhotoPin.isActive());
+            File shot = Files.createTempDirectory("peaknav-ui").resolve("ui.png").toFile();
+            renderer.captureWithUi(shot);
+            BufferedImage ui = ImageIO.read(shot);
+            assertTrue(ui != null && ui.getWidth() == WIDTH && ui.getHeight() == HEIGHT,
+                    "a UI screenshot is the whole window, not cropped to the photo");
             http(port, "DELETE", "/photo", null);
             assertTrue(!renderer.hasPhoto());
         } finally {

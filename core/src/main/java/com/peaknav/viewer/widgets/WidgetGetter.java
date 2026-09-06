@@ -221,6 +221,7 @@ public class WidgetGetter {
 
             Button buttonGalleryPick = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_gallery.png", null);
+            buttonGalleryPick.setName("gallery");   // for /widgets, which places the tutorial's markers
             buttonGalleryPick.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -232,6 +233,7 @@ public class WidgetGetter {
 
             Button buttonCameraPicture = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_camera.png", null);
+            buttonCameraPicture.setName("camera");   // for /widgets, which places the tutorial's markers
             buttonCameraPicture.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -247,6 +249,7 @@ public class WidgetGetter {
             // (a double tap releases too, but a button is found without being told). Its
             // row collapses to nothing while hidden, so the bar keeps its usual top.
             buttonUnpin = getC().widgetTextures.getButtonWithIcon("icons/icon_unpin.png", null);
+            buttonUnpin.setName("unpin");   // for /widgets, which places the tutorial's markers
             buttonUnpin.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -258,6 +261,7 @@ public class WidgetGetter {
 
             Slider.SliderStyle sliderStyle = getC().styleSingleton.getSliderStyle();
             sliderElevation = new Slider(0f, 100f, 0.1f, true, sliderStyle);
+            sliderElevation.setName("elevation_bar");   // for /widgets, which places the tutorial's markers
             sliderElevation.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -275,6 +279,7 @@ public class WidgetGetter {
                     .row();
 
             buttonOrientation = getC().widgetTextures.getButtonWithIcon("icons/icon_gyro.png", "icons/icon_gyro_pressed.png");
+            buttonOrientation.setName("gyro");   // for /widgets, which places the tutorial's markers
             // buttonOrientation.setProgrammaticChangeEvents(false);
             buttonOrientation.addListener(new ChangeListener() {
                 @Override
@@ -312,6 +317,7 @@ public class WidgetGetter {
 
             Button buttonMatchPhoto = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_match_photo.png", null);
+            buttonMatchPhoto.setName("photo_match");   // for /widgets, which places the tutorial's markers
             buttonMatchPhoto.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -322,6 +328,7 @@ public class WidgetGetter {
                     .padRight(borderPad).padBottom(borderPad);
 
             sliderCameraAlpha = new Slider(0f, 1f, 0.05f, false, sliderStyleCA);
+            sliderCameraAlpha.setName("photo_outline_bar");   // for /widgets, which places the tutorial's markers
             sliderCameraAlpha.setVisualPercent(1.0f);
             sliderCameraAlpha.addListener(new ChangeListener() {
                 @Override
@@ -336,6 +343,7 @@ public class WidgetGetter {
             Button buttonCameraCancel = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_x.png", null
             );
+            buttonCameraCancel.setName("photo_close");   // for /widgets, which places the tutorial's markers
             buttonCameraCancel.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -547,6 +555,7 @@ public class WidgetGetter {
                     .width(2*widgetUnitStep).height(widgetUnitStep).right();
 
             Button buttonSearch = getC().widgetTextures.getButtonWithIcon("icons/icon_search.png");
+            buttonSearch.setName("search");   // for /widgets, which places the tutorial's markers
             buttonSearch.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -561,6 +570,7 @@ public class WidgetGetter {
                     .row();
 
             optionsButton = getC().widgetTextures.getButtonWithIcon("icons/icon_options.png", "icons/icon_options_checked.png");
+            optionsButton.setName("options");   // for /widgets, which places the tutorial's markers
             optionsButton.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -579,6 +589,7 @@ public class WidgetGetter {
             tableCancelGoToDest = new Table();
             // tableCancelGoToDest.right();
             buttonCancelGoToDest = getC().widgetTextures.getButtonWithIcon("icons/icon_x.png");
+            buttonCancelGoToDest.setName("go_to_cancel");   // for /widgets, which places the tutorial's markers
             buttonCancelGoToDest.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -590,6 +601,7 @@ public class WidgetGetter {
             tableCancelGoToDest.add(buttonCancelGoToDest).width(widgetUnitStep)
                     .height(widgetUnitStep).padRight(0.85f*widgetUnitStep);
             buttonGoToDest = getC().widgetTextures.getButtonWithIcon("icons/icon_go_to_dest.png");
+            buttonGoToDest.setName("go_to");   // for /widgets, which places the tutorial's markers
             buttonGoToDest.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -638,6 +650,7 @@ public class WidgetGetter {
             // The other thing to do with a clicked point: circle it instead of flying to it.
             // Same strip as "go to", so it appears with the pin and goes away with it.
             buttonOrbitDest = getC().widgetTextures.getButtonWithIcon("icons/icon_orbit.png");
+            buttonOrbitDest.setName("orbit");   // for /widgets, which places the tutorial's markers
             buttonOrbitDest.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -660,6 +673,7 @@ public class WidgetGetter {
             tableCancelGoToDest.row();
             buttonOpenCoordinate = getC().widgetTextures
                     .getButtonWithIcon("icons/icon_open_coordinate.png");
+            buttonOpenCoordinate.setName("open_coordinate");   // for /widgets, which places the tutorial's markers
             buttonOpenCoordinate.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -688,6 +702,7 @@ public class WidgetGetter {
             // The same button pauses the tour once it is running — its icon is swapped by
             // MapViewerScreen.updateGpxButtons, so play and pause never occupy two slots.
             buttonGpxFly = getC().widgetTextures.getButtonWithIcon("icons/icon_gpx_play.png", null);
+            buttonGpxFly.setName("gpx_play");   // for /widgets, which places the tutorial's markers
             buttonGpxFly.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -703,6 +718,7 @@ public class WidgetGetter {
             // Clear the loaded track(s). Also hidden until there is something to clear.
             buttonGpxClear = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_gpx_clear.png", null);
+            buttonGpxClear.setName("gpx_clear");
             buttonGpxClear.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -729,6 +745,7 @@ public class WidgetGetter {
             terrainStyle.knob.setMinWidth(knob);
             terrainStyle.background = getC().widgetTextures.getNinePatchDrawable("icons/slider_nine_patch.png");
             sliderTerrainAlpha = new Slider(0f, 1f, 0.05f, true, terrainStyle);
+            sliderTerrainAlpha.setName("terrain_bar");   // for /widgets, which places the tutorial's markers
             sliderTerrainAlpha.setVisualPercent(0f);
             sliderTerrainAlpha.addListener(new ChangeListener() {
                 @Override
@@ -744,6 +761,7 @@ public class WidgetGetter {
                 // just above the terrain-opacity bar.
                 buttonSaveSample = getC().widgetTextures.getButtonWithIcon(
                         "icons/icon_save_sample.png", null);
+                buttonSaveSample.setName("save_sample");   // for /widgets, which places the tutorial's markers
                 buttonSaveSample.addListener(new ChangeListener() {
                     @Override
                     public void changed(ChangeEvent event, Actor actor) {
@@ -762,6 +780,7 @@ public class WidgetGetter {
 
             shareButton = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_share.png", null);
+            shareButton.setName("share");   // for /widgets, which places the tutorial's markers
             shareButton.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -781,6 +800,7 @@ public class WidgetGetter {
 
             tableBottomRight.add(copyrightLabel).bottom().padRight(0.5f*widgetUnitStep);
             helpButton = getC().widgetTextures.getButtonWithIcon("icons/icon_help.png");
+            helpButton.setName("help");   // for /widgets, which places the tutorial's markers
             helpButton.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
@@ -791,6 +811,7 @@ public class WidgetGetter {
             });
             tableBottomRight.add(helpButton).width(widgetUnitStep).height(widgetUnitStep).padRight(0.5f*widgetUnitStep);
             hereButton = getC().widgetTextures.getButtonWithIcon("icons/icon_here.png");
+            hereButton.setName("here");   // for /widgets, which places the tutorial's markers
             icon_here = getC().widgetTextures
                     .getTextureRegionDrawable("icons/icon_here.png");
             icon_here_gps = getC().widgetTextures

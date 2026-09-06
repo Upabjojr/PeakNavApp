@@ -244,17 +244,36 @@ class PeakNavHeadless:
             payload["settle_ms"] = settle_ms
         return self._request("POST", "/wait", payload)
 
-    def frame(self, image_format="png"):
-        """The current view, as PNG or JPEG bytes."""
-        return self._request("GET", "/frame?format=" + image_format)
+    def frame(self, image_format="png", *, ui=False):
+        """The current view, as PNG or JPEG bytes; ``ui=True`` draws the widgets too (a
+        screenshot of the app rather than a picture of the view)."""
+        return self._request("GET", "/frame?format=" + image_format + ("&ui=true" if ui else ""))
 
-    def save_frame(self, path):
+    def save_frame(self, path, *, ui=False):
         """Renders to ``path``, choosing PNG or JPEG from its suffix."""
         image_format = "jpg" if path.lower().endswith((".jpg", ".jpeg")) else "png"
-        data = self.frame(image_format)
+        data = self.frame(image_format, ui=ui)
         with open(path, "wb") as f:
             f.write(data)
         return path
+
+    def widgets(self):
+        """Where the visible named widgets are: {"width", "height", "widgets": {name: {x, y,
+        w, h}}} in window pixels, y downwards. Names: gallery, camera, search, options, share,
+        here, help, gyro, elevation_bar, photo_match, photo_outline_bar, photo_close,
+        terrain_bar, unpin, go_to, orbit, open_coordinate, go_to_cancel, gpx_play, gpx_clear."""
+        return self._request("GET", "/widgets")
+
+    def tap(self, x, y):
+        """A finger's tap at window pixels (y downwards): picks a point on the terrain."""
+        return self._request("POST", "/tap", {"x": int(x), "y": int(y)})
+
+    def pin_photo(self, x, y):
+        """Pins the terrain under window pixel (x, y) to that spot of the photo (the red ring)."""
+        return self._request("POST", "/photo/pin", {"x": x, "y": y})
+
+    def unpin_photo(self):
+        return self._request("DELETE", "/photo/pin")
 
     # ------------------------------------------------------------------ photographs
 

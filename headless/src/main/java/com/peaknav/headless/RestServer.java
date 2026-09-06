@@ -97,6 +97,20 @@ final class RestServer {
                 photoMatch(x);
             } else if ("POST".equals(method) && "/photo/overlay".equals(path)) {
                 photoOverlay(x);
+            } else if ("POST".equals(method) && "/photo/pin".equals(path)) {
+                JsonValue body = body(x);
+                renderer.pinPhoto(require(body, "x").asFloat(), require(body, "y").asFloat());
+                json(x, 200, "{\"ok\":true}");
+            } else if ("DELETE".equals(method) && "/photo/pin".equals(path)) {
+                renderer.unpinPhoto();
+                json(x, 200, "{\"ok\":true}");
+            } else if ("POST".equals(method) && "/tap".equals(path)) {
+                JsonValue body = body(x);
+                renderer.tap(require(body, "x").asInt(), require(body, "y").asInt());
+                renderer.settle(200);
+                json(x, 200, "{\"ok\":true}");
+            } else if ("GET".equals(method) && "/widgets".equals(path)) {
+                json(x, 200, renderer.widgetsJson());
             } else if ("GET".equals(method) && "/frame".equals(path)) {
                 frame(x);
             } else if ("POST".equals(method) && "/shutdown".equals(path)) {
@@ -192,6 +206,9 @@ final class RestServer {
         }
         if (body.has("fov")) {
             renderer.setFieldOfView(body.getFloat("fov"));
+        }
+        if (body.has("options_pane")) {
+            renderer.setOptionsPane(body.getBoolean("options_pane"));
         }
         // Imagery source. By id for one the app knows, or by template for anything else -
         // any XYZ tile server, which is how a caller points the renderer at OpenStreetMap
@@ -345,18 +362,20 @@ final class RestServer {
 
     /** The current view as an image - the response body IS the picture. */
     private void frame(HttpExchange x) throws IOException {
-        String query = x.getRequestURI().getQuery();
-        String format = imageFormat;
-        if (query != null && query.startsWith("format=")) {
-            format = query.substring("format=".length());
-        }
+        java.util.Map<String, String> q = query(x);
+        String format = q.containsKey("format") ? q.get("format") : imageFormat;
+        boolean ui = "true".equalsIgnoreCase(q.get("ui"));
         if (!format.equals("png") && !format.equals("jpg")) {
             throw new IllegalArgumentException("format wants png or jpg");
         }
         File tmp = File.createTempFile("peaknav-frame", "." + format);
         try {
             renderer.setImageFormat(format);
-            renderer.capture(tmp);
+            if (ui) {
+                renderer.captureWithUi(tmp);
+            } else {
+                renderer.capture(tmp);
+            }
             byte[] bytes = Files.readAllBytes(tmp.toPath());
             x.getResponseHeaders().set("Content-Type",
                     format.equals("png") ? "image/png" : "image/jpeg");

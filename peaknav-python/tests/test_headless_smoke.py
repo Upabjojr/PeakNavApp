@@ -108,5 +108,10 @@ def test_photo_endpoints_round_trip():
         result = nav.match_photo(attempts=1)
         assert "matched" in result
         nav.set_photo_overlay(outline_alpha=0.5, terrain_alpha=0.2)
+        widgets = nav.widgets()["widgets"]
+        assert "photo_match" in widgets and "gallery" in widgets
+        assert nav.pin_photo(300, 200)["ok"] and nav.unpin_photo()["ok"]
         assert nav.clear_photo()["ok"]
+        assert nav.tap(300, 250)["ok"]
+        assert len(nav.frame("png", ui=True)) > 1000
 

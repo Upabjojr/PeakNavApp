@@ -1,17 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-
 <meta charset="UTF-8">
 <title>PeakNav tutorial</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!--
+  The "?" tutorial: a slideshow of screenshots of the app with a ring on the widget each
+  slide is about. The screenshots and the SLIDES block below are produced by
+  tools/tutorial_screenshots.py from the running app, so the pictures and the rings
+  follow the app; the captions live in that script.
 
+  Shown in a WebView on Android and iOS and in the system browser on the desktop. The
+  three platforms hand the screenshots in through get_image() (base64 on the phones, a
+  temp directory on the desktop), so this page must reference them only by file name
+  through that function. Plain ES5-era JavaScript and CSS with wide support: WebViews
+  on older phones are part of the audience.
+-->
 <style>
 :root {
-    /* Height reserved under the image for the caption bar. The image is sized against
-       this, so the two never overlap and the page never scrolls. */
-    --caption-height: 104px;
+    --caption-height: 118px;
     --page-padding: 14px;
+    --ink: #e8ecf1;
+    --muted: #a7b1bf;
+    --ring: #2ecc71;
 }
 
 * { box-sizing: border-box; }
@@ -22,18 +33,16 @@ html, body {
 }
 
 body {
-    /* A dark page, so the bars either side of a screenshot that does not match the
-       window's aspect read as a deliberate frame rather than as blank space. */
     background: #14181d;
-    color: #e8ecf1;
+    color: var(--ink);
     font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
     display: flex;
     flex-direction: column;
-    /* The image and its caption are centred *as a group*. Letting the stage stretch
-       instead pinned the caption to the bottom edge, which on a portrait phone left
-       it stranded a long way below the landscape screenshot it belongs to. */
     justify-content: center;
     overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .stage {
@@ -45,41 +54,32 @@ body {
     padding: var(--page-padding);
 }
 
-/* Hugs the image exactly. Everything positioned as a percentage - the highlight
-   circle in particular - is measured against this box, so it must stay the size of
-   the screenshot and not of the window. */
-.slideshow-container {
+/* Hugs the picture exactly: the ring is placed in percentages of this box. */
+.frame {
     position: relative;
     display: inline-block;
     line-height: 0;
-    border-radius: 10px;
+    border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+    touch-action: pan-y;
 }
 
-#backgroundImg {
+.frame img {
     display: block;
-    line-height: 0;
-}
-
-#backgroundImg img {
-    display: block;
-    /* Bounded on both axes, so a wide window no longer blows the screenshot up past
-       the viewport height and leaves thick white bands above and below it. */
     max-width: calc(100vw - (2 * var(--page-padding)));
     max-height: calc(100vh - var(--caption-height) - (2 * var(--page-padding)));
     width: auto;
     height: auto;
 }
 
-/* Previous / next. Circular and inside the image, rather than full-height slabs that
-   used to spill onto the page background either side of it. */
+/* Previous / next, inside the picture. */
 .nav {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    width: clamp(38px, 6vw, 62px);
-    aspect-ratio: 1 / 1;
+    width: 46px;
+    height: 46px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -87,44 +87,34 @@ body {
     border-radius: 50%;
     background: rgba(12, 16, 20, 0.55);
     color: #fff;
-    font-size: clamp(17px, 2.4vw, 28px);
+    font-size: 20px;
     line-height: 1;
     cursor: pointer;
-    user-select: none;
     transition: background 0.2s ease, opacity 0.2s ease;
 }
 
 .nav:hover:not(:disabled) { background: rgba(12, 16, 20, 0.85); }
+.nav:disabled { opacity: 0.25; cursor: default; }
+.prev { left: 12px; }
+.next { right: 12px; }
 
-.nav:disabled {
-    opacity: 0.25;
-    cursor: default;
-}
-
-.prev { left: clamp(8px, 1.4vw, 18px); }
-.next { right: clamp(8px, 1.4vw, 18px); }
-
-#circle {
+/* The ring: a pulsing circle whose centre and size come from the slide data, in
+   fractions of the picture, so it lands on its widget at any window size. */
+#ring {
     position: absolute;
-    /* The pointing coordinates were tuned when the box was 100px over an image shown
-       ~510px wide, i.e. the circle centre sat 9.8% / 20.8% below-right of the box's
-       top-left corner. Sizing the box as that same fraction of the image (100/510)
-       keeps the offset constant, so the circle lands on its button at any width
-       instead of shrinking to a dot in the corner on a wide/desktop screen. */
-    width: 19.6%;
-    aspect-ratio: 1 / 1;
     pointer-events: none;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 4px solid var(--ring);
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.35), 0 0 18px rgba(46, 204, 113, 0.9);
+    animation: pulse 1.2s ease-in-out infinite;
 }
 
-#circle svg {
-    width: 100%;
-    height: 100%;
-    display: block;
-    overflow: visible;
+@keyframes pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    50%      { transform: translate(-50%, -50%) scale(0.86); opacity: 0.75; }
 }
 
-/* The caption sits under the screenshot, not on top of it. It used to be centred in
-   the middle of the image, where it covered the very thing it was describing. */
 .caption-bar {
     flex: 0 0 auto;
     height: var(--caption-height);
@@ -132,26 +122,32 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    padding: 0 16px 14px;
+    gap: 6px;
+    padding: 0 16px 12px;
     text-align: center;
 }
 
 #captionText {
-    font-size: clamp(17px, 2.1vw, 26px);
+    font-size: 21px;
     font-weight: 600;
     letter-spacing: 0.01em;
-    line-height: 1.25;
+    line-height: 1.2;
+}
+
+#detailText {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.3;
+    max-width: 60ch;
 }
 
 .dots {
     display: flex;
     gap: 7px;
     line-height: 0;
+    margin-top: 4px;
 }
 
-/* A row of dots rather than a "4 / 11" counter: it shows how long the tutorial is and
-   how far along it is at a glance, and each one is clickable. */
 .dot {
     width: 8px;
     height: 8px;
@@ -164,51 +160,37 @@ body {
 }
 
 .dot:hover { background: #6f7d8f; }
-
-.dot.active {
-    background: #e8ecf1;
-    transform: scale(1.35);
-}
+.dot.active { background: var(--ink); transform: scale(1.35); }
 
 @media (max-width: 620px) {
-    :root {
-        --caption-height: 84px;
-        --page-padding: 8px;
-    }
-    .dot { width: 7px; height: 7px; }
+    :root { --caption-height: 104px; --page-padding: 8px; }
+    #captionText { font-size: 17px; }
+    #detailText { font-size: 12px; }
+    .nav { width: 38px; height: 38px; font-size: 17px; }
+    .dot { width: 6px; height: 6px; }
 }
 </style>
-
 </head>
 
 <body>
 
 <div class="stage">
-    <div class="slideshow-container">
-
-        <div id="backgroundImg" class="mySlides"></div>
-
-        <div id="circle">
-            <svg viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="20" stroke="darkgreen" stroke-width="4" fill="none" />
-            </svg>
-        </div>
-
-        <button class="nav prev" id="prevButton" onclick="plusSlides(-1)" aria-label="Previous">❮</button>
-        <button class="nav next" id="nextButton" onclick="plusSlides(1)" aria-label="Next">❯</button>
-
+    <div class="frame" id="frame">
+        <div id="picture"></div>
+        <div id="ring"></div>
+        <button class="nav prev" id="prevButton" aria-label="Previous">&#10094;</button>
+        <button class="nav next" id="nextButton" aria-label="Next">&#10095;</button>
     </div>
 </div>
 
 <div class="caption-bar">
-    <div id="captionText">Caption Text</div>
+    <div id="captionText"></div>
+    <div id="detailText"></div>
     <div class="dots" id="dots"></div>
 </div>
 
 <script>
-var slideIndex = 0;
-var timer;
-
+// The platforms overload this with their own way of finding the screenshots.
 function get_image(img_path) {
     var img = new Image();
     img.src = img_path;
@@ -217,160 +199,291 @@ function get_image(img_path) {
 
 // OVERLOAD::get_image
 
-let imageBase = get_image("imageBase.jpg");
-let imageOptions = get_image("imageOptions.jpg");
-let imageOptionsSat = get_image("imageOptionsSat.jpg");
-let imageBaseSat = get_image("imageBaseSat.jpg");
-
-let slideData = [
-    {
-        "background": imageBase,
-        "text": "Gyroscope",
-        "pointing": {"top": "70%", "left": "-6.1%"}
-    },
-    {
-        "background": imageBase,
-        "text": "Elevation",
-        "pointing": {"top": "50%", "left": "-6.1%"}
-    },
-    {
-        "background": imageBase,
-        "text": "Gallery",
-        "pointing": {"top": "-12.5%", "left": "-6.1%"}
-    },
-    {
-        "background": imageBase,
-        "text": "Take a picture!",
-        "pointing": {"top": "-12.5%", "left": "7.8%"}
-    },
-    {
-        "background": imageBase,
-        "text": "Search",
-        "pointing": {"top": "-12.5%", "left": "86.2%"}
-    },
-    {
-        "background": imageBase,
-        "text": "Share picture",
-        "pointing": {"top": "52.7%", "left": "86.2%"}
-    },
-    {
-        "background": imageBase,
-        "text": "Current location",
-        "pointing": {"top": "70.0%", "left": "86.2%"}
-    },
-    {
-        "background": imageBase,
-        "text": "Options",
-        "pointing": {"top": "4.5%", "left": "86.2%"}
-    },
-    {
-        "background": imageOptions,
-        "text": "Option menus",
-        "pointing": null
-    },
-    {
-        "background": imageOptionsSat,
-        "text": "Selecting satellite view",
-        "pointing": null
-    },
-    {
-        "background": imageBaseSat,
-        "text": "Satellite view",
-        "pointing": null
-    },
+// SLIDES-BEGIN (written by tools/tutorial_screenshots.py)
+const SLIDES = [
+  {
+    "image": "imageBase.jpg",
+    "text": "Gyroscope",
+    "detail": "The view follows the phone as you turn it.",
+    "marker": {
+      "cx": 0.0375,
+      "cy": 0.9206,
+      "rw": 0.0404,
+      "rh": 0.0854
+    }
+  },
+  {
+    "image": "imageBase.jpg",
+    "text": "Elevation",
+    "detail": "Slide up to rise above the ground - metres to kilometres.",
+    "marker": {
+      "cx": 0.0375,
+      "cy": 0.5,
+      "rw": 0.0404,
+      "rh": 0.3603
+    }
+  },
+  {
+    "image": "imageBase.jpg",
+    "text": "Gallery",
+    "detail": "Put one of your photos behind the terrain.",
+    "marker": {
+      "cx": 0.0375,
+      "cy": 0.0807,
+      "rw": 0.0404,
+      "rh": 0.0854
+    }
+  },
+  {
+    "image": "imageBase.jpg",
+    "text": "Camera",
+    "detail": "Take a picture right here and see the peaks on it.",
+    "marker": {
+      "cx": 0.1794,
+      "cy": 0.0807,
+      "rw": 0.0404,
+      "rh": 0.0854
+    }
+  },
+  {
+    "image": "imageBase.jpg",
+    "text": "Search",
+    "detail": "Find a peak, a hut or a place by name.",
+    "marker": {
+      "cx": 0.9619,
+      "cy": 0.0807,
+      "rw": 0.0404,
+      "rh": 0.0854
+    }
+  },
+  {
+    "image": "imageBase.jpg",
+    "text": "Options",
+    "detail": "Labels, imagery, sky, sun, units.",
+    "marker": {
+      "cx": 0.9619,
+      "cy": 0.1892,
+      "rw": 0.0404,
+      "rh": 0.0854
+    }
+  },
+  {
+    "image": "imageOptions.jpg",
+    "text": "Options",
+    "detail": "Everything the view shows is switched on and off here.",
+    "marker": null
+  },
+  {
+    "image": "imageBaseSat.jpg",
+    "text": "Satellite imagery",
+    "detail": "Any of several imagery sources, chosen in the options.",
+    "marker": null
+  },
+  {
+    "image": "imageBase.jpg",
+    "text": "Share",
+    "detail": "Save or share the view. The picture keeps where and which way it looks in its EXIF.",
+    "marker": {
+      "cx": 0.9619,
+      "cy": 0.8122,
+      "rw": 0.0404,
+      "rh": 0.0854
+    }
+  },
+  {
+    "image": "imageBase.jpg",
+    "text": "Where I am",
+    "detail": "Jump to your GPS position.",
+    "marker": {
+      "cx": 0.9619,
+      "cy": 0.9206,
+      "rw": 0.0404,
+      "rh": 0.0854
+    }
+  },
+  {
+    "image": "imageTap.jpg",
+    "text": "Tap a point",
+    "detail": "Tap the terrain: fly there, orbit it, or open it in your maps app.",
+    "marker": {
+      "cx": 0.8975,
+      "cy": 0.3069,
+      "rw": 0.0404,
+      "rh": 0.0854
+    }
+  },
+  {
+    "image": "imageGpx.jpg",
+    "text": "GPX tracks",
+    "detail": "Load a track and fly along it.",
+    "marker": {
+      "cx": 0.9619,
+      "cy": 0.578,
+      "rw": 0.0404,
+      "rh": 0.0854
+    }
+  },
+  {
+    "image": "imagePhoto.jpg",
+    "text": "Match a photo",
+    "detail": "With a photo behind the terrain, this points the camera the way the photo looks - by its skyline.",
+    "marker": {
+      "cx": 0.3912,
+      "cy": 0.9206,
+      "rw": 0.0404,
+      "rh": 0.0854
+    }
+  },
+  {
+    "image": "imagePhoto.jpg",
+    "text": "Outlines",
+    "detail": "How visible the terrain's outlines are over the photo.",
+    "marker": {
+      "cx": 0.4997,
+      "cy": 0.9206,
+      "rw": 0.0851,
+      "rh": 0.0854
+    }
+  },
+  {
+    "image": "imagePhotoTerrain.jpg",
+    "text": "Terrain over the photo",
+    "detail": "Fade the rendered terrain in over the picture, up to opaque.",
+    "marker": {
+      "cx": 0.9619,
+      "cy": 0.5817,
+      "rw": 0.0404,
+      "rh": 0.1802
+    }
+  },
+  {
+    "image": "imagePhotoPin.jpg",
+    "text": "Pin a point",
+    "detail": "Double-tap to pin a summit, then drag and pinch around it. This button, or another double tap, releases it.",
+    "marker": {
+      "cx": 0.0375,
+      "cy": 0.1197,
+      "rw": 0.0402,
+      "rh": 0.085
+    }
+  },
+  {
+    "image": "imagePhoto.jpg",
+    "text": "Close the photo",
+    "detail": "Back to the plain terrain.",
+    "marker": {
+      "cx": 0.6088,
+      "cy": 0.9206,
+      "rw": 0.0404,
+      "rh": 0.0854
+    }
+  }
 ];
+// SLIDES-END
+
+var images = {};
+for (var i = 0; i < SLIDES.length; i++) {
+    var name = SLIDES[i].image;
+    if (!images[name]) {
+        images[name] = get_image(name);
+    }
+}
+
+var slideIndex = 0;
 
 function buildDots() {
-    let dots = document.querySelector("#dots");
+    var dots = document.getElementById("dots");
     dots.innerHTML = "";
-    for (let i = 0; i < slideData.length; i++) {
-        let dot = document.createElement("button");
+    for (var i = 0; i < SLIDES.length; i++) {
+        var dot = document.createElement("button");
         dot.className = "dot";
         dot.setAttribute("aria-label", "Slide " + (i + 1));
-        dot.onclick = function () { goToSlide(i); };
+        dot.onclick = (function (n) { return function () { goToSlide(n); }; })(i);
         dots.appendChild(dot);
     }
 }
 
-function showSlides() {
-    var backgroundImg = document.querySelector("#backgroundImg");
-    var captionText = document.querySelector("#captionText");
+function showSlide() {
+    var slide = SLIDES[slideIndex];
+    var picture = document.getElementById("picture");
+    picture.innerHTML = "";
+    picture.appendChild(images[slide.image]);
+    document.getElementById("captionText").textContent = slide.text;
+    document.getElementById("detailText").textContent = slide.detail || "";
 
-    let slide = slideData[slideIndex];
-    backgroundImg.innerHTML = "";
-    backgroundImg.appendChild(slide.background);
-    captionText.innerText = slide.text;
-
-    let circle = document.querySelector("#circle");
-    let pointing = slide.pointing;
-    if (pointing == null) {
-        circle.style.display = "none";
+    var ring = document.getElementById("ring");
+    if (slide.marker) {
+        var m = slide.marker;
+        ring.style.display = "block";
+        ring.style.left = (m.cx * 100) + "%";
+        ring.style.top = (m.cy * 100) + "%";
+        // half-widths in fractions of the picture: a circle on a button, an ellipse on a bar
+        ring.style.width = (m.rw * 2 * 100) + "%";
+        ring.style.height = (m.rh * 2 * 100) + "%";
     } else {
-        circle.style.display = "";
-        circle.style.top = pointing["top"];
-        circle.style.left = pointing["left"];
+        ring.style.display = "none";
     }
 
-    // Greyed out at the ends, so a click that does nothing looks intentional rather
-    // than broken.
-    document.querySelector("#prevButton").disabled = (slideIndex === 0);
-    document.querySelector("#nextButton").disabled = (slideIndex === slideData.length - 1);
-
-    let dots = document.querySelectorAll(".dot");
-    for (let i = 0; i < dots.length; i++) {
+    document.getElementById("prevButton").disabled = (slideIndex === 0);
+    document.getElementById("nextButton").disabled = (slideIndex === SLIDES.length - 1);
+    var dots = document.querySelectorAll(".dot");
+    for (var i = 0; i < dots.length; i++) {
         dots[i].classList.toggle("active", i === slideIndex);
     }
 }
 
 function goToSlide(n) {
-    clearTimeout(timer);
+    if (n < 0 || n >= SLIDES.length) {
+        return;
+    }
     slideIndex = n;
-    showSlides();
+    showSlide();
 }
 
-function plusSlides(n) {
-    clearTimeout(timer);
-    slideIndex += n;
-    if (slideIndex >= slideData.length) {
-        slideIndex = slideData.length - 1;
-    } else if (slideIndex < 0) {
-        slideIndex = 0;
-    }
-    showSlides();
-}
+document.getElementById("prevButton").onclick = function () { goToSlide(slideIndex - 1); };
+document.getElementById("nextButton").onclick = function () { goToSlide(slideIndex + 1); };
 
-buildDots();
-showSlides();
-
-var radius = 10;
-var circIndex = 0;
-
-function rgb(r, g, b) {
-    return '#' + Math.round(r * 255).toString(16).padStart(2, '0') +
-            Math.round(g * 255).toString(16).padStart(2, '0') +
-            Math.round(b * 255).toString(16).padStart(2, '0');
-}
-
-function changeCircle() {
-    let circle = document.querySelector("#circle circle");
-    circIndex++;
-    if (circIndex > 5) {
-        circIndex = 0;
-    }
-    radius = 20 - circIndex;
-    circle.setAttribute("r", radius);
-    circle.setAttribute("stroke", rgb(0, 0.5 + circIndex/10.0, 0.5 + (5.0 - circIndex)/10.0))
-}
-
-setInterval(changeCircle, 100);
-
-document.addEventListener("keydown", function(event) {
-    if (event.keyCode === 37) {
-        plusSlides(-1);
-    } else if (event.keyCode === 39) {
-        plusSlides(1);
-    }
+document.addEventListener("keydown", function (event) {
+    if (event.keyCode === 37) { goToSlide(slideIndex - 1); }
+    else if (event.keyCode === 39 || event.keyCode === 32) { goToSlide(slideIndex + 1); }
 });
+
+// Swipe on the picture, the way a phone's photo viewer moves.
+(function () {
+    var startX = null, startY = null;
+    var frame = document.getElementById("frame");
+    frame.addEventListener("touchstart", function (e) {
+        if (e.touches.length === 1) {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+        }
+    }, {passive: true});
+    frame.addEventListener("touchend", function (e) {
+        if (startX === null) { return; }
+        var dx = e.changedTouches[0].clientX - startX;
+        var dy = e.changedTouches[0].clientY - startY;
+        startX = null;
+        if (Math.abs(dx) > 40 && Math.abs(dx) > 1.5 * Math.abs(dy)) {
+            goToSlide(slideIndex + (dx < 0 ? 1 : -1));
+        }
+    }, {passive: true});
+    // A tap on the right half of the picture goes forward, on the left half back.
+    frame.addEventListener("click", function (e) {
+        if (e.target.tagName === "BUTTON") { return; }
+        var rect = frame.getBoundingClientRect();
+        goToSlide(slideIndex + ((e.clientX - rect.left) > rect.width / 2 ? 1 : -1));
+    });
+})();
+
+if (SLIDES.length > 0) {
+    // #7 in the URL opens at slide 7: for links into the tutorial, and for screenshots of it
+    var start = parseInt(location.hash.substring(1), 10);
+    if (!isNaN(start) && start >= 1 && start <= SLIDES.length) {
+        slideIndex = start - 1;
+    }
+    buildDots();
+    showSlide();
+}
 </script>
 
 </body>

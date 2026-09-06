@@ -166,7 +166,10 @@ server also tags photographs the way the app does: `POST /photo` puts a picture 
 the terrain (and moves to its EXIF position), `POST /photo/match` points the camera by
 its skyline, `POST /photo/overlay` sets how the terrain is drawn over it, and `GET
 /frame` then returns the photo with the labels over it and the pose in its EXIF block;
-the Python client wraps the sequence in one `tag_photo()` call. Given
+the Python client wraps the sequence in one `tag_photo()` call. `GET /frame?ui=true`
+returns a screenshot with the widgets, `GET /widgets` says where they are, and
+`tools/tutorial_screenshots.py` uses the two to regenerate the "?" tutorial from the
+running app. Given
 together with `--frame`, the server runs alongside the frame loop instead of replacing
 it, so a script can watch a video render — `GET /objects` lists the peaks, huts, places
 and area labels the renderer has loaded and which of them are on the current frame

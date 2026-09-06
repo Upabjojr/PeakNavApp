@@ -40,7 +40,9 @@ public class AppTutorialAndroidView extends Fragment {
         String htmlString = Gdx.files.internal("info/app_tutorial.html").readString();
 
         String get_image = "function get_image(k) {\n";
-        String[] imgFiles = {"imageBase.jpg", "imageOptions.jpg", "imageOptionsSat.jpg", "imageBaseSat.jpg"};
+        // The tutorial's screenshots, as tools/tutorial_screenshots.py writes them; the
+        // page names them through get_image(), which this overload answers with data URLs.
+        String[] imgFiles = {"imageBase.jpg", "imageOptions.jpg", "imageBaseSat.jpg", "imagePhoto.jpg", "imagePhotoTerrain.jpg", "imagePhotoPin.jpg", "imageGpx.jpg", "imageTap.jpg"};
         for (String imgFile : imgFiles) {
             byte[] imgBytes = Gdx.files.internal("info/" + imgFile).readBytes();
             String base64Img = Base64.encodeToString(imgBytes, Base64.DEFAULT);
