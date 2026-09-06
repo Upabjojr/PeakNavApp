@@ -101,7 +101,7 @@ satellite work is pending, and tile updates have been quiet for 2 s; and
 | | |
 | --- | --- |
 | `moveTo(lat, lon)` | viewpoint position (never prompts) |
-| `aim(bearing, pitch)` | compass bearing (0 = north) and pitch (positive looks up) |
+| `aim(bearing, pitch)` / `aim(bearing, pitch, roll)` | compass bearing (0 = north), pitch (positive looks up) and, optionally, a roll about the axis (positive tilts the horizon clockwise; REST: `roll_deg`) |
 | `setElevationMeters(m)` | viewpoint height in metres above the ground |
 | `setElevation(fraction)` | viewpoint height as a position on the app's elevation bar |
 | `setLabel(Label, on)` / `clearLabels()` | peaks, place names, cities, mountain ranges, islands, lakes, alpine huts, roads, pistes, navigation |

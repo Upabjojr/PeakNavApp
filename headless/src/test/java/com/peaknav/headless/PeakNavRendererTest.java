@@ -910,10 +910,16 @@ class PeakNavRendererTest {
      */
     private static byte[] syntheticPhotoPng(com.peaknav.skyline.TerrainHorizon horizon, float bearing,
                                             float pitch, float vfov) throws Exception {
+        return syntheticPhotoPng(horizon, bearing, pitch, vfov, 0f);
+    }
+
+    /** As above, with the camera rolled: positive tilts the horizon clockwise in the picture. */
+    private static byte[] syntheticPhotoPng(com.peaknav.skyline.TerrainHorizon horizon, float bearing,
+                                            float pitch, float vfov, float roll) throws Exception {
         final int w = 640, h = 480;
         com.peaknav.skyline.SkylineMatcher m = new com.peaknav.skyline.SkylineMatcher(
                 horizon, new float[w], new float[w], w, h);
-        float[] ridge = m.projectHorizon(bearing, pitch, vfov, 0.0);
+        float[] ridge = m.projectHorizon(bearing, pitch, vfov, roll);
         java.util.Random rng = new java.util.Random(5);
         BufferedImage photo = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         for (int y = 0; y < h; y++) {
@@ -983,8 +989,9 @@ class PeakNavRendererTest {
         assumeTrue(!Float.isNaN(terrain.elevationMeters(LAT, LON)), "no elevation data for Zermatt on this machine");
         com.peaknav.skyline.TerrainHorizon horizon = com.peaknav.skyline.TerrainHorizon.compute(terrain, LAT, LON, 20, 720);
         assumeTrue(horizon.coverage >= 0.9, "terrain not loaded far enough");
-        final float bearing = 300f, pitch = 22f, vfov = 50f;
-        byte[] png = syntheticPhotoPng(horizon, bearing, pitch, vfov);
+        // Taken with the phone tilted a few degrees, as hand-held pictures are.
+        final float bearing = 300f, pitch = 22f, vfov = 50f, roll = -4f;
+        byte[] png = syntheticPhotoPng(horizon, bearing, pitch, vfov, roll);
 
         // The renderer's own API.
         renderer.aim(90f, 0f);
@@ -994,9 +1001,13 @@ class PeakNavRendererTest {
         com.peaknav.skyline.SkylineMatcher.Match match = renderer.matchPhoto(1);
         assertTrue(match != null, "the match should run at the viewer's own position");
         assertEquals(0, bearingError(match.bearingDeg, bearing), 2.0, "matched bearing " + match.bearingDeg);
+        assertEquals(roll, match.rollDeg, 1.5, "matched roll " + match.rollDeg);
         Vector3 d = renderer.cameraDirection();
         assertEquals(0, bearingError((Math.toDegrees(Math.atan2(d.x, d.y)) + 360) % 360, bearing), 2.0,
                 "the camera should have been turned");
+        // ...and tilted the way the picture was, not left level.
+        assertEquals(match.rollDeg, com.peaknav.viewer.PhotoSkylineAligner.cameraRollDeg(d, renderer.cameraUp()), 0.5,
+                "the camera should have been rolled to the match");
         renderer.setPhotoOverlay(1f, 0.5f);
         renderer.settle(300);
         File tagged = Files.createTempDirectory("peaknav-tagged").resolve("tagged.jpg").toFile();

@@ -31,9 +31,10 @@ import java.nio.ByteBuffer;
  * from its EXIF coordinates, the photo library, or because it was shot just now - the
  * terrain's horizon around that point is matched against the skyline traced in the
  * picture (see {@link SkylineMatcher}). If the match is unambiguous, the user is asked
- * whether to turn the camera to it; on yes the camera swings to the bearing and pitch
- * found and takes the photo's field of view, so the mountains line up with the picture
- * overlaid on them.
+ * whether to turn the camera to it; on yes the camera swings to the bearing, pitch and
+ * roll found and takes the photo's field of view, so the mountains line up with the
+ * picture overlaid on them - a picture taken with the phone a little tilted gets a camera
+ * tilted the same way, rather than a level one the ridges cross at an angle.
  *
  * <p>The match has to wait for the terrain: the horizon is computed from the tiles the
  * viewer has loaded, so it runs once the app has arrived at the photo's location
@@ -371,6 +372,7 @@ public final class PhotoSkylineAligner {
             public void run() {
                 final MapViewerScreen screen = getC().getMapViewerScreen();
                 final Vector3 direction = new Vector3(screen.cam.direction);
+                final Vector3 up = new Vector3(screen.cam.up);
                 final float cameraFov = screen.cam.fieldOfView;
                 final double lat = getC().L.getCurrentLatitude();
                 final double lon = getC().L.getCurrentLongitude();
@@ -393,7 +395,7 @@ public final class PhotoSkylineAligner {
                     @Override
                     public void run() {
                         try {
-                            java.io.File dir = writeSample(p, direction, cameraFov, lat, lon, altitude, aboveGround, sw, sh);
+                            java.io.File dir = writeSample(p, direction, up, cameraFov, lat, lon, altitude, aboveGround, sw, sh);
                             if (frameReady.await(5, java.util.concurrent.TimeUnit.SECONDS) && frame.get() != null) {
                                 Pixmap f = frame.get();
                                 try {
@@ -428,11 +430,12 @@ public final class PhotoSkylineAligner {
         });
     }
 
-    private static java.io.File writeSample(Pending p, Vector3 dir, float cameraFov, double lat, double lon,
+    private static java.io.File writeSample(Pending p, Vector3 dir, Vector3 up, float cameraFov, double lat, double lon,
                                             double altitude, double aboveGround, int sw, int sh)
             throws java.io.IOException {
         double bearing = (Math.toDegrees(Math.atan2(dir.x, dir.y)) + 360) % 360;
         double pitch = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, dir.z))));
+        double roll = cameraRollDeg(dir, up);
         // The photo's own vertical field of view: the inverse of apply()'s screen fit.
         double drawnHeight = sw > sh ? sh : sw * (double) p.photoHeight / Math.max(1, p.photoWidth);
         double vfov = Math.toDegrees(2 * Math.atan(Math.tan(Math.toRadians(cameraFov) / 2) * drawnHeight / sh));
@@ -474,7 +477,7 @@ public final class PhotoSkylineAligner {
         if (horizon != null) {
             float[] none = new float[p.width];
             SkylineMatcher matcher = new SkylineMatcher(horizon, none, none, p.width, p.height);
-            ridge = matcher.projectHorizon(bearing, pitch, vfov, 0);
+            ridge = matcher.projectHorizon(bearing, pitch, vfov, roll);
         }
 
         com.google.gson.JsonObject sample = new com.google.gson.JsonObject();
@@ -488,7 +491,7 @@ public final class PhotoSkylineAligner {
         camera.addProperty("aboveGroundMeters", aboveGround);
         camera.addProperty("bearingDeg", bearing);
         camera.addProperty("pitchDeg", pitch);
-        camera.addProperty("rollDeg", 0.0);
+        camera.addProperty("rollDeg", roll);
         camera.addProperty("photoVerticalFovDeg", vfov);
         camera.addProperty("photoWideSideFovDeg", fovWide);
         camera.addProperty("viewerFovDeg", cameraFov);
@@ -553,7 +556,7 @@ public final class PhotoSkylineAligner {
         entry.addProperty("lon", lon);
         entry.addProperty("heading", bearing);
         entry.addProperty("pitch", pitch);
-        entry.addProperty("roll", 0.0);
+        entry.addProperty("roll", roll);
         entry.addProperty("vfov", vfov);
         entry.addProperty("fov", fovWide);
         entry.addProperty("elevation", altitude);
@@ -772,15 +775,8 @@ public final class PhotoSkylineAligner {
             return;
         }
         com.peaknav.gesture.PhotoPin.clear();   // the pose is replaced wholesale
-        // World axes are east, north, up (see PeakNavRenderer.aim for the same construction).
-        double bearing = Math.toRadians(m.bearingDeg);
-        double pitch = Math.toRadians(m.pitchDeg);
-        Vector3 direction = new Vector3(
-                (float) (Math.sin(bearing) * Math.cos(pitch)),
-                (float) (Math.cos(bearing) * Math.cos(pitch)),
-                (float) Math.sin(pitch)).nor();
-        Vector3 right = direction.cpy().crs(0f, 0f, 1f).nor();
-        Vector3 up = right.cpy().crs(direction).nor();
+        Vector3 direction = cameraDirection(m.bearingDeg, m.pitchDeg);
+        Vector3 up = cameraUp(direction, m.rollDeg);
         screen.moveCameraAction.clearSteps();
         screen.moveCameraAction.setCameraVectors(null, direction, up, false);
 
@@ -794,6 +790,41 @@ public final class PhotoSkylineAligner {
         screen.cam.fieldOfView = Math.max(MountainInputController.FIELD_OF_VIEW_MIN,
                 Math.min(MountainInputController.FIELD_OF_VIEW_MAX, fov));
         screen.cam.update();
+    }
+
+    /**
+     * The camera's direction for a compass bearing and a pitch. World axes are east, north,
+     * up (see PeakNavRenderer.aim for the same construction).
+     */
+    public static Vector3 cameraDirection(float bearingDeg, float pitchDeg) {
+        double bearing = Math.toRadians(bearingDeg);
+        double pitch = Math.toRadians(pitchDeg);
+        return new Vector3(
+                (float) (Math.sin(bearing) * Math.cos(pitch)),
+                (float) (Math.cos(bearing) * Math.cos(pitch)),
+                (float) Math.sin(pitch)).nor();
+    }
+
+    /**
+     * The camera's up vector for a direction and a roll: the level up (right = direction x
+     * world up, up = right x direction, so the camera stays upright at any pitch) turned
+     * about the direction by the roll. The sign is the matcher's - positive tilts the
+     * horizon clockwise in the picture - and the rotation is the one
+     * {@link SkylineMatcher#projectHorizon} applies to its right and up vectors, so the
+     * terrain drawn with this camera falls where the matcher predicted it on the photo.
+     */
+    public static Vector3 cameraUp(Vector3 direction, float rollDeg) {
+        Vector3 right = direction.cpy().crs(0f, 0f, 1f).nor();
+        Vector3 up = right.cpy().crs(direction).nor();
+        double roll = Math.toRadians(rollDeg);
+        return up.scl((float) Math.cos(roll)).mulAdd(right, (float) -Math.sin(roll)).nor();
+    }
+
+    /** The roll of a camera in the same convention: the inverse of {@link #cameraUp}. */
+    public static float cameraRollDeg(Vector3 direction, Vector3 up) {
+        Vector3 right = direction.cpy().crs(0f, 0f, 1f).nor();
+        Vector3 level = right.cpy().crs(direction).nor();
+        return (float) Math.toDegrees(Math.atan2(-up.dot(right), up.dot(level)));
     }
 
     /**

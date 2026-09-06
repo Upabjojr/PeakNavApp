@@ -297,23 +297,26 @@ public final class PeakNavRenderer implements AutoCloseable {
      * @param pitchDegrees   positive looks up, negative looks down; 0 is the horizon
      */
     public PeakNavRenderer aim(final float bearingDegrees, final float pitchDegrees) {
+        return aim(bearingDegrees, pitchDegrees, 0f);
+    }
+
+    /**
+     * Points the camera, with a roll about its axis: what a photograph taken with the
+     * phone a little tilted needs to line up with the terrain (the skyline matcher finds
+     * the roll along with the bearing and pitch).
+     *
+     * @param rollDegrees positive tilts the horizon clockwise in the picture, as
+     *                    {@code SkylineMatcher.Match.rollDeg}; 0 is level
+     */
+    public PeakNavRenderer aim(final float bearingDegrees, final float pitchDegrees, final float rollDegrees) {
         onRenderThread(() -> {
             // World axes are ENU: +X east, +Y north, +Z up. That is what lets the app derive
             // its compass heading as atan2(dir.y, dir.x) (see DataRetrieveThreadManager), and
-            // it is the same convention as the lastCameraDirection* preferences.
-            double bearing = Math.toRadians(bearingDegrees);
-            double pitch = Math.toRadians(pitchDegrees);
-            double horizontal = Math.cos(pitch);
-
-            Vector3 direction = new Vector3(
-                    (float) (Math.sin(bearing) * horizontal),
-                    (float) (Math.cos(bearing) * horizontal),
-                    (float) Math.sin(pitch)).nor();
-
-            // right = direction x worldUp, up = right x direction. Derived rather than
-            // hardcoded so the camera stays upright at any pitch.
-            Vector3 right = direction.cpy().crs(0f, 0f, 1f).nor();
-            Vector3 up = right.cpy().crs(direction).nor();
+            // it is the same convention as the lastCameraDirection* preferences. The up
+            // vector is derived rather than hardcoded so the camera stays upright at any
+            // pitch, then rolled; both the same way the app applies a photo match.
+            Vector3 direction = com.peaknav.viewer.PhotoSkylineAligner.cameraDirection(bearingDegrees, pitchDegrees);
+            Vector3 up = com.peaknav.viewer.PhotoSkylineAligner.cameraUp(direction, rollDegrees);
 
             // null position = keep where the camera is; immediate = apply now and drop
             // any queued move that would otherwise overwrite this pose next frame.
