@@ -29,9 +29,16 @@ public final class ExifReader {
     private static final int TAG_EXIF_IFD = 0x8769;
     private static final int TAG_FOCAL_LENGTH = 0x920A;
     private static final int TAG_FOCAL_LENGTH_35MM = 0xA405;
+    private static final int TAG_DATE_TIME = 0x0132;
+    private static final int TAG_DATE_TIME_ORIGINAL = 0x9003;
+    private static final int TAG_OFFSET_TIME_ORIGINAL = 0x9011;
+    private static final int TAG_GPS_TIME_STAMP = 0x0007;
+    private static final int TAG_GPS_DATE_STAMP = 0x001D;
 
     /** The EXIF "normal" orientation: no rotation or flip needed. */
     public static final int ORIENTATION_NORMAL = 1;
+    /** What {@link #extractTimestampMillis} returns for a picture without a readable time. */
+    public static final long NO_TIMESTAMP = Long.MIN_VALUE;
 
     private ExifReader() {
     }
@@ -149,6 +156,124 @@ public final class ExifReader {
             }
         }
         return new CameraInfo(focal, focal35, direction);
+    }
+
+    /**
+     * When the picture was taken, as milliseconds since the epoch (UTC), or
+     * {@link #NO_TIMESTAMP}. The star matcher needs the instant: the sky turns a degree
+     * every four minutes.
+     *
+     * <p>The GPS date and time stamps are used first, since they are UTC by definition.
+     * Otherwise DateTimeOriginal (the shutter time, then the file's DateTime), which is local
+     * civil time with no zone: the OffsetTimeOriginal tag gives the zone when the camera
+     * wrote one (phones do), and failing that the device's own zone is assumed - a photo is
+     * usually looked at where it was taken, and being a zone off would be obvious anyway.
+     */
+    public static long extractTimestampMillis(byte[] jpeg) {
+        int tiff = tiffStartOf(jpeg);
+        if (tiff < 0) {
+            return NO_TIMESTAMP;
+        }
+        try {
+            Boolean little = endianness(jpeg, tiff);
+            if (little == null) {
+                return NO_TIMESTAMP;
+            }
+            int ifd0 = tiff + (int) read32(jpeg, tiff + 4, little);
+            int gpsOffset = findEntryValue(jpeg, ifd0, TAG_GPS_IFD, little);
+            if (gpsOffset > 0) {
+                int gps = tiff + gpsOffset;
+                String date = findAsciiValue(jpeg, tiff, gps, TAG_GPS_DATE_STAMP, little);
+                double[] hms = findRationalTriple(jpeg, tiff, gps, TAG_GPS_TIME_STAMP, little);
+                if (date != null && hms != null) {
+                    long t = civilToMillis(date + " " + (int) hms[0] + ":" + (int) hms[1] + ":" + (int) hms[2],
+                            java.util.TimeZone.getTimeZone("UTC"));
+                    if (t != NO_TIMESTAMP) {
+                        return t;
+                    }
+                }
+            }
+            String dateTime = null, offset = null;
+            int exifOffset = findEntryValue(jpeg, ifd0, TAG_EXIF_IFD, little);
+            if (exifOffset > 0) {
+                int exif = tiff + exifOffset;
+                dateTime = findAsciiValue(jpeg, tiff, exif, TAG_DATE_TIME_ORIGINAL, little);
+                offset = findAsciiValue(jpeg, tiff, exif, TAG_OFFSET_TIME_ORIGINAL, little);
+            }
+            if (dateTime == null) {
+                dateTime = findAsciiValue(jpeg, tiff, ifd0, TAG_DATE_TIME, little);
+            }
+            if (dateTime == null) {
+                return NO_TIMESTAMP;
+            }
+            java.util.TimeZone zone = java.util.TimeZone.getDefault();
+            if (offset != null && offset.length() >= 6 && (offset.charAt(0) == '+' || offset.charAt(0) == '-')) {
+                zone = java.util.TimeZone.getTimeZone("GMT" + offset.substring(0, 6));
+            }
+            return civilToMillis(dateTime, zone);
+        } catch (Throwable t) {
+            return NO_TIMESTAMP;
+        }
+    }
+
+    /** "YYYY:MM:DD HH:MM:SS" (EXIF's layout; any single non-digit separators) in a zone. */
+    private static long civilToMillis(String text, java.util.TimeZone zone) {
+        int[] parts = new int[6];
+        int n = 0, value = -1;
+        for (int i = 0; i <= text.length() && n < 6; i++) {
+            char c = i < text.length() ? text.charAt(i) : ' ';
+            if (c >= '0' && c <= '9') {
+                value = (value < 0 ? 0 : value * 10) + (c - '0');
+            } else if (value >= 0) {
+                parts[n++] = value;
+                value = -1;
+            }
+        }
+        if (n < 6 || parts[0] < 1900 || parts[1] < 1 || parts[1] > 12 || parts[2] < 1 || parts[2] > 31
+                || parts[3] > 23 || parts[4] > 59 || parts[5] > 60) {
+            return NO_TIMESTAMP;
+        }
+        java.util.GregorianCalendar cal = new java.util.GregorianCalendar(zone);
+        cal.clear();
+        cal.set(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]);
+        return cal.getTimeInMillis();
+    }
+
+    /** The text of an ASCII entry, without its terminating NUL, or null if absent. */
+    private static String findAsciiValue(byte[] d, int tiff, int ifd, int tag, boolean little) {
+        int count = read16(d, ifd, little);
+        for (int i = 0; i < count; i++) {
+            int entry = ifd + 2 + i * 12;
+            if (read16(d, entry, little) == tag) {
+                int length = (int) read32(d, entry + 4, little);
+                if (length <= 0 || length > 64) {
+                    return null;
+                }
+                int base = length <= 4 ? entry + 8 : tiff + (int) read32(d, entry + 8, little);
+                StringBuilder sb = new StringBuilder(length);
+                for (int j = 0; j < length && base + j < d.length; j++) {
+                    int c = d[base + j] & 0xFF;
+                    if (c == 0) {
+                        break;
+                    }
+                    sb.append((char) c);
+                }
+                return sb.toString().trim();
+            }
+        }
+        return null;
+    }
+
+    /** Three RATIONALs stored by offset (the GPS time stamp's hours, minutes, seconds), or null. */
+    private static double[] findRationalTriple(byte[] d, int tiff, int ifd, int tag, boolean little) {
+        int count = read16(d, ifd, little);
+        for (int i = 0; i < count; i++) {
+            int entry = ifd + 2 + i * 12;
+            if (read16(d, entry, little) == tag) {
+                return readDmsRationals(d, tiff, entry, little);
+            }
+        }
+        return null;
     }
 
     /** The value of a single RATIONAL entry (stored by offset), or NaN if absent/degenerate. */

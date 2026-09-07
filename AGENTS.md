@@ -44,6 +44,22 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     zooms around while a photo is shown. Its accuracy is measured, not assumed: see the
     `skylineBenchmark` tool below, and keep the thresholds in `SkylineMatcher`
     tied to what the benchmark reports.
+  - `stars/` — matching a photograph of the night sky to the stars: `StarExtractor`
+    (the point sources in a picture, with sub-pixel centres and fluxes, over a locally
+    estimated sky background; also says whether a picture looks like a night sky) and
+    `StarMatcher` (a small plate solver: triangles of the brightest sources against
+    triangles of the brightest catalogue stars by side length, each agreement a rotation
+    verified by projecting the sky into the picture; bearing, pitch, roll and field of
+    view, with a "confident" verdict from the match count, the completeness and the
+    margin over the runner-up). Pure Java, no libGDX; the sky comes in as
+    `sky/StarPositions` (catalogue stars and planets as east-north-up directions at a
+    place and instant, from the same `SkyMath` the renderer uses). `viewer/PhotoStarAligner`
+    is the app-side glue: it runs on every loaded photo that looks like a night sky, at the
+    photo's EXIF instant (`ExifReader.extractTimestampMillis`), with the camera's current
+    direction as the first place to look, and offers to point the camera; the photo bar's
+    match button goes to it first and falls back to the skyline matcher for anything that
+    is not a night sky. `TestStarMatcher` paints skies from the shipped catalogue and
+    recovers the pose from them; keep the thresholds in `StarMatcher` tied to it.
 - **`desktop`** — LWJGL3 launcher (`DesktopLauncher`), Swing-based native screens.
 - **`android`** — Android launcher/activity, fragments, native screens.
 - **`ios`** — RoboVM launcher plus a real `IOSLoadFactory`: logging, caches, file

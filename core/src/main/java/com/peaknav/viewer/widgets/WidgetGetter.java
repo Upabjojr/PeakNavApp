@@ -321,7 +321,13 @@ public class WidgetGetter {
             buttonMatchPhoto.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
-                    com.peaknav.viewer.PhotoSkylineAligner.matchNow();
+                    // A night sky is matched on its stars; anything else on its skyline.
+                    com.peaknav.viewer.PhotoStarAligner.matchNow(new Runnable() {
+                        @Override
+                        public void run() {
+                            com.peaknav.viewer.PhotoSkylineAligner.matchNow();
+                        }
+                    });
                 }
             });
             tableCameraControl.add(buttonMatchPhoto).width(widgetUnitStep).height(widgetUnitStep)
@@ -357,6 +363,7 @@ public class WidgetGetter {
 
         public void hideTableCameraControl() {
             com.peaknav.viewer.PhotoSkylineAligner.clear();
+            com.peaknav.viewer.PhotoStarAligner.clear();
             MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(null);
             MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundTexture(null);
             setPhotoShown(false);

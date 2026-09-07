@@ -220,6 +220,29 @@ With `--annotate`, every photo is also written out with the traced skyline in re
 matched pose's ridge in green and the truth pose's ridge in blue, plus an `index.html`
 listing them - the quickest way to see where the extractor goes wrong.
 
+### Photo star matching
+
+A photograph of the night sky is matched on its stars instead. When a picture loaded
+behind the terrain is dark and has point sources in it, they are extracted (a sky
+background and its noise estimated locally, the blobs above it measured, anything the
+size of the Moon or the shape of a trail dropped) and matched against the app's own sky:
+the catalogue stars and the planets as they stand at the viewer's position at the instant
+the photo was taken (its EXIF time, or the sky's clock for a picture without one). The
+match is a small plate solver - triangles among the brightest sources compared with
+triangles among the brightest stars by their side lengths, each agreement proposing a
+rotation that is verified by projecting the whole region of sky into the picture and
+counting the stars that land on a source - so nothing needs to be known about where the
+camera pointed. Where the app's camera already points is tried first, though: hold the
+phone up at the sky with the gyroscope on, take the picture, and the search starts from
+where you are looking. A confident match is offered as for the skyline; on yes the camera
+takes the bearing, pitch, roll and field of view found, the sky view is turned on and, for
+a picture from another night, the sky's clock is set to the photo's time, so the stars
+line up with it. The match button on the photo bar does the same on demand, confident or
+not, and for a picture that is not a night sky hands over to the skyline matcher. Pure
+Java, no learning; the code is `com.peaknav.stars` in `core` (the sky's positions come
+from `com.peaknav.sky.StarPositions`), and `TestStarMatcher` measures it on pictures
+painted from the catalogue itself.
+
 Debug builds have one more button on the photo bar: it saves the current photo with the
 camera's pose and the terrain overlay as a dataset sample (`skyline_samples/` in the app's
 private storage, with a `manifest.json` the benchmark reads directly) - line the picture up
