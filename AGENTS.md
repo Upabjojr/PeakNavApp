@@ -255,8 +255,28 @@ Two more RoboVM-side traps, both handled in `ios/build.gradle`:
   handler". commons-compress hit this (and two runtime failures besides), which
   is why the project no longer uses it at all — downloads are unpacked with
   `java.util.zip.GZIPInputStream` + `com.peaknav.utils.TarReader` instead.
-- Full asset/data setup (fonts, icons, Lucene geonames index) is described in
-  `README.md`; a plain `:core`/`:desktop` compile does **not** need it.
+- **Assets are generated, not committed.** `*.png` is gitignored repository-wide, so
+  the icons the app loads (`assets/icons/*.png`) are rendered from the SVG masters in
+  `assets_nonshared/icons/` by `:core:generateIcons` (Batik, on the buildscript
+  classpath) and the Android launcher mipmaps by `:android:generateLauncherIcons`
+  (plain `ImageIO`, from the two logo PNG masters). `:core:generateAssetList` runs the
+  icon task first and every module's asset packaging depends on it, so a fresh clone
+  builds with nothing installed but a JDK. **A new icon** means: add the SVG, add its
+  name and pixel size to the `iconSizes` map in the root `build.gradle`, and load it
+  from `icons/<name>.png` — the size is what the widget code expects, so keep it in
+  step. The font (`assets/liberation_fonts/LiberationSans-Regular.ttf`, OFL) *is*
+  committed. Only the Lucene geonames index (`README.md`) stays a manual step, and it
+  is optional: without it `LuceneAssetLoader` returns no searcher and search is online
+  only, which is also what the F-Droid build ships.
+- **F-Droid.** The Android target must keep building from a bare clone on a server with
+  only Gradle, a JDK and the SDK: no proprietary dependencies (Play services, Firebase),
+  no prebuilt binaries in the tree, Maven repositories only from the well-known hosts.
+  `fdroid/com.peaknav.yml` is the packaging recipe and `fdroid/README.md` the
+  procedure; the listing (name, descriptions, screenshots, per-`versionCode`
+  changelogs) is `fastlane/metadata/android/`, read by F-Droid at the tagged commit,
+  so a release also needs `changelogs/<versionCode>.txt` there and an `X.Y.Z` tag.
+  `settings.gradle` includes a module only when its directory exists, which is what
+  lets the recipe delete `desktop/`, `ios/` and `headless/` before building.
 - **Build-time data tools** live in their own source set, `core/src/tools/java`
   (package `com.peaknav.tools`), so nothing they pull in ships in the app. Each is
   exposed as a Gradle task in the `peaknav` group — currently
@@ -325,9 +345,10 @@ up with `PeakNavUtils.s("Key")`.
 - `getGraphicFactory()` is `null` on iOS; `TileRenderer` treats that as "this
   platform has no path layer" and skips the mapsforge machinery. Anything new that
   reaches for the factory must do the same.
-- The Gradle wrapper JAR is **not** in git (`.gitignore` ignores `/gradle/`), so
-  `./gradlew` fails with "Unable to access jarfile" on a fresh clone. Regenerate it
-  with a system Gradle 9.3.0: `gradle wrapper --gradle-version 9.3.0`.
+- The Gradle wrapper JAR is **not** in git (`.gitignore` ignores it; the
+  `gradle-wrapper.properties` next to it is tracked, since F-Droid reads the Gradle
+  version from there), so `./gradlew` fails with "Unable to access jarfile" on a fresh
+  clone. Regenerate it with a system Gradle 9.3.0: `gradle wrapper --gradle-version 9.3.0`.
 - The Gradle daemon is off; expect each command to cold-start.
 - Don't rely on the Android module compiling in a headless/SDK-less environment;
   verify Android changes against existing patterns in the `android` module.

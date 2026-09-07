@@ -180,12 +180,50 @@ tasks.matching { it.name.contains("merge") && it.name.contains("JniLibFolders") 
     packageTask.dependsOn 'copyAndroidNatives'
 }
 
-// ':core:generateGeonamesAssetIndex' writes assets/geonames_index.362/filelist.txt into the
+// ':core:generateAssetList' (and the icon and search-index tasks it runs first) writes into the
 // shared '../assets' folder that this module packages. Declare the dependency so Gradle orders
 // the asset merge after it; otherwise mergeAssets fails with an implicit-dependency validation error.
 tasks.matching { it.name == 'mergeDebugAssets' || it.name == 'mergeReleaseAssets' }.configureEach { mergeTask ->
-    mergeTask.dependsOn ':core:generateGeonamesAssetIndex'
+    mergeTask.dependsOn ':core:generateAssetList'
 }
+
+// The launcher icon PNGs, from the PeakNav logo masters in assets_nonshared/icons - the same
+// artwork peaknav.com, the Play Store listing, the iOS icons and the in-app emblem are made from:
+//   peaknav_logo_flat.png  512px, opaque  - the engraved compass badge on its paper plate
+//   peaknav_logo.png       256px, alpha   - the badge alone, transparent outside the circle
+// Nothing here is committed: *.png is gitignored repository-wide, so without this a fresh clone
+// has res/mipmap-anydpi-v26/ic_launcher.xml pointing at a mipmap/ic_launcher_foreground that
+// does not exist, and aapt fails resource linking for every build type. It runs before every
+// build, so a clone - or F-Droid's build server - needs nothing beyond Gradle.
+tasks.register('generateLauncherIcons') {
+    group = 'peaknav'
+    description = 'Renders the launcher icon mipmaps from the logo masters.'
+    def flat = rootProject.file('assets_nonshared/icons/peaknav_logo_flat.png')
+    def alpha = rootProject.file('assets_nonshared/icons/peaknav_logo.png')
+    // The legacy full-bleed icon (@mipmap/ic_launcher, used by the release manifest on pre-8.0
+    // launchers): 48dp at each density bucket. The flat master already carries the paper
+    // plate, so it is a straight resize.
+    def legacy = [mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192]
+    // The adaptive-icon foreground layer: a 108dp canvas at each density. Launchers mask away
+    // everything outside the middle ~66dp, so the emblem is rendered at 2/3 of the canvas and
+    // centred to sit inside that safe zone; the padding stays transparent, since the
+    // adaptive-icon XML supplies the plate colour as its own background layer.
+    def foreground = [mdpi: 108, hdpi: 162, xhdpi: 216, xxhdpi: 324, xxxhdpi: 432]
+    inputs.files(flat, alpha)
+    outputs.files(legacy.keySet().collect { file("res/mipmap-${it}/ic_launcher.png") }
+            + foreground.keySet().collect { file("res/mipmap-${it}/ic_launcher_foreground.png") })
+    doLast {
+        legacy.each { density, px ->
+            rootProject.resizePngInto(flat, file("res/mipmap-${density}/ic_launcher.png"), px, 1.0d)
+        }
+        foreground.each { density, canvas ->
+            rootProject.resizePngInto(alpha, file("res/mipmap-${density}/ic_launcher_foreground.png"),
+                    canvas, 2.0d / 3.0d)
+        }
+    }
+}
+
+tasks.matching { it.name == 'preBuild' }.configureEach { it.dependsOn 'generateLauncherIcons' }
 
 tasks.register('run', Exec) {
     def path

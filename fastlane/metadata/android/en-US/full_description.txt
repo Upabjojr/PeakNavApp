@@ -1,0 +1,24 @@
+PeakNav draws the mountains of the whole world in 3D: the terrain around any point on Earth, with the names of the nearby peaks, the paths and roads projected onto the slopes, alpine huts, lakes, islands and mountain ranges.
+
+<b>What it does</b>
+<ul>
+<li>Shows the mountains around you, or around any place you search, from the ground or from the air; fly to a summit, or orbit around it.</li>
+<li>Names the peaks, huts, towns, lakes, islands and ranges in view, and draws the paths and roads onto the terrain.</li>
+<li>Uses the GPS and the gyroscope to show what you are looking at: hold the phone up and the view turns with it.</li>
+<li>Puts a photograph behind the terrain and matches its skyline to the mountains, to work out where the camera pointed and name the peaks in the picture.</li>
+<li>Draws the sky as it really is: sun, moon and stars at their true positions for your place and time, constellations, the moon's phase.</li>
+<li>Loads a GPX track and follows it through the terrain; shares a view as a picture that carries its position and bearing.</li>
+<li>Satellite imagery and sun shading as optional layers.</li>
+<li>Works offline once an area has been downloaded: elevation and map data are fetched per area and kept on the device.</li>
+</ul>
+
+<b>Data</b>
+Terrain from the ASTER GDEM (METI/NASA); paths, roads, huts and names from OpenStreetMap; place names from GeoNames and Wikidata; imagery from NASA GIBS. The datasets are published openly on Hugging Face, and other map or imagery sources can be added in the options.
+
+<b>Privacy</b>
+The app collects no personal data. Your position, searches and photos stay on the device; the only network traffic is the download of map data and imagery from the providers above, and, when you search for a place, a query to OpenStreetMap's Nominatim.
+
+<b>About this build</b>
+Place search in this build is online only: the offline place-name index shipped in the Google Play build is generated from the GeoNames dumps and is not part of the F-Droid build.
+
+Free software under the GPL v3. Source code and desktop versions (Windows, macOS, Linux) at https://github.com/Upabjojr/PeakNavApp

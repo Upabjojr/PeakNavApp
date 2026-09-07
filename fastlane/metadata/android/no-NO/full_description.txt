@@ -1,0 +1,24 @@
+PeakNav tegner fjellene i hele verden i 3D: terrenget rundt et hvilket som helst punkt på jorden, med navnene på toppene i nærheten, stier og veier projisert på fjellsidene, hytter, innsjøer, øyer og fjellkjeder.
+
+<b>Hva appen gjør</b>
+<ul>
+<li>Viser fjellene rundt deg, eller rundt et sted du søker etter, fra bakken eller fra luften; fly til en topp, eller gå i bane rundt den.</li>
+<li>Navngir topper, hytter, tettsteder, innsjøer, øyer og fjellkjeder i synsfeltet, og tegner stier og veier på terrenget.</li>
+<li>Bruker GPS og gyroskop for å vise det du ser på: hold telefonen opp, og utsikten dreier seg med den.</li>
+<li>Legger et fotografi bak terrenget og tilpasser horisontlinjen til fjellene, for å finne ut hvor kameraet pekte og navngi toppene på bildet.</li>
+<li>Tegner himmelen slik den virkelig er: sol, måne og stjerner på sine faktiske posisjoner for ditt sted og din tid, stjernebilder, månefasen.</li>
+<li>Laster inn et GPX-spor og følger det gjennom terrenget; deler en utsikt som et bilde med posisjon og retning.</li>
+<li>Satellittbilder og solskygge som valgfrie lag.</li>
+<li>Fungerer uten nett når et område er lastet ned: høyde- og kartdata hentes per område og beholdes på enheten.</li>
+</ul>
+
+<b>Data</b>
+Terreng fra ASTER GDEM (METI/NASA); stier, veier, hytter og navn fra OpenStreetMap; stedsnavn fra GeoNames og Wikidata; bilder fra NASA GIBS. Datasettene er åpent publisert på Hugging Face, og andre kart- eller bildekilder kan legges til i innstillingene.
+
+<b>Personvern</b>
+Appen samler ikke inn personopplysninger. Posisjon, søk og bilder blir på enheten; den eneste nettverkstrafikken er nedlasting av kart og bilder fra leverandørene ovenfor og, når du søker etter et sted, en forespørsel til OpenStreetMaps Nominatim.
+
+<b>Om denne utgaven</b>
+Stedssøk i denne utgaven fungerer bare på nett: den frakoblede stedsnavnindeksen i Google Play-utgaven lages fra GeoNames-dumpene og er ikke en del av F-Droid-byggen.
+
+Fri programvare under GPL v3. Kildekode og skrivebordsversjoner (Windows, macOS, Linux) på https://github.com/Upabjojr/PeakNavApp

@@ -118,7 +118,26 @@ public class LuceneAssetLoader {
         return new IndexSearcher(reader);
     }
 
+    /** True when the app was packaged with the search index at all. */
+    public boolean isIndexPackaged() {
+        return Gdx.files.internal(assetFolderName + "/filelist.txt").exists();
+    }
+
+    /**
+     * The searcher over the packaged index, or {@code null} when the build carries no index
+     * (see README.md: it is built separately from the GeoNames dumps, and a build made without
+     * it - F-Droid's, for one - searches online only). A missing index is not an error to
+     * throw here: this runs on a background thread, and on Android an uncaught exception on
+     * any thread kills the whole process.
+     */
     public IndexSearcher getIndexSearcher() {
+        if (!isIndexPackaged()) {
+            if (Gdx.app != null) {
+                Gdx.app.log("LuceneAssetLoader", "No " + assetFolderName
+                        + " in the assets: offline place search is unavailable in this build.");
+            }
+            return null;
+        }
         try {
             copyAssetsToInternalStorage();
         } catch (IOException e) {

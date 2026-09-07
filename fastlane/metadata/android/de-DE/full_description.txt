@@ -1,0 +1,24 @@
+PeakNav zeichnet die Berge der ganzen Welt in 3D: das Gelände um jeden Punkt der Erde, mit den Namen der Gipfel in der Nähe, den auf die Hänge projizierten Wegen und Straßen, Berghütten, Seen, Inseln und Gebirgszügen.
+
+<b>Was die App kann</b>
+<ul>
+<li>Zeigt die Berge um dich herum oder um jeden gesuchten Ort, vom Boden oder aus der Luft; fliege zu einem Gipfel oder kreise um ihn.</li>
+<li>Benennt Gipfel, Hütten, Orte, Seen, Inseln und Gebirgszüge im Blickfeld und zeichnet Wege und Straßen auf das Gelände.</li>
+<li>Nutzt GPS und Gyroskop, um zu zeigen, was du gerade ansiehst: Telefon hochhalten, und die Ansicht dreht sich mit.</li>
+<li>Legt ein Foto hinter das Gelände und gleicht dessen Horizontlinie mit den Bergen ab, um die Blickrichtung der Kamera zu bestimmen und die Gipfel im Bild zu benennen.</li>
+<li>Zeichnet den Himmel, wie er wirklich ist: Sonne, Mond und Sterne an ihren tatsächlichen Positionen für Ort und Zeit, Sternbilder, Mondphase.</li>
+<li>Lädt einen GPX-Track und folgt ihm durch das Gelände; teilt eine Ansicht als Bild mit Position und Blickrichtung.</li>
+<li>Satellitenbilder und Sonnenschattierung als optionale Ebenen.</li>
+<li>Funktioniert offline, sobald ein Gebiet heruntergeladen wurde: Höhen- und Kartendaten werden pro Gebiet geladen und auf dem Gerät behalten.</li>
+</ul>
+
+<b>Daten</b>
+Gelände aus dem ASTER GDEM (METI/NASA); Wege, Straßen, Hütten und Namen aus OpenStreetMap; Ortsnamen aus GeoNames und Wikidata; Bilder von NASA GIBS. Die Datensätze sind offen auf Hugging Face veröffentlicht; weitere Karten- oder Bildquellen lassen sich in den Optionen hinzufügen.
+
+<b>Datenschutz</b>
+Die App sammelt keine persönlichen Daten. Position, Suchanfragen und Fotos bleiben auf dem Gerät; der einzige Netzwerkverkehr ist das Herunterladen von Karten und Bildern von den genannten Anbietern sowie, bei der Ortssuche, eine Anfrage an Nominatim von OpenStreetMap.
+
+<b>Zu dieser Version</b>
+Die Ortssuche funktioniert in dieser Version nur online: der Offline-Ortsnamenindex der Google-Play-Version wird aus den GeoNames-Dumps erzeugt und ist nicht Teil des F-Droid-Builds.
+
+Freie Software unter der GPL v3. Quellcode und Desktop-Versionen (Windows, macOS, Linux) auf https://github.com/Upabjojr/PeakNavApp

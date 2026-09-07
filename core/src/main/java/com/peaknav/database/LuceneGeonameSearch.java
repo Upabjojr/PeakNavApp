@@ -1,5 +1,7 @@
 package com.peaknav.database;
 
+import com.badlogic.gdx.Gdx;
+
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.queryParser.QueryParser;
@@ -85,9 +87,19 @@ public class LuceneGeonameSearch {
 
     public LuceneGeonameSearch() {
         LuceneAssetLoader luceneAssetLoader = new LuceneAssetLoader();
-        new Thread(
-                () -> this.indexSearcher = luceneAssetLoader.getIndexSearcher()
-        ).start();
+        // Stays null when the build has no index (searchGeoName then returns nothing, and
+        // the online search is all the user gets), and also when unpacking or opening it
+        // fails: logged rather than thrown, since an exception escaping this thread would
+        // take the whole app down on Android.
+        new Thread(() -> {
+            try {
+                this.indexSearcher = luceneAssetLoader.getIndexSearcher();
+            } catch (RuntimeException e) {
+                if (Gdx.app != null) {
+                    Gdx.app.error("LuceneGeonameSearch", "Could not open the place-search index", e);
+                }
+            }
+        }).start();
     }
 
     public List<GeonameResult> searchGeoName(String queryName) {

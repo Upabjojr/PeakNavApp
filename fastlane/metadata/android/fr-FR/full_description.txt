@@ -1,0 +1,24 @@
+PeakNav dessine les montagnes du monde entier en 3D : le terrain autour de n'importe quel point de la Terre, avec les noms des sommets voisins, les sentiers et les routes projetés sur les pentes, les refuges, les lacs, les îles et les massifs.
+
+<b>Ce que fait l'application</b>
+<ul>
+<li>Montre les montagnes autour de vous, ou autour de n'importe quel lieu recherché, depuis le sol ou depuis les airs ; volez jusqu'à un sommet, ou tournez autour.</li>
+<li>Nomme les sommets, refuges, villages, lacs, îles et massifs en vue, et dessine sentiers et routes sur le terrain.</li>
+<li>Utilise le GPS et le gyroscope pour montrer ce que vous regardez : levez le téléphone et la vue tourne avec lui.</li>
+<li>Place une photographie derrière le terrain et fait correspondre sa ligne d'horizon aux montagnes, pour retrouver la direction de l'appareil photo et nommer les sommets de l'image.</li>
+<li>Dessine le ciel tel qu'il est : soleil, lune et étoiles à leur position réelle pour votre lieu et votre heure, constellations, phase de la lune.</li>
+<li>Charge une trace GPX et la suit à travers le terrain ; partage une vue sous forme d'image avec sa position et sa direction.</li>
+<li>Imagerie satellite et ombrage solaire en couches optionnelles.</li>
+<li>Fonctionne hors ligne une fois une zone téléchargée : altimétrie et données cartographiques sont récupérées par zone et conservées sur l'appareil.</li>
+</ul>
+
+<b>Données</b>
+Terrain issu de l'ASTER GDEM (METI/NASA) ; sentiers, routes, refuges et noms d'OpenStreetMap ; toponymes de GeoNames et Wikidata ; imagerie de NASA GIBS. Les jeux de données sont publiés ouvertement sur Hugging Face, et d'autres sources de cartes ou d'images peuvent être ajoutées dans les options.
+
+<b>Vie privée</b>
+L'application ne collecte aucune donnée personnelle. Position, recherches et photos restent sur l'appareil ; le seul trafic réseau est le téléchargement des cartes et images auprès des fournisseurs ci-dessus et, lors d'une recherche de lieu, une requête au Nominatim d'OpenStreetMap.
+
+<b>À propos de cette version</b>
+Dans cette version, la recherche de lieux fonctionne uniquement en ligne : l'index hors ligne des toponymes livré avec la version Google Play est généré à partir des dumps GeoNames et ne fait pas partie de la version F-Droid.
+
+Logiciel libre sous licence GPL v3. Code source et versions de bureau (Windows, macOS, Linux) sur https://github.com/Upabjojr/PeakNavApp

@@ -1,0 +1,24 @@
+PeakNav dibuja las montañas de todo el mundo en 3D: el terreno alrededor de cualquier punto de la Tierra, con los nombres de las cumbres cercanas, los senderos y carreteras proyectados sobre las laderas, refugios, lagos, islas y cordilleras.
+
+<b>Qué hace</b>
+<ul>
+<li>Muestra las montañas a tu alrededor, o alrededor de cualquier lugar que busques, desde el suelo o desde el aire; vuela hasta una cumbre o gira a su alrededor.</li>
+<li>Nombra cumbres, refugios, pueblos, lagos, islas y cordilleras a la vista, y dibuja senderos y carreteras sobre el terreno.</li>
+<li>Usa el GPS y el giroscopio para mostrar lo que estás mirando: levanta el teléfono y la vista gira con él.</li>
+<li>Coloca una fotografía detrás del terreno y ajusta su línea del horizonte a las montañas, para averiguar hacia dónde apuntaba la cámara y nombrar las cumbres de la foto.</li>
+<li>Dibuja el cielo tal como es: sol, luna y estrellas en sus posiciones reales para tu lugar y hora, constelaciones, fase lunar.</li>
+<li>Carga una ruta GPX y la sigue por el terreno; comparte una vista como imagen con su posición y orientación.</li>
+<li>Imágenes de satélite y sombreado solar como capas opcionales.</li>
+<li>Funciona sin conexión una vez descargada una zona: la altimetría y los datos de mapa se descargan por zonas y se guardan en el dispositivo.</li>
+</ul>
+
+<b>Datos</b>
+Terreno del ASTER GDEM (METI/NASA); senderos, carreteras, refugios y nombres de OpenStreetMap; topónimos de GeoNames y Wikidata; imágenes de NASA GIBS. Los conjuntos de datos se publican abiertamente en Hugging Face, y se pueden añadir otras fuentes de mapas o imágenes en las opciones.
+
+<b>Privacidad</b>
+La aplicación no recoge datos personales. Tu posición, tus búsquedas y tus fotos se quedan en el dispositivo; el único tráfico de red es la descarga de mapas e imágenes de los proveedores anteriores y, al buscar un lugar, una consulta al Nominatim de OpenStreetMap.
+
+<b>Sobre esta versión</b>
+En esta versión la búsqueda de lugares funciona solo en línea: el índice de topónimos sin conexión de la versión de Google Play se genera a partir de los volcados de GeoNames y no forma parte de la versión para F-Droid.
+
+Software libre bajo la licencia GPL v3. Código fuente y versiones de escritorio (Windows, macOS, Linux) en https://github.com/Upabjojr/PeakNavApp
