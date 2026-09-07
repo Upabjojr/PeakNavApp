@@ -1,9 +1,11 @@
-include 'desktop', 'android', 'ios', 'core', 'headless'
-
-// The GWT `html` target is optional and incomplete, and is not checked into git,
-// so it is absent on some checkouts/branches. Only include it when the module
-// directory is actually present; otherwise its absence breaks tasks like
+// Every module is included only when its directory is present. Two reasons: the GWT `html`
+// target is optional and incomplete and is not checked into git, so it is absent on some
+// checkouts; and a packager that builds one target alone can simply delete the others
+// (F-Droid's recipe removes desktop/, ios/ and headless/ - see fdroid/README.md) without
+// having to edit this file. An include for a missing directory would break tasks like
 // `:desktop:run` with a missing-project error.
-if (new File(settingsDir, 'html').isDirectory()) {
-    include 'html'
+['core', 'desktop', 'android', 'ios', 'headless', 'html'].each { name ->
+    if (new File(settingsDir, name).isDirectory()) {
+        include name
+    }
 }

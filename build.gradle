@@ -8,8 +8,40 @@ buildscript {
     }
     dependencies {
         classpath "com.android.tools.build:gradle:8.9.3"
-
+        // Rasterizes the SVG icon masters into the PNGs the app loads (see
+        // :core:generateIcons below). Pure Java, so a fresh clone builds on any machine -
+        // and on F-Droid's build server - without librsvg or ImageMagick installed.
+        classpath "org.apache.xmlgraphics:batik-transcoder:1.19"
+        classpath "org.apache.xmlgraphics:batik-codec:1.19"
     }
+}
+
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
+import javax.imageio.ImageIO
+import org.apache.batik.transcoder.TranscoderInput
+import org.apache.batik.transcoder.TranscoderOutput
+import org.apache.batik.transcoder.image.ImageTranscoder
+import org.apache.batik.transcoder.image.PNGTranscoder
+
+/**
+ * Scales a PNG master onto a square, transparent canvas of `canvas` pixels. `scale` is the
+ * fraction of the canvas the picture fills, centred; 1.0 is a plain resize. Used for the
+ * in-app launcher emblem here and for the Android mipmaps in android/build.gradle.
+ */
+ext.resizePngInto = { File src, File dst, int canvas, double scale ->
+    BufferedImage img = ImageIO.read(src)
+    int size = (int) Math.round(canvas * scale)
+    int inset = (canvas - size).intdiv(2)
+    BufferedImage out = new BufferedImage(canvas, canvas, BufferedImage.TYPE_INT_ARGB)
+    def g = out.createGraphics()
+    g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+    g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+    g.drawImage(img, inset, inset, size, size, null)
+    g.dispose()
+    dst.parentFile.mkdirs()
+    ImageIO.write(out, 'png', dst)
 }
 
 allprojects {
@@ -25,38 +57,141 @@ allprojects {
     }
 }
 
-// These tasks build index files inside the shared root `assets/` folder. Register
-// them ONCE, on :core, so there is a single producer of each output — registering
-// them per-subproject (as before) made every non-android module declare the same
-// output file, which tripped Gradle's implicit-dependency validation when another
-// module's processResources consumed that folder. Every module that packages the
-// shared assets depends on the :core tasks: the JVM modules below wire
-// processResources.dependsOn, and :android wires mergeAssets.dependsOn
-// ':core:generateGeonamesAssetIndex' (see android/build.gradle).
-// From https://lyze.dev/2021/04/29/libGDX-Internal-Assets-List/
-// The article can be helpful when using assets.txt in your project.
+// These tasks produce generated files inside the shared root `assets/` folder: the icon
+// PNGs, the asset list and the search-index manifest. Register them ONCE, on :core, so
+// there is a single producer of each output — registering them per-subproject (as before)
+// made every non-android module declare the same output file, which tripped Gradle's
+// implicit-dependency validation when another module's processResources consumed that
+// folder. Every module that packages the shared assets depends on
+// ':core:generateAssetList', which runs the other two first: the JVM modules below wire
+// processResources.dependsOn, and :android wires mergeAssets.dependsOn (see
+// android/build.gradle).
 project(':core') {
+    // The icons the app loads from assets/icons/, rendered from the SVG masters in
+    // assets_nonshared/icons/ at the size each one is expected at (WidgetTextures and the
+    // widget code assume these pixel sizes; 30x50 for the nine-patch is not a free choice:
+    // WidgetTextures.getNinePatchDrawable splits it with hard-coded 10px insets that land on
+    // the bar in the artwork only at the SVG's own size). *.png is gitignored repository-wide,
+    // so this task is what makes a fresh clone — and an F-Droid build — complete.
+    def iconSizes = [
+        icon_back: [128, 128],
+        icon_x: [128, 128],
+        icon_options: [128, 128],
+        icon_options_checked: [128, 128],
+        icon_search: [128, 128],
+        icon_checkbox_large_fonts: [128, 128],
+        icon_camera: [128, 128],
+        icon_gallery: [128, 128],
+        icon_change_user: [128, 128],
+        icon_help: [128, 128],
+        icon_share: [128, 128],
+        icon_compass: [120, 120],
+        icon_compass_horizon: [128, 128],
+        icon_compass_corner: [128, 128],
+        icon_compass_location: [128, 128],
+        icon_checkbox_satellite: [128, 128],
+        icon_checkbox_roads: [128, 128],
+        icon_checkbox_place_names: [128, 128],
+        icon_checkbox_alpine_huts: [145, 134],
+        icon_checkbox_peak_names: [128, 128],
+        icon_checkbox_islands: [128, 128],
+        icon_checkbox_mountain_ranges: [128, 128],
+        icon_checkbox_lakes: [128, 128],
+        icon_gpx_play: [128, 128],
+        icon_gpx_pause: [128, 128],
+        icon_gpx_clear: [128, 128],
+        icon_checkbox_large_towns: [128, 128],
+        icon_checkbox_download_data: [128, 128],
+        icon_checkbox_download_data2: [128, 128],
+        icon_checkbox_sun: [256, 256],
+        icon_gyro: [128, 128],
+        icon_gyro_pressed: [128, 128],
+        icon_map: [256, 256],
+        icon_elevation_button: [170, 256],
+        icon_here: [128, 128],
+        icon_here_gps: [128, 128],
+        icon_go_to_dest: [128, 128],
+        icon_orbit: [128, 128],
+        icon_match_photo: [128, 128],
+        icon_save_sample: [128, 128],
+        icon_unpin: [128, 128],
+        icon_open_coordinate: [128, 128],
+        icon_sky_grid: [128, 128],
+        icon_sky_ecliptic: [128, 128],
+        icon_sky_labels: [128, 128],
+        icon_loc_pin: [128, 256],
+        icon_checkbox_sky: [128, 128],
+        icon_info: [128, 128],
+        icon_sky_constellations: [128, 128],
+        icon_sky_mode: [128, 128],
+        icon_sky_time: [128, 128],
+        icon_slider_alpha: [128, 128],
+        icon_units: [128, 128],
+        slider_nine_patch: [30, 50],
+    ]
+    def svgDir = file("${rootDir}/assets_nonshared/icons")
+    def iconsOut = file("${rootDir}/assets/icons")
+    // The in-app launcher emblem (IntroScreen) is not drawn from an SVG: it is the PeakNav
+    // logo itself, kept as a PNG master with its transparency so it sits on the intro
+    // screen's own background. See TRADEMARK-AND-ASSETS.md for what that artwork is.
+    def logoAlpha = file("${rootDir}/assets_nonshared/icons/peaknav_logo.png")
+
+    tasks.register('generateIcons') {
+        group = 'peaknav'
+        description = 'Renders the SVG icon masters into the PNGs in assets/icons.'
+        inputs.files(iconSizes.keySet().collect { new File(svgDir, it + '.svg') }, logoAlpha)
+        outputs.files(iconSizes.keySet().collect { new File(iconsOut, it + '.png') },
+                new File(iconsOut, 'ic_launcher.png'))
+        doLast {
+            iconsOut.mkdirs()
+            iconSizes.each { name, wh ->
+                File svg = new File(svgDir, name + '.svg')
+                def transcoder = new PNGTranscoder()
+                transcoder.addTranscodingHint(ImageTranscoder.KEY_WIDTH, wh[0] as Float)
+                transcoder.addTranscodingHint(ImageTranscoder.KEY_HEIGHT, wh[1] as Float)
+                svg.withInputStream { ins ->
+                    new File(iconsOut, name + '.png').withOutputStream { outs ->
+                        def input = new TranscoderInput(ins)
+                        input.setURI(svg.toURI().toString())
+                        transcoder.transcode(input, new TranscoderOutput(outs))
+                    }
+                }
+            }
+            rootProject.resizePngInto(logoAlpha, new File(iconsOut, 'ic_launcher.png'), 192, 1.0d)
+        }
+    }
+
+    // From https://lyze.dev/2021/04/29/libGDX-Internal-Assets-List/
+    // The article can be helpful when using assets.txt in your project.
     tasks.register('generateAssetList') {
-        inputs.dir("${rootDir}/assets/")
+        group = 'peaknav'
+        description = 'Writes assets/assets.txt, the list of every file under assets/.'
+        // Listed after the files that are themselves generated into assets/, or they would be
+        // missing from the list on a fresh clone. (This used to write the list while the task
+        // was being configured, i.e. before either of them had run.)
+        dependsOn 'generateIcons', 'generateGeonamesAssetIndex'
         // projectFolder/assets
         File assetsFolder = new File("${rootDir}/assets/")
         // projectFolder/assets/assets.txt
         File assetsFile = new File(assetsFolder, "assets.txt")
-        // delete that file in case we've already created it
-        assetsFile.delete()
-
-        // iterate through all files inside that folder
-        // convert it to a relative path
-        // and append it to the file assets.txt
-        fileTree(assetsFolder).collect { assetsFolder.relativePath(it) }.sort().each {
-            assetsFile.append(it + "\n")
+        inputs.files(fileTree(assetsFolder) { exclude 'assets.txt' })
+        outputs.file(assetsFile)
+        doLast {
+            // iterate through all files inside that folder
+            // convert it to a relative path
+            // and append it to the file assets.txt
+            assetsFile.text = fileTree(assetsFolder) { exclude 'assets.txt' }
+                    .collect { assetsFolder.relativePath(it) }.sort().join("\n") + "\n"
         }
     }
     tasks.register("generateGeonamesAssetIndex") {
         def assetsDir = file("${rootDir}/assets/geonames_index.362")
         def indexFile = new File(assetsDir, "filelist.txt")
 
-        inputs.dir(assetsDir)
+        // The index is optional (see README.md): a checkout without it still builds, and the
+        // app then searches online only. fileTree of a missing directory is simply empty,
+        // where inputs.dir would refuse to run.
+        inputs.files(fileTree(assetsDir) { exclude 'filelist.txt' })
         outputs.file(indexFile)
 
         doLast {
@@ -83,15 +218,17 @@ project(':core') {
     }
 }
 
-configure(subprojects - project(':android')) {
+// findAll by name rather than `subprojects - project(':android')`: settings.gradle includes only
+// the modules whose directories exist, and a checkout without android/ must still evaluate.
+configure(subprojects.findAll { it.name != 'android' }) {
     apply plugin: 'java-library'
     // Set this through the `java` extension rather than as a bare project property:
     // the project-level `sourceCompatibility` convention is deprecated in Gradle 8
     // and removed in Gradle 9, where it fails with "unknown property".
     java.sourceCompatibility = 8
 
+    // generateAssetList runs generateIcons and generateGeonamesAssetIndex first.
     processResources.dependsOn ':core:generateAssetList'
-    processResources.dependsOn ':core:generateGeonamesAssetIndex'
 
     compileJava {
         options.incremental = true

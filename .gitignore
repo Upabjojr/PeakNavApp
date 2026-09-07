@@ -5,6 +5,9 @@
 *.mp4
 *.webm
 *.ttf
+# ...except the one face the app renders every label with (see assets/liberation_fonts/LICENSE):
+# the build needs it, and it is not something a build step could produce.
+!assets/liberation_fonts/*.ttf
 *.pem
 *.jks
 
@@ -16,6 +19,11 @@
 # the .deb, so a fresh clone cannot build an installer without them.
 !desktop/icons/*.png
 !desktop/icons/linux/*.png
+
+# The F-Droid / store listing (fastlane layout): icon and screenshots are the listing, not
+# build output.
+!fastlane/**/*.png
+!fastlane/**/*.jpg
 
 LICENSE.html
 privacy_statement.html
@@ -127,7 +135,9 @@ nb-configuration.xml
 .gradle/
 gradle-app.setting
 /build/
-/gradle/
+# The wrapper JAR stays out of git; gradle-wrapper.properties is tracked, since it is how
+# F-Droid's build server (and any tool reading the wrapper) learns which Gradle to use.
+/gradle/wrapper/gradle-wrapper.jar
 /android/build/
 /core/build/
 /desktop/build/

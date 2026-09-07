@@ -1,0 +1,65 @@
+# Draft of the F-Droid packaging recipe for PeakNav, in the format of the fdroiddata
+# repository (https://gitlab.com/fdroid/fdroiddata, file metadata/com.peaknav.yml).
+# It is kept here so it can be reviewed and tried with fdroidserver before being
+# submitted; the copy that counts is the one merged into fdroiddata. See README.md in
+# this folder for the submission steps and for what the placeholders below mean.
+#
+# Name, summary, description, icon and screenshots are NOT set here on purpose: F-Droid
+# reads them from fastlane/metadata/android/ in this repository, at the commit it builds.
+
+Categories:
+  - Navigation
+  - Science & Education
+License: GPL-3.0-only
+AuthorName: Francesco Bonazzi
+AuthorEmail: peaknav.info@gmail.com
+WebSite: https://peaknav.com
+SourceCode: https://github.com/Upabjojr/PeakNavApp
+IssueTracker: https://github.com/Upabjojr/PeakNavApp/issues
+Changelog: https://github.com/Upabjojr/PeakNavApp/releases
+
+AutoName: PeakNav
+
+# The name "PeakNav", the logo and the launcher icon are the author's, all rights
+# reserved (LICENSE, TRADEMARK-AND-ASSETS.md); everything else is GPL. F-Droid marks
+# that with this anti-feature. Releasing the icon artwork under a free licence (the
+# name can stay a trademark) would remove the flag - see README.md in this folder.
+AntiFeatures:
+  NonFreeAssets:
+    en-US: The logo and launcher icon artwork are all rights reserved; the code and every other asset are GPL-3.0.
+
+RepoType: git
+Repo: https://github.com/Upabjojr/PeakNavApp.git
+
+Builds:
+  # Replace the three placeholders with the first release tag that contains the F-Droid
+  # build changes (see README.md). The tag must be one where android/build.gradle carries
+  # exactly this versionCode and versionName.
+  - versionName: X.Y.Z
+    versionCode: NNN
+    commit: X.Y.Z
+    subdir: android
+    gradle:
+      - yes
+    # Only the Android target is built. The other modules apply plugins F-Droid does not
+    # need (construo, RoboVM); settings.gradle includes a module only when its directory
+    # exists, so deleting them is all it takes.
+    rm:
+      - desktop
+      - headless
+      - ios
+      - peaknav-python
+      - snapshots
+    # The two files are the photo-skyline classifier's decision forests: model data
+    # (plain threshold comparisons read by com.peaknav.skyline.SkyClassifier), not
+    # executable code. They are trained from the app's own feature code with
+    # tools/skyline_train.py, as documented in README.md ("Photo skyline matching").
+    # The scanner flags every binary file with a .bin extension, hence the exception.
+    scanignore:
+      - core/src/main/resources/com/peaknav/skyline/boundary_model.bin
+      - core/src/main/resources/com/peaknav/skyline/sky_model.bin
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^[0-9]+\.[0-9]+\.[0-9]+$
+CurrentVersion: X.Y.Z
+CurrentVersionCode: NNN

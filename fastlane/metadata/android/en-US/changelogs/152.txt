@@ -1,0 +1,6 @@
+- The sky is now real: sun, moon and stars at their true positions for your place and time, the moon's phase, a full sky map.
+- GPX tours: load a GPX file and follow its path through the terrain.
+- Orbit mode: tap a point and circle around it.
+- Town labels scale with population; lakes and regions are labelled as areas; non-Latin names are transliterated.
+- Sharper tiles, better search, steadier gyroscope.
+- Fixes: blank screen at start, position reset after a flight, missing roads.

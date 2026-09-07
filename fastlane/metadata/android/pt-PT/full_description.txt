@@ -1,0 +1,24 @@
+O PeakNav desenha as montanhas de todo o mundo em 3D: o terreno à volta de qualquer ponto da Terra, com os nomes dos cumes próximos, os trilhos e estradas projetados nas encostas, refúgios, lagos, ilhas e cordilheiras.
+
+<b>O que faz</b>
+<ul>
+<li>Mostra as montanhas à sua volta, ou à volta de qualquer lugar pesquisado, do chão ou do ar; voe até um cume ou gire à sua volta.</li>
+<li>Nomeia cumes, refúgios, povoações, lagos, ilhas e cordilheiras à vista, e desenha trilhos e estradas sobre o terreno.</li>
+<li>Usa o GPS e o giroscópio para mostrar o que está a ver: levante o telemóvel e a vista roda com ele.</li>
+<li>Coloca uma fotografia atrás do terreno e ajusta a sua linha do horizonte às montanhas, para descobrir para onde apontava a câmara e nomear os cumes na foto.</li>
+<li>Desenha o céu tal como é: sol, lua e estrelas nas suas posições reais para o seu lugar e hora, constelações, fase da lua.</li>
+<li>Carrega um percurso GPX e segue-o pelo terreno; partilha uma vista como imagem com a sua posição e direção.</li>
+<li>Imagens de satélite e sombreado solar como camadas opcionais.</li>
+<li>Funciona sem ligação depois de descarregar uma área: altimetria e dados do mapa são descarregados por área e guardados no dispositivo.</li>
+</ul>
+
+<b>Dados</b>
+Terreno do ASTER GDEM (METI/NASA); trilhos, estradas, refúgios e nomes do OpenStreetMap; topónimos do GeoNames e do Wikidata; imagens do NASA GIBS. Os conjuntos de dados estão publicados abertamente no Hugging Face, e outras fontes de mapas ou imagens podem ser adicionadas nas opções.
+
+<b>Privacidade</b>
+A aplicação não recolhe dados pessoais. A sua posição, pesquisas e fotografias ficam no dispositivo; o único tráfego de rede é a descarga de mapas e imagens dos fornecedores acima e, ao pesquisar um lugar, uma consulta ao Nominatim do OpenStreetMap.
+
+<b>Sobre esta versão</b>
+Nesta versão a pesquisa de lugares funciona apenas online: o índice de topónimos sem ligação incluído na versão do Google Play é gerado a partir dos dumps do GeoNames e não faz parte da versão para o F-Droid.
+
+Software livre sob a licença GPL v3. Código-fonte e versões para computador (Windows, macOS, Linux) em https://github.com/Upabjojr/PeakNavApp
