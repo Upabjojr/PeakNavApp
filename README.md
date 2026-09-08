@@ -4,11 +4,14 @@
 
 Explore the mountains, see paths and ways projected onto their 3D shapes, as well as the names of the nearby peaks!
 
-Available for **Android**, **Windows**, **macOS** and **Linux**.
+Available for **Android**, **iOS**, **Windows**, **macOS** and **Linux**.
 
-<!-- GitHub's markdown sanitizer drops `style` and `class` attributes, so the badge is
-     sized with the `width` attribute, which it does keep. -->
+<!-- GitHub's markdown sanitizer drops `style` and `class` attributes, so the badges are
+     sized with the `width` attribute, which it does keep. Google's badge carries its own
+     clear-space padding and Apple's does not, so the two widths differ to draw the buttons
+     themselves at the same height. -->
 [<img alt="Get it on Google Play" src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" width="200">](https://play.google.com/store/apps/details?id=com.peaknav)
+[<img alt="Download on the App Store" src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" width="180">](https://apps.apple.com/app/id6807140556)
 
 <!-- An <iframe> is stripped entirely by GitHub, so the video is a thumbnail that links
      to YouTube instead of an embedded player. -->
@@ -17,6 +20,9 @@ Available for **Android**, **Windows**, **macOS** and **Linux**.
 ## Download
 
 **Android** — [Google Play](https://play.google.com/store/apps/details?id=com.peaknav)
+
+**iOS** — [App Store](https://apps.apple.com/app/id6807140556), for iPhone and iPad running
+iOS 12 or later.
 
 **Desktop** — [the latest release](https://github.com/Upabjojr/PeakNavApp/releases/latest):
 
@@ -144,6 +150,9 @@ To build the project, follow these steps:
     regardless of it. Search results show peaks with their elevation — "Matterhorn (4478 m)" —
     and rank them below any city sharing their name.
 * Build the project with Gradle — this process is straightforward when using Android Studio, and supports both Android and Desktop builds.
+* The iOS build (RoboVM) only runs on a Mac with full Xcode installed; `./gradlew :ios:build`
+  compiles its Java on any OS. See the "iOS" notes in [AGENTS.md](./AGENTS.md) for the
+  simulator, device and icon steps.
 
 ### Headless renderer
 
