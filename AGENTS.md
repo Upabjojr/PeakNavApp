@@ -8,7 +8,7 @@ find it useful too.
 PeakNav ([peaknav.com](https://peaknav.com)) renders world mountains in 3D, with
 paths, ways, and nearby peak names projected onto the terrain. It is a
 [libGDX](https://libgdx.com/) cross-platform app built with Gradle, shipping on
-Desktop and Android (iOS and HTML targets exist but are incomplete).
+Desktop, Android and iOS (the HTML target exists but is incomplete).
 
 Terrain and OpenStreetMap data come from two HuggingFace datasets, retiled to the
 [slippy map](https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames) convention
@@ -48,8 +48,10 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
 - **`android`** — Android launcher/activity, fragments, native screens.
 - **`ios`** — RoboVM launcher plus a real `IOSLoadFactory`: logging, caches, file
   writing, crash reports, a `libsqlite3` binding for the tile catalogue, and the
-  `NativeScreenCallerIOS` surface. Builds and runs (verified in the iPhone
-  simulator); see "iOS" under Build & run for what is still missing.
+  `NativeScreenCallerIOS` surface. Shipping: on the App Store since 1.2.0 as
+  `com.peaknav.viewer`, iOS 12 and later. It is the youngest target, though, and
+  a few things the other platforms have are still absent from it — see "iOS"
+  under Build & run.
 - **`html`** — GWT target.
 - **`headless`** — drives the real renderer off-screen (`PeakNavRenderer`,
   `RenderCli`; driven by `snapshots/generate_snapshots.py`): programmatic camera, label/sky toggles, waits
@@ -158,7 +160,8 @@ J=-Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
   - `OnlineSearch.failed()` never calls its listener, so anything waiting on a
     Nominatim response needs its own timeout or it waits forever.
 
-  What is still missing, and will surface at runtime rather than at compile time:
+  What is still missing — shipped gaps, not release blockers, and each surfaces at
+  runtime rather than at compile time:
   `getGraphicFactory()` returns `null` (no mapsforge backend for iOS, so no road
   and path layer — the 3D terrain, satellite imagery, labels and sky do not use
   it); and search finds only online results until `assets/geonames_index.362` is
