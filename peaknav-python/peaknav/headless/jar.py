@@ -60,7 +60,7 @@ RELEASE_URL_TEMPLATE = ("https://github.com/Upabjojr/PeakNavApp/releases/downloa
 #: publishing a release, from ``sha256sum peaknav-headless-<version>.jar``.
 KNOWN_SHA256 = {
     "1.2.0": "495dbf480f449b1a6e054122239131316c8e7346ee3038d465465c5792edc727",
-    "1.3.0": "3261679c5dc04c908648e71d01e820850ade2b74a6bbd1135688d5ea07004087",
+    "1.3.0": "d792f7b7ae0acb215135c299350d7de8ce22782644946bd7dec0660db32f37de",
 }
 
 #: The entry point every renderer jar has. Its presence is what tells a renderer jar from

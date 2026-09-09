@@ -95,6 +95,12 @@ configure(subprojects - project(':android')) {
 
     compileJava {
         options.incremental = true
+        // Not just sourceCompatibility: that sets the bytecode level but still links
+        // against the JDK the build runs on, so a call to a method added after Java 8
+        // compiles happily and then throws NoSuchMethodError on an older JVM - the
+        // desktop jar dying on a Mac with an older Java. --release links against the
+        // real Java 8 API, so javac refuses such a call at build time instead.
+        options.release.set(8)
     }
 }
 
