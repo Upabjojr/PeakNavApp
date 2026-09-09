@@ -153,8 +153,9 @@ final class RestServer {
     /** Point and place the camera. Height is one of three explicit forms, never mixed. */
     private void camera(HttpExchange x) throws IOException {
         JsonValue body = body(x);
-        if (body.has("bearing_deg") || body.has("pitch_deg")) {
-            renderer.aim(body.getFloat("bearing_deg", 0f), body.getFloat("pitch_deg", 0f));
+        if (body.has("bearing_deg") || body.has("pitch_deg") || body.has("roll_deg")) {
+            renderer.aim(body.getFloat("bearing_deg", 0f), body.getFloat("pitch_deg", 0f),
+                    body.getFloat("roll_deg", 0f));
         }
         int heights = (body.has("altitude_asl_m") ? 1 : 0)
                 + (body.has("elevation_above_ground_m") ? 1 : 0)

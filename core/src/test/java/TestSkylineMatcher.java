@@ -70,7 +70,12 @@ class TestSkylineMatcher {
 
     private static float[] paint(TerrainHorizon horizon, float bearing, float pitch, float vfov,
                                  int w, int h, long seed) {
-        float[] ridge = projected(horizon, bearing, pitch, vfov, w, h);
+        return paint(horizon, bearing, pitch, vfov, 0f, w, h, seed);
+    }
+
+    private static float[] paint(TerrainHorizon horizon, float bearing, float pitch, float vfov,
+                                 float roll, int w, int h, long seed) {
+        float[] ridge = projected(horizon, bearing, pitch, vfov, roll, w, h);
         Random rng = new Random(seed);
         float[] r = new float[w * h], g = new float[w * h], b = new float[w * h];
         for (int y = 0; y < h; y++) {
@@ -98,19 +103,12 @@ class TestSkylineMatcher {
     }
 
     /** The matcher's own projection, reached through a throwaway instance. */
-    private static float[] projected(TerrainHorizon horizon, float bearing, float pitch, float vfov, int w, int h) {
+    private static float[] projected(TerrainHorizon horizon, float bearing, float pitch, float vfov,
+                                     float roll, int w, int h) {
         float[] zeros = new float[w];
         float[] ones = new float[w];
         java.util.Arrays.fill(ones, 1f);
-        SkylineMatcher m = new SkylineMatcher(horizon, zeros, ones, w, h);
-        try {
-            java.lang.reflect.Method pm = SkylineMatcher.class.getDeclaredMethod(
-                    "projectHorizon", double.class, double.class, double.class, double.class);
-            pm.setAccessible(true);
-            return (float[]) pm.invoke(m, (double) bearing, (double) pitch, (double) vfov, 0.0);
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
-        }
+        return new SkylineMatcher(horizon, zeros, ones, w, h).projectHorizon(bearing, pitch, vfov, roll);
     }
 
     private static int[] pack(float[] rgb, int n) {
@@ -156,11 +154,37 @@ class TestSkylineMatcher {
         for (float[] pose : poses) {
             int[] rgb = pack(paint(horizon, pose[0], pose[1], pose[2], w, h, 7), w * h);
             SkylineExtractor.Skyline sky = SkylineExtractor.extract(rgb, w, h);
+            long t0 = System.nanoTime();
             SkylineMatcher.Match m = new SkylineMatcher(horizon, sky.rows, sky.confidence, w, h).match();
+            System.out.println(String.format(java.util.Locale.ENGLISH, "level %s -> %s in %.2fs",
+                    java.util.Arrays.toString(pose), m, (System.nanoTime() - t0) / 1e9));
             assertEquals(0, bearingError(m.bearingDeg, pose[0]), 1.5, "bearing for " + m);
             assertEquals(pose[1], m.pitchDeg, 1.0, "pitch for " + m);
             assertEquals(pose[2], m.verticalFovDeg, pose[2] * 0.1, "field of view for " + m);
             assertTrue(m.isConfident(), "a clean synthetic skyline should be a confident match: " + m);
+        }
+    }
+
+    @Test
+    @DisplayName("recovers the roll of a photograph taken with the camera tilted")
+    void recoversTheRoll() {
+        TerrainHorizon horizon = TerrainHorizon.compute(TERRAIN, LAT, LON, 20, 720);
+        int w = 480, h = 320;
+        // {bearing, pitch, vfov, roll}: hand-held tilts either way, the last one past the
+        // coarse search's outermost roll so the refinement has to walk the rest.
+        float[][] poses = {{235f, 4f, 40f, -7f}, {60f, -3f, 55f, 5f}, {335f, 8f, 28f, 3.5f}, {150f, 2f, 45f, 11f}};
+        for (float[] pose : poses) {
+            int[] rgb = pack(paint(horizon, pose[0], pose[1], pose[2], pose[3], w, h, 5), w * h);
+            SkylineExtractor.Skyline sky = SkylineExtractor.extract(rgb, w, h);
+            long t0 = System.nanoTime();
+            SkylineMatcher.Match m = new SkylineMatcher(horizon, sky.rows, sky.confidence, w, h).match();
+            System.out.println(String.format(java.util.Locale.ENGLISH, "tilted %s -> %s in %.2fs",
+                    java.util.Arrays.toString(pose), m, (System.nanoTime() - t0) / 1e9));
+            assertEquals(0, bearingError(m.bearingDeg, pose[0]), 1.5, "bearing for " + m);
+            assertEquals(pose[1], m.pitchDeg, 1.0, "pitch for " + m);
+            assertEquals(pose[2], m.verticalFovDeg, pose[2] * 0.1, "field of view for " + m);
+            assertEquals(pose[3], m.rollDeg, 1.0, "roll for " + m);
+            assertTrue(m.isConfident(), "a clean tilted skyline should still be a confident match: " + m);
         }
     }
 

@@ -12,11 +12,18 @@ import java.util.List;
  * {@link TerrainHorizon} onto the skyline {@link SkylineExtractor} traced in the photo.
  *
  * <p>No learning: this is a plain optimisation. A coarse exhaustive search over bearing
- * (one-degree steps) and a handful of fields of view, with the pitch solved in closed form
- * for each pair as the median vertical offset, then a coordinate-descent refinement of the
- * best distinct candidates using the exact projection. The cost is a Huber loss on the
- * vertical pixel residual, measured as a fraction of image height - NOT in degrees, which
- * would let a narrow field of view shrink every error and win by cheating.
+ * (one-degree steps), a handful of fields of view and a few rolls, with the pitch solved in
+ * closed form for each triple as the median vertical offset, then a coordinate-descent
+ * refinement of the best distinct candidates using the exact projection. The cost is a
+ * Huber loss on the vertical pixel residual, measured as a fraction of image height - NOT
+ * in degrees, which would let a narrow field of view shrink every error and win by cheating.
+ *
+ * <p>The roll matters more than its size suggests. Hand-held pictures are routinely a few
+ * degrees off level, and a tilt of 5 degrees slants the ridge by 8% of the height across a
+ * 480-pixel-wide frame - far past the loss cap, so a level camera at the right bearing
+ * scores like a wrong one and the coarse search never hands the true pose to the
+ * refinement. Trying a few rolls in the coarse search costs a few times the work and
+ * recovers those pictures; the refinement then settles the roll to a fraction of a degree.
  *
  * <p>Confidence comes from two independent signs: the residual itself, and how much better
  * the winner is than the best pose pointing somewhere else (the second-ranked distinct
@@ -32,6 +39,14 @@ public final class SkylineMatcher {
     public static final float VFOV_MAX = 100f;
     private static final float PITCH_MAX = 60f;
     private static final float ROLL_MAX = 15f;
+    /**
+     * Rolls tried in the coarse search, degrees. Spaced so that at the worst point between
+     * two of them the ridge is off by under 2% of the height at the frame's edge - inside
+     * the loss cap, so the right bearing still wins its column of the search - and reaching
+     * to the tilt a photograph is plausibly taken with; the refinement covers the rest up
+     * to {@link #ROLL_MAX}.
+     */
+    private static final float[] COARSE_ROLLS_DEG = {-9f, -6f, -3f, 0f, 3f, 6f, 9f};
     /** Huber transition: residuals up to 1% of the image height count quadratically. */
     private static final double HUBER_DELTA = 0.01;
     /**
@@ -177,7 +192,7 @@ public final class SkylineMatcher {
         }
         List<double[]> refined = new ArrayList<>();
         for (double[] c : candidates) {
-            refined.add(refine(c[1], c[2], c[3], vfovMin, vfovMax));
+            refined.add(refine(c[1], c[2], c[3], c[4], vfovMin, vfovMax));
         }
         Collections.sort(refined, new Comparator<double[]>() {
             @Override
@@ -222,17 +237,23 @@ public final class SkylineMatcher {
     }
 
     /**
-     * Every bearing at every field of view, pitch solved as the median offset. Two passes
-     * per pair, and BOTH are kept as candidates: first the small-pitch approximation - a
-     * column is a bearing offset, a row an elevation offset - then, with the pitch that
-     * gave, the exact direction of every skyline pixel through a camera pitched that much.
-     * The approximation alone loses the true pose once the camera looks well above the
-     * horizon (a village view up at 20-30 degree ridges): the columns of a pitched camera
-     * sweep bearings faster than {@code atan(x/f)} says, and the residual of the right
-     * bearing looked worse than that of a wrong one. The exact pass alone, though, scored
-     * slightly worse on GeoPose3K than the approximation (its pitch estimate can drift
-     * when the skyline is partly wrong), so the refinement gets the union and the exact
-     * cost decides. Returns {cost, bearing, pitch, vfov} sorted by cost.
+     * Every bearing at every field of view and every coarse roll, pitch solved as the
+     * median offset. Two passes per triple, and BOTH are kept as candidates: first the
+     * small-pitch approximation - a column is a bearing offset, a row an elevation offset -
+     * then, with the pitch that gave, the exact direction of every skyline pixel through a
+     * camera pitched that much. The approximation alone loses the true pose once the
+     * camera looks well above the horizon (a village view up at 20-30 degree ridges): the
+     * columns of a pitched camera sweep bearings faster than {@code atan(x/f)} says, and
+     * the residual of the right bearing looked worse than that of a wrong one. The exact
+     * pass alone, though, scored slightly worse on GeoPose3K than the approximation (its
+     * pitch estimate can drift when the skyline is partly wrong), so the refinement gets
+     * the union and the exact cost decides.
+     *
+     * <p>The roll is folded into the pixel coordinates once per (field of view, roll):
+     * rotating each skyline pixel about the optical axis by minus the roll gives where it
+     * would sit in a level camera, and both passes then run unchanged on those
+     * coordinates - the roll costs nothing per bearing. Returns
+     * {cost, bearing, pitch, vfov, roll} sorted by cost.
      */
     private List<double[]> coarseSearch(float[] vfovs) {
         List<double[]> results = new ArrayList<>();
@@ -244,42 +265,49 @@ public final class SkylineMatcher {
         double[] sorted = new double[width];
         for (float vfov : vfovs) {
             double f = focalPx(vfov);
-            for (int x = 0; x < width; x++) {
-                xc[x] = (x + 0.5 - width / 2.0) / f;
-                yc[x] = (height / 2.0 - skylineRows[x]) / f;
-                colAz[x] = Math.toDegrees(Math.atan(xc[x]));
-                rowEl[x] = Math.toDegrees(Math.atan(yc[x]));
-            }
-            for (double bearing = 0; bearing < 360; bearing += COARSE_STEP_DEG) {
-                // pass 1: small-pitch approximation
+            for (float roll : COARSE_ROLLS_DEG) {
+                double cosR = Math.cos(Math.toRadians(roll)), sinR = Math.sin(Math.toRadians(roll));
                 for (int x = 0; x < width; x++) {
-                    diff[x] = horizon.angleAt(bearing + colAz[x]) - rowEl[x];
+                    // The pixel in the rolled camera's frame, then in the level camera's: the
+                    // inverse of the roll {@link #projectHorizon} applies to its right and up.
+                    double xr = (x + 0.5 - width / 2.0) / f;
+                    double yr = (height / 2.0 - skylineRows[x]) / f;
+                    xc[x] = cosR * xr - sinR * yr;
+                    yc[x] = sinR * xr + cosR * yr;
+                    colAz[x] = Math.toDegrees(Math.atan(xc[x]));
+                    rowEl[x] = Math.toDegrees(Math.atan(yc[x]));
                 }
-                double pitch = median(diff, sorted);
-                double cost1 = 0;
-                for (int x = 0; x < width; x++) {
-                    double r = f * Math.toRadians(diff[x] - pitch) / height;
-                    cost1 += weights[x] * huber(r);
+                for (double bearing = 0; bearing < 360; bearing += COARSE_STEP_DEG) {
+                    // pass 1: small-pitch approximation
+                    for (int x = 0; x < width; x++) {
+                        diff[x] = horizon.angleAt(bearing + colAz[x]) - rowEl[x];
+                    }
+                    double pitch = median(diff, sorted);
+                    double cost1 = 0;
+                    for (int x = 0; x < width; x++) {
+                        double r = f * Math.toRadians(diff[x] - pitch) / height;
+                        cost1 += weights[x] * huber(r);
+                    }
+                    results.add(new double[]{cost1 / width, bearing, pitch, vfov, roll});
+                    // pass 2: exact pixel directions for a camera pitched by that much
+                    double ph = Math.toRadians(pitch);
+                    double cosP = Math.cos(ph), sinP = Math.sin(ph);
+                    for (int x = 0; x < width; x++) {
+                        double forward = cosP - yc[x] * sinP;
+                        double up = sinP + yc[x] * cosP;
+                        double azOff = Math.toDegrees(Math.atan2(xc[x], forward));
+                        double elObs = Math.toDegrees(Math.atan2(up, Math.hypot(xc[x], forward)));
+                        diff[x] = horizon.angleAt(bearing + azOff) - elObs;
+                    }
+                    double shift = median(diff, sorted);
+                    pitch += shift;
+                    double cost = 0;
+                    for (int x = 0; x < width; x++) {
+                        double r = f * Math.toRadians(diff[x] - shift) / height;
+                        cost += weights[x] * huber(r);
+                    }
+                    results.add(new double[]{cost / width, bearing, pitch, vfov, roll});
                 }
-                results.add(new double[]{cost1 / width, bearing, pitch, vfov});
-                // pass 2: exact pixel directions for a camera pitched by that much
-                double ph = Math.toRadians(pitch);
-                double cosP = Math.cos(ph), sinP = Math.sin(ph);
-                for (int x = 0; x < width; x++) {
-                    double forward = cosP - yc[x] * sinP;
-                    double up = sinP + yc[x] * cosP;
-                    double azOff = Math.toDegrees(Math.atan2(xc[x], forward));
-                    double elObs = Math.toDegrees(Math.atan2(up, Math.hypot(xc[x], forward)));
-                    diff[x] = horizon.angleAt(bearing + azOff) - elObs;
-                }
-                double shift = median(diff, sorted);
-                pitch += shift;
-                double cost = 0;
-                for (int x = 0; x < width; x++) {
-                    double r = f * Math.toRadians(diff[x] - shift) / height;
-                    cost += weights[x] * huber(r);
-                }
-                results.add(new double[]{cost / width, bearing, pitch, vfov});
             }
         }
         Collections.sort(results, new Comparator<double[]>() {
@@ -291,10 +319,46 @@ public final class SkylineMatcher {
         return results;
     }
 
+    /**
+     * The upper median, by quickselect on a scratch copy. The coarse search takes tens of
+     * thousands of medians of a few hundred values, and selecting is several times cheaper
+     * than sorting; on a real device that is the difference the roll loop costs.
+     */
     private static double median(double[] values, double[] scratch) {
-        System.arraycopy(values, 0, scratch, 0, values.length);
-        Arrays.sort(scratch);
-        return scratch[values.length / 2];
+        int n = values.length;
+        System.arraycopy(values, 0, scratch, 0, n);
+        int k = n / 2;
+        int lo = 0, hi = n - 1;
+        while (hi > lo) {
+            // median-of-three pivot moved to the end
+            int mid = (lo + hi) >>> 1;
+            if (scratch[mid] < scratch[lo]) swap(scratch, mid, lo);
+            if (scratch[hi] < scratch[lo]) swap(scratch, hi, lo);
+            if (scratch[mid] < scratch[hi]) swap(scratch, mid, hi);
+            double pivot = scratch[hi];
+            int store = lo;
+            for (int i = lo; i < hi; i++) {
+                if (scratch[i] < pivot) {
+                    swap(scratch, i, store);
+                    store++;
+                }
+            }
+            swap(scratch, store, hi);
+            if (store == k) {
+                break;
+            } else if (store < k) {
+                lo = store + 1;
+            } else {
+                hi = store - 1;
+            }
+        }
+        return scratch[k];
+    }
+
+    private static void swap(double[] a, int i, int j) {
+        double t = a[i];
+        a[i] = a[j];
+        a[j] = t;
     }
 
     /**
@@ -379,8 +443,9 @@ public final class SkylineMatcher {
     }
 
     /** Coordinate descent with halving steps; returns {cost, bearing, pitch, vfov, roll}. */
-    private double[] refine(double bearing, double pitch, double vfov, double vfovMin, double vfovMax) {
-        double[] p = {bearing, pitch, vfov, 0.0};
+    private double[] refine(double bearing, double pitch, double vfov, double roll,
+                            double vfovMin, double vfovMax) {
+        double[] p = {bearing, pitch, vfov, roll};
         double[] step = {1.0, 1.0, 2.0, 1.0};
         double[] lo = {Double.NEGATIVE_INFINITY, -PITCH_MAX, vfovMin, -ROLL_MAX};
         double[] hi = {Double.POSITIVE_INFINITY, PITCH_MAX, vfovMax, ROLL_MAX};

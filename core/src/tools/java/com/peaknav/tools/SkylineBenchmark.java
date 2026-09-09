@@ -48,12 +48,15 @@ public final class SkylineBenchmark {
     public static final class Result {
         public final String file;
         public final double truthBearing;
+        /** The manifest's roll, degrees in the matcher's convention; NaN when it has none. */
+        public final double truthRoll;
         public final SkylineMatcher.Match match;
         public final double seconds;
 
-        Result(String file, double truthBearing, SkylineMatcher.Match match, double seconds) {
+        Result(String file, double truthBearing, double truthRoll, SkylineMatcher.Match match, double seconds) {
             this.file = file;
             this.truthBearing = truthBearing;
+            this.truthRoll = truthRoll;
             this.match = match;
             this.seconds = seconds;
         }
@@ -61,6 +64,11 @@ public final class SkylineBenchmark {
         public double bearingError() {
             double d = Math.abs(match.bearingDeg - truthBearing) % 360.0;
             return d > 180 ? 360 - d : d;
+        }
+
+        /** How far the matched roll is from the manifest's, degrees; NaN without a truth roll. */
+        public double rollError() {
+            return Double.isNaN(truthRoll) ? Double.NaN : Math.abs(match.rollDeg - truthRoll);
         }
     }
 
@@ -71,17 +79,30 @@ public final class SkylineBenchmark {
         public int within10;
         public int confident;
         public int confidentWithin10;
+        /** Photos found within 10 degrees whose manifest carries a roll, and their roll errors summed. */
+        public int rollScored;
+        public double rollErrorSum;
 
         public double confidentPrecision() {
             return confident == 0 ? 0 : confidentWithin10 / (double) confident;
         }
 
+        /** Mean roll error, degrees, over the photos found within 10 degrees that have a truth roll. */
+        public double meanRollError() {
+            return rollScored == 0 ? Double.NaN : rollErrorSum / rollScored;
+        }
+
         @Override
         public String toString() {
-            return String.format(Locale.ENGLISH,
+            String s = String.format(Locale.ENGLISH,
                     "%d photos: within 5deg %.0f%%, within 10deg %.0f%%; confident %d of which %d within 10deg (precision %.0f%%)",
                     photos, 100.0 * within5 / Math.max(1, photos), 100.0 * within10 / Math.max(1, photos),
                     confident, confidentWithin10, 100 * confidentPrecision());
+            if (rollScored > 0) {
+                s += String.format(Locale.ENGLISH, "; roll off by %.1fdeg on average over the %d found with a known roll",
+                        meanRollError(), rollScored);
+            }
+            return s;
         }
     }
 
@@ -167,7 +188,9 @@ public final class SkylineBenchmark {
             SkylineMatcher.Match match = vfov == null ? matcher.match() : matcher.match(vfov);
             double seconds = (System.nanoTime() - t0) / 1e9;
 
-            Result r = new Result(photo.getName(), truth, match, seconds);
+            Object rollObj = e.get("roll");
+            double truthRoll = rollObj instanceof Number ? ((Number) rollObj).doubleValue() : Double.NaN;
+            Result r = new Result(photo.getName(), truth, truthRoll, match, seconds);
             results.add(r);
             summary.photos++;
             double err = r.bearingError();
@@ -177,10 +200,18 @@ public final class SkylineBenchmark {
                 summary.confident++;
                 if (err < 10) summary.confidentWithin10++;
             }
-            out.println(String.format(Locale.ENGLISH, "%-36s truth %6.1f  got %6.1f  err %5.1f  %s  %.1fs",
+            // The roll only means something once the bearing is right: a pose 80 degrees
+            // off has a roll of its own that says nothing about the photo's tilt.
+            if (err < 10 && !Double.isNaN(truthRoll)) {
+                summary.rollScored++;
+                summary.rollErrorSum += r.rollError();
+            }
+            out.println(String.format(Locale.ENGLISH, "%-36s truth %6.1f  got %6.1f  err %5.1f  %s%s  %.1fs",
                     truncate(photo.getParentFile().getName().equals(base.getName())
                             ? photo.getName() : photo.getParentFile().getName(), 36),
-                    truth, match.bearingDeg, err, match, seconds));
+                    truth, match.bearingDeg, err, match,
+                    Double.isNaN(truthRoll) ? "" : String.format(Locale.ENGLISH, " truth roll %.1f", truthRoll),
+                    seconds));
             if (annotate != null) {
                 String stem = photo.getParentFile().getName().equals(base.getName())
                         ? photo.getName().replaceAll("\\.[^.]+$", "") : photo.getParentFile().getName();
