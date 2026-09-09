@@ -190,3 +190,11 @@ packed one `.tar.gz` per zoom-6 tile — the same archives the app downloads —
 the module unpacks into its cache on first use of an area. Summit queries default
 to the max of the four surrounding pixels (ASTER's ~30 m posting rarely centres a
 summit on one); pass `sample="bilinear"` for slopes and profiles.
+
+## Licence
+
+GNU General Public License, version 3 (`SPDX-License-Identifier: GPL-3.0-only`).
+The full text is the `COPYING` file inside this package; `LICENSE` beside it adds
+the project's notice, including the name, logo and launcher icon, which are the
+author's own and are not covered by the GPL. Both files are installed with the
+package, so `pip show -f peaknav` will find them.

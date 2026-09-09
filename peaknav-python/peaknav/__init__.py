@@ -26,6 +26,6 @@ The split is deliberate: scripts that only need "how high is this point" should
 not pay for a JVM, and the two halves share nothing but this namespace.
 """
 
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 
 __all__ = ["__version__"]
