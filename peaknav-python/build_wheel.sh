@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build the peaknav Python wheel into dist/.
+# Build the peaknav Python distributions into dist/: the wheel and the sdist.
 #
 # The wheel is versioned independently of the app (pyproject.toml [project]
 # version, mirrored in peaknav/__init__.py __version__) — it only wraps the
@@ -18,7 +18,9 @@ if [ "$PY_VERSION" != "$TOML_VERSION" ]; then
 fi
 
 rm -rf build dist peaknav.egg-info
-python3 -m build --wheel
+# Both artefacts, because PyPI serves both: the wheel is what pip installs, and the
+# sdist is what anyone building from source - or complying with the GPL - needs.
+python3 -m build
 echo
 echo "built:"
-ls dist/*.whl
+ls dist/*.whl dist/*.tar.gz
