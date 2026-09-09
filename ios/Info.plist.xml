@@ -28,13 +28,14 @@
     <false/>
     <key>UIStatusBarHidden</key>
     <true/>
-    <!-- 12.0, not the 8.0 this carried from the libGDX project template. The gdx natives
+    <!-- 13.0, not the 8.0 this carried from the libGDX project template. The gdx natives
          ship as xcframeworks with only ios-arm64 and simulator slices - there is no 32-bit
          armv7 build to target an iOS 8 device with - and the App Store has not accepted a
-         deployment target this old for years. 12.0 is the floor for arm64-only, which is
-         what is actually being built. -->
+         deployment target this old for years. 12.0 would be the floor for arm64-only, but
+         App Store Connect warns (90068) that uploads must be 13.0 or later from late 2026
+         and 15.0 or later from spring 2027, so the floor is raised as those land. -->
     <key>MinimumOSVersion</key>
-    <string>12.0</string>
+    <string>13.0</string>
     <key>UIDeviceFamily</key>
     <array>
         <integer>1</integer>
@@ -42,6 +43,7 @@
     </array>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
+        <string>arm64</string>
         <string>opengles-2</string>
     </array>
     <key>UISupportedInterfaceOrientations</key>
@@ -87,7 +89,14 @@
          filters. The type is declared here as well as claimed: GPX has no system-known
          identifier, and an imported declaration is what ties the extension and MIME type
          to it. Incoming files are copied to Documents/Inbox and arrive in the app
-         delegate's openURL. -->
+         delegate's openURL.
+
+         Declaring CFBundleDocumentTypes obliges the app to say whether it edits the
+         original file or a copy (App Store Connect warning 90737). PeakNav only reads a
+         track and never writes back, and the copy-to-Inbox behaviour above is exactly what
+         "not in place" means, so this is false rather than the value Apple suggests. -->
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <false/>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>
