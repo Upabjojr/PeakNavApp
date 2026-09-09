@@ -289,6 +289,8 @@ public class PeakNavUtils {
         MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(pixmap);
         // Keep a reduced copy for the skyline match, before anything can dispose the pixmap.
         com.peaknav.viewer.PhotoSkylineAligner.onPhotoLoaded(pixmap, bytesJpeg);
+        // ...and a finer one for the star match, in case the picture is of the night sky.
+        com.peaknav.viewer.PhotoStarAligner.onPhotoLoaded(pixmap, bytesJpeg);
     }
 
     /**
