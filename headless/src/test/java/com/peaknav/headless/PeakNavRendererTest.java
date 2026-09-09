@@ -1135,6 +1135,37 @@ class PeakNavRendererTest {
         renderer.clearPhoto();
     }
 
+    @Test
+    @Order(20)
+    @DisplayName("a matched pose switches the gyroscope off, so the sensor cannot undo every drag")
+    void matchTurnsTheGyroscopeOff() throws Exception {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(120_000);
+        renderer.setElevationMeters(0);
+        com.peaknav.skyline.ElevationSampler terrain = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain();
+        assumeTrue(!Float.isNaN(terrain.elevationMeters(LAT, LON)), "no elevation data for Zermatt on this machine");
+        com.peaknav.skyline.TerrainHorizon horizon = com.peaknav.skyline.TerrainHorizon.compute(terrain, LAT, LON, 20, 720);
+        assumeTrue(horizon.coverage >= 0.9, "terrain not loaded far enough");
+
+        byte[] png = syntheticPhotoPng(horizon, 300f, 22f, 50f);
+        renderer.loadPhoto(png, 30_000);
+
+        // The gyroscope on, as it is whenever someone is holding the phone up at the view.
+        final boolean[] checked = new boolean[1];
+        renderer.runOnRenderThread(() -> com.peaknav.viewer.MapViewerSingleton.getViewerInstance()
+                .tableTool.buttonOrientation.setChecked(true));
+        renderer.runOnRenderThread(() -> checked[0] = com.peaknav.viewer.MapViewerSingleton.getViewerInstance()
+                .tableTool.buttonOrientation.isChecked());
+        assertTrue(checked[0], "the gyroscope button should be on before the match");
+
+        assertTrue(renderer.matchPhoto(1) != null, "the match should have run");
+        renderer.runOnRenderThread(() -> checked[0] = com.peaknav.viewer.MapViewerSingleton.getViewerInstance()
+                .tableTool.buttonOrientation.isChecked());
+        assertTrue(!checked[0], "applying a matched pose must switch the gyroscope off: "
+                + "left on, the sensor rewrites the camera every event and undoes every drag");
+        renderer.clearPhoto();
+    }
+
     private static int clamp255(float v) {
         return Math.max(0, Math.min(255, Math.round(v * 255)));
     }

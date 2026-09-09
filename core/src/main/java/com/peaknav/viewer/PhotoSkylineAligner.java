@@ -772,6 +772,15 @@ public final class PhotoSkylineAligner {
             return;
         }
         com.peaknav.gesture.PhotoPin.clear();   // the pose is replaced wholesale
+        // The gyroscope would fight the matched pose for the camera, exactly as it does a
+        // flight or an orbit, and both of those switch it off for that reason. Without
+        // this the sensor overwrites the pose within a frame or two on Android, and every
+        // drag afterwards is undone as fast as it is made - the view simply stops
+        // responding to the finger. Nothing happens when it is already off (a scene2d
+        // button only fires on a real change), which is every desktop and iOS build.
+        if (screen.tableTool != null && screen.tableTool.buttonOrientation != null) {
+            screen.tableTool.buttonOrientation.setChecked(false);
+        }
         // World axes are east, north, up (see PeakNavRenderer.aim for the same construction).
         double bearing = Math.toRadians(m.bearingDeg);
         double pitch = Math.toRadians(m.pitchDeg);
