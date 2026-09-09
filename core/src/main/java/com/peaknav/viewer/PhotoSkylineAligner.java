@@ -280,6 +280,10 @@ public final class PhotoSkylineAligner {
             }
         }, "skyline-match");
         worker.setDaemon(true);
+        // Below the render thread: the extraction is two forests over every pixel of the
+        // photo, seconds of solid arithmetic on a phone, and at the default priority it
+        // competes with the very thread that has to keep drawing and answering the finger.
+        worker.setPriority(Thread.MIN_PRIORITY);
         worker.start();
     }
 
@@ -423,6 +427,7 @@ public final class PhotoSkylineAligner {
                     }
                 }, "skyline-sample");
                 worker.setDaemon(true);
+                worker.setPriority(Thread.MIN_PRIORITY);   // never at the expense of the UI
                 worker.start();
             }
         });
@@ -629,6 +634,10 @@ public final class PhotoSkylineAligner {
             }
         }, "skyline-match");
         worker.setDaemon(true);
+        // Below the render thread: the extraction is two forests over every pixel of the
+        // photo, seconds of solid arithmetic on a phone, and at the default priority it
+        // competes with the very thread that has to keep drawing and answering the finger.
+        worker.setPriority(Thread.MIN_PRIORITY);
         worker.start();
     }
 
