@@ -28,6 +28,8 @@
          without it the "go to where this photo was taken" import cannot read a location. -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+
     <uses-permission android:name="android.permission.CAMERA" android:required="false" />
     <uses-feature android:name="android.hardware.camera2.full" android:required="false" />
 
