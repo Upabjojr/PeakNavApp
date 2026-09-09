@@ -48,7 +48,7 @@ class JarNotFound(RuntimeError):
 #: ``peaknav-<version>.jar``, the desktop application, which has no renderer inside it.
 #: Raise this in step with each release being published, and pin its digest in
 #: :data:`KNOWN_SHA256` at the same time.
-JAR_VERSION = "1.2.0"
+JAR_VERSION = "1.3.0"
 
 #: Where a released renderer lives. The asset name is canonical - ``peaknav-<version>.jar``
 #: is the DESKTOP jar and does not contain the renderer at all.
@@ -60,6 +60,7 @@ RELEASE_URL_TEMPLATE = ("https://github.com/Upabjojr/PeakNavApp/releases/downloa
 #: publishing a release, from ``sha256sum peaknav-headless-<version>.jar``.
 KNOWN_SHA256 = {
     "1.2.0": "495dbf480f449b1a6e054122239131316c8e7346ee3038d465465c5792edc727",
+    "1.3.0": "3261679c5dc04c908648e71d01e820850ade2b74a6bbd1135688d5ea07004087",
 }
 
 #: The entry point every renderer jar has. Its presence is what tells a renderer jar from
@@ -149,7 +150,7 @@ def ensure_jar(version=JAR_VERSION, *, url=None, sha256=None, quiet=False):
     :raises JarNotFound: if downloading is forbidden, or the fetch or its checks fail.
 
     >>> ensure_jar()                                        # doctest: +SKIP
-    '/home/you/.cache/peaknav/jars/peaknav-headless-1.2.0.jar'
+    '/home/you/.cache/peaknav/jars/peaknav-headless-1.3.0.jar'
     """
     destination = cached_jar_path(version)
     if os.path.exists(destination) and _is_renderer_jar(destination):
