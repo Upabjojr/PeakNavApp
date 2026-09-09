@@ -276,6 +276,30 @@ tasks.register('installerWindows', Exec) {
         doFirst { appStage.deleteDir() }
         from(appDir) { into bundleName }
         into appStage
+        // construo writes a fixed CFBundleShortVersionString of 1.0 and no
+        // CFBundleVersion at all, so the .app would tell Finder, "Get Info" and any
+        // updater that it is version 1.0 whatever we release. Stamp the real version
+        // onto the staged copy - the original image is left alone, so this cannot
+        // upset construo's own up-to-date checks.
+        doLast {
+            def plist = new File(appStage, "${bundleName}/Contents/Info.plist")
+            if (!plist.isFile()) {
+                throw new GradleException("no Info.plist in the staged ${bundleName}")
+            }
+            def text = plist.getText('UTF-8')
+            def stamped = text.replaceFirst(
+                    /(?s)(<key>CFBundleShortVersionString<\/key>\s*<string>)[^<]*(<\/string>)/,
+                    "\$1${projectVersion}\$2")
+            if (stamped == text) {
+                throw new GradleException("CFBundleShortVersionString not found in ${plist}")
+            }
+            if (!stamped.contains('<key>CFBundleVersion</key>')) {
+                stamped = stamped.replaceFirst(/(<key>CFBundleShortVersionString<\/key>)/,
+                        "<key>CFBundleVersion</key>\n\t\t<string>${projectVersion}</string>\n\t\t\$1")
+            }
+            plist.setText(stamped, 'UTF-8')
+            logger.lifecycle("macOS bundle version stamped: ${projectVersion}")
+        }
     }
 
     tasks.register("installerMac${target}", Exec) {
