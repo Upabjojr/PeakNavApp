@@ -284,7 +284,11 @@ Two more RoboVM-side traps, both handled in `ios/build.gradle`:
   change, rebuild the jar and run `tools/tutorial_screenshots.py`, which takes the
   pictures over the REST API (`/frame?ui=true`, `/widgets`) and rewrites the slide
   data between the page's SLIDES markers; the captions live in that script, and the
-  screenshot file names in the three platforms' tutorial code. Put new data-prep tools here rather than in
+  screenshot file names in the three platforms' tutorial code. The captions are keys, not
+  words: they live in `assets/i18n/strings_*.properties` as `<key>` and `<key>_detail`,
+  the key list is `TutorialStrings.KEYS`, and each platform injects the translations for
+  the device's language through the page's `OVERLOAD::get_string` marker, exactly as it
+  injects the screenshots. Adding a slide means adding its key to all seven files. Put new data-prep tools here rather than in
   a test: an index builder hidden in `TestLuceneGeonames` meant a half-built index
   directory from an earlier run could fail the whole suite.
 

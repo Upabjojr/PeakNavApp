@@ -385,7 +385,14 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
             java.io.File page = new java.io.File(dir, pageName);
             page.deleteOnExit();
-            Gdx.files.internal(internalPath).copyTo(new com.badlogic.gdx.files.FileHandle(page));
+            // Copied through a string rather than byte for byte, so the tutorial's captions
+            // can be filled in from the app's own translations on the way - the desktop has
+            // no web view to inject them into, as the phones do. A page without the marker
+            // (the licence and privacy page) comes through unchanged.
+            String html = Gdx.files.internal(internalPath).readString("UTF-8")
+                    .replace("// OVERLOAD::get_string",
+                            com.peaknav.viewer.TutorialStrings.asJavaScript());
+            new com.badlogic.gdx.files.FileHandle(page).writeString(html, false, "UTF-8");
 
             for (String related : relatedFiles) {
                 java.io.File target = new java.io.File(dir, related);

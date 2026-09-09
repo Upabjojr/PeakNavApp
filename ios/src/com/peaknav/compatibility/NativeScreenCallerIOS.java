@@ -864,7 +864,9 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                         .append("';\n");
             }
             getImage.append("\nlet img = new Image();\nimg.src = data;\nreturn img;\n}\n");
-            presentHtml(html.replace("// OVERLOAD::get_image", getImage.toString()));
+            // The captions, in the device's language, from the app's own catalogue.
+            presentHtml(html.replace("// OVERLOAD::get_image", getImage.toString())
+                    .replace("// OVERLOAD::get_string", com.peaknav.viewer.TutorialStrings.asJavaScript()));
         });
     }
 

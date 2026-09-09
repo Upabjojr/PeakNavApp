@@ -199,12 +199,20 @@ function get_image(img_path) {
 
 // OVERLOAD::get_image
 
+// The captions, from the app's own translations. Each platform replaces this with a
+// lookup table for the device's language (TutorialStrings.asJavaScript); on its own it
+// returns the key, which is what a browser opening this file directly will show.
+function get_string(k) {
+    return k;
+}
+
+// OVERLOAD::get_string
+
 // SLIDES-BEGIN (written by tools/tutorial_screenshots.py)
 const SLIDES = [
   {
     "image": "imageBase.jpg",
-    "text": "Gyroscope",
-    "detail": "The view follows the phone as you turn it.",
+    "key": "Tutorial_gyroscope",
     "marker": {
       "cx": 0.0375,
       "cy": 0.9206,
@@ -214,8 +222,7 @@ const SLIDES = [
   },
   {
     "image": "imageBase.jpg",
-    "text": "Elevation",
-    "detail": "Slide up to rise above the ground - metres to kilometres.",
+    "key": "Tutorial_elevation",
     "marker": {
       "cx": 0.0375,
       "cy": 0.5,
@@ -225,8 +232,7 @@ const SLIDES = [
   },
   {
     "image": "imageBase.jpg",
-    "text": "Gallery",
-    "detail": "Put one of your photos behind the terrain.",
+    "key": "Tutorial_gallery",
     "marker": {
       "cx": 0.0375,
       "cy": 0.0807,
@@ -236,8 +242,7 @@ const SLIDES = [
   },
   {
     "image": "imageBase.jpg",
-    "text": "Camera",
-    "detail": "Take a picture right here and see the peaks on it.",
+    "key": "Tutorial_camera",
     "marker": {
       "cx": 0.1794,
       "cy": 0.0807,
@@ -247,8 +252,7 @@ const SLIDES = [
   },
   {
     "image": "imageBase.jpg",
-    "text": "Search",
-    "detail": "Find a peak, a hut or a place by name.",
+    "key": "Tutorial_search",
     "marker": {
       "cx": 0.9619,
       "cy": 0.0807,
@@ -258,8 +262,7 @@ const SLIDES = [
   },
   {
     "image": "imageBase.jpg",
-    "text": "Options",
-    "detail": "Labels, imagery, sky, sun, units.",
+    "key": "Tutorial_options",
     "marker": {
       "cx": 0.9619,
       "cy": 0.1892,
@@ -269,20 +272,17 @@ const SLIDES = [
   },
   {
     "image": "imageOptions.jpg",
-    "text": "Options",
-    "detail": "Everything the view shows is switched on and off here.",
+    "key": "Tutorial_options_pane",
     "marker": null
   },
   {
     "image": "imageBaseSat.jpg",
-    "text": "Satellite imagery",
-    "detail": "Any of several imagery sources, chosen in the options.",
+    "key": "Tutorial_satellite",
     "marker": null
   },
   {
     "image": "imageBase.jpg",
-    "text": "Share",
-    "detail": "Save or share the view. The picture keeps where and which way it looks in its EXIF.",
+    "key": "Tutorial_share",
     "marker": {
       "cx": 0.9619,
       "cy": 0.8122,
@@ -292,8 +292,7 @@ const SLIDES = [
   },
   {
     "image": "imageBase.jpg",
-    "text": "Where I am",
-    "detail": "Jump to your GPS position.",
+    "key": "Tutorial_here",
     "marker": {
       "cx": 0.9619,
       "cy": 0.9206,
@@ -303,8 +302,7 @@ const SLIDES = [
   },
   {
     "image": "imageTap.jpg",
-    "text": "Tap a point",
-    "detail": "Tap the terrain: fly there, orbit it, or open it in your maps app.",
+    "key": "Tutorial_tap",
     "marker": {
       "cx": 0.8975,
       "cy": 0.3069,
@@ -314,8 +312,7 @@ const SLIDES = [
   },
   {
     "image": "imageGpx.jpg",
-    "text": "GPX tracks",
-    "detail": "Load a track and fly along it.",
+    "key": "Tutorial_gpx",
     "marker": {
       "cx": 0.9619,
       "cy": 0.578,
@@ -325,8 +322,7 @@ const SLIDES = [
   },
   {
     "image": "imagePhoto.jpg",
-    "text": "Match a photo",
-    "detail": "With a photo behind the terrain, this points the camera the way the photo looks - by its skyline.",
+    "key": "Tutorial_photo_match",
     "marker": {
       "cx": 0.3912,
       "cy": 0.9206,
@@ -336,8 +332,7 @@ const SLIDES = [
   },
   {
     "image": "imagePhoto.jpg",
-    "text": "Outlines",
-    "detail": "How visible the terrain's outlines are over the photo.",
+    "key": "Tutorial_photo_outlines",
     "marker": {
       "cx": 0.4997,
       "cy": 0.9206,
@@ -347,8 +342,7 @@ const SLIDES = [
   },
   {
     "image": "imagePhotoTerrain.jpg",
-    "text": "Terrain over the photo",
-    "detail": "Fade the rendered terrain in over the picture, up to opaque.",
+    "key": "Tutorial_photo_terrain",
     "marker": {
       "cx": 0.9619,
       "cy": 0.5817,
@@ -358,8 +352,7 @@ const SLIDES = [
   },
   {
     "image": "imagePhotoPin.jpg",
-    "text": "Pin a point",
-    "detail": "Double-tap to pin a summit, then drag and pinch around it. This button, or another double tap, releases it.",
+    "key": "Tutorial_photo_pin",
     "marker": {
       "cx": 0.0375,
       "cy": 0.1197,
@@ -369,8 +362,7 @@ const SLIDES = [
   },
   {
     "image": "imagePhoto.jpg",
-    "text": "Close the photo",
-    "detail": "Back to the plain terrain.",
+    "key": "Tutorial_photo_close",
     "marker": {
       "cx": 0.6088,
       "cy": 0.9206,
@@ -408,8 +400,8 @@ function showSlide() {
     var picture = document.getElementById("picture");
     picture.innerHTML = "";
     picture.appendChild(images[slide.image]);
-    document.getElementById("captionText").textContent = slide.text;
-    document.getElementById("detailText").textContent = slide.detail || "";
+    document.getElementById("captionText").textContent = get_string(slide.key);
+    document.getElementById("detailText").textContent = get_string(slide.key + "_detail");
 
     var ring = document.getElementById("ring");
     if (slide.marker) {

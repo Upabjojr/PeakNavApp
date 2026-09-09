@@ -29,26 +29,28 @@ PAGE = os.path.join(INFO, "app_tutorial.html")
 ZERMATT = (46.0207, 7.7491)
 WIDTH, HEIGHT = 1600, 756          # a phone held sideways, 20:9 or so
 
-# The slides, in order: picture, the widget the ring points at (None for none), the
-# caption and one line of explanation.
+# The slides, in order: picture, the widget the ring points at (None for none), and the
+# i18n key of the caption. The words themselves live in assets/i18n/strings_*.properties
+# as <key> and <key>_detail, and the platforms inject them (see TutorialStrings.java), so
+# the tutorial speaks whatever language the app does.
 SLIDES = [
-    ("imageBase.jpg", "gyro", "Gyroscope", "The view follows the phone as you turn it."),
-    ("imageBase.jpg", "elevation_bar", "Elevation", "Slide up to rise above the ground - metres to kilometres."),
-    ("imageBase.jpg", "gallery", "Gallery", "Put one of your photos behind the terrain."),
-    ("imageBase.jpg", "camera", "Camera", "Take a picture right here and see the peaks on it."),
-    ("imageBase.jpg", "search", "Search", "Find a peak, a hut or a place by name."),
-    ("imageBase.jpg", "options", "Options", "Labels, imagery, sky, sun, units."),
-    ("imageOptions.jpg", None, "Options", "Everything the view shows is switched on and off here."),
-    ("imageBaseSat.jpg", None, "Satellite imagery", "Any of several imagery sources, chosen in the options."),
-    ("imageBase.jpg", "share", "Share", "Save or share the view. The picture keeps where and which way it looks in its EXIF."),
-    ("imageBase.jpg", "here", "Where I am", "Jump to your GPS position."),
-    ("imageTap.jpg", "go_to", "Tap a point", "Tap the terrain: fly there, orbit it, or open it in your maps app."),
-    ("imageGpx.jpg", "gpx_play", "GPX tracks", "Load a track and fly along it."),
-    ("imagePhoto.jpg", "photo_match", "Match a photo", "With a photo behind the terrain, this points the camera the way the photo looks - by its skyline."),
-    ("imagePhoto.jpg", "photo_outline_bar", "Outlines", "How visible the terrain's outlines are over the photo."),
-    ("imagePhotoTerrain.jpg", "terrain_bar", "Terrain over the photo", "Fade the rendered terrain in over the picture, up to opaque."),
-    ("imagePhotoPin.jpg", "unpin", "Pin a point", "Double-tap to pin a summit, then drag and pinch around it. This button, or another double tap, releases it."),
-    ("imagePhoto.jpg", "photo_close", "Close the photo", "Back to the plain terrain."),
+    ("imageBase.jpg", "gyro", "Tutorial_gyroscope"),
+    ("imageBase.jpg", "elevation_bar", "Tutorial_elevation"),
+    ("imageBase.jpg", "gallery", "Tutorial_gallery"),
+    ("imageBase.jpg", "camera", "Tutorial_camera"),
+    ("imageBase.jpg", "search", "Tutorial_search"),
+    ("imageBase.jpg", "options", "Tutorial_options"),
+    ("imageOptions.jpg", None, "Tutorial_options_pane"),
+    ("imageBaseSat.jpg", None, "Tutorial_satellite"),
+    ("imageBase.jpg", "share", "Tutorial_share"),
+    ("imageBase.jpg", "here", "Tutorial_here"),
+    ("imageTap.jpg", "go_to", "Tutorial_tap"),
+    ("imageGpx.jpg", "gpx_play", "Tutorial_gpx"),
+    ("imagePhoto.jpg", "photo_match", "Tutorial_photo_match"),
+    ("imagePhoto.jpg", "photo_outline_bar", "Tutorial_photo_outlines"),
+    ("imagePhotoTerrain.jpg", "terrain_bar", "Tutorial_photo_terrain"),
+    ("imagePhotoPin.jpg", "unpin", "Tutorial_photo_pin"),
+    ("imagePhoto.jpg", "photo_close", "Tutorial_photo_close")
 ]
 
 
@@ -169,7 +171,7 @@ def main():
     # Slide data: the ring's centre and size from the widget's bounds, as fractions of the
     # picture, so the page needs no idea of the window size.
     slides = []
-    for image, widget, text, detail in SLIDES:
+    for image, widget, key in SLIDES:
         if image not in bounds:
             continue
         b = bounds[image]
@@ -191,7 +193,7 @@ def main():
                 rh = max(0.85 * w["h"], 0.8 * unit) if w["h"] <= 2 * unit else 0.6 * w["h"]
                 marker = {"cx": round(cx / iw, 4), "cy": round(cy / ih, 4),
                           "rw": round(rw / iw, 4), "rh": round(rh / ih, 4)}
-        slides.append({"image": image, "text": text, "detail": detail, "marker": marker})
+        slides.append({"image": image, "key": key, "marker": marker})
     print("widget bounds:", json.dumps(bounds)[:2000])
     page = open(PAGE, encoding="utf-8").read()
     block = "// SLIDES-BEGIN (written by tools/tutorial_screenshots.py)\nconst SLIDES = " \

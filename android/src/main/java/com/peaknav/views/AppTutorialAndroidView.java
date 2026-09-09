@@ -52,6 +52,9 @@ public class AppTutorialAndroidView extends Fragment {
         get_image += "\nlet img = new Image();\nimg.src = data;\nreturn img;\nconsole.log(k);\n}\n";
 
         htmlString = htmlString.replace("// OVERLOAD::get_image", get_image);
+        // The captions, in the device's language, from the app's own catalogue.
+        htmlString = htmlString.replace("// OVERLOAD::get_string",
+                com.peaknav.viewer.TutorialStrings.asJavaScript());
 
         webView.loadDataWithBaseURL(null, htmlString, "text/html", "UTF-8", null);
 
