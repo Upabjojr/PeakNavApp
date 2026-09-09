@@ -202,7 +202,10 @@ the unpin button that appears above the elevation bar, releases the pin). A sing
 pick a point to fly or orbit to while a photo is up. The terrain is drawn as outlines only
 over the photo; the vertical bar above the share button fades the rendered terrain in, up
 to opaque, and the photo bar at the bottom holds the match button, the outline-visibility
-bar and the X that closes the picture. A picture saved or shared from the app - with or
+bar and the X that closes the picture. When a photo is ready to be matched - a camera
+shot, or a gallery photo once the map has reached where it was taken - the match button
+pulses for a few seconds, since it is the one thing to do with a photo that nobody finds
+on their own. A picture saved or shared from the app - with or
 without a photo behind the terrain - carries where and how it was taken in its EXIF
 block: position, altitude, the bearing it looks in and its field of view (as a 35 mm
 focal length), so it keeps its place in a photo library and, loaded back into the app,

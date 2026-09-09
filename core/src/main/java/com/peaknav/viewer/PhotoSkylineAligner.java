@@ -161,6 +161,8 @@ public final class PhotoSkylineAligner {
             return;
         }
         setPendingLocation(getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude());
+        // A photo taken here needs no journey: it is ready to be matched at once.
+        highlightMatchButton();
     }
 
     /**
@@ -172,9 +174,27 @@ public final class PhotoSkylineAligner {
         synchronized (LOCK) {
             p = pending;
         }
-        if (automatic && p != null && p.hasLocation() && isNear(p, latitude, longitude)) {
-            start(p);
+        if (p != null && p.hasLocation() && isNear(p, latitude, longitude)) {
+            // Arrived where the photo was taken: this is the moment the match is worth
+            // offering, so make the button say so.
+            highlightMatchButton();
+            if (automatic) {
+                start(p);
+            }
         }
+    }
+
+    /**
+     * Pulses the match button for a few seconds. Called once a photo is ready to be
+     * matched: after the map has reached the place a gallery photo was taken, or as soon
+     * as a photo is taken with the camera, where the place is already right.
+     */
+    private static void highlightMatchButton() {
+        if (getC() == null || getC().getMapViewerScreen() == null
+                || getC().getMapViewerScreen().tableTool == null) {
+            return;
+        }
+        getC().getMapViewerScreen().tableTool.highlightMatchButton();
     }
 
     /** Off, the location settling near a photo's own does not start a match on its own (the headless API drives it). */

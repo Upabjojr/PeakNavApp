@@ -17,6 +17,7 @@ import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.EventListener;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.scenes.scene2d.actions.Actions;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 
@@ -213,6 +214,8 @@ public class WidgetGetter {
          * itself never moves to make room for it.
          */
         public final Button buttonUnpin;
+        /** The button that runs the skyline match; pulsed by {@link #highlightMatchButton}. */
+        public final Button buttonMatchPhoto;
         private boolean refreshNeeded;
 
         TableTool() {
@@ -315,7 +318,7 @@ public class WidgetGetter {
             sliderStyleCA.knob.setMinWidth(w);
             sliderStyleCA.background = getC().widgetTextures.getNinePatchDrawable("icons/slider_nine_patch.png");
 
-            Button buttonMatchPhoto = getC().widgetTextures.getButtonWithIcon(
+            buttonMatchPhoto = getC().widgetTextures.getButtonWithIcon(
                     "icons/icon_match_photo.png", null);
             buttonMatchPhoto.setName("photo_match");   // for /widgets, which places the tutorial's markers
             buttonMatchPhoto.addListener(new ChangeListener() {
@@ -362,11 +365,70 @@ public class WidgetGetter {
             setPhotoShown(false);
         }
 
+        /** How many times the match button pulses when a photo is ready to be matched. */
+        private static final int HIGHLIGHT_PULSES = 4;
+        private static final float HIGHLIGHT_HALF_PULSE = 0.45f;
+        // An instance field, not static: an inner class may only hold constant statics.
+        private final Color highlightTint = new Color(1f, 0.79f, 0.42f, 1f);   // the app's amber
+
+        /**
+         * Draws the eye to the match button for a few seconds, once a photo is loaded and
+         * the map has arrived at the place it was taken. The button swells and glows amber
+         * a few times and then sits still again: the skyline match is the one thing to do
+         * with a photo that nobody discovers on their own.
+         *
+         * <p>Safe to call repeatedly - a running pulse is replaced, never stacked - and
+         * from any thread, since it hops to the render thread itself.
+         */
+        public void highlightMatchButton() {
+            Gdx.app.postRunnable(new Runnable() {
+                @Override
+                public void run() {
+                    if (buttonMatchPhoto == null || !tableCameraControl.isVisible()) {
+                        return;   // no photo on screen: nothing to point at
+                    }
+                    buttonMatchPhoto.clearActions();
+                    // Scaling a Table only shows with a transform; the origin keeps it
+                    // swelling about its middle rather than its corner.
+                    buttonMatchPhoto.setTransform(true);
+                    buttonMatchPhoto.setOrigin(Align.center);
+                    buttonMatchPhoto.setScale(1f);
+                    buttonMatchPhoto.setColor(Color.WHITE);
+                    buttonMatchPhoto.addAction(Actions.sequence(
+                            Actions.repeat(HIGHLIGHT_PULSES, Actions.parallel(
+                                    Actions.sequence(
+                                            Actions.scaleTo(1.35f, 1.35f, HIGHLIGHT_HALF_PULSE, Interpolation.swingOut),
+                                            Actions.scaleTo(1f, 1f, HIGHLIGHT_HALF_PULSE, Interpolation.smooth)),
+                                    Actions.sequence(
+                                            Actions.color(highlightTint, HIGHLIGHT_HALF_PULSE),
+                                            Actions.color(Color.WHITE, HIGHLIGHT_HALF_PULSE)))),
+                            Actions.run(new Runnable() {
+                                @Override
+                                public void run() {
+                                    stopHighlightingMatchButton();
+                                }
+                            })));
+                }
+            });
+        }
+
+        /** Puts the button back exactly as it was, however far through the pulse it is. */
+        public void stopHighlightingMatchButton() {
+            if (buttonMatchPhoto == null) {
+                return;
+            }
+            buttonMatchPhoto.clearActions();
+            buttonMatchPhoto.setScale(1f);
+            buttonMatchPhoto.setColor(Color.WHITE);
+            buttonMatchPhoto.setTransform(false);   // back to the cheap draw path
+        }
+
         /** Shows or hides everything that only makes sense with a photo behind the terrain. */
         public void setPhotoShown(boolean shown) {
             tableCameraControl.setVisible(shown);
             if (!shown) {
                 setPinned(false);
+                stopHighlightingMatchButton();
             }
             MapViewerSingleton.getViewerInstance().tableLocation.setPhotoShown(shown);
         }

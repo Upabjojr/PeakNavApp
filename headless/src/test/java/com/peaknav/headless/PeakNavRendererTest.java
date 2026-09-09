@@ -1166,6 +1166,41 @@ class PeakNavRendererTest {
         renderer.clearPhoto();
     }
 
+    @Test
+    @Order(21)
+    @DisplayName("the match button pulses once a photo is ready, and is left untouched afterwards")
+    void matchButtonIsHighlighted() throws Exception {
+        BufferedImage tiny = new BufferedImage(64, 48, BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        ImageIO.write(tiny, "png", bytes);
+        renderer.loadPhoto(bytes.toByteArray(), 30_000);
+
+        final float[] scale = new float[1];
+        final boolean[] pulsing = new boolean[1];
+        // A photo taken here is ready at once, so this is the camera-button path.
+        com.peaknav.viewer.PhotoSkylineAligner.photoTakenHere();
+        renderer.settle(400);
+        renderer.runOnRenderThread(() -> {
+            com.badlogic.gdx.scenes.scene2d.ui.Button b = com.peaknav.viewer.MapViewerSingleton
+                    .getViewerInstance().tableTool.buttonMatchPhoto;
+            pulsing[0] = b.getActions().size > 0;
+            scale[0] = b.getScaleX();
+        });
+        assertTrue(pulsing[0], "the match button should be pulsing once the photo is ready");
+
+        // ... and it must settle back exactly as it was, or it stays big and amber for ever.
+        renderer.settle(4500);
+        renderer.runOnRenderThread(() -> {
+            com.badlogic.gdx.scenes.scene2d.ui.Button b = com.peaknav.viewer.MapViewerSingleton
+                    .getViewerInstance().tableTool.buttonMatchPhoto;
+            pulsing[0] = b.getActions().size > 0;
+            scale[0] = b.getScaleX();
+        });
+        assertTrue(!pulsing[0], "the pulse should have finished by itself");
+        assertEquals(1f, scale[0], 0.001f, "and left the button at its normal size");
+        renderer.clearPhoto();
+    }
+
     private static int clamp255(float v) {
         return Math.max(0, Math.min(255, Math.round(v * 255)));
     }
