@@ -33,11 +33,9 @@ import org.mapsforge.core.graphics.GraphicFactory;
  *       neither, so iOS needs a small binding to the system {@code libsqlite3} (which is
  *       present on every device) behind the eleven methods of {@link MapSqlite}. This is
  *       ordinary work, just work that has not been done.
- *   <li><b>{@link #getGraphicFactory()}</b> - the harder one. Mapsforge rasterises the road
- *       and path layer through its own graphics abstraction, and ships backends for AWT and
- *       for Android. There is no iOS backend and there is no way around needing one: the
- *       interface wants a canvas that can stroke dashed paths and lay out text, which
- *       libGDX's Pixmap cannot do. It has to be written against CoreGraphics.
+ *   <li><b>{@link #getGraphicFactory()}</b> - null, and unused: the roads and trails that
+ *       mapsforge once drew onto a per-platform canvas are rasterized in plain Java now
+ *       (see {@code com.peaknav.roads}), so iOS draws them like the other platforms.
  * </ul>
  *
  * <p>Both throw rather than returning null, and say what is missing. A null here reappears
@@ -68,17 +66,12 @@ public class IOSLoadFactory implements LoadFactory {
     }
 
     /**
-     * No mapsforge graphics backend on iOS - deliberately null, and handled.
+     * No mapsforge graphics backend on iOS - deliberately null, and nothing needs one now.
      *
-     * <p>Mapsforge rasterises the road and path layer through its own graphics abstraction
-     * and ships backends for AWT and for Android only; an iOS one has to be written against
-     * CoreGraphics, and has not been. Rather than block the whole app on it,
-     * {@code TileRenderer} treats a null factory as "this platform has no path layer" and
-     * skips building the mapsforge machinery. Everything else - the 3D terrain, satellite
-     * imagery, peak and area labels, the sky - goes nowhere near mapsforge and works.
-     *
-     * <p>So iOS is a terrain app until that backend exists. The map is the mountain, without
-     * the footpaths drawn on it.
+     * <p>Mapsforge used to rasterise the road and path layer through its own graphics
+     * abstraction, with backends for AWT and Android only, so iOS had no paths at all. They
+     * are rasterized in plain Java by {@code com.peaknav.roads} now and styled by the terrain
+     * shader, the same on every platform, and this factory is left unused.
      */
     @Override
     public GraphicFactory getGraphicFactory() {

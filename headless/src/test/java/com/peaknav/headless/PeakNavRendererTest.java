@@ -1201,6 +1201,38 @@ class PeakNavRendererTest {
         renderer.clearPhoto();
     }
 
+    @Test
+    @Order(22)
+    @DisplayName("roads and trails are drawn by the shader, and their names written along them")
+    void roadsAreDrawnAndNamed() throws Exception {
+        // The roads used to be painted by mapsforge onto a per-platform canvas. They are now
+        // distance textures the terrain shader styles - so this is the check that the shader
+        // compiled and draws them on a real GL context, and that the names are written.
+        renderer.setLabel(PeakNavRenderer.Label.ROADS, true);
+        renderer.setLabel(PeakNavRenderer.Label.ROAD_NAMES, true);
+        renderer.moveTo(46.0200, 7.7400);   // Zermatt's streets, a little north of the church
+        assertTrue(renderer.awaitTilesLoaded(120_000), "the view should reach a settled state");
+        renderer.aim(60f, -25f);
+        renderer.settle(1_500);
+        File withRoads = newTempFile("roads.png");
+        renderer.capture(withRoads);
+        java.util.List<String> names = renderer.roadNamesDrawn();
+
+        renderer.setLabel(PeakNavRenderer.Label.ROADS, false);
+        renderer.settle(800);
+        File withoutRoads = newTempFile("no-roads.png");
+        renderer.capture(withoutRoads);
+        java.util.List<String> namesWithoutRoads = renderer.roadNamesDrawn();
+        renderer.setLabel(PeakNavRenderer.Label.ROADS, true);
+
+        int changed = differingPixels(ImageIO.read(withRoads), ImageIO.read(withoutRoads));
+        assertTrue(changed > WIDTH * HEIGHT / 100,
+                "switching the roads on should change a real part of a village view; changed "
+                        + changed + " pixels");
+        assertTrue(!names.isEmpty(), "street names should be written along Zermatt's streets");
+        assertTrue(namesWithoutRoads.isEmpty(), "with the roads off, their names go too");
+    }
+
     private static int clamp255(float v) {
         return Math.max(0, Math.min(255, Math.round(v * 255)));
     }

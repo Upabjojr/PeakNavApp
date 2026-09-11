@@ -33,6 +33,16 @@ public interface Constants {
         String VIEWER_SKY_STAR_NAMES = "viewerSkyStarNames";
         String VIEWER_SKY_LABELS = "viewerSkyLabels";
         String VIEWER_SKY_TIME_LABEL = "viewerSkyTimeLabel";
+        // How the roads and trails look (see com.peaknav.roads.RoadStyle).
+        String VIEWER_ROAD_COLOR_ROADS = "viewerRoadColorRoads";
+        String VIEWER_ROAD_COLOR_TRACKS = "viewerRoadColorTracks";
+        String VIEWER_ROAD_COLOR_TRAILS_EASY = "viewerRoadColorTrailsEasy";
+        String VIEWER_ROAD_COLOR_TRAILS_MOUNTAIN = "viewerRoadColorTrailsMountain";
+        String VIEWER_ROAD_COLOR_TRAILS_ALPINE = "viewerRoadColorTrailsAlpine";
+        String VIEWER_ROAD_DASH_COUNT = "viewerRoadDashCount";
+        String VIEWER_ROAD_DASH_SPEED = "viewerRoadDashSpeed";
+        String VIEWER_ROAD_NAMES = "viewerRoadNames";
+        String VIEWER_ROAD_LABEL_FREQUENCY = "viewerRoadLabelFrequency";
         String UNDERLAY_IMAGE_PROVIDER = "underlayImageProviderChosen";
         String VIEWER_UNIT_SYSTEM = "viewerUnitSystem";
 

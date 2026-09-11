@@ -953,6 +953,11 @@ public class MapViewerScreen implements Screen {
 		setCameraZ(Math.min(Math.max(z, ground), MAX_ELEV_BAR_ELEV));
 	}
 
+	/** The field of view the camera starts at, unzoomed, in degrees (vertical). */
+	public float getBaseFieldOfView() {
+		return baseFieldOfView;
+	}
+
 	/** Where the camera is now, in metres above sea level. */
 	public double getCameraAltitudeMeters() {
 		return Units.convertLatitsToMeters(cam.position.z);
@@ -1253,6 +1258,8 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(optionPane.getSelectLabels());
 		stage.addActor(optionPane.getSelectSky());
 		stage.addActor(optionPane.getSelectCompass());
+		stage.addActor(optionPane.getSelectRoads());
+		stage.addActor(optionPane.getSelectRoadsOneColumn());
 		// stage.addActor(optionPane.getTableAppInfo());
 		optionPane.hide();
 

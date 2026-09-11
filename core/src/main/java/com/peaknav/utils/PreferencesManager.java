@@ -52,6 +52,7 @@ import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.math.Vector3;
 import com.peaknav.config.JsonConfigStore;
+import com.peaknav.roads.RoadStyle;
 import com.peaknav.viewer.imgmapprovider.SatelliteImageProvider;
 import com.peaknav.viewer.imgmapprovider.SatelliteProviderRegistry;
 import com.peaknav.viewer.render_tiles.PixmapLayerName;
@@ -98,6 +99,8 @@ public class PreferencesManager {
     private boolean locationPermissionDenied;
     private boolean collectDownloadInfo;
     private boolean firstTimeAppRun;
+    /** Colours, dashes and names of the roads and trails; see {@link RoadStyle}. */
+    private final RoadStyle roadStyle = new RoadStyle();
     // private boolean collectAnonymousStatsPrompted;
 
     public boolean isCollectDownloadInfo() {
@@ -223,6 +226,7 @@ public class PreferencesManager {
         // Set to "true" for subscribed users:
         viewerLayerVisibleBaseRoads = preferences.getBoolean(VIEWER_LAYER_VISIBLE_BASE_ROADS, true);
         largeFonts = preferences.getBoolean(VIEWER_LARGE_FONTS, false);
+        roadStyle.load(preferences);
         // layerVisibleNavigation = preferences.getBoolean(VIEWER_LAYER_VISIBLE_NAVIGATION, false);
 
         collectDownloadInfo = preferences.getBoolean(COLLECT_DOWNLOAD_INFO, true);
@@ -287,8 +291,18 @@ public class PreferencesManager {
         // preferences.flush();
     }
 
+    /**
+     * Whether the downloaded map data carries the ski pistes. It does not yet: the highway tiles
+     * keep a way only if it has a highway tag, and a piste is almost always a way of its own,
+     * tagged {@code piste:type} alone (in Andorra, 685 of 687 piste ways). What is left is the
+     * odd track that doubles as a piste, drawn under its own track line - too little to offer.
+     * While this is false pistes are neither drawn nor labelled, whatever the stored setting, and
+     * the options menu leaves out their switch. Set it once the tiles keep piste:type ways.
+     */
+    public static final boolean PISTES_IN_MAP_DATA = false;
+
     public boolean getPisteVisible() {
-        return pisteVisible;
+        return PISTES_IN_MAP_DATA && pisteVisible;
     }
 
     public void setPisteVisible(boolean visible) {
@@ -609,6 +623,20 @@ public class PreferencesManager {
         viewerLayerVisibleBaseRoads = visible;
         preferences.putBoolean(VIEWER_LAYER_VISIBLE_BASE_ROADS, visible);
         lastChange.put(BASE_ROADS, System.currentTimeMillis());
+        preferences.flush();
+    }
+
+    /**
+     * How the roads and trails look. The terrain shader reads it every frame, so a change made
+     * through it shows at once; call {@link #persistRoadStyle()} afterwards to keep it.
+     */
+    public RoadStyle getRoadStyle() {
+        return roadStyle;
+    }
+
+    /** Writes the road style out after a change made through {@link #getRoadStyle()}. */
+    public void persistRoadStyle() {
+        roadStyle.save(preferences);
         preferences.flush();
     }
 

@@ -24,7 +24,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,6 +37,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import com.peaknav.elevation.ElevationImageAbstract;
 import com.peaknav.elevation.ElevationImageProvider;
+import com.peaknav.roads.RoadLabelCandidate;
 import com.peaknav.utils.TileAndZoomElevFactor;
 import com.peaknav.utils.TileBoundingBox;
 import com.peaknav.utils.Units;
@@ -286,6 +289,15 @@ public class MapTile {
     public volatile int gpxVersionDrawn = -1;
     public volatile boolean hasGpxTexture = false;
 
+    /**
+     * Where this tile's roads and trails may have their names written (see RoadNameRenderer),
+     * set when its road layer is drawn. Replaced whole and never modified, so the render thread
+     * reads it without a lock.
+     */
+    public volatile List<RoadLabelCandidate> roadLabels = Collections.emptyList();
+    /** Ground metres per texel of the road distance texture, for the shader's line widths. */
+    private volatile float roadMetersPerTexel = 1f;
+
 
     public MapTileState getMapTileState() {
         return mapTileState;
@@ -406,6 +418,23 @@ public class MapTile {
         texturePixmapMap.add(new DrawingPair(layer, pixmap));
         getC().mapTilePixmapToTexturesHandler.addMapTileToQueue(this);
         textureLayerAdded.add(layer);
+    }
+
+    /**
+     * Records a layer as drawn when there turned out to be nothing to draw on this tile: no
+     * texture to hold, but no work outstanding either - which is what anything waiting for
+     * "the roads are drawn" needs to hear.
+     */
+    public void setLayerDrawnEmpty(PixmapLayerName layer) {
+        textureLayerAdded.add(layer);
+    }
+
+    public float getRoadMetersPerTexel() {
+        return roadMetersPerTexel;
+    }
+
+    public void setRoadMetersPerTexel(float metersPerTexel) {
+        roadMetersPerTexel = metersPerTexel;
     }
 
     public enum MapTileState {
@@ -550,7 +579,9 @@ public class MapTile {
         instance.userData = new RenderableUserData(this,
                 textureMap.get(PixmapLayerName.BASE_ROADS),
                 textureMap.get(PixmapLayerName.UNDERLAY_LAYER),
-                textureMap.get(PixmapLayerName.GPX_PATH));
+                textureMap.get(PixmapLayerName.GPX_PATH),
+                textureMap.get(PixmapLayerName.ROADS_AUX),
+                roadMetersPerTexel);
     }
 
     public void dispose() {
@@ -688,17 +719,25 @@ public class MapTile {
         public final Texture textureRoads;
         public final Texture textureSatellite;
         public final Texture textureGpx;
+        /** The roads' second texture: trail dash phase and difficulties. */
+        public final Texture textureRoadsAux;
+        /** Ground metres per texel of {@link #textureRoads}. */
+        public final float roadMetersPerTexel;
         // public final Texture textureNormals;
 
         public RenderableUserData(MapTile mapTile,
                                   Texture textureRoads,
                                   Texture textureSatellite,
-                                  Texture textureGpx
+                                  Texture textureGpx,
+                                  Texture textureRoadsAux,
+                                  float roadMetersPerTexel
                                   ) {
             this.mapTile = mapTile;
             this.textureRoads = textureRoads;
             this.textureSatellite = textureSatellite;
             this.textureGpx = textureGpx;
+            this.textureRoadsAux = textureRoadsAux;
+            this.roadMetersPerTexel = roadMetersPerTexel;
         }
 
     }

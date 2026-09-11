@@ -8,6 +8,7 @@ import static com.peaknav.viewer.tiles.MapTile.MapTileState.ELEVATION_DATA_LOADI
 import static com.peaknav.viewer.tiles.MapTile.MapTileState.ELEVATION_DATA_NOT_LOADED;
 import static com.peaknav.viewer.tiles.MapTile.MapTileState.IS_DRAWN;
 
+import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.graphics.GL20;
@@ -25,6 +26,7 @@ import com.badlogic.gdx.graphics.g3d.utils.TextureDescriptor;
 import com.badlogic.gdx.graphics.glutils.FrameBuffer;
 import com.badlogic.gdx.math.Vector3;
 import com.peaknav.elevation.ElevationImageProvider;
+import com.peaknav.roads.RoadStyle;
 import com.peaknav.utils.TileAndZoomElevFactor;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.PerspectiveCameraExt;
@@ -67,7 +69,7 @@ public class TileBatchRenderer {
         this.modelBatch = new ModelBatch(null,
                 new DefaultShaderProvider(
                         Gdx.files.internal("vertex_shader.glsl").readString(),
-                        Gdx.files.internal("fragment_shader.glsl").readString()) {
+                        terrainFragmentShader()) {
                     @Override
                     protected Shader createShader(final Renderable renderable) {
                         // WARNING: do not read "userData" here, as "renderable" refers to the first
@@ -121,7 +123,8 @@ public class TileBatchRenderer {
                                 MapTile.RenderableUserData rud = (MapTile.RenderableUserData) renderable.userData;
                                 shader.program.setUniformi(
                                         u_roadsSet.alias,
-                                        ((rud.textureRoads != null) && P.isViewerLayerVisibleBaseRoads())? 1 : 0);
+                                        (rud.textureRoads != null && rud.textureRoadsAux != null
+                                                && P.isViewerLayerVisibleBaseRoads()) ? 1 : 0);
                             }
                         });
 
@@ -178,6 +181,76 @@ public class TileBatchRenderer {
                             }
                         });
 
+                        // The roads' second texture: trail dash phase and difficulties.
+                        BaseShader.Uniform u_textureRoadsAux = new BaseShader.Uniform("u_textureRoadsAux");
+                        TextureDescriptor<Texture> textureDescriptor4 = new TextureDescriptor<>();
+                        shader.register(u_textureRoadsAux, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                Texture texture = ((MapTile.RenderableUserData) renderable.userData).textureRoadsAux;
+                                if (texture == null)
+                                    return;
+                                textureDescriptor4.set(texture, null, null, null, null);
+                                final int unit = shader.context.textureBinder.bind(textureDescriptor4);
+                                shader.set(inputID, unit);
+                            }
+                        });
+
+                        // Per tile: how big a texel of its road texture is, on the ground and in
+                        // texels across, so widths can be given in metres.
+                        BaseShader.Uniform u_roadMetersPerTexel = new BaseShader.Uniform("u_roadMetersPerTexel");
+                        shader.register(u_roadMetersPerTexel, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                MapTile.RenderableUserData rud = (MapTile.RenderableUserData) renderable.userData;
+                                shader.program.setUniformf(u_roadMetersPerTexel.alias,
+                                        Math.max(0.01f, rud.roadMetersPerTexel));
+                            }
+                        });
+                        BaseShader.Uniform u_roadTexels = new BaseShader.Uniform("u_roadTexels");
+                        shader.register(u_roadTexels, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                Texture texture = ((MapTile.RenderableUserData) renderable.userData).textureRoads;
+                                shader.program.setUniformf(u_roadTexels.alias,
+                                        texture == null ? 1f : texture.getWidth());
+                            }
+                        });
+
+                        // The road style: the same for every tile, and read every frame, so a
+                        // colour or dash change in the menu shows on the next frame.
+                        registerSwatch(shader, "u_roadCore", RoadStyle.Swatch.ROADS);
+                        registerSwatch(shader, "u_trackCore", RoadStyle.Swatch.TRACKS);
+                        registerSwatch(shader, "u_trailEasy", RoadStyle.Swatch.TRAILS_EASY);
+                        registerSwatch(shader, "u_trailMountain", RoadStyle.Swatch.TRAILS_MOUNTAIN);
+                        registerSwatch(shader, "u_trailAlpine", RoadStyle.Swatch.TRAILS_ALPINE);
+                        BaseShader.Uniform u_dash = new BaseShader.Uniform("u_dash");
+                        shader.register(u_dash, new BaseShader.GlobalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                RoadStyle style = P.getRoadStyle();
+                                shader.program.setUniformf(u_dash.alias,
+                                        style.dashCount(), RoadStyle.DASH_DUTY, style.dashSpeed());
+                            }
+                        });
+                        BaseShader.Uniform u_pistesSet = new BaseShader.Uniform("u_pistesSet");
+                        shader.register(u_pistesSet, new BaseShader.GlobalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                shader.program.setUniformi(u_pistesSet.alias, P.getPisteVisible() ? 1 : 0);
+                            }
+                        });
+                        // Radians per pixel: only read where the GPU has no screen derivatives.
+                        BaseShader.Uniform u_pixelAngle = new BaseShader.Uniform("u_pixelAngle");
+                        shader.register(u_pixelAngle, new BaseShader.GlobalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                shader.program.setUniformf(u_pixelAngle.alias,
+                                        (float) Math.toRadians(camera.fieldOfView)
+                                                / Math.max(1, Gdx.graphics.getHeight()));
+                            }
+                        });
+
                         return shader;
                     }
                 },
@@ -190,6 +263,44 @@ public class TileBatchRenderer {
                 null);
 
         // The FBO is deliberately NOT created here - see ensureFbo().
+    }
+
+    /** A road-style colour as a vec4 uniform, read from the preferences every frame. */
+    private static void registerSwatch(DefaultShader shader, String name, final RoadStyle.Swatch swatch) {
+        final BaseShader.Uniform uniform = new BaseShader.Uniform(name);
+        shader.register(uniform, new BaseShader.GlobalSetter() {
+            @Override
+            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                int c = P.getRoadStyle().color(swatch);
+                shader.program.setUniformf(uniform.alias,
+                        ((c >>> 24) & 0xFF) / 255f, ((c >>> 16) & 0xFF) / 255f,
+                        ((c >>> 8) & 0xFF) / 255f, (c & 0xFF) / 255f);
+            }
+        });
+    }
+
+    /**
+     * The terrain fragment shader, told whether it may use screen-space derivatives.
+     *
+     * <p>The road lines are antialiased, kept to a minimum width in pixels and faded with
+     * distance by measuring how much of the road texture one pixel covers, which takes
+     * {@code fwidth}/{@code dFdx}. Desktop GL has them built in; GL ES 2 needs the
+     * {@code OES_standard_derivatives} extension, which nearly every phone has but which the
+     * shader must not assume - enabling a missing extension would leave the whole terrain
+     * uncompiled. Without it the shader falls back to estimating the pixel from the distance.
+     */
+    private static String terrainFragmentShader() {
+        String source = Gdx.files.internal("fragment_shader.glsl").readString();
+        return supportsDerivatives() ? "#define ROADS_DERIVATIVES\n" + source : source;
+    }
+
+    private static boolean supportsDerivatives() {
+        Application.ApplicationType type = Gdx.app.getType();
+        if (type != Application.ApplicationType.Android && type != Application.ApplicationType.iOS
+                && type != Application.ApplicationType.WebGL) {
+            return true; // desktop GL: derivatives are core
+        }
+        return Gdx.gl30 != null || Gdx.graphics.supportsExtension("GL_OES_standard_derivatives");
     }
 
     /**

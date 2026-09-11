@@ -221,7 +221,8 @@
                         "mountain_ranges",
                         "alpine_huts",
                         "pistes",
-                        "roads"
+                        "roads",
+                        "road_names"
                       ]
                     },
                     "description": "Whitelist: everything off, then the named kinds on."
@@ -253,6 +254,10 @@
                   "fov": {
                     "type": "number",
                     "description": "Vertical field of view in degrees. The app's map uses 30; its GPX tour 62, to keep the mountains either side of a track in shot. Holds until set again."
+                  },
+                  "satellite": {
+                    "type": "boolean",
+                    "description": "satellite imagery on, or off for the white relief"
                   },
                   "options_pane": {
                     "type": "boolean",

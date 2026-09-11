@@ -13,12 +13,11 @@ public class TileRendererRunnerSatellite extends TileRendererRunner {
 
     public TileRendererRunnerSatellite(
                 TileRenderer tileRenderer,
-                TileRenderer.RenderThemes renderThemes,
                 MapTile mapTile,
                 PixmapLayerName layer,
                 SatelliteImageProvider tileProvider
             ) {
-        super(tileRenderer, renderThemes, mapTile, layer);
+        super(tileRenderer, mapTile, layer);
         this.tileProvider = tileProvider;
     }
 

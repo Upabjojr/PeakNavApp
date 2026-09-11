@@ -50,6 +50,8 @@ public class LabelRenderer {
     private float angle = 0;
     private float timeElapsed = 0;
     private static final float TILT_LIMIT = 0.9995f;
+    /** Names of streets, tracks and trails, tilted along their ways. */
+    private final RoadNameRenderer roadNameRenderer;
 
     public LabelRenderer(
             SpriteBatch spriteBatch, ShapeRenderer shapeRenderer, Texture compassTexture,
@@ -63,6 +65,11 @@ public class LabelRenderer {
         w = 1.3f * widgetUnitStep;
         h = w;
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        roadNameRenderer = new RoadNameRenderer(spriteBatch, shapeRenderer, widgetUnitStep);
+    }
+
+    public RoadNameRenderer getRoadNameRenderer() {
+        return roadNameRenderer;
     }
 
     // Labels drawn since the last render() began; published to PeakNavAppState once per
@@ -110,6 +117,8 @@ public class LabelRenderer {
 
     public void render(float deltaTime) {
         labelsDrawnThisFrame = 0;
+        // Road names first, underneath: the peaks, places and areas are drawn over them.
+        roadNameRenderer.render();
         // renderBackgroundPixmap();
         renderAreas();
         renderLabelLines();

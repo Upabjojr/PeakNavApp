@@ -1,6 +1,13 @@
 #ifdef GL_ES
+#ifdef ROADS_DERIVATIVES
+#extension GL_OES_standard_derivatives : enable
+#endif
 precision highp float;
 #else
+// Desktop GL: screen derivatives are part of the language.
+#ifndef ROADS_DERIVATIVES
+#define ROADS_DERIVATIVES
+#endif
 #endif
 
 uniform vec2 a_texCoord0;
@@ -15,9 +22,11 @@ varying float distance;
 uniform sampler2D u_textureSatellite;
 uniform sampler2D u_textureSatBlock;
 uniform sampler2D u_textureRoads;
+uniform sampler2D u_textureRoadsAux;
 uniform sampler2D u_textureGpx;
 uniform int u_gpxSet;
-// Seconds, ever-increasing (wrapped), for the animated GPX flow. Set from TileBatchRenderer.
+// Seconds, ever-increasing (wrapped), for the animated GPX flow and trail dashes. Set from
+// TileBatchRenderer.
 uniform float u_time;
 uniform vec4 u_cameraDirection;
 
@@ -27,8 +36,34 @@ uniform vec3 u_sunDirection;
 // 0 turns the sun off, leaving flat non-directional light. Toggled from the options menu.
 uniform int u_sunEnabled;
 
-#define MAX_ROAD_DISTANCE (0.2)
-const float min = 0.03125;  // = pow(2.0, -5.0);
+// ---- Roads, tracks, trails and pistes ------------------------------------------------------
+// The road texture holds distances, not colours (see RoadTileRasterizer): R roads, G tracks,
+// B trails, A pistes, each the distance in texels to the nearest line of that kind. The aux
+// texture holds the nearest trail's dash phase (RG, as sine and cosine), the nearest piste's
+// difficulty (B) and the nearest trail's difficulty (A). Everything a line looks like - width,
+// colour, outline, dashes and their motion - is decided here, from the uniforms below, which
+// come from RoadStyle and change without any tile being redrawn.
+uniform float u_roadMetersPerTexel;  // ground metres covered by one texel of u_textureRoads
+uniform float u_roadTexels;          // texels across u_textureRoads
+uniform vec4 u_roadCore;
+uniform vec4 u_trackCore;
+uniform vec4 u_trailEasy;
+uniform vec4 u_trailMountain;
+uniform vec4 u_trailAlpine;
+uniform vec3 u_dash;                 // x dashes per stored phase turn, y dash share, z cycles/s
+uniform int u_pistesSet;
+uniform float u_pixelAngle;          // radians per pixel; only without screen derivatives
+
+// Must match RoadTileRasterizer.
+const float ROAD_BAND = 8.0;
+const float ROAD_BIAS = 2.0;
+const float DASH_BASE_METERS = 240.0;
+const float METERS_PER_LATIT = 111195.0;
+// Below half a texel a distance field cannot hold a line: where the line passes between two
+// texel centres the interpolated distance along it never drops under 0.5, so a thinner line
+// survives only where it happens to cross a centre and breaks into a string of blobs. From
+// 0.5 up the drawn edge is exact wherever the line lies, so every width starts from here.
+const float MIN_HALF_TEXELS = 0.6;
 
 // Softens the terminator. A plain dot() drops every slope facing away from the sun to the same
 // flat black, which loses all the shape on the shaded side of a ridge.
@@ -45,6 +80,9 @@ const float SATELLITE_RELIEF = 0.8;
 // whole map. Slopes still vary a little through the sky term, which keeps the terrain readable
 // instead of collapsing it into one flat silhouette.
 const float SUN_OFF_LEVEL = 0.72;
+// How much the relief shades the drawn lines: a little, so a trail across a shaded slope does
+// not glow, not so much that its colour is lost.
+const float LINE_RELIEF = 0.3;
 
 float terrainLight(vec3 normal) {
     // Interpolating per-vertex normals shortens them, so without normalising, a fragment in the
@@ -61,9 +99,48 @@ float terrainLight(vec3 normal) {
     return ambient + DIFFUSE * sun;
 }
 
+float roadDistance(float encoded) {
+    return encoded * (ROAD_BAND + ROAD_BIAS) - ROAD_BIAS;
+}
+
+// How much of a pixel a line of half-width hw covers, at distance d from its centre, when one
+// pixel spans px texels: a one-pixel ramp, so the edge is antialiased at any zoom.
+float cover(float d, float hw, float px) {
+    return clamp((hw - d) / px + 0.5, 0.0, 1.0);
+}
+
+// The outline around a line: dark around a light colour, light around a dark one, so whatever
+// the user picks keeps an edge against the terrain (the same rule as RoadStyle.casingFor).
+vec3 casingOf(vec3 c) {
+    float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    return luma > 0.45 ? c * 0.22 : mix(c, vec3(1.0), 0.8);
+}
+
+// The trail colour for a difficulty of 0 (hiking), 0.5 (mountain) or 1 (alpine); in between
+// only where two trails meet, which makes the junction a short blend rather than a hard seam.
+vec3 trailColor(float difficulty) {
+    if (difficulty < 0.5) {
+        return mix(u_trailEasy.rgb, u_trailMountain.rgb, difficulty * 2.0);
+    }
+    return mix(u_trailMountain.rgb, u_trailAlpine.rgb, difficulty * 2.0 - 1.0);
+}
+
+// Piste colours as every ski map has them: novice green, easy blue, intermediate red, advanced
+// black, expert orange, and violet for cross-country. RoadFeature's PISTE_* constants.
+vec3 pisteColor(float v) {
+    float x = v * 5.0;
+    vec3 c = mix(vec3(0.18, 0.70, 0.29), vec3(0.18, 0.42, 0.90), clamp(x, 0.0, 1.0));
+    c = mix(c, vec3(0.90, 0.22, 0.21), clamp(x - 1.0, 0.0, 1.0));
+    c = mix(c, vec3(0.10, 0.10, 0.11), clamp(x - 2.0, 0.0, 1.0));
+    c = mix(c, vec3(1.00, 0.55, 0.10), clamp(x - 3.0, 0.0, 1.0));
+    c = mix(c, vec3(0.56, 0.31, 0.88), clamp(x - 4.0, 0.0, 1.0));
+    return c;
+}
+
 void main() {
 
     float light = terrainLight(v_normal);
+    float flatLight = terrainLight(vec3(0.0, 0.0, 1.0));
 
     if (u_whiteBackground == 0) {
         vec4 satellite = texture2D(u_textureSatellite, v_texCoord0).rgba;
@@ -71,7 +148,6 @@ void main() {
         // Relief relative to flat ground, so the imagery keeps its overall brightness and only
         // the slopes go lighter or darker. Multiplying by the light directly would darken
         // everything, since flat ground is never lit at full strength.
-        float flatLight = terrainLight(vec3(0.0, 0.0, 1.0));
         float relief = mix(1.0, light / flatLight, SATELLITE_RELIEF);
 
         gl_FragColor = vec4(satellite.rgb * relief, satellite.a);
@@ -80,13 +156,119 @@ void main() {
     }
 
     if (u_roadsSet == 1) {
-        vec4 roads = texture2D(u_textureRoads, v_texCoord0).rgba;
-        if (roads.a > 0.01 && distance <= MAX_ROAD_DISTANCE) {
-            float r = distance / MAX_ROAD_DISTANCE;
-            // libgdx equivalent: Interpolation.Exp5In
-            roads.a *= (1.0 - pow(2.0, 5.0*(r-1.0)))/(1.0-min);
-            gl_FragColor = gl_FragColor * (1.0 - roads.a) + roads * roads.a;
+        vec4 enc = texture2D(u_textureRoads, v_texCoord0);
+        vec4 aux = texture2D(u_textureRoadsAux, v_texCoord0);
+        float dRoad = roadDistance(enc.r);
+        float dTrack = roadDistance(enc.g);
+        float dTrail = roadDistance(enc.b);
+        float dPiste = roadDistance(enc.a);
+
+        // The dash phase, in cycles along the trail.
+        vec2 sc = aux.rg * 2.0 - 1.0;
+        float phaseMagnitude = length(sc);
+        float cycles = atan(sc.x, sc.y) * 0.15915494 * u_dash.x;
+
+        // How much of the road texture this pixel covers. Everything below is measured with it:
+        // line widths never drop below a pixel or so, edges are antialiased over one pixel, and
+        // lines fade out where they would only be noise. The view is almost always oblique, so
+        // the pixel's footprint is a long thin ellipse: pxMin and pxMax are its two axes.
+        // Derivatives are taken here, before anything branches on what the textures hold.
+#ifdef ROADS_DERIVATIVES
+        vec2 stx = dFdx(v_texCoord0 * u_roadTexels);
+        vec2 sty = dFdy(v_texCoord0 * u_roadTexels);
+        float fa = dot(stx, stx) + dot(sty, sty);
+        float fdet = abs(stx.x * sty.y - stx.y * sty.x);
+        float fdisc = sqrt(max(fa * fa - 4.0 * fdet * fdet, 0.0));
+        float pxMax = sqrt(0.5 * (fa + fdisc));
+        float pxMin = max(sqrt(max(0.5 * (fa - fdisc), 0.0)), 1e-3);
+        // Across each line: the distance's own screen gradient, which is exactly the pixel's
+        // extent in the direction that sets the line's apparent width; bounded by the ellipse
+        // where the field is flat (far from any line) or folds (on a line's centre).
+        float pxRoad = clamp(length(vec2(dFdx(dRoad), dFdy(dRoad))), pxMin, pxMax);
+        float pxTrack = clamp(length(vec2(dFdx(dTrack), dFdy(dTrack))), pxMin, pxMax);
+        float pxTrail = clamp(length(vec2(dFdx(dTrail), dFdy(dTrail))), pxMin, pxMax);
+        float pxPiste = clamp(length(vec2(dFdx(dPiste), dFdy(dPiste))), pxMin, pxMax);
+        // Dash cycles per pixel, from whichever of two copies of the phase has no wrap here.
+        float cyclesPerPixel = min(fwidth(cycles), fwidth(fract(cycles + 0.5)));
+#else
+        float metersPerPixelEstimate = distance * METERS_PER_LATIT * u_pixelAngle;
+        float pxMax = max(metersPerPixelEstimate / u_roadMetersPerTexel, 1e-3);
+        float pxMin = pxMax * 0.4;
+        float pxRoad = pxMax * 0.7;
+        float pxTrack = pxRoad;
+        float pxTrail = pxRoad;
+        float pxPiste = pxRoad;
+        float cyclesPerPixel = metersPerPixelEstimate * u_dash.x / DASH_BASE_METERS;
+#endif
+        float mpt = u_roadMetersPerTexel;
+        // Ground metres per pixel, averaged over the footprint: what decides when a kind of way
+        // is too fine to draw. Minor ways go first, the way a paper map drops them at a smaller
+        // scale; and all of them go before a line would outgrow the distances the texture holds.
+        float metersPerPixel = mpt * sqrt(pxMin * pxMax);
+        float bandFade = 1.0 - smoothstep(2.4, 3.4, pxMax);
+        float fadeRoad = (1.0 - smoothstep(35.0, 60.0, metersPerPixel)) * bandFade;
+        float fadeTrack = (1.0 - smoothstep(16.0, 28.0, metersPerPixel)) * bandFade;
+        float fadeTrail = (1.0 - smoothstep(14.0, 24.0, metersPerPixel)) * bandFade;
+        float fadePiste = (1.0 - smoothstep(35.0, 60.0, metersPerPixel)) * bandFade;
+
+        float lineLight = mix(1.0, light / flatLight, LINE_RELIEF);
+        vec3 col = gl_FragColor.rgb;
+
+        // Pistes, at the bottom: a translucent band with a thin line along the centre of a
+        // piste drawn as a line, or around the edge of one drawn as an area.
+        if (u_pistesSet == 1) {
+            // Lifted a little towards white, so the band keeps its colour over dark forest
+            // rather than muddying it; black runs stay dark enough to read as black.
+            vec3 pc = mix(pisteColor(aux.b), vec3(1.0), 0.12) * lineLight;
+            float hwBand = max(max(12.0 / mpt, 1.4 * pxPiste), MIN_HALF_TEXELS);
+            float band = cover(dPiste, hwBand, pxPiste) * 0.42 * fadePiste;
+            float edge = cover(abs(dPiste), max(max(0.9 / mpt, 0.55 * pxPiste), MIN_HALF_TEXELS), pxPiste) * 0.75 * fadePiste;
+            col = mix(col, pc, band);
+            col = mix(col, pc, edge);
         }
+
+        // Roads: an outline and a core. A major road's extra width is already in its distance.
+        {
+            vec3 core = u_roadCore.rgb * lineLight;
+            float hw = max(max(2.2 / mpt, 0.75 * pxRoad), MIN_HALF_TEXELS);
+            float outline = max(0.9 / mpt, 0.8 * pxRoad);
+            col = mix(col, casingOf(u_roadCore.rgb), cover(dRoad, hw + outline, pxRoad) * 0.9 * fadeRoad);
+            col = mix(col, core, cover(dRoad, hw, pxRoad) * u_roadCore.a * fadeRoad);
+        }
+
+        // Tracks: the same, narrower.
+        {
+            vec3 core = u_trackCore.rgb * lineLight;
+            float hw = max(max(1.6 / mpt, 0.65 * pxTrack), MIN_HALF_TEXELS);
+            float outline = max(0.6 / mpt, 0.6 * pxTrack);
+            col = mix(col, casingOf(u_trackCore.rgb), cover(dTrack, hw + outline, pxTrack) * 0.85 * fadeTrack);
+            col = mix(col, core, cover(dTrack, hw, pxTrack) * u_trackCore.a * fadeTrack);
+        }
+
+        // Trails, on top: dashed, coloured by difficulty, each dash with a thin outline. The
+        // dashes creep along the trail by u_dash.z cycles a second. Where the pattern gets finer
+        // than a few pixels, or filtering has averaged the phase away (the small mip levels,
+        // far off), it melts into a solid, slightly lighter line instead of shimmering.
+        {
+            float duty = u_dash.y;
+            float cycle = fract(cycles - u_time * u_dash.z);
+            float fromCentre = abs(fract(cycle - 0.5 * duty + 0.5) - 0.5);
+            float on = clamp((0.5 * duty - fromCentre) / max(cyclesPerPixel, 1e-4) + 0.5, 0.0, 1.0);
+            float resolved = (1.0 - smoothstep(0.18, 0.4, cyclesPerPixel))
+                    * smoothstep(0.3, 0.6, phaseMagnitude);
+            float dash = mix(0.8, on, resolved);
+
+            vec3 tc = trailColor(aux.a);
+            float hw = max(max(1.1 / mpt, 0.7 * pxTrail), MIN_HALF_TEXELS);
+            float outline = max(0.5 / mpt, 0.6 * pxTrail);
+            float alpha = dash * fadeTrail;
+            // A quiet dark edge whatever the colour: casingOf would give red and blue a light
+            // one, which over dark forest makes them glow pink and pale instead of standing out.
+            col = mix(col, tc * 0.3, cover(dTrail, hw + outline, pxTrail) * 0.6 * alpha);
+            col = mix(col, tc * lineLight, cover(dTrail, hw, pxTrail) * alpha);
+        }
+
+        gl_FragColor = vec4(col, gl_FragColor.a);
     }
 
     // GPX path, painted onto the tile surface (over the lit terrain and the roads, so a track
@@ -104,8 +286,8 @@ void main() {
         if (cov > 0.002) {
             // Recover the phase angle from the filtered sine/cosine pair. Their magnitude sags
             // where the filter blends neighbours, but the direction — all we want — survives.
-            vec2 sc = gpx.rg * 2.0 - 1.0;
-            float phase = atan(sc.x, sc.y) * 0.15915494; // / (2*pi) -> [-0.5, 0.5]
+            vec2 gsc = gpx.rg * 2.0 - 1.0;
+            float phase = atan(gsc.x, gsc.y) * 0.15915494; // / (2*pi) -> [-0.5, 0.5]
             float m = fract(phase - u_time * 0.8);
             // A soft comet head with a faint trailing glow, so the pattern reads as flowing
             // rather than as a hard repeating stripe.
