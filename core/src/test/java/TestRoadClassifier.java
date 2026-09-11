@@ -148,26 +148,46 @@ class TestRoadClassifier {
     }
 
     @Test
-    @DisplayName("a way's own name wins; a hiking route lends its number to an unnamed trail")
-    void relationNames() {
+    @DisplayName("a trail keeps its name and its numbers apart; hiking routes lend it both")
+    void trailNamesAndNumbers() {
         // [way tags] + [relation tags], the way PbfTileBinaryParser appends them.
-        assertEquals("12", only(tags("highway", "path",
-                "type", "route", "route", "hiking", "ref", "12", "name", "Alta Via")).name);
-        assertEquals("Alta Via", only(tags("highway", "path",
-                "type", "route", "route", "hiking", "name", "Alta Via")).name);
-        assertEquals("Sentiero dei Fiori", only(tags("highway", "path", "name", "Sentiero dei Fiori",
-                "type", "route", "route", "hiking", "ref", "12")).name);
-        assertEquals("E62", only(tags("highway", "primary", "ref", "E62")).name,
-                "a road with only a reference is labelled with it");
+        RoadFeature fromRoute = only(tags("highway", "path",
+                "type", "route", "route", "hiking", "ref", "12", "name", "Alta Via"));
+        assertEquals("Alta Via", fromRoute.name);
+        assertEquals("12", fromRoute.number);
+
+        RoadFeature own = only(tags("highway", "path", "name", "Sentiero dei Fiori",
+                "type", "route", "route", "hiking", "ref", "12"));
+        assertEquals("Sentiero dei Fiori", own.name, "a way's own name wins");
+        assertEquals("12", own.number);
+
+        assertEquals("12/E5", only(tags("highway", "path", "ref", "12",
+                "type", "route", "route", "hiking", "ref", "E5",
+                "type", "route", "route", "foot", "ref", "12")).number,
+                "its own number first, then each route's, each once");
+        assertNull(only(tags("highway", "path", "name", "Senda")).number);
+        assertEquals("7", only(tags("highway", "track", "ref", "7")).number,
+                "tracks carry route numbers too");
     }
 
     @Test
-    @DisplayName("a bus route's name does not label the streets it runs along")
+    @DisplayName("a road is named by its name or, failing that, its reference, and has no number")
+    void roadNames() {
+        RoadFeature road = only(tags("highway", "primary", "ref", "E62"));
+        assertEquals("E62", road.name);
+        assertNull(road.number);
+        assertEquals("Via Roma", only(tags("highway", "residential", "name", "Via Roma",
+                "ref", "SP1")).name);
+    }
+
+    @Test
+    @DisplayName("a bus route's name or number does not label the streets it runs along")
     void busRouteNamesAreIgnored() {
         assertNull(only(tags("highway", "residential",
                 "type", "route", "route", "bus", "name", "Bus 3: Station => Hospital")).name);
-        assertNull(only(tags("highway", "track",
-                "type", "route", "route", "bus", "ref", "3")).name);
+        RoadFeature track = only(tags("highway", "track", "type", "route", "route", "bus", "ref", "3"));
+        assertNull(track.name);
+        assertNull(track.number);
     }
 
     @Test

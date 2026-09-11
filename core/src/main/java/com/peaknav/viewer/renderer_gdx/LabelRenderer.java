@@ -65,7 +65,7 @@ public class LabelRenderer {
         w = 1.3f * widgetUnitStep;
         h = w;
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        roadNameRenderer = new RoadNameRenderer(spriteBatch, widgetUnitStep);
+        roadNameRenderer = new RoadNameRenderer(spriteBatch, shapeRenderer, widgetUnitStep);
     }
 
     public RoadNameRenderer getRoadNameRenderer() {

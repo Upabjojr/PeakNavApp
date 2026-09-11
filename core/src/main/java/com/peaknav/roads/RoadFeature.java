@@ -41,9 +41,20 @@ public final class RoadFeature {
     public final boolean area;
     /** What to write beside it, or null when it should not be labelled. */
     public final String name;
+    /**
+     * For trails and tracks, the route number or numbers waymarked along it ("12", "12/E5"), or
+     * null. Kept apart from the name because a hiker follows the number, so it is written more
+     * often than the name is.
+     */
+    public final String number;
 
     public RoadFeature(RoadClass roadClass, float attribute, double[] lat, double[] lon,
                        boolean area, String name) {
+        this(roadClass, attribute, lat, lon, area, name, null);
+    }
+
+    public RoadFeature(RoadClass roadClass, float attribute, double[] lat, double[] lon,
+                       boolean area, String name, String number) {
         if (lat.length != lon.length) {
             throw new IllegalArgumentException("lat and lon differ in length");
         }
@@ -53,6 +64,7 @@ public final class RoadFeature {
         this.lon = lon;
         this.area = area;
         this.name = name;
+        this.number = number;
     }
 
     public int size() {

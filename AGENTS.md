@@ -56,8 +56,12 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     shader's `ROAD_BAND`/`ROAD_BIAS`/`DASH_BASE_METERS` equal to the rasterizer's, and every
     line at least `MIN_HALF_TEXELS` wide: a distance field cannot hold anything thinner than
     half a texel, and a line below it breaks into blobs. `RoadLabelPlanner` +
-    `RoadLabelGeometry` choose where names go; `viewer/renderer_gdx/RoadNameRenderer` draws
-    them tilted along their ways. The extracts carry almost no waterways and only the pistes
+    `RoadLabelGeometry` choose where names go (trails: a spot every 300 m, number-and-name
+    alternating with the number alone); `viewer/renderer_gdx/RoadNameRenderer` draws them
+    tilted along their ways, trail and track labels on a translucent plate of the trail's own
+    colour with dark or white text to suit it, falling back to the number alone where the full
+    label is too long for the trail in view. `lastDecisionStats()` says why candidates in range
+    were not shown (off screen, end-on, hidden, crowded out, ...) - ask it before tuning. The extracts carry almost no waterways and only the pistes
     that are also highways, so rivers are labelled but not drawn and pistes are partial.
 - **`desktop`** — LWJGL3 launcher (`DesktopLauncher`), Swing-based native screens.
 - **`android`** — Android launcher/activity, fragments, native screens.

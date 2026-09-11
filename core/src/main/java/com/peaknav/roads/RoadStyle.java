@@ -169,6 +169,25 @@ public final class RoadStyle {
     }
 
     /**
+     * The colour of a trail of this difficulty ({@link RoadFeature} TRAIL_* constants): the
+     * swatch its grade is drawn with, as the user has set it. RGBA8888.
+     */
+    public int trailColor(float difficulty) {
+        if (difficulty >= 0.75f) {
+            return color(Swatch.TRAILS_ALPINE);
+        }
+        return difficulty >= 0.25f ? color(Swatch.TRAILS_MOUNTAIN) : color(Swatch.TRAILS_EASY);
+    }
+
+    /**
+     * Whether text written on a plate of this colour should be dark rather than white: dark on
+     * yellow, ochre, white and the other light colours, white on red, blue, violet and black.
+     */
+    public static boolean prefersDarkText(int rgba8888) {
+        return luminance(rgba8888) > 0.5f;
+    }
+
+    /**
      * The outline drawn around a line of this colour: dark around a light colour, light around
      * a dark one, so any colour the user picks keeps an edge against the terrain. RGBA8888.
      */

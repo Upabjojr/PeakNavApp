@@ -91,7 +91,7 @@ public final class RoadClassifier {
             String w = waterway.toLowerCase(Locale.ROOT);
             if (w.equals("river") || w.equals("stream") || w.equals("canal")) {
                 out.add(new RoadFeature(RoadClass.WATER, 0f, lat, lon, false,
-                        labelText(tags, ownEnd, false)));
+                        roadName(tags, ownEnd)));
             }
         }
     }
@@ -103,17 +103,17 @@ public final class RoadClassifier {
             case "motorway": case "trunk": case "primary": case "secondary":
             case "motorway_link": case "trunk_link": case "primary_link": case "secondary_link":
                 return new RoadFeature(RoadClass.ROAD, RoadFeature.RANK_MAJOR, lat, lon, false,
-                        labelText(tags, ownEnd, false));
+                        roadName(tags, ownEnd));
             case "tertiary": case "tertiary_link": case "unclassified": case "residential":
             case "living_street": case "road":
                 return new RoadFeature(RoadClass.ROAD, RoadFeature.RANK_LOCAL, lat, lon, false,
-                        labelText(tags, ownEnd, false));
+                        roadName(tags, ownEnd));
             case "service": case "pedestrian":
                 return new RoadFeature(RoadClass.ROAD, RoadFeature.RANK_SERVICE, lat, lon, false,
-                        labelText(tags, ownEnd, false));
+                        roadName(tags, ownEnd));
             case "track":
                 return new RoadFeature(RoadClass.TRACK, 0f, lat, lon, false,
-                        labelText(tags, ownEnd, true));
+                        trailName(tags, ownEnd), trailNumber(tags, ownEnd));
             case "footway": case "cycleway":
                 // The pavements along every street, and the crossings between them: in a town
                 // they would trace each road twice more with trail dashes.
@@ -141,7 +141,7 @@ public final class RoadClassifier {
         float difficulty = viaFerrata ? RoadFeature.TRAIL_ALPINE
                 : trailDifficulty(value(tags, 0, ownEnd, "sac_scale"));
         return new RoadFeature(RoadClass.PATH, difficulty, lat, lon, false,
-                labelText(tags, ownEnd, true));
+                trailName(tags, ownEnd), trailNumber(tags, ownEnd));
     }
 
     /**
@@ -214,22 +214,20 @@ public final class RoadClassifier {
         }
     }
 
+    /** A road's name: its own, else its own reference ("SS38", "E62"). */
+    static String roadName(List<Tag> tags, int ownEnd) {
+        String name = value(tags, 0, ownEnd, "name");
+        return name != null ? name : value(tags, 0, ownEnd, "ref");
+    }
+
     /**
-     * The name to write beside the way: its own name, else its own reference ("SS38", "E62"),
-     * and for trails and tracks, failing both, the number or name of a hiking route it is part
-     * of - which on a signposted network is exactly what the waymarks say.
+     * A trail's name: its own, else the name of a hiking route it is part of - on a signposted
+     * network, what the signposts say.
      */
-    static String labelText(List<Tag> tags, int ownEnd, boolean trail) {
+    static String trailName(List<Tag> tags, int ownEnd) {
         String name = value(tags, 0, ownEnd, "name");
         if (name != null) {
             return name;
-        }
-        String ref = value(tags, 0, ownEnd, "ref");
-        if (ref != null) {
-            return ref;
-        }
-        if (!trail) {
-            return null;
         }
         // Relation groups: [type=route, route=hiking, name=..., ref=...] one after another.
         int start = ownEnd;
@@ -237,10 +235,6 @@ public final class RoadClassifier {
             int end = nextGroup(tags, start + 1);
             String route = value(tags, start, end, "route");
             if (route != null && isTrailRoute(route)) {
-                String routeRef = value(tags, start, end, "ref");
-                if (routeRef != null) {
-                    return routeRef;
-                }
                 String routeName = value(tags, start, end, "name");
                 if (routeName != null) {
                     return routeName;
@@ -249,6 +243,48 @@ public final class RoadClassifier {
             start = end;
         }
         return null;
+    }
+
+    /** At most this many route numbers are written together: past it the label is a list. */
+    private static final int MAX_NUMBERS = 3;
+
+    /**
+     * A trail's numbers, as the waymarks show them: its own reference first, then those of the
+     * hiking routes it carries, each once, joined with a slash ("12/E5"). Null if it has none.
+     */
+    static String trailNumber(List<Tag> tags, int ownEnd) {
+        List<String> numbers = new ArrayList<>(MAX_NUMBERS);
+        addNumber(numbers, value(tags, 0, ownEnd, "ref"));
+        int start = ownEnd;
+        while (start < tags.size() && numbers.size() < MAX_NUMBERS) {
+            int end = nextGroup(tags, start + 1);
+            String route = value(tags, start, end, "route");
+            if (route != null && isTrailRoute(route)) {
+                addNumber(numbers, value(tags, start, end, "ref"));
+            }
+            start = end;
+        }
+        if (numbers.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < numbers.size(); i++) {
+            if (i > 0) {
+                sb.append('/');
+            }
+            sb.append(numbers.get(i));
+        }
+        return sb.toString();
+    }
+
+    private static void addNumber(List<String> numbers, String ref) {
+        if (ref == null) {
+            return;
+        }
+        String r = ref.trim();
+        if (!r.isEmpty() && !numbers.contains(r) && numbers.size() < MAX_NUMBERS) {
+            numbers.add(r);
+        }
     }
 
     private static boolean isTrailRoute(String route) {

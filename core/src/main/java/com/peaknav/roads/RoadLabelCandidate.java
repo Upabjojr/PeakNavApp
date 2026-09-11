@@ -1,8 +1,8 @@
 package com.peaknav.roads;
 
 /**
- * A place where a way's name may be written: a point on the way, and a short stretch of it on
- * either side - the stretch whose direction on screen the text is tilted to follow.
+ * A place where a way's name or number may be written: a point on the way, and a short stretch
+ * of it on either side - the stretch whose direction on screen the text is tilted to follow.
  */
 public final class RoadLabelCandidate {
 
@@ -16,6 +16,14 @@ public final class RoadLabelCandidate {
     public final int anchor;
     /** Length of the whole way, in metres: longer ways win a crowded spot. */
     public final double wayLengthMeters;
+    /** A trail's number on its own, written between its names (see RoadLabelPlanner). */
+    public final boolean numberOnly;
+    /**
+     * For a label carrying both a trail's number and its name, the number alone: written
+     * instead where the whole label is too long for the stretch of trail the camera sees, so
+     * the number still shows. Null otherwise.
+     */
+    public final String shortText;
 
     /**
      * World coordinates of the samples, three floats each, filled in on the render thread once
@@ -27,6 +35,12 @@ public final class RoadLabelCandidate {
 
     public RoadLabelCandidate(String text, RoadClass roadClass, float attribute,
                               double[] lat, double[] lon, int anchor, double wayLengthMeters) {
+        this(text, roadClass, attribute, lat, lon, anchor, wayLengthMeters, false, null);
+    }
+
+    public RoadLabelCandidate(String text, RoadClass roadClass, float attribute,
+                              double[] lat, double[] lon, int anchor, double wayLengthMeters,
+                              boolean numberOnly, String shortText) {
         if (lat.length != lon.length || anchor < 0 || anchor >= lat.length) {
             throw new IllegalArgumentException("bad samples");
         }
@@ -37,6 +51,8 @@ public final class RoadLabelCandidate {
         this.lon = lon;
         this.anchor = anchor;
         this.wayLengthMeters = wayLengthMeters;
+        this.numberOnly = numberOnly;
+        this.shortText = shortText;
     }
 
     public double anchorLatitude() {
@@ -51,9 +67,15 @@ public final class RoadLabelCandidate {
         return lat.length;
     }
 
+    /** Trails and tracks are written on a plate of their own colour; roads and rivers are not. */
+    public boolean isTrail() {
+        return roadClass == RoadClass.PATH || roadClass == RoadClass.TRACK;
+    }
+
     /**
      * Precedence in a crowded spot: roads over trails over tracks, a major road over a minor
-     * one, and within that the longer way.
+     * one, and within that the longer way. A trail's bare number outranks its name: it is what
+     * the waymarks carry, and being short it rarely displaces anything.
      */
     public float priority() {
         float base;
@@ -70,6 +92,9 @@ public final class RoadLabelCandidate {
             default:
                 base = 1f;
                 break;
+        }
+        if (numberOnly) {
+            return base + 0.95f;
         }
         return base + (float) Math.min(0.9, wayLengthMeters / 20000.0);
     }

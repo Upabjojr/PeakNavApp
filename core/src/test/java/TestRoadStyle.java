@@ -127,6 +127,28 @@ class TestRoadStyle {
     }
 
     @Test
+    @DisplayName("a trail's plate takes its grade's colour, as the user set it")
+    void trailColours() {
+        RoadStyle style = new RoadStyle();
+        assertEquals(style.color(Swatch.TRAILS_EASY), style.trailColor(0f));
+        assertEquals(style.color(Swatch.TRAILS_MOUNTAIN), style.trailColor(0.5f));
+        assertEquals(style.color(Swatch.TRAILS_ALPINE), style.trailColor(1f));
+        style.setColor(Swatch.TRAILS_MOUNTAIN, 0x8E4FE0FF);
+        assertEquals(0x8E4FE0FF, style.trailColor(0.5f));
+    }
+
+    @Test
+    @DisplayName("text on a plate is dark on the light colours and white on the dark ones")
+    void textOnPlates() {
+        assertTrue(RoadStyle.prefersDarkText(0xFFD02EFF), "yellow");
+        assertTrue(RoadStyle.prefersDarkText(0xD98C3AFF), "ochre");
+        assertTrue(RoadStyle.prefersDarkText(0xFFFFFFFF), "white");
+        assertFalse(RoadStyle.prefersDarkText(0xE8322BFF), "red");
+        assertFalse(RoadStyle.prefersDarkText(0x2E7BF0FF), "blue");
+        assertFalse(RoadStyle.prefersDarkText(0x1C1C1CFF), "black");
+    }
+
+    @Test
     @DisplayName("any colour keeps an outline: dark around light colours, light around dark ones")
     void casing() {
         for (int color : RoadStyle.PALETTE) {

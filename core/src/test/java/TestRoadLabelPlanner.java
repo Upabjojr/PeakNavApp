@@ -30,16 +30,73 @@ class TestRoadLabelPlanner {
         return RoadLabelPlanner.plan(Collections.singletonList(f), LAT + 0.01, LAT - 0.01, east, west);
     }
 
+    private static double along(RoadLabelCandidate c) {
+        return RoadGeo.metersBetween(LAT, 7.0, c.anchorLatitude(), c.anchorLongitude());
+    }
+
+    /** A trail along the parallel at 46 N, from lon 7.0, with a name and a number. */
+    private static RoadFeature trail(String name, String number, double meters) {
+        return new RoadFeature(RoadClass.PATH, 0.5f, new double[]{LAT, LAT},
+                new double[]{7.0, 7.0 + meters * DEG_PER_METER}, false, name, number);
+    }
+
     @Test
-    @DisplayName("a long way gets a label every 1.2 km, centred on its length")
+    @DisplayName("a long road gets its name every 1.2 km, centred on its length")
     void spacing() {
-        List<RoadLabelCandidate> c = plan(way("Sentiero", RoadClass.PATH, 3000), 6.9, 7.2);
+        List<RoadLabelCandidate> c = plan(way("Via Roma", RoadClass.ROAD, 3000), 6.9, 7.2);
         assertEquals(2, c.size());
-        double first = RoadGeo.metersBetween(LAT, 7.0, c.get(0).anchorLatitude(), c.get(0).anchorLongitude());
-        double second = RoadGeo.metersBetween(LAT, 7.0, c.get(1).anchorLatitude(), c.get(1).anchorLongitude());
-        assertEquals(900, first, 1.0);
-        assertEquals(2100, second, 1.0);
-        assertEquals("Sentiero", c.get(0).text);
+        assertEquals(900, along(c.get(0)), 1.0);
+        assertEquals(2100, along(c.get(1)), 1.0);
+        assertEquals("Via Roma", c.get(0).text);
+    }
+
+    @Test
+    @DisplayName("a numbered trail: a spot every 300 m, number and name, then the number alone")
+    void trailNumbersAlternateWithNames() {
+        double spacing = RoadLabelPlanner.TRAIL_SPACING_METERS;
+        List<RoadLabelCandidate> c = plan(trail("Sentiero", "12", 2000), 6.9, 7.2);
+        int count = (int) Math.floor(2000 / spacing);
+        double first = (2000 - (count - 1) * spacing) / 2;
+        assertEquals(count, c.size());
+        String both = "12" + RoadLabelPlanner.NUMBER_NAME_SEPARATOR + "Sentiero";
+        for (int i = 0; i < count; i++) {
+            assertEquals(first + spacing * i, along(c.get(i)), 1.0);
+            boolean numberSpot = i % 2 == 1;
+            assertEquals(numberSpot ? "12" : both, c.get(i).text);
+            assertEquals(numberSpot, c.get(i).numberOnly);
+            assertEquals(numberSpot ? null : "12", c.get(i).shortText,
+                    "a spot with both keeps the number to fall back on");
+            assertTrue(c.get(i).isTrail());
+        }
+    }
+
+    @Test
+    @DisplayName("a trail with only a number shows it at every spot; one with only a name at every second")
+    void trailsWithOnlyOne() {
+        double spacing = RoadLabelPlanner.TRAIL_SPACING_METERS;
+        int spots = (int) Math.floor(2000 / spacing);
+        List<RoadLabelCandidate> numbers = plan(trail(null, "E5", 2000), 6.9, 7.2);
+        assertEquals(spots, numbers.size());
+        for (RoadLabelCandidate c : numbers) {
+            assertEquals("E5", c.text);
+        }
+        List<RoadLabelCandidate> names = plan(trail("Sentiero", null, 2000), 6.9, 7.2);
+        assertEquals((spots + 1) / 2, names.size(), "named at every second spot");
+        assertEquals("Sentiero", names.get(0).text);
+        assertEquals(null, names.get(0).shortText, "a name alone has nothing shorter to fall back on");
+        assertEquals(2 * spacing, along(names.get(1)) - along(names.get(0)), 1.0);
+        List<RoadLabelCandidate> shortOne = plan(trail("Sentiero", "12", 200), 6.9, 7.2);
+        assertEquals(1, shortOne.size(), "a short trail's one spot carries both");
+        assertEquals("12" + RoadLabelPlanner.NUMBER_NAME_SEPARATOR + "Sentiero", shortOne.get(0).text);
+    }
+
+    @Test
+    @DisplayName("a trail's bare number outranks its name in a crowded spot, and never a road")
+    void numbersFirst() {
+        List<RoadLabelCandidate> c = plan(trail("Sentiero", "12", 2000), 6.9, 7.2);
+        assertTrue(c.get(1).priority() > c.get(0).priority());
+        RoadLabelCandidate road = plan(way("R", RoadClass.ROAD, 500), 6.9, 7.2).get(0);
+        assertTrue(road.priority() > c.get(1).priority());
     }
 
     @Test
@@ -68,7 +125,7 @@ class TestRoadLabelPlanner {
     @Test
     @DisplayName("a tile keeps only the spots inside it, so a way is not labelled once per tile")
     void tilesSplitTheSpots() {
-        RoadFeature f = way("Sentiero", RoadClass.PATH, 3000);
+        RoadFeature f = way("Via Roma", RoadClass.ROAD, 3000);
         double mid = 7.0 + 1500 * DEG_PER_METER;
         List<RoadLabelCandidate> westHalf = plan(f, 6.9, mid);
         List<RoadLabelCandidate> eastHalf = plan(f, mid, 7.2);
