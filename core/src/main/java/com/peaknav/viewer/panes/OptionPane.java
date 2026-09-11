@@ -4,6 +4,7 @@ import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
 import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.utils.PreferencesManager.P;
+import static com.peaknav.utils.PreferencesManager.PISTES_IN_MAP_DATA;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
@@ -704,6 +705,7 @@ public class OptionPane {
                 });
         roadMenuRefreshers.add(() -> dashSpeed[0].setValue(P.getRoadStyle().dashSpeed()));
 
+        // Offered only once the map data carries the pistes (see PISTES_IN_MAP_DATA).
         final ImageTextButtonOptionPane checkBoxPistes = getC().widgetGetter.getImageTextButton(
                 "icons/icon_checkbox_roads.png", s("Ski_pistes"), true);
         addCheckingStateProperty(checkBoxPistes, () -> P.getPisteVisible());
@@ -759,14 +761,20 @@ public class OptionPane {
             rows.add(dashSpeedRow);
             rows.add(labelFrequencyRow);
             rows.add(checkBoxNames);
-            rows.add(checkBoxPistes);
+            if (PISTES_IN_MAP_DATA) {
+                rows.add(checkBoxPistes);
+            }
             rows.add(buttonReset);
             rows.add(back);
             addButtonsToTable(table, rows, true, buttonWidth * 1.2f);
         } else {
             addPair(table, swatches.get(0), swatches.get(1));
             addPair(table, swatches.get(2), swatches.get(3));
-            addPair(table, swatches.get(4), checkBoxPistes);
+            if (PISTES_IN_MAP_DATA) {
+                addPair(table, swatches.get(4), checkBoxPistes);
+            } else {
+                addSingle(table, swatches.get(4));
+            }
             // Six rows, as tall as the main options menu: any taller and it runs under the
             // camera and compass buttons at the top of a phone held sideways.
             addPair(table, dashLengthRow, dashSpeedRow);
@@ -786,6 +794,11 @@ public class OptionPane {
         table.add(left).width(buttonWidth).height(height).padBottom(padHeight)
                 .padRight(0.2f * roundButtonSize);
         table.add(right).width(buttonWidth).height(height).padBottom(padHeight).row();
+    }
+
+    /** One menu button alone in its row, centred under a pair. */
+    private void addSingle(Table table, Table only) {
+        table.add(only).colspan(2).width(buttonWidth).height(height).padBottom(padHeight).row();
     }
 
     private Table createInfoOptsMenu() {

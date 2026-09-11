@@ -71,7 +71,9 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     the camera's bearing are dropped before their terrain lookup, tiles are visited nearest
     first, and within a rank nearer labels win. `lastDecisionStats()` says why candidates in range
     were not shown (off screen, end-on, hidden, crowded out, ...) - ask it before tuning. The extracts carry almost no waterways and only the pistes
-    that are also highways, so rivers are labelled but not drawn and pistes are partial.
+    that are also highways, so rivers are labelled but not drawn, and pistes are switched off
+    altogether - not drawn, not labelled, no menu switch - by `PreferencesManager.PISTES_IN_MAP_DATA`
+    until the extraction also keeps `piste:type` ways.
 - **`desktop`** — LWJGL3 launcher (`DesktopLauncher`), Swing-based native screens.
 - **`android`** — Android launcher/activity, fragments, native screens.
 - **`ios`** — RoboVM launcher plus a real `IOSLoadFactory`: logging, caches, file

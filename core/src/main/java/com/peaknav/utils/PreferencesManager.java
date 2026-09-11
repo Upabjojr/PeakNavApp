@@ -291,8 +291,18 @@ public class PreferencesManager {
         // preferences.flush();
     }
 
+    /**
+     * Whether the downloaded map data carries the ski pistes. It does not yet: the highway tiles
+     * keep a way only if it has a highway tag, and a piste is almost always a way of its own,
+     * tagged {@code piste:type} alone (in Andorra, 685 of 687 piste ways). What is left is the
+     * odd track that doubles as a piste, drawn under its own track line - too little to offer.
+     * While this is false pistes are neither drawn nor labelled, whatever the stored setting, and
+     * the options menu leaves out their switch. Set it once the tiles keep piste:type ways.
+     */
+    public static final boolean PISTES_IN_MAP_DATA = false;
+
     public boolean getPisteVisible() {
-        return pisteVisible;
+        return PISTES_IN_MAP_DATA && pisteVisible;
     }
 
     public void setPisteVisible(boolean visible) {
