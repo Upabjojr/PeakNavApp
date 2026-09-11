@@ -52,6 +52,7 @@ import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.math.Vector3;
 import com.peaknav.config.JsonConfigStore;
+import com.peaknav.roads.RoadStyle;
 import com.peaknav.viewer.imgmapprovider.SatelliteImageProvider;
 import com.peaknav.viewer.imgmapprovider.SatelliteProviderRegistry;
 import com.peaknav.viewer.render_tiles.PixmapLayerName;
@@ -98,6 +99,8 @@ public class PreferencesManager {
     private boolean locationPermissionDenied;
     private boolean collectDownloadInfo;
     private boolean firstTimeAppRun;
+    /** Colours, dashes and names of the roads and trails; see {@link RoadStyle}. */
+    private final RoadStyle roadStyle = new RoadStyle();
     // private boolean collectAnonymousStatsPrompted;
 
     public boolean isCollectDownloadInfo() {
@@ -223,6 +226,7 @@ public class PreferencesManager {
         // Set to "true" for subscribed users:
         viewerLayerVisibleBaseRoads = preferences.getBoolean(VIEWER_LAYER_VISIBLE_BASE_ROADS, true);
         largeFonts = preferences.getBoolean(VIEWER_LARGE_FONTS, false);
+        roadStyle.load(preferences);
         // layerVisibleNavigation = preferences.getBoolean(VIEWER_LAYER_VISIBLE_NAVIGATION, false);
 
         collectDownloadInfo = preferences.getBoolean(COLLECT_DOWNLOAD_INFO, true);
@@ -609,6 +613,20 @@ public class PreferencesManager {
         viewerLayerVisibleBaseRoads = visible;
         preferences.putBoolean(VIEWER_LAYER_VISIBLE_BASE_ROADS, visible);
         lastChange.put(BASE_ROADS, System.currentTimeMillis());
+        preferences.flush();
+    }
+
+    /**
+     * How the roads and trails look. The terrain shader reads it every frame, so a change made
+     * through it shows at once; call {@link #persistRoadStyle()} afterwards to keep it.
+     */
+    public RoadStyle getRoadStyle() {
+        return roadStyle;
+    }
+
+    /** Writes the road style out after a change made through {@link #getRoadStyle()}. */
+    public void persistRoadStyle() {
+        roadStyle.save(preferences);
         preferences.flush();
     }
 

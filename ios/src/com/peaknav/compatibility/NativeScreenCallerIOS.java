@@ -78,9 +78,9 @@ import java.util.regex.Pattern;
  * worst kind of bug to be handed.
  *
  * <p>Every screen the shared UI can ask for is built here: GPS, the gyroscope camera,
- * the image pickers, the GPX picker, the tutorial and the app-info page. See the class
- * comment on {@code IOSLoadFactory} for the one thing core treats as absent rather than
- * broken - there is no mapsforge graphics backend, so there is no road and path layer.
+ * the image pickers, the GPX picker, the tutorial and the app-info page. There is no
+ * mapsforge graphics backend (see {@code IOSLoadFactory}), and none is needed: the road and
+ * path layer is rasterized in plain Java by core, the same as on the other platforms.
  */
 public class NativeScreenCallerIOS extends NativeScreenCaller {
 

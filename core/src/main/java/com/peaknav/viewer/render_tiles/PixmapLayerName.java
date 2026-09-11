@@ -8,4 +8,6 @@ public enum PixmapLayerName {
     SKI_SLOPES,
     NAVIGATION_LAYER,
     GPX_PATH,
+    /** The roads' aux texture: trail dash phase and difficulties (see RoadTileRasterizer). */
+    ROADS_AUX,
 }

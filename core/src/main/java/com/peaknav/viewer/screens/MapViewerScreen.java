@@ -1253,6 +1253,8 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(optionPane.getSelectLabels());
 		stage.addActor(optionPane.getSelectSky());
 		stage.addActor(optionPane.getSelectCompass());
+		stage.addActor(optionPane.getSelectRoads());
+		stage.addActor(optionPane.getSelectRoadsOneColumn());
 		// stage.addActor(optionPane.getTableAppInfo());
 		optionPane.hide();
 

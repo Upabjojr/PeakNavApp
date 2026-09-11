@@ -31,9 +31,9 @@ import java.util.TimerTask;
  *
  * <p>Beyond launching, this is also where GPX files opened from other apps arrive:
  * Info.plist registers the .gpx document type, and the system calls {@link #openURL} with
- * a copy of the file in Documents/Inbox. See {@code IOSLoadFactory} for the one piece core
- * treats as absent rather than broken: there is no mapsforge graphics backend, so there is
- * no road and path layer.
+ * a copy of the file in Documents/Inbox. There is no mapsforge graphics backend here (see
+ * {@code IOSLoadFactory}); the road and path layer does not need one, since core rasterizes
+ * it in plain Java on every platform.
  */
 public class IOSLauncher extends IOSApplication.Delegate {
 

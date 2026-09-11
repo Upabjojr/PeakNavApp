@@ -24,6 +24,7 @@ import com.peaknav.viewer.desktop.DesktopFiles;
 import com.peaknav.viewer.desktop.MapViewerDesktopSingleton;
 
 import java.io.File;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -998,6 +999,7 @@ public final class PeakNavRenderer implements AutoCloseable {
             states.put(Label.ROADS, P.isViewerLayerVisibleBaseRoads());
             states.put(Label.PISTES, P.getPisteVisible());
             states.put(Label.NAVIGATION, P.getLayerVisibleNavigation());
+            states.put(Label.ROAD_NAMES, P.getRoadStyle().isRoadNames());
         });
         return states;
     }
@@ -1005,7 +1007,9 @@ public final class PeakNavRenderer implements AutoCloseable {
     /** The label categories the viewer can show, each backed by its own preference. */
     public enum Label {
         PEAKS, PLACE_NAMES, CITIES, MOUNTAIN_RANGES, ISLANDS, LAKES, ALPINE_HUTS,
-        ROADS, PISTES, NAVIGATION
+        ROADS, PISTES, NAVIGATION,
+        /** Street, track and trail names, drawn along their ways. */
+        ROAD_NAMES
     }
 
     /** Turns one category of label on or off. */
@@ -1022,6 +1026,7 @@ public final class PeakNavRenderer implements AutoCloseable {
                 case ROADS:           P.setViewerLayerVisibleBaseRoads(visible); break;
                 case PISTES:          P.setPisteVisible(visible); break;
                 case NAVIGATION:      P.setLayerVisibleNavigation(visible); break;
+                case ROAD_NAMES:      P.getRoadStyle().setRoadNames(visible); break;
                 default: throw new IllegalArgumentException("unhandled label: " + label);
             }
         });
@@ -1422,6 +1427,29 @@ public final class PeakNavRenderer implements AutoCloseable {
         final String[] out = new String[1];
         onRenderThread(() -> out[0] = mapApp.mapViewerScreen.widgetBoundsJson());
         return out[0];
+    }
+
+    /** The street, track and trail names drawn in the last frame. */
+    public List<String> roadNamesDrawn() {
+        final List<String> out = new java.util.ArrayList<>();
+        onRenderThread(() -> out.addAll(
+                mapApp.mapViewerScreen.labelRenderer.getRoadNameRenderer().drawnNames()));
+        return out;
+    }
+
+    /**
+     * Shows or hides the satellite imagery, as its checkbox in the options pane does. Off, the
+     * terrain is drawn as white relief - the map most users without imagery see, and the one the
+     * roads' colours have to read on as well as on the photographs.
+     */
+    public PeakNavRenderer setSatelliteVisible(final boolean visible) {
+        onRenderThread(() -> {
+            P.setLayerVisibleUnderlayLayer(visible);
+            if (visible) {
+                getC().tileManager.startAerialAndDataRenderExecutors();
+            }
+        });
+        return this;
     }
 
     /** Opens or closes the options pane, as the options button does. */

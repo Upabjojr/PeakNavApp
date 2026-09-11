@@ -193,6 +193,7 @@ final class RestServer {
         setIf(body, "ecliptic", renderer::setSkyEcliptic);
         setIf(body, "sky_time_label", renderer::setSkyTimeLabel);
         setIf(body, "sun_shading", renderer::setSunShading);
+        setIf(body, "satellite", renderer::setSatelliteVisible);
         setIf(body, "label_auto_update", renderer::setLabelAutoUpdate);
         if (body.has("refresh_labels") && body.getBoolean("refresh_labels")) {
             renderer.refreshLabels();

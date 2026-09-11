@@ -128,6 +128,52 @@ public class PbfMapDataStore extends MapDataStore {
         return readMapDataByLayer(tile, PBF_POI);
     }
 
+    /**
+     * The ways of the map data covering this tile that pass through it, or near it: the tile's box
+     * is widened by {@code padFraction} of its size on every side, and a way is kept when any of
+     * its segments crosses that box - not only when one of its nodes falls inside, which would
+     * drop a straight road whose nodes all lie beyond a small tile it runs across.
+     */
+    public MapReadResult readMapDataPadded(Tile tile, double padFraction) {
+        Tile tileWithData = findTileWithDataByZoomingOut(tile, PBF_HIGHWAYS);
+        MapReadResult out = new MapReadResult();
+        if (tileWithData == null) {
+            return out;
+        }
+        MapReadResult data = cache.get(tileWithData, PBF_HIGHWAYS);
+        BoundingBox bb = tile.getBoundingBox();
+        double padLat = (bb.maxLatitude - bb.minLatitude) * padFraction;
+        double padLon = (bb.maxLongitude - bb.minLongitude) * padFraction;
+        double south = bb.minLatitude - padLat, north = bb.maxLatitude + padLat;
+        double west = bb.minLongitude - padLon, east = bb.maxLongitude + padLon;
+        for (Way way : data.ways) {
+            if (wayCrossesBox(way, south, west, north, east)) {
+                out.ways.add(way);
+            }
+        }
+        return out;
+    }
+
+    private static boolean wayCrossesBox(Way way, double south, double west, double north, double east) {
+        for (LatLong[] line : way.latLongs) {
+            for (int i = 0; i < line.length; i++) {
+                LatLong a = line[i];
+                if (a == null) {
+                    continue;
+                }
+                LatLong b = (i + 1 < line.length && line[i + 1] != null) ? line[i + 1] : a;
+                // A segment whose bounding box misses the box cannot cross it; one whose box meets
+                // it is kept, which admits the odd near miss - harmless, it is simply not drawn.
+                if (Math.max(a.latitude, b.latitude) >= south && Math.min(a.latitude, b.latitude) <= north
+                        && Math.max(a.longitude, b.longitude) >= west
+                        && Math.min(a.longitude, b.longitude) <= east) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public void readPoiDataByRangeLazy(Tile tileCenter, int range, CallbackMapResult callbackMapResult) {
 
         Set<Tile> tileSet = new HashSet<>();

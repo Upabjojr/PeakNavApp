@@ -44,6 +44,21 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     zooms around while a photo is shown. Its accuracy is measured, not assumed: see the
     `skylineBenchmark` tool below, and keep the thresholds in `SkylineMatcher`
     tied to what the benchmark reports.
+  - `roads/` — roads, tracks, trails and pistes, drawn by the GPU on every platform.
+    `RoadClassifier` sorts the OSM ways of `PBF_HIGHWAYS` into classes (road rank, SAC trail
+    difficulty, piste difficulty; tunnels, pavements and plazas dropped; relation tags from
+    `PbfTileBinaryParser` read in groups so only hiking routes lend a trail their number).
+    `RoadTileRasterizer` writes each tile's two **distance** textures - per class, how far every
+    texel is from the nearest line, plus a dash phase and the difficulties - and
+    `assets/fragment_shader.glsl` turns them into lines of any width, colour, outline and
+    animated dash. The look is `RoadStyle` (colours, dash length and speed; the options
+    pane's Roads "..." submenu), read every frame, so a style change redraws no tile. Keep the
+    shader's `ROAD_BAND`/`ROAD_BIAS`/`DASH_BASE_METERS` equal to the rasterizer's, and every
+    line at least `MIN_HALF_TEXELS` wide: a distance field cannot hold anything thinner than
+    half a texel, and a line below it breaks into blobs. `RoadLabelPlanner` +
+    `RoadLabelGeometry` choose where names go; `viewer/renderer_gdx/RoadNameRenderer` draws
+    them tilted along their ways. The extracts carry almost no waterways and only the pistes
+    that are also highways, so rivers are labelled but not drawn and pistes are partial.
 - **`desktop`** — LWJGL3 launcher (`DesktopLauncher`), Swing-based native screens.
 - **`android`** — Android launcher/activity, fragments, native screens.
 - **`ios`** — RoboVM launcher plus a real `IOSLoadFactory`: logging, caches, file
@@ -162,10 +177,12 @@ J=-Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
 
   What is still missing — shipped gaps, not release blockers, and each surfaces at
   runtime rather than at compile time:
-  `getGraphicFactory()` returns `null` (no mapsforge backend for iOS, so no road
-  and path layer — the 3D terrain, satellite imagery, labels and sky do not use
-  it); and search finds only online results until `assets/geonames_index.362` is
-  built. Everything else the shared UI reaches is implemented: GPS and the
+  search finds only online results until `assets/geonames_index.362` is built.
+  (Roads and trails used to be missing as well, because mapsforge drew them onto
+  a canvas each platform had to supply; they are rasterized in plain Java by
+  `core`'s `roads` package now and styled by the terrain shader, so iOS draws them
+  like everything else. `getGraphicFactory()` still returns `null` there, and
+  nothing needs it.) Everything else the shared UI reaches is implemented: GPS and the
   gyroscope camera via CoreLocation and CoreMotion (`LocationControllerIOS`,
   `OrientationPointerControllerIOS` — the latter a port of Android's
   `OrientationPointerController` with CoreMotion's reference frame
@@ -329,9 +346,9 @@ up with `PeakNavUtils.s("Key")`.
 ## Gotchas
 
 - `getNativeScreenCaller()` may be `null` — guard it.
-- `getGraphicFactory()` is `null` on iOS; `TileRenderer` treats that as "this
-  platform has no path layer" and skips the mapsforge machinery. Anything new that
-  reaches for the factory must do the same.
+- `getGraphicFactory()` is `null` on iOS. Nothing in the render path uses it any
+  more - the roads are rasterized by `com.peaknav.roads` - but anything new that
+  reaches for it must still expect `null`.
 - The Gradle wrapper JAR is **not** in git (`.gitignore` ignores `/gradle/`), so
   `./gradlew` fails with "Unable to access jarfile" on a fresh clone. Regenerate it
   with a system Gradle 9.3.0: `gradle wrapper --gradle-version 9.3.0`.
