@@ -50,14 +50,11 @@
      *;
  }
 
-# These are necessary to make mapsforge work with proguard:
+# These are necessary to make mapsforge work with proguard (the androidsvg rules went
+# with mapsforge's Android renderer):
 
--dontwarn com.caverock.androidsvg.**
--keep class com.caverock.** { *; }
 -dontwarn org.xmlpull.v1.**
 -keep class org.xmlpull.v1.** { *; }
--dontwarn com.caverock.androidsvg.R
--dontwarn com.caverock.androidsvg.R$styleable
 
 -keep class com.google.gson.** { *; }
 
@@ -102,8 +99,9 @@
 -keep class crosby.binary.** { *; }
 -dontwarn com.google.protobuf.**
 
-# Mapsforge instantiates render-theme and graphic-factory pieces by name, and its
-# Android half reaches for classes the desktop half never links.
+# Mapsforge. Only its model and map-data types are used now, but it is kept whole as
+# before: its render-theme code instantiates classes by name, and a narrower rule has
+# not been tried on a release build.
 -keep class org.mapsforge.** { *; }
 -dontwarn org.mapsforge.**
 

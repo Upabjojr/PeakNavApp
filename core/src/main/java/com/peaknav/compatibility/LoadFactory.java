@@ -7,11 +7,8 @@ import com.peaknav.utils.PeakNavCaches;
 import com.peaknav.utils.PeakNavLogger;
 import com.peaknav.utils.UtilsOSDep;
 
-import org.mapsforge.core.graphics.GraphicFactory;
-
 public interface LoadFactory {
     MapSqlite getMapSqlite();
-    GraphicFactory getGraphicFactory();
     NativeScreenCaller getNativeScreenCaller();
     PeakNavLogger getPeakNavLogger();
     PeakNavCaches getCaches();

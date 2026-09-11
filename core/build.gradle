@@ -35,10 +35,10 @@ dependencies {
     implementation 'org.openstreetmap.pbf:osmpbf:1.6.1'
     // implementation 'com.github.davidmoten:geo:0.8.0'
 
+    // Mapsforge's model and map-data types only (Tile, LatLong, BoundingBox, MapReadResult,
+    // Way, PointOfInterest): the roads are drawn by com.peaknav.roads, not by mapsforge.
     implementation 'org.mapsforge:mapsforge-core:0.17.0'
     implementation 'org.mapsforge:mapsforge-map:0.17.0'
-    implementation 'org.mapsforge:mapsforge-map-reader:0.17.0'
-    implementation 'org.mapsforge:mapsforge-themes:0.17.0'
 
     // implementation 'de.westnordost:osmapi-overpass:2.0'
 

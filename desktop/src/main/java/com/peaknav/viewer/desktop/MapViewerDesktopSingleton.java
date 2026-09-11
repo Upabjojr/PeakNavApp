@@ -1,11 +1,5 @@
 package com.peaknav.viewer.desktop;
 
-import org.mapsforge.core.graphics.GraphicFactory;
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.map.awt.graphics.AwtGraphicFactory;
-import org.mapsforge.map.awt.view.MapView;
-import org.mapsforge.map.util.MapViewProjection;
-
 import java.awt.BorderLayout;
 import java.awt.Point;
 import java.awt.event.ActionEvent;
@@ -40,7 +34,7 @@ import com.peaknav.viewer.MapViewerSingleton;
 
 public class MapViewerDesktopSingleton extends MapViewerSingleton {
 
-    public static void initializeDesktopGraphicFactory() {
+    public static void initializeDesktopLoadFactory() {
 
         loadFactory = new LoadFactory() {
             private UtilsOSDep utilsOSDep;
@@ -48,11 +42,6 @@ public class MapViewerDesktopSingleton extends MapViewerSingleton {
             @Override
             public MapSqlite getMapSqlite() {
                 return  new MapSqliteDesktop();
-            }
-
-            @Override
-            public GraphicFactory getGraphicFactory() {
-                return new AwtGraphicFactory();
             }
 
             private final NativeScreenCallerDesktop screenCaller = new NativeScreenCallerDesktop();

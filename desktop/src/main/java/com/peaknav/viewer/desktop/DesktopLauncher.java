@@ -118,7 +118,7 @@ public class DesktopLauncher {
 		});
 		config.setPreferencesConfig(getGdxFilesExternalRootFolderName(), Files.FileType.External);
 		setNumOfCpuCores(4);
-		MapViewerDesktopSingleton.initializeDesktopGraphicFactory();
+		MapViewerDesktopSingleton.initializeDesktopLoadFactory();
 		mapApp = MapViewerDesktopSingleton.getAppInstance();
 		new Lwjgl3Application(mapApp, config) {
 			@Override

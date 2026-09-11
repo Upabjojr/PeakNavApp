@@ -50,10 +50,8 @@ dependencies {
 
     implementation "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-desktop"
 
-    implementation 'org.mapsforge:mapsforge-map-awt:0.17.0'
-    implementation 'org.mapsforge:mapsforge-themes:0.17.0'
-
-    implementation 'com.formdev:svgSalamander:1.1.4'
+    // Tile, in MapSqliteDesktop: core's own mapsforge dependency is not exported.
+    implementation 'org.mapsforge:mapsforge-core:0.17.0'
 
     implementation 'org.xerial:sqlite-jdbc:3.53.2.0'
 

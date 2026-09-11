@@ -27,7 +27,6 @@ import com.peaknav.viewer.MapDataManager;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.render_tiles.MapTilePixmapToTexturesHandler;
 import com.peaknav.viewer.screens.MapViewerScreen;
-import com.peaknav.viewer.map_data.MapsforgeConnector;
 import com.peaknav.viewer.tiles.MapTileWelder;
 import com.peaknav.viewer.tiles.TileManager;
 import com.peaknav.viewer.spatial.Collisions;
@@ -35,8 +34,6 @@ import com.peaknav.viewer.spatial.Visibility;
 import com.peaknav.viewer.widgets.StyleSingleton;
 import com.peaknav.viewer.widgets.WidgetGetter;
 import com.peaknav.viewer.widgets.WidgetTextures;
-
-import org.mapsforge.core.graphics.GraphicFactory;
 
 public class MapController {
 
@@ -47,7 +44,6 @@ public class MapController {
     public final Collisions collisions;
 
     public DataRetrieveThreadManager dataRetrieveThreadManager;
-    public final MapsforgeConnector mapsforgeConnector;
     public final MapDataManager mapDataManager;
     public CheckMissingData checkMissingData;
     public final ThreadPoolExecutor executorEleLoad = (ThreadPoolExecutor)
@@ -89,13 +85,6 @@ public class MapController {
     public LuceneGeonameSearch luceneGeonameSearch;
 
     public MapController(LoadFactory loadFactory) {
-        GraphicFactory graphicFactory = loadFactory.getGraphicFactory();
-        this.mapsforgeConnector = new MapsforgeConnector() {
-            @Override
-            public GraphicFactory getGraphicFactory() {
-                return graphicFactory;
-            }
-        };
         mapSqlite = loadFactory.getMapSqlite();
 
         downloadProviderRegistry = new DownloadProviderRegistry(

@@ -2,9 +2,6 @@ package com.peaknav.singleton;
 
 import android.content.Context;
 
-import org.mapsforge.core.graphics.GraphicFactory;
-import org.mapsforge.map.android.graphics.AndroidGraphicFactory;
-
 import com.peaknav.compatibility.LoadFactory;
 import com.peaknav.compatibility.NativeScreenCaller;
 import com.peaknav.compatibility.NativeScreenCallerAndroid;
@@ -29,8 +26,6 @@ import java.io.File;
 public class MapViewerAndroidSingleton extends MapViewerSingleton {
 
     public static void initializeAndroidLoadFactory(Context context, final AndroidLauncher mainActivity) {
-        AndroidGraphicFactory.createInstance(context);
-
         loadFactory = new LoadFactory() {
             private NotificationManagerAndroid notificationManager;
             private UtilsOSAndroid utilsOSDep;
@@ -38,11 +33,6 @@ public class MapViewerAndroidSingleton extends MapViewerSingleton {
             @Override
             public MapSqlite getMapSqlite() {
                 return new MapSqliteAndroid(context);
-            }
-
-            @Override
-            public GraphicFactory getGraphicFactory() {
-                return AndroidGraphicFactory.INSTANCE;
             }
 
             private final NativeScreenCallerAndroid nativeScreenCallerAndroid =

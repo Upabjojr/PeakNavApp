@@ -147,7 +147,7 @@ public final class PeakNavRenderer implements AutoCloseable {
         // wherever the last shot was taken. Map data is unaffected; only settings are isolated.
         PreferencesManager.setEphemeral(true);
 
-        MapViewerDesktopSingleton.initializeDesktopGraphicFactory();
+        MapViewerDesktopSingleton.initializeDesktopLoadFactory();
         final MapApp app = MapViewerDesktopSingleton.getAppInstance();
 
         final CountDownLatch running = new CountDownLatch(1);

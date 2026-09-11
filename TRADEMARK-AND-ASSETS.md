@@ -49,5 +49,5 @@ makes no claim over them. They derive from OpenStreetMap (ODbL), Wikidata (CC0),
 Urban Centre Database (CC BY 4.0), ASTER GDEM (METI/NASA) and GeoNames (CC BY 4.0), and
 remain governed by those licenses — including ODbL's share-alike obligation on derived
 databases. Likewise the third-party assets shipped with the application (Liberation Fonts,
-the Mapsforge render-theme symbols and patterns, the GeoNames search index) carry their own
-licenses, listed in [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md).
+the GeoNames search index) carry their own licenses, listed in
+[THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md).

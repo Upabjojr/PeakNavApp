@@ -136,10 +136,9 @@ dependencies {
     natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86"
     natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86_64"
 
-    // UPGRADING THIS WILL BREAK API:
-    implementation 'org.mapsforge:mapsforge-map-android:0.17.0'
-
-    implementation 'com.caverock:androidsvg:1.4'
+    // Tile and BoundingBox, in MapSqliteAndroid and MapDataDownloadChooser: core's own
+    // mapsforge dependency is not exported.
+    implementation 'org.mapsforge:mapsforge-core:0.17.0'
 
     implementation 'org.openstreetmap.pbf:osmpbf:1.6.1'
 

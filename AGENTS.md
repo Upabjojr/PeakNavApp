@@ -196,8 +196,8 @@ J=-Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
   (Roads and trails used to be missing as well, because mapsforge drew them onto
   a canvas each platform had to supply; they are rasterized in plain Java by
   `core`'s `roads` package now and styled by the terrain shader, so iOS draws them
-  like everything else. `getGraphicFactory()` still returns `null` there, and
-  nothing needs it.) Everything else the shared UI reaches is implemented: GPS and the
+  like everything else; no platform has a mapsforge graphics backend any more.)
+  Everything else the shared UI reaches is implemented: GPS and the
   gyroscope camera via CoreLocation and CoreMotion (`LocationControllerIOS`,
   `OrientationPointerControllerIOS` — the latter a port of Android's
   `OrientationPointerController` with CoreMotion's reference frame
@@ -361,9 +361,6 @@ up with `PeakNavUtils.s("Key")`.
 ## Gotchas
 
 - `getNativeScreenCaller()` may be `null` — guard it.
-- `getGraphicFactory()` is `null` on iOS. Nothing in the render path uses it any
-  more - the roads are rasterized by `com.peaknav.roads` - but anything new that
-  reaches for it must still expect `null`.
 - The Gradle wrapper JAR is **not** in git (`.gitignore` ignores `/gradle/`), so
   `./gradlew` fails with "Unable to access jarfile" on a fresh clone. Regenerate it
   with a system Gradle 9.3.0: `gradle wrapper --gradle-version 9.3.0`.
