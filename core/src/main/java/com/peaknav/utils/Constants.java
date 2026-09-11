@@ -42,6 +42,7 @@ public interface Constants {
         String VIEWER_ROAD_DASH_COUNT = "viewerRoadDashCount";
         String VIEWER_ROAD_DASH_SPEED = "viewerRoadDashSpeed";
         String VIEWER_ROAD_NAMES = "viewerRoadNames";
+        String VIEWER_ROAD_LABEL_FREQUENCY = "viewerRoadLabelFrequency";
         String UNDERLAY_IMAGE_PROVIDER = "underlayImageProviderChosen";
         String VIEWER_UNIT_SYSTEM = "viewerUnitSystem";
 

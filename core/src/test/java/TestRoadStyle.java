@@ -127,6 +127,31 @@ class TestRoadStyle {
     }
 
     @Test
+    @DisplayName("label frequency: four steps, the third by default, kept across a restart")
+    void labelFrequency() {
+        RoadStyle style = new RoadStyle();
+        assertEquals(RoadStyle.LABEL_FREQUENCY_DEFAULT, style.labelFrequency());
+        assertEquals(2, style.labelStride(), "by default every second planned spot");
+        style.setLabelFrequency(RoadStyle.LABEL_FREQUENCY_MIN);
+        assertEquals(8, style.labelStride());
+        int fewest = style.maxLabels();
+        style.setLabelFrequency(RoadStyle.LABEL_FREQUENCY_MAX);
+        assertEquals(1, style.labelStride());
+        assertTrue(style.maxLabels() > fewest, "more labels allowed as the frequency rises");
+        style.setLabelFrequency(99);
+        assertEquals(RoadStyle.LABEL_FREQUENCY_MAX, style.labelFrequency());
+        style.setLabelFrequency(-5);
+        assertEquals(RoadStyle.LABEL_FREQUENCY_MIN, style.labelFrequency());
+
+        MapPreferences prefs = new MapPreferences();
+        style.setLabelFrequency(1);
+        style.save(prefs);
+        RoadStyle reloaded = new RoadStyle();
+        reloaded.load(prefs);
+        assertEquals(1, reloaded.labelFrequency());
+    }
+
+    @Test
     @DisplayName("a trail's plate takes its grade's colour, as the user set it")
     void trailColours() {
         RoadStyle style = new RoadStyle();

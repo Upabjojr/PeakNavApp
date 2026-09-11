@@ -56,8 +56,10 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     shader's `ROAD_BAND`/`ROAD_BIAS`/`DASH_BASE_METERS` equal to the rasterizer's, and every
     line at least `MIN_HALF_TEXELS` wide: a distance field cannot hold anything thinner than
     half a texel, and a line below it breaks into blobs. `RoadLabelPlanner` +
-    `RoadLabelGeometry` choose where names go (trails: a spot every 300 m, number-and-name
-    alternating with the number alone); `viewer/renderer_gdx/RoadNameRenderer` draws them
+    `RoadLabelGeometry` choose where names go (spots every 150 m on trails and 600 m on roads,
+    numbered from each way's middle; the menu's label frequency keeps every 1st/2nd/4th/8th,
+    decided at draw time by `RoadLabelCandidate.label(stride)`, with a trail's number-and-name
+    alternating with its number alone); `viewer/renderer_gdx/RoadNameRenderer` draws them
     tilted along their ways, trail and track labels on a translucent plate of the trail's own
     colour with dark or white text to suit it, falling back to the number alone where the full
     label is too long for the trail in view. `lastDecisionStats()` says why candidates in range

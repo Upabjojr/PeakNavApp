@@ -6,12 +6,13 @@ import java.util.List;
 /**
  * Chooses where along each way its name and number may go.
  *
- * <p>Spots are spread evenly along the way, centred on its length. A road gets its name every
- * {@link #ROAD_SPACING_METERS}. A trail or track gets a spot every
- * {@link #TRAIL_SPACING_METERS}, and the spots alternate: the name - with the number in front of
- * it when the trail has one - then the number alone, then the name again. So a numbered trail
- * shows its number every few hundred metres and its name every second spot, and a short trail
- * with a single spot carries both at once.
+ * <p>Spots are laid out evenly along the way, centred on its length: every
+ * {@link #ROAD_SPACING_METERS} along a road, every {@link #TRAIL_SPACING_METERS} along a trail
+ * or track. That is the densest the user can ask for; the label frequency in the menu keeps
+ * every first, second, fourth or eighth spot, counted from the way's middle so the labels stay
+ * centred whatever the setting, and the spots kept alternate between a trail's number with its
+ * name and its number alone (see {@link RoadLabelCandidate#label(int)}). Deciding that when
+ * drawing rather than here is what lets the frequency slider act at once.
  *
  * <p>Each spot is kept by exactly one tile: the one whose box contains it, taking the boxes as
  * half-open so a point on a shared edge belongs to one side only. A way crossing four tiles is
@@ -21,10 +22,10 @@ import java.util.List;
  */
 public final class RoadLabelPlanner {
 
-    /** Distance between two names of the same road. */
-    public static final double ROAD_SPACING_METERS = 1200.0;
-    /** Distance between two labels of the same trail or track: names and numbers alternate. */
-    public static final double TRAIL_SPACING_METERS = 300.0;
+    /** Distance between two spots along a road, at the highest label frequency. */
+    public static final double ROAD_SPACING_METERS = 600.0;
+    /** Distance between two spots along a trail or track, at the highest label frequency. */
+    public static final double TRAIL_SPACING_METERS = 150.0;
     /**
      * Reach of the stretch around an anchor, each way: long enough to carry a trail's number and
      * name together without the renderer judging it seen end-on.
@@ -62,29 +63,14 @@ public final class RoadLabelPlanner {
             // spacings still gets the spot its length is worth.
             int count = Math.max(1, (int) Math.floor(length / spacing + 1e-6));
             double first = (length - (count - 1) * spacing) * 0.5;
+            int middle = (count - 1) / 2;
             for (int k = 0; k < count; k++) {
-                String text;
-                String shortText = null;
-                boolean numberOnly;
-                if (!trail) {
-                    text = name;
-                    numberOnly = false;
-                } else if (k % 2 == 0 && name != null) {
-                    text = number != null ? number + NUMBER_NAME_SEPARATOR + name : name;
-                    shortText = number;
-                    numberOnly = false;
-                } else if (number != null) {
-                    text = number;
-                    numberOnly = true;
-                } else {
-                    continue; // a name-only trail is named every second spot
-                }
                 double s = first + k * spacing;
                 double[] p = pointAt(f, along, s);
                 if (!(p[0] >= south && p[0] < north && p[1] >= west && p[1] < east)) {
                     continue;
                 }
-                out.add(window(f, text, shortText, numberOnly, along, s, length));
+                out.add(window(f, name, number, k - middle, along, s, length));
             }
         }
         return out;
@@ -98,9 +84,8 @@ public final class RoadLabelPlanner {
         return t.isEmpty() ? null : t;
     }
 
-    private static RoadLabelCandidate window(RoadFeature f, String text, String shortText,
-                                             boolean numberOnly, double[] along, double s,
-                                             double length) {
+    private static RoadLabelCandidate window(RoadFeature f, String name, String number, int spot,
+                                             double[] along, double s, double length) {
         int half = (int) Math.round(HALF_WINDOW_METERS / SAMPLE_METERS);
         List<double[]> samples = new ArrayList<>(2 * half + 1);
         int anchor = 0;
@@ -120,8 +105,8 @@ public final class RoadLabelPlanner {
             lat[i] = samples.get(i)[0];
             lon[i] = samples.get(i)[1];
         }
-        return new RoadLabelCandidate(text, f.roadClass, f.attribute, lat, lon, anchor, length,
-                numberOnly, shortText);
+        return new RoadLabelCandidate(name, number, f.roadClass, f.attribute, lat, lon, anchor,
+                length, spot);
     }
 
     static double[] cumulative(RoadFeature f) {

@@ -7,6 +7,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_ROAD_COLOR_TRAILS_E
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_ROAD_COLOR_TRAILS_MOUNTAIN;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_ROAD_DASH_COUNT;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_ROAD_DASH_SPEED;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_ROAD_LABEL_FREQUENCY;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_ROAD_NAMES;
 
 import com.badlogic.gdx.Preferences;
@@ -71,10 +72,23 @@ public final class RoadStyle {
     /** The share of each cycle that is dash rather than gap. */
     public static final float DASH_DUTY = 0.58f;
 
+    /**
+     * How often names and numbers are written along roads and trails, fewest to most. Each step
+     * keeps every eighth, fourth, second or single label spot the planner lays out (see
+     * {@link RoadLabelCandidate#label(int)}), and allows more labels on screen at once.
+     */
+    public static final int LABEL_FREQUENCY_MIN = 0;
+    public static final int LABEL_FREQUENCY_MAX = 3;
+    /** A trail label every 300 m and a road name every 1.2 km. */
+    public static final int LABEL_FREQUENCY_DEFAULT = 2;
+    private static final int[] LABEL_STRIDES = {8, 4, 2, 1};
+    private static final int[] MAX_LABELS = {16, 28, 40, 56};
+
     private final int[] colors = new int[Swatch.values().length];
     private volatile int dashCount = DASH_COUNT_DEFAULT;
     private volatile float dashSpeed = DASH_SPEED_DEFAULT;
     private volatile boolean roadNames = true;
+    private volatile int labelFrequency = LABEL_FREQUENCY_DEFAULT;
 
     public RoadStyle() {
         resetColors();
@@ -88,6 +102,7 @@ public final class RoadStyle {
         setDashCount(preferences.getInteger(VIEWER_ROAD_DASH_COUNT, DASH_COUNT_DEFAULT));
         setDashSpeed(preferences.getFloat(VIEWER_ROAD_DASH_SPEED, DASH_SPEED_DEFAULT));
         roadNames = preferences.getBoolean(VIEWER_ROAD_NAMES, true);
+        setLabelFrequency(preferences.getInteger(VIEWER_ROAD_LABEL_FREQUENCY, LABEL_FREQUENCY_DEFAULT));
     }
 
     /** Writes every setting. The caller flushes. */
@@ -98,6 +113,7 @@ public final class RoadStyle {
         preferences.putInteger(VIEWER_ROAD_DASH_COUNT, dashCount);
         preferences.putFloat(VIEWER_ROAD_DASH_SPEED, dashSpeed);
         preferences.putBoolean(VIEWER_ROAD_NAMES, roadNames);
+        preferences.putInteger(VIEWER_ROAD_LABEL_FREQUENCY, labelFrequency);
     }
 
     public int color(Swatch swatch) {
@@ -166,6 +182,25 @@ public final class RoadStyle {
 
     public void setRoadNames(boolean visible) {
         roadNames = visible;
+    }
+
+    /** How often labels are written, {@link #LABEL_FREQUENCY_MIN} to {@link #LABEL_FREQUENCY_MAX}. */
+    public int labelFrequency() {
+        return labelFrequency;
+    }
+
+    public void setLabelFrequency(int frequency) {
+        labelFrequency = Math.max(LABEL_FREQUENCY_MIN, Math.min(LABEL_FREQUENCY_MAX, frequency));
+    }
+
+    /** Of the planner's label spots, every this many is used. */
+    public int labelStride() {
+        return LABEL_STRIDES[labelFrequency];
+    }
+
+    /** At most this many road and trail labels on screen at once. */
+    public int maxLabels() {
+        return MAX_LABELS[labelFrequency];
     }
 
     /**

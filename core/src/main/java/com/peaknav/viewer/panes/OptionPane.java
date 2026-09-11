@@ -589,11 +589,11 @@ public class OptionPane {
     }
 
     /** The slider look of the photo bar: the same knob and track, so the two read as one family. */
-    private Slider.SliderStyle menuSliderStyle() {
+    private Slider.SliderStyle menuSliderStyle(float knobSize) {
         Slider.SliderStyle style = new Slider.SliderStyle();
         TextureRegionDrawable knob = getC().widgetTextures.getTextureRegionDrawable("icons/icon_slider_alpha.png");
-        knob.setMinWidth(0.8f * height);
-        knob.setMinHeight(0.8f * height);
+        knob.setMinWidth(knobSize);
+        knob.setMinHeight(knobSize);
         style.knob = knob;
         style.background = getC().widgetTextures.getNinePatchDrawable("icons/slider_nine_patch.png");
         return style;
@@ -605,7 +605,7 @@ public class OptionPane {
         Table row = new Table();
         row.setBackground(getC().widgetTextures.getUniformDrawable(Color.WHITE));
         Label label = new Label(text, new Label.LabelStyle(getC().styleSingleton.getBitmapFontSmall(), Color.BLACK));
-        final Slider slider = new Slider(min, max, step, false, menuSliderStyle());
+        final Slider slider = new Slider(min, max, step, false, menuSliderStyle(0.8f * height));
         slider.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
@@ -619,13 +619,46 @@ public class OptionPane {
     }
 
     /**
+     * A slider in half a menu row, its name as a small caption above it. Beside the slider there
+     * would be no room for "Lunghezza tratteggio" or "Beschriftungsdichte" in half a row; above
+     * it the name has the cell's whole width.
+     */
+    private Table sliderCell(String text, float min, float max, float step, final Slider[] out,
+                             final SliderChange onChange) {
+        Table cell = new Table();
+        cell.setBackground(getC().widgetTextures.getUniformDrawable(Color.WHITE));
+        Label label = new Label(text, new Label.LabelStyle(getC().styleSingleton.getBitmapFontVerySmall(), Color.BLACK));
+        final Slider slider = new Slider(min, max, step, false, menuSliderStyle(0.5f * height));
+        slider.addListener(new ChangeListener() {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                onChange.changed(slider.getValue(), !slider.isDragging());
+            }
+        });
+        cell.add(label).left().padLeft(0.3f * widgetUnitStep).row();
+        cell.add(slider).expandX().fillX().height(0.5f * height)
+                .padLeft(0.3f * widgetUnitStep).padRight(0.3f * widgetUnitStep);
+        out[0] = slider;
+        return cell;
+    }
+
+    /** A full-width slider row in one column, or a captioned half-row cell in pairs. */
+    private Table sliderControl(boolean oneColumn, String text, float min, float max, float step,
+                                float sliderWidth, Slider[] out, SliderChange onChange) {
+        return oneColumn ? sliderRow(text, min, max, step, sliderWidth, out, onChange)
+                : sliderCell(text, min, max, step, out, onChange);
+    }
+
+    /**
      * How the roads and trails look: a colour for each kind of way - tap one to step through the
-     * palette - the length of the trail dashes and how fast they move, and the ski pistes on or
-     * off. Every change shows on the next frame, because the terrain shader reads the style every
+     * palette - the length of the trail dashes and how fast they move, how often names and
+     * numbers are written along them and whether they are written at all, and the ski pistes on
+     * or off. Every change shows on the next frame, because the terrain shader reads the style every
      * frame; nothing is redrawn, and each change is saved as it is made.
      *
-     * <p>Built twice, like the main menu: in pairs for a screen held sideways, where nine rows
-     * in one column would run off the bottom, and in one column for a screen held upright.
+     * <p>Built twice, like the main menu: in pairs for a screen held sideways - six rows, the
+     * sliders in half-row cells with their names above them - and in one column for a screen
+     * held upright.
      */
     private Table createRoadsMenu(boolean oneColumn) {
         final Table table = new Table();
@@ -649,7 +682,7 @@ public class OptionPane {
         // right lengthens the dashes rather than multiplying them.
         float sliderWidth = oneColumn ? buttonWidth * 0.62f : buttonWidth * 1.3f;
         final Slider[] dashLength = new Slider[1];
-        Table dashLengthRow = sliderRow(s("Road_dash_length"), RoadStyle.DASH_COUNT_MIN,
+        Table dashLengthRow = sliderControl(oneColumn, s("Road_dash_length"), RoadStyle.DASH_COUNT_MIN,
                 RoadStyle.DASH_COUNT_MAX, 1f, sliderWidth, dashLength, (value, settled) -> {
                     P.getRoadStyle().setDashCount(RoadStyle.DASH_COUNT_MIN + RoadStyle.DASH_COUNT_MAX
                             - Math.round(value));
@@ -662,7 +695,7 @@ public class OptionPane {
 
         // Dash animation: still at the left end.
         final Slider[] dashSpeed = new Slider[1];
-        Table dashSpeedRow = sliderRow(s("Road_dash_animation"), 0f, RoadStyle.DASH_SPEED_MAX, 0.05f,
+        Table dashSpeedRow = sliderControl(oneColumn, s("Road_dash_animation"), 0f, RoadStyle.DASH_SPEED_MAX, 0.05f,
                 sliderWidth, dashSpeed, (value, settled) -> {
                     P.getRoadStyle().setDashSpeed(value);
                     if (settled) {
@@ -678,6 +711,27 @@ public class OptionPane {
                 changer.execute(() -> P.setPisteVisible(checkBoxPistes.isChecked())));
         roadMenuRefreshers.add(() -> checkBoxPistes.setChecked(P.getPisteVisible()));
 
+        // Road and trail names on or off: the same setting as in the Labels submenu.
+        final ImageTextButtonOptionPane checkBoxNames = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_roads.png", s("Road_names"), true);
+        addCheckingStateProperty(checkBoxNames, () -> P.getRoadStyle().isRoadNames());
+        checkBoxNames.addClickListener(() -> changer.execute(() -> {
+            P.getRoadStyle().setRoadNames(checkBoxNames.isChecked());
+            P.persistRoadStyle();
+        }));
+        roadMenuRefreshers.add(() -> checkBoxNames.setChecked(P.getRoadStyle().isRoadNames()));
+
+        // How often names and numbers are written: fewer on the left, more on the right.
+        final Slider[] labelFrequency = new Slider[1];
+        Table labelFrequencyRow = sliderControl(oneColumn, s("Road_label_frequency"), RoadStyle.LABEL_FREQUENCY_MIN,
+                RoadStyle.LABEL_FREQUENCY_MAX, 1f, sliderWidth, labelFrequency, (value, settled) -> {
+                    P.getRoadStyle().setLabelFrequency(Math.round(value));
+                    if (settled) {
+                        changer.execute(P::persistRoadStyle);
+                    }
+                });
+        roadMenuRefreshers.add(() -> labelFrequency[0].setValue(P.getRoadStyle().labelFrequency()));
+
         ImageTextButtonOptionPane buttonReset = getC().widgetGetter.getImageTextButton(
                 "icons/icon_checkbox_roads.png", s("Road_style_reset"), false);
         buttonReset.addClickListener(() -> {
@@ -685,6 +739,7 @@ public class OptionPane {
             style.resetColors();
             style.setDashCount(RoadStyle.DASH_COUNT_DEFAULT);
             style.setDashSpeed(RoadStyle.DASH_SPEED_DEFAULT);
+            style.setLabelFrequency(RoadStyle.LABEL_FREQUENCY_DEFAULT);
             for (Runnable refresher : roadMenuRefreshers) {
                 refresher.run();
             }
@@ -702,6 +757,8 @@ public class OptionPane {
             List<Table> rows = new ArrayList<>(swatches);
             rows.add(dashLengthRow);
             rows.add(dashSpeedRow);
+            rows.add(labelFrequencyRow);
+            rows.add(checkBoxNames);
             rows.add(checkBoxPistes);
             rows.add(buttonReset);
             rows.add(back);
@@ -710,8 +767,10 @@ public class OptionPane {
             addPair(table, swatches.get(0), swatches.get(1));
             addPair(table, swatches.get(2), swatches.get(3));
             addPair(table, swatches.get(4), checkBoxPistes);
-            addWide(table, dashLengthRow);
-            addWide(table, dashSpeedRow);
+            // Six rows, as tall as the main options menu: any taller and it runs under the
+            // camera and compass buttons at the top of a phone held sideways.
+            addPair(table, dashLengthRow, dashSpeedRow);
+            addPair(table, labelFrequencyRow, checkBoxNames);
             addPair(table, buttonReset, back);
         }
 
@@ -727,12 +786,6 @@ public class OptionPane {
         table.add(left).width(buttonWidth).height(height).padBottom(padHeight)
                 .padRight(0.2f * roundButtonSize);
         table.add(right).width(buttonWidth).height(height).padBottom(padHeight).row();
-    }
-
-    /** One row across both columns of a paired menu. */
-    private void addWide(Table table, Table row) {
-        table.add(row).colspan(2).width(2f * buttonWidth + 0.2f * roundButtonSize).height(height)
-                .padBottom(padHeight).row();
     }
 
     private Table createInfoOptsMenu() {

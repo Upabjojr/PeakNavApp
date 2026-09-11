@@ -59,7 +59,6 @@ import java.util.Map;
  */
 public class RoadNameRenderer {
 
-    private static final int MAX_LABELS = 40;
     private static final long DECISION_MS = 350;
     /** A new label is not placed steeper than this... */
     private static final float MAX_TILT_DEG = 72f;
@@ -249,6 +248,11 @@ public class RoadNameRenderer {
         double camLat = cam.position.y;
         double camLon = Units.convertLatitsToLonits(cam.position.x, targetLat);
         double cosLat = Math.cos(Math.toRadians(camLat));
+        // The label frequency chosen in the menu: which of the planned spots are used, and how
+        // many labels may be on screen.
+        RoadStyle style = P.getRoadStyle();
+        int stride = style.labelStride();
+        int maxLabels = style.maxLabels();
 
         IdentityHashMap<RoadLabelCandidate, Boolean> incumbents = new IdentityHashMap<>();
         for (Placed p : chosen) {
@@ -268,6 +272,9 @@ public class RoadNameRenderer {
             List<RoadLabelCandidate> candidates = tile.roadLabels;
             for (int i = 0; i < candidates.size(); i++) {
                 RoadLabelCandidate c = candidates.get(i);
+                if (!c.kept(stride) || c.label(stride) == null) {
+                    continue;
+                }
                 double dy = (c.anchorLatitude() - camLat) * RoadGeo.METERS_PER_DEGREE;
                 double dx = (c.anchorLongitude() - camLon) * RoadGeo.METERS_PER_DEGREE * cosLat;
                 double range = rangeMeters(c.roadClass);
@@ -288,7 +295,7 @@ public class RoadNameRenderer {
                 }
                 boolean incumbent = incumbents.containsKey(c);
                 Placed p = obtain();
-                if (!place(p, c, cam, font, incumbent)) {
+                if (!place(p, c, cam, font, incumbent, stride)) {
                     stats[lastReject]++;
                     poolUsed--;
                     continue;
@@ -316,7 +323,7 @@ public class RoadNameRenderer {
             }
             return Float.compare(a.distance, b.distance);
         });
-        for (int i = 0; i < pending.size() && chosen.size() < MAX_LABELS; i++) {
+        for (int i = 0; i < pending.size() && chosen.size() < maxLabels; i++) {
             Placed p = pending.get(i);
             boolean blocked = false;
             for (int j = 0; j < chosen.size(); j++) {
@@ -385,7 +392,13 @@ public class RoadNameRenderer {
      * follows, and short enough to fit almost anywhere the trail is visible at all.
      */
     private boolean place(Placed p, RoadLabelCandidate c, PerspectiveCameraExt cam, BitmapFont font,
-                          boolean incumbent) {
+                          boolean incumbent, int stride) {
+        String full = c.label(stride);
+        if (full == null) {
+            return false; // not a spot the current label frequency uses
+        }
+        String shortText = c.shortText(stride);
+        boolean numberOnly = c.isNumberOnly(stride);
         float[] w = c.world;
         int a = c.anchor;
         lastReject = OFF_SCREEN;
@@ -404,7 +417,7 @@ public class RoadNameRenderer {
         String text = null;
         float tw = 0f, th = 0f, padX = 0f, padY = 0f;
         for (int attempt = 0; attempt < 2 && text == null; attempt++) {
-            String candidateText = attempt == 0 ? c.text : c.shortText;
+            String candidateText = attempt == 0 ? full : shortText;
             if (candidateText == null) {
                 break;
             }
@@ -419,7 +432,7 @@ public class RoadNameRenderer {
             }
             // A way seen end-on would carry its label across it rather than along it. A number
             // is short enough to be let off more lightly.
-            boolean number = c.numberOnly || attempt == 1;
+            boolean number = numberOnly || attempt == 1;
             if (fit.extent >= (number ? 0.35f : 0.55f) * tw) {
                 text = candidateText;
             }
@@ -446,15 +459,15 @@ public class RoadNameRenderer {
         p.width = tw;
         p.height = th;
         p.scale = scale;
-        p.priority = c.priority();
+        p.priority = c.priority(stride);
         p.incumbent = incumbent;
         p.plated = plated;
         p.plateHalfWidth = 0.5f * tw + padX;
         p.plateHalfHeight = 0.5f * th + padY;
         if (plated) {
-            RoadStyle style = P.getRoadStyle();
+            RoadStyle colours = P.getRoadStyle();
             int rgba = c.roadClass == RoadClass.TRACK
-                    ? style.color(RoadStyle.Swatch.TRACKS) : style.trailColor(c.attribute);
+                    ? colours.color(RoadStyle.Swatch.TRACKS) : colours.trailColor(c.attribute);
             p.plate.set(rgba);
             p.plate.a = PLATE_ALPHA;
             p.darkText = RoadStyle.prefersDarkText(rgba);
@@ -521,9 +534,10 @@ public class RoadNameRenderer {
         // Fresh from this frame's camera; a label that has just left the view is skipped until
         // the next decision takes it off the list.
         visible.clear();
+        int stride = P.getRoadStyle().labelStride();
         for (int k = 0; k < chosen.size(); k++) {
             Placed p = chosen.get(k);
-            if (place(p, p.candidate, cam, font, true)) {
+            if (place(p, p.candidate, cam, font, true, stride)) {
                 angles.put(p.candidate, p.angle);
                 visible.add(p);
             }
