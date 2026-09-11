@@ -9,7 +9,7 @@ import static com.peaknav.viewer.tiles.MapTile.MapTileState.IS_DRAWN;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector3;
 
-import org.mapsforge.core.model.BoundingBox;
+import com.peaknav.geo.BoundingBox;
 
 import java.math.BigInteger;
 

@@ -9,9 +9,9 @@ import com.peaknav.roads.RoadFeature;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.model.Tag;
-import org.mapsforge.map.datastore.Way;
+import com.peaknav.geo.LatLong;
+import com.peaknav.pbf.Tag;
+import com.peaknav.pbf.Way;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -214,12 +214,12 @@ class TestRoadClassifier {
     @DisplayName("ways straight from the map data store are classified, broken ones skipped")
     void classifyAllFromWays() {
         List<Way> ways = new ArrayList<>();
-        ways.add(new Way((byte) 10, tags("highway", "track"), new LatLong[][]{LINE}, null));
+        ways.add(new Way((byte) 10, tags("highway", "track"), new LatLong[][]{LINE}));
         ways.add(new Way((byte) 10, tags("highway", "path"),
-                new LatLong[][]{{new LatLong(46, 7), null, new LatLong(46.1, 7.1)}}, null));
+                new LatLong[][]{{new LatLong(46, 7), null, new LatLong(46.1, 7.1)}}));
         ways.add(new Way((byte) 10, tags("highway", "path"),
-                new LatLong[][]{{new LatLong(46, 7)}}, null));
-        ways.add(new Way((byte) 10, Collections.<Tag>emptyList(), new LatLong[][]{LINE}, null));
+                new LatLong[][]{{new LatLong(46, 7)}}));
+        ways.add(new Way((byte) 10, Collections.<Tag>emptyList(), new LatLong[][]{LINE}));
         List<RoadFeature> out = RoadClassifier.classifyAll(ways);
         assertEquals(1, out.size(), "only the complete track survives");
         assertEquals(RoadClass.TRACK, out.get(0).roadClass);

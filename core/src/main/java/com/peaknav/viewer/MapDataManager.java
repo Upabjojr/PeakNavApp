@@ -3,10 +3,10 @@ package com.peaknav.viewer;
 import static com.peaknav.elevation.ElevationUtils.getElevationLatitsFromMaxCoords;
 import static com.peaknav.utils.PeakNavUtils.containsUnrenderableCharacters;
 
-import org.mapsforge.core.model.Tag;
-import org.mapsforge.core.model.Tile;
-import org.mapsforge.map.datastore.MapReadResult;
-import org.mapsforge.map.datastore.PointOfInterest;
+import com.peaknav.pbf.Tag;
+import com.peaknav.geo.Tile;
+import com.peaknav.pbf.MapReadResult;
+import com.peaknav.pbf.PointOfInterest;
 
 import java.util.ArrayList;
 import java.util.HashMap;

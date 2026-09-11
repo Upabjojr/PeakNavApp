@@ -1,6 +1,6 @@
 package com.peaknav.viewer;
 
-import org.mapsforge.core.model.LatLong;
+import com.peaknav.geo.LatLong;
 
 import com.badlogic.gdx.math.Vector3;
 import com.peaknav.utils.PeakNavThreadExecutor;

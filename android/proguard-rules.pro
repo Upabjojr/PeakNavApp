@@ -50,12 +50,6 @@
      *;
  }
 
-# These are necessary to make mapsforge work with proguard (the androidsvg rules went
-# with mapsforge's Android renderer):
-
--dontwarn org.xmlpull.v1.**
--keep class org.xmlpull.v1.** { *; }
-
 -keep class com.google.gson.** { *; }
 
 # ---------------------------------------------------------------------------
@@ -98,12 +92,6 @@
 -keep class com.google.protobuf.** { *; }
 -keep class crosby.binary.** { *; }
 -dontwarn com.google.protobuf.**
-
-# Mapsforge. Only its model and map-data types are used now, but it is kept whole as
-# before: its render-theme code instantiates classes by name, and a narrower rule has
-# not been tried on a release build.
--keep class org.mapsforge.** { *; }
--dontwarn org.mapsforge.**
 
 # osmdroid (the search screen's map) resolves tile sources and configuration by name.
 -keep class org.osmdroid.** { *; }

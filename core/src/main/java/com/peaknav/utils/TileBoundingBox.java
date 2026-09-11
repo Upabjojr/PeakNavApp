@@ -1,6 +1,6 @@
 package com.peaknav.utils;
 
-import org.mapsforge.core.model.BoundingBox;
+import com.peaknav.geo.BoundingBox;
 
 public class TileBoundingBox {
     public float north;
@@ -18,7 +18,7 @@ public class TileBoundingBox {
         west = (float) boundingBox.minLongitude;
     }
 
-    public BoundingBox toMapsforgeBoundingBox() {
+    public BoundingBox toBoundingBox() {
         BoundingBox boundingBox = new BoundingBox(
                 south, west, north, east
         );

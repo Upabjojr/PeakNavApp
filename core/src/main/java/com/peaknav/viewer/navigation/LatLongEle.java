@@ -1,6 +1,6 @@
 package com.peaknav.viewer.navigation;
 
-import org.mapsforge.core.model.LatLong;
+import com.peaknav.geo.LatLong;
 
 import com.peaknav.utils.Units;
 

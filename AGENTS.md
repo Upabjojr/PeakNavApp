@@ -27,6 +27,12 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
   - `compatibility/` — abstractions each platform implements (`NativeScreenCaller`,
     `LoadFactory`, etc.).
   - `elevation/`, `pbf/`, `database/`, `network/`, `satellite/`, `utils/`.
+  - `geo/` — the map's own geometry: `Tile`, `LatLong`, `BoundingBox` and
+    `MercatorProjection` (the web Mercator tile grid). Written for PeakNav, with no
+    mapsforge left anywhere; `TestGeo` pins the behaviour the rest relies on - tile edges,
+    clamping at the map's edge, neighbours wrapping round, and tile equality including the
+    tile size (caches key tiles of size 1 and of `MapTile.TILE_SIZE` apart). `pbf/` reads
+    the downloaded `.osm.pbf` tiles into its own `Way`, `PointOfInterest` and `Tag`.
   - `skyline/` — matching a photograph's skyline to the terrain: `TerrainHorizon`
     (the horizon all around a point, from an `ElevationSampler`), `SkylineExtractor`
     (the sky/ground line in a picture: `SkyFeatures` + `SkyClassifier`, a

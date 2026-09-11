@@ -2,7 +2,7 @@ package com.peaknav.database;
 
 import static android.content.Context.MODE_PRIVATE;
 
-import static com.peaknav.viewer.tiles.MapTile.MF_ZOOM;
+import static com.peaknav.viewer.tiles.MapTile.TILE_SIZE;
 
 import android.content.Context;
 import android.database.Cursor;
@@ -11,7 +11,7 @@ import android.database.sqlite.SQLiteStatement;
 
 import com.peaknav.pbf.PbfLayer;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -171,7 +171,7 @@ public class MapSqliteAndroid extends MapSqlite {
                         cur.getInt(0),
                         cur.getInt(1),
                         (byte) cur.getInt(2),
-                        MF_ZOOM));
+                        TILE_SIZE));
             } while (cur.moveToNext());
         }
         return tiles;

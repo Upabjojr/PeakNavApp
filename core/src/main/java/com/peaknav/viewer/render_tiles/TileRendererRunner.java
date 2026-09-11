@@ -8,7 +8,7 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.peaknav.utils.StoppableRunnable;
 import com.peaknav.viewer.tiles.MapTile;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.io.File;
 import java.util.Locale;

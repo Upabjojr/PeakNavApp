@@ -1,10 +1,10 @@
 package com.peaknav.database;
 
-import static com.peaknav.viewer.tiles.MapTile.MF_ZOOM;
+import static com.peaknav.viewer.tiles.MapTile.TILE_SIZE;
 
 import com.peaknav.pbf.PbfLayer;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 import org.robovm.rt.bro.ptr.LongPtr;
 
 import java.io.File;
@@ -214,7 +214,7 @@ public class MapSqliteIOS extends MapSqlite {
             while (SQLite3.step(statement) == SQLite3.SQLITE_ROW) {
                 tiles.add(new Tile(SQLite3.columnInt(statement, 0),
                         SQLite3.columnInt(statement, 1),
-                        (byte) SQLite3.columnInt(statement, 2), MF_ZOOM));
+                        (byte) SQLite3.columnInt(statement, 2), TILE_SIZE));
             }
         } finally {
             SQLite3.finalizeStatement(statement);

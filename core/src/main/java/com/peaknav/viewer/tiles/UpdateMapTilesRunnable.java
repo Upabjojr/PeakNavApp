@@ -13,11 +13,11 @@ import com.peaknav.elevation.ElevationImageStorage;
 import com.peaknav.utils.StoppableRunnable;
 import com.peaknav.viewer.MapViewerSingleton;
 
-import org.mapsforge.core.model.BoundingBox;
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.model.Tile;
-import org.mapsforge.core.util.LatLongUtils;
-import org.mapsforge.core.util.MercatorProjection;
+import com.peaknav.geo.BoundingBox;
+import com.peaknav.geo.LatLong;
+import com.peaknav.geo.Tile;
+import com.peaknav.geo.LatLongUtils;
+import com.peaknav.geo.MercatorProjection;
 
 import java.util.Collections;
 import java.util.LinkedList;
@@ -262,7 +262,7 @@ public class UpdateMapTilesRunnable extends StoppableRunnable {
                 if (i < 0 || j < 0 || i >= maxTileVal || j >= maxTileVal) {
                     continue;
                 }
-                tileIndices.add(new Tile(i, j, zl, MapTile.MF_ZOOM));
+                tileIndices.add(new Tile(i, j, zl, MapTile.TILE_SIZE));
             }
         }
 
@@ -356,7 +356,7 @@ public class UpdateMapTilesRunnable extends StoppableRunnable {
         int tileY0 = 2*tileIndex.tileY;
         for (int x = 0; x < 2; x++) {
             for (int y = 0; y < 2; y++) {
-                tileIndices.add(new Tile(tileX0 + x, tileY0 + y, zoomLevelP1, MapTile.MF_ZOOM));
+                tileIndices.add(new Tile(tileX0 + x, tileY0 + y, zoomLevelP1, MapTile.TILE_SIZE));
             }
         }
     }

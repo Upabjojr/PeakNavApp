@@ -11,8 +11,8 @@ import com.peaknav.roads.RoadTextures;
 import com.peaknav.roads.RoadTileRasterizer;
 import com.peaknav.viewer.tiles.MapTile;
 
-import org.mapsforge.core.model.BoundingBox;
-import org.mapsforge.map.datastore.MapReadResult;
+import com.peaknav.geo.BoundingBox;
+import com.peaknav.pbf.MapReadResult;
 
 import java.nio.ByteBuffer;
 import java.util.List;

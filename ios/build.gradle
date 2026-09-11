@@ -130,10 +130,6 @@ eclipse.project {
 }
 
 dependencies {
-	// mapsforge-core only, for Tile in MapSqliteIOS: core's own mapsforge dependency is not
-	// exported. No platform has a mapsforge graphics backend any more - the roads are drawn by
-	// com.peaknav.roads - so nothing else of mapsforge is needed here.
-	implementation 'org.mapsforge:mapsforge-core:0.17.0'
 	implementation "com.badlogicgames.gdx:gdx-backend-robovm:$gdxVersion"
 	implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-ios"
 

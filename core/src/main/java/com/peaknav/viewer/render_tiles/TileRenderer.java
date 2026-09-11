@@ -4,9 +4,9 @@ import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PreferencesManager.P;
 import static com.peaknav.viewer.controller.MapController.getNumOfCpuCores;
 
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.model.Tile;
-import org.mapsforge.core.util.LatLongUtils;
+import com.peaknav.geo.LatLong;
+import com.peaknav.geo.Tile;
+import com.peaknav.geo.LatLongUtils;
 
 import java.util.Collections;
 import java.util.List;

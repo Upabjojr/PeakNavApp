@@ -13,8 +13,8 @@ import com.peaknav.elevation.blocks.CheckElevExistBlock;
 import com.peaknav.pbf.PbfLayer;
 import com.peaknav.viewer.tiles.MapTile;
 
-import org.mapsforge.core.model.Tile;
-import org.mapsforge.core.util.MercatorProjection;
+import com.peaknav.geo.Tile;
+import com.peaknav.geo.MercatorProjection;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -38,19 +38,19 @@ public class CheckMissingData {
     public static Tile getMinZoomTile(double latitude, double longitude) {
         int tileX = MercatorProjection.longitudeToTileX(longitude, MapTile.ZOOM_LEVEL_MIN);
         int tileY = MercatorProjection.latitudeToTileY(latitude, MapTile.ZOOM_LEVEL_MIN);
-        return new Tile(tileX, tileY, MapTile.ZOOM_LEVEL_MIN, MapTile.MF_ZOOM);
+        return new Tile(tileX, tileY, MapTile.ZOOM_LEVEL_MIN, MapTile.TILE_SIZE);
     }
 
     public static Tile getMaxZoomTile(double latitude, double longitude) {
         int tileX = MercatorProjection.longitudeToTileX(longitude, MapTile.ZOOM_LEVEL_MIN);
         int tileY = MercatorProjection.latitudeToTileY(latitude, MapTile.ZOOM_LEVEL_MIN);
-        return new Tile(tileX, tileY, MapTile.ZOOM_LEVEL_MAX, MapTile.MF_ZOOM);
+        return new Tile(tileX, tileY, MapTile.ZOOM_LEVEL_MAX, MapTile.TILE_SIZE);
     }
 
     public static Tile getTileAtZoomLevel(double latitude, double longitude, byte zoomLevel) {
         int tileX = MercatorProjection.longitudeToTileX(longitude, zoomLevel);
         int tileY = MercatorProjection.latitudeToTileY(latitude, zoomLevel);
-        return new Tile(tileX, tileY, zoomLevel, MapTile.MF_ZOOM);
+        return new Tile(tileX, tileY, zoomLevel, MapTile.TILE_SIZE);
     }
 
     /**

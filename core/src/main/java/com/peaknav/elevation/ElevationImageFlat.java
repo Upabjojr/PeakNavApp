@@ -1,7 +1,7 @@
 package com.peaknav.elevation;
 
-import org.mapsforge.core.model.BoundingBox;
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.BoundingBox;
+import com.peaknav.geo.Tile;
 
 public class ElevationImageFlat extends ElevationImageAbstract {
 

@@ -2,14 +2,14 @@ package com.peaknav.viewer.imgmapprovider;
 
 import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.utils.PreferencesManager.P;
-import static com.peaknav.viewer.tiles.MapTile.MF_ZOOM;
+import static com.peaknav.viewer.tiles.MapTile.TILE_SIZE;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.PixmapIO;
 import com.peaknav.utils.PeakNavUtils;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.io.File;
 import java.io.IOException;
@@ -174,7 +174,7 @@ public class SatelliteImageProvider {
     public void downloadTileImageIfNotExists(Tile tile) {
         if (tile.zoomLevel > maxZoom) {
             int factor = (1 << (tile.zoomLevel - maxZoom));
-            Tile zoutTile = new Tile(tile.tileX/factor, tile.tileY/factor, maxZoom, MF_ZOOM);
+            Tile zoutTile = new Tile(tile.tileX/factor, tile.tileY/factor, maxZoom, TILE_SIZE);
             File zoImagePath = downloadTileToFileIfNotExists(zoutTile);
             if (zoImagePath == null) {
                 return; // download failed; the tile pass simply retries later

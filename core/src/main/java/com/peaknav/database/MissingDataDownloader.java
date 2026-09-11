@@ -10,7 +10,7 @@ import com.peaknav.pbf.PbfLayer;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.widgets.WidgetGetter;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.util.List;
 
@@ -36,10 +36,10 @@ public class MissingDataDownloader {
         this.lon = lon;
     }
 
-    public static org.mapsforge.core.model.BoundingBox getBoundingBoxOfTargetTiles(List<Tile> targetTiles) {
-        org.mapsforge.core.model.BoundingBox bb = targetTiles.get(0).getBoundingBox();
+    public static com.peaknav.geo.BoundingBox getBoundingBoxOfTargetTiles(List<Tile> targetTiles) {
+        com.peaknav.geo.BoundingBox bb = targetTiles.get(0).getBoundingBox();
         for (Tile targetTile : targetTiles) {
-            org.mapsforge.core.model.BoundingBox bb1 = targetTile.getBoundingBox();
+            com.peaknav.geo.BoundingBox bb1 = targetTile.getBoundingBox();
             bb = bb.extendBoundingBox(bb1);
         }
         return bb;

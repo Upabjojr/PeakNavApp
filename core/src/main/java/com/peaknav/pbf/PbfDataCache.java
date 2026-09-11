@@ -4,8 +4,7 @@ import static com.peaknav.utils.PathUtils.getPbfExternalFilePath;
 
 import com.peaknav.utils.PeakNavUtils;
 
-import org.mapsforge.core.model.Tile;
-import org.mapsforge.map.datastore.MapReadResult;
+import com.peaknav.geo.Tile;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -27,7 +26,7 @@ public class PbfDataCache {
     // (a Java 5 method RoboVM's runtime has), not the Java 8 Map default it lacks.
     private final EnumMap<PbfLayer, ConcurrentMap<Tile, MapReadResult>> readerCache = new EnumMap<>(PbfLayer.class);
 
-    // Parsed tile data (mapsforge Ways/POIs, the bulk of the heap's Tag/LatLong instances) used
+    // Parsed tile data (Ways/POIs, the bulk of the heap's Tag/LatLong instances) used
     // to be kept for every tile visited until the next location change, so panning far within one
     // downloaded area grew it steadily. Cap the total across all layers and drop the
     // oldest-inserted entries once over: the active working set is only ~25 tiles per refresh

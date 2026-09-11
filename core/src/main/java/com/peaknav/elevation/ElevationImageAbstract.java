@@ -6,8 +6,8 @@ import static com.peaknav.utils.Units.convertLonitsToLatits;
 import com.badlogic.gdx.math.Vector3;
 import com.peaknav.utils.Units;
 
-import org.mapsforge.core.model.BoundingBox;
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.BoundingBox;
+import com.peaknav.geo.Tile;
 
 public abstract class ElevationImageAbstract {
     public static final float MISSING_VERTEX_VALUE = Float.NaN;;

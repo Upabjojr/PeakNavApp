@@ -4,13 +4,9 @@ import static com.peaknav.pbf.PbfLayer.PBF_HIGHWAYS;
 import static com.peaknav.pbf.PbfLayer.PBF_POI;
 import static com.peaknav.utils.PathUtils.findTileWithDataByZoomingOut;
 
-import org.mapsforge.core.model.BoundingBox;
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.model.Tile;
-import org.mapsforge.map.datastore.MapDataStore;
-import org.mapsforge.map.datastore.MapReadResult;
-import org.mapsforge.map.datastore.PointOfInterest;
-import org.mapsforge.map.datastore.Way;
+import com.peaknav.geo.BoundingBox;
+import com.peaknav.geo.LatLong;
+import com.peaknav.geo.Tile;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -18,7 +14,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
-public class PbfMapDataStore extends MapDataStore {
+public class PbfMapDataStore {
 
     private static final String TAG = "PbfMapDataStore";
     private final PbfDataCache cache = new PbfDataCache();
@@ -26,22 +22,6 @@ public class PbfMapDataStore extends MapDataStore {
     // private Map<Tile, MapReadResult> cachedDataForTilesPoi = new HashMap<>();
 
     public PbfMapDataStore() {
-    }
-
-    @Override
-    public BoundingBox boundingBox() {
-        // TODO: handle the proper bounding box:
-        return new BoundingBox(-90, -180, 90, 180);
-    }
-
-    @Override
-    public void close() {
-
-    }
-
-    @Override
-    public long getDataTimestamp(Tile tile) {
-        return 0;
     }
 
     private void insertWayIfContained(BoundingBox bb, Way way, MapReadResult mapReadResult) {
@@ -72,36 +52,6 @@ public class PbfMapDataStore extends MapDataStore {
         return mapReadResult;
     }
 
-    /*
-    private MapReadResult readMapDataA(Tile dataTile, PbfLayer pbfLayer, Tile tile) {
-        String externalFilePath = mapSqlite.queryMapPbfData(dataTile, pbfLayer);
-        File file;
-        if (externalFilePath == null) {
-            file = getPbfExternalFilePath(dataTile, pbfLayer);
-            if (file.exists()) {
-                externalFilePath = file.getPath();
-            } else {
-                PeakNavUtils.getLogger().info(TAG, "externalFilePath not found");
-                return new MapReadResult();
-            }
-        } else {
-            file = new File(Gdx.files.getExternalStoragePath(), externalFilePath);
-        }
-
-        MapReadResult mapReadResultData = new MapReadResult();
-        try {
-            InputStream inputStream = new FileInputStream(file);
-            BlockReaderAdapter adapter = new PbfToMapsforge(tile, mapReadResultData, pbfLayer);
-            BlockInputStream blockInputStream = new BlockInputStream(inputStream, adapter);
-            blockInputStream.process();
-        } catch (FileNotFoundException fileNotFoundException) {
-            mapSqlite.removeMapPbfData(externalFilePath);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return mapReadResultData;
-    }
-     */
 
     private MapReadResult readMapDataByLayer(Tile tile, PbfLayer pbfLayer) {
 
@@ -118,12 +68,10 @@ public class PbfMapDataStore extends MapDataStore {
         return trimMapReadResultForSubTile(tile, mapReadResultData);
     }
 
-    @Override
     public MapReadResult readMapData(Tile tile) {
         return readMapDataByLayer(tile, PBF_HIGHWAYS);
     }
 
-    @Override
     public MapReadResult readPoiData(Tile tile) {
         return readMapDataByLayer(tile, PBF_POI);
     }
@@ -217,26 +165,11 @@ public class PbfMapDataStore extends MapDataStore {
                             tileCenter.tileX + x,
                             tileCenter.tileY + y,
                             tileCenter.zoomLevel, tileCenter.tileSize);
-                    result.add(readPoiData(current), false);
+                    result.add(readPoiData(current));
                 }
             }
         }
         return result;
-    }
-
-    @Override
-    public LatLong startPosition() {
-        return null;
-    }
-
-    @Override
-    public Byte startZoomLevel() {
-        return null;
-    }
-
-    @Override
-    public boolean supportsTile(Tile tile) {
-        return true;
     }
 
     public synchronized void resetCache() {

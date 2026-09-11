@@ -1,8 +1,8 @@
 package com.peaknav.roads;
 
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.model.Tag;
-import org.mapsforge.map.datastore.Way;
+import com.peaknav.geo.LatLong;
+import com.peaknav.pbf.Tag;
+import com.peaknav.pbf.Way;
 
 import java.util.ArrayList;
 import java.util.List;

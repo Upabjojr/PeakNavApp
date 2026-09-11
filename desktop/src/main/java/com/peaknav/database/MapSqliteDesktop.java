@@ -1,10 +1,10 @@
 package com.peaknav.database;
 
-import static com.peaknav.viewer.tiles.MapTile.MF_ZOOM;
+import static com.peaknav.viewer.tiles.MapTile.TILE_SIZE;
 
 import com.badlogic.gdx.Gdx;
 import com.peaknav.pbf.PbfLayer;
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.io.File;
 import java.sql.Connection;
@@ -211,7 +211,7 @@ public class MapSqliteDesktop extends MapSqlite {
                         rs.getInt("tile_x"),
                         rs.getInt("tile_y"),
                         (byte) rs.getInt("tile_z"),
-                        MF_ZOOM
+                        TILE_SIZE
                 ));
             }
         } catch (SQLException e) {

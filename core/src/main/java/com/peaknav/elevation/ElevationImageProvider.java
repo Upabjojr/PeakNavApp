@@ -3,7 +3,7 @@ package com.peaknav.elevation;
 import com.peaknav.utils.TileAndZoomElevFactor;
 import com.peaknav.viewer.tiles.MapTile;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.util.concurrent.atomic.AtomicInteger;
 

@@ -20,7 +20,7 @@ import com.peaknav.utils.Units;
 import com.peaknav.viewer.screens.MapViewerScreen;
 import com.peaknav.viewer.tiles.MapTile;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.nio.ByteBuffer;
 

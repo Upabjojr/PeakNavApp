@@ -20,7 +20,7 @@ import com.badlogic.gdx.files.FileHandle;
 import com.google.gson.Gson;
 import com.peaknav.viewer.tiles.MapTile;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 public class MapTileStorage {
 

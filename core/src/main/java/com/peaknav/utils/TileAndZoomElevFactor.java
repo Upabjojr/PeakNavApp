@@ -1,6 +1,6 @@
 package com.peaknav.utils;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 public class TileAndZoomElevFactor {
     public final Tile tile;

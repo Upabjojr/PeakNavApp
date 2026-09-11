@@ -7,7 +7,7 @@ import static com.peaknav.utils.PathUtils.joinPaths;
 import com.peaknav.database.MapSqlite;
 import com.peaknav.utils.PathUtils;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.util.ArrayList;
 import java.util.LinkedList;

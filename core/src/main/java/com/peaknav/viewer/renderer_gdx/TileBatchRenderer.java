@@ -35,7 +35,7 @@ import com.peaknav.viewer.screens.LabelLoading;
 import com.peaknav.viewer.tiles.MapTile;
 import com.peaknav.viewer.tiles.MapTileWelder;
 
-import org.mapsforge.core.util.MercatorProjection;
+import com.peaknav.geo.MercatorProjection;
 
 import java.util.HashSet;
 import java.util.LinkedList;

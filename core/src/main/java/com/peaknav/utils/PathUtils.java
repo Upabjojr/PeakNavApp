@@ -3,7 +3,7 @@ package com.peaknav.utils;
 import com.badlogic.gdx.Gdx;
 import com.peaknav.pbf.PbfLayer;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.io.File;
 import java.util.Arrays;

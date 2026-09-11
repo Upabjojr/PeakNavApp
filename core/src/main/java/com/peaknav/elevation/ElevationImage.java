@@ -4,8 +4,8 @@ import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.peaknav.utils.PeakNavUtils;
 
-import org.mapsforge.core.model.BoundingBox;
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.BoundingBox;
+import com.peaknav.geo.Tile;
 
 import java.nio.ByteBuffer;
 

@@ -15,7 +15,6 @@ plugins {
 }
 apply plugin: 'io.github.fourlastor.construo'
 
-
 import io.github.fourlastor.construo.Target
 
 sourceSets.main.resources.srcDirs += [ rootProject.file('assets').path ]
@@ -49,9 +48,6 @@ dependencies {
     implementation "com.google.guava:guava:33.6.0-jre"
 
     implementation "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-desktop"
-
-    // Tile, in MapSqliteDesktop: core's own mapsforge dependency is not exported.
-    implementation 'org.mapsforge:mapsforge-core:0.17.0'
 
     implementation 'org.xerial:sqlite-jdbc:3.53.2.0'
 

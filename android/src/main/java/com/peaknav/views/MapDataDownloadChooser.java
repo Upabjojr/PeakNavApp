@@ -23,8 +23,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
-import org.mapsforge.core.model.BoundingBox;
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.BoundingBox;
+import com.peaknav.geo.Tile;
 import org.osmdroid.api.IMapController;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.events.MapEventsReceiver;

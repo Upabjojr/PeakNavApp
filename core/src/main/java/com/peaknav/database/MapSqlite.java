@@ -1,10 +1,10 @@
 package com.peaknav.database;
 
-import static com.peaknav.viewer.tiles.MapTile.MF_ZOOM;
+import static com.peaknav.viewer.tiles.MapTile.TILE_SIZE;
 
 import com.peaknav.pbf.PbfLayer;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.sql.Timestamp;
 import java.util.List;
@@ -88,7 +88,7 @@ public abstract class MapSqlite {
         public Timestamp downloadTime;
 
         public Tile toTile() {
-            return new Tile(tileX, tileY, tileZ, MF_ZOOM);
+            return new Tile(tileX, tileY, tileZ, TILE_SIZE);
         }
     }
 

@@ -1,8 +1,8 @@
 package com.peaknav.viewer.render_tiles;
 
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.model.Tile;
-import org.mapsforge.core.util.MercatorProjection;
+import com.peaknav.geo.LatLong;
+import com.peaknav.geo.Tile;
+import com.peaknav.geo.MercatorProjection;
 
 import java.util.LinkedList;
 import java.util.List;

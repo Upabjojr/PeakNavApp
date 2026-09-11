@@ -5,7 +5,7 @@ import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.Units.radiusOfEarthInLatits;
 import static com.peaknav.viewer.tiles.MapTile.MapTileState.ELEVATION_DATA_NOT_LOADED;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import com.peaknav.utils.Units;
 import com.peaknav.viewer.tiles.MapTile;

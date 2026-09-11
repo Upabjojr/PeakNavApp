@@ -8,7 +8,7 @@ import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getLoadFactory;
 import static com.peaknav.utils.PeakNavUtils.getLogger;
 import static com.peaknav.utils.PreferencesManager.P;
-import static com.peaknav.viewer.tiles.MapTile.MF_ZOOM;
+import static com.peaknav.viewer.tiles.MapTile.TILE_SIZE;
 
 import com.badlogic.gdx.Gdx;
 import com.peaknav.compatibility.NotificationManagerPeakNav;
@@ -18,7 +18,7 @@ import com.peaknav.utils.PeakNavThreadExecutor;
 import com.peaknav.utils.TarReader;
 import com.peaknav.viewer.MapViewerSingleton;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -101,7 +101,7 @@ public class PeakNavDownloadManager {
                 if (tileX < 0 || tileY < 0 || tileX >= maxTileVal || tileY >= maxTileVal) {
                     continue;
                 }
-                Tile queueTile = new Tile(tileX, tileY, zoomLevel, MF_ZOOM);
+                Tile queueTile = new Tile(tileX, tileY, zoomLevel, TILE_SIZE);
                 queue.add(queueTile);
             }
         }
@@ -120,7 +120,7 @@ public class PeakNavDownloadManager {
                 if (tileX < 0 || tileY < 0 || tileX >= maxTileVal || tileY >= maxTileVal) {
                     continue;
                 }
-                Tile queueTile = new Tile(tileX, tileY, zoomLevel, MF_ZOOM);
+                Tile queueTile = new Tile(tileX, tileY, zoomLevel, TILE_SIZE);
                 queue.add(queueTile);
             }
         }

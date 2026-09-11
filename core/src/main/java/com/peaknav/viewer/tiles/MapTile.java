@@ -43,9 +43,9 @@ import com.peaknav.utils.TileBoundingBox;
 import com.peaknav.utils.Units;
 import com.peaknav.viewer.render_tiles.PixmapLayerName;
 
-import org.mapsforge.core.model.BoundingBox;
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.BoundingBox;
+import com.peaknav.geo.LatLong;
+import com.peaknav.geo.Tile;
 import com.peaknav.utils.ResourceStats;
 
 public class MapTile {
@@ -53,7 +53,7 @@ public class MapTile {
 
     public static final byte ZOOM_LEVEL_MIN = (byte) 8;
     public static final byte ZOOM_LEVEL_MAX = (byte) 13;
-    public static final int MF_ZOOM = 256;
+    public static final int TILE_SIZE = 256;
     public final int zoomElevFactor;
     public final Tile tile;
     public final Tile tileMinZoom;
@@ -255,7 +255,7 @@ public class MapTile {
     public float getTileElevationLatitsFromMaxCoords2(float lon, float lat) {
         float x = (float) Units.convertLonitsToLatits(lon, getC().L.getTargetLatitude());
 
-        BoundingBox boundingBox = tileBoundingBox.toMapsforgeBoundingBox();
+        BoundingBox boundingBox = tileBoundingBox.toBoundingBox();
 
         float coordStepX = (float) (boundingBox.maxLongitude - boundingBox.minLongitude);
         float coordStepY = (float) (boundingBox.maxLatitude - boundingBox.minLatitude);
@@ -630,9 +630,9 @@ public class MapTile {
         // Add welders to tiles:
         //  - always if they are larger,
         //  - to the east and north if they are the same size of the current map tile
-        Tile[] otherMFTiles = {tile.getRight(), tile.getLeft(), tile.getAbove(), tile.getBelow()};
-        for (Tile otherMF : otherMFTiles) {
-            MapTile otherTile = getC().mapTileStorage.getFromMapIndexLessEq(otherMF);
+        Tile[] neighbours = {tile.getRight(), tile.getLeft(), tile.getAbove(), tile.getBelow()};
+        for (Tile neighbour : neighbours) {
+            MapTile otherTile = getC().mapTileStorage.getFromMapIndexLessEq(neighbour);
             if (otherTile == null)
                 continue;
             getC().weldingQueue.add(new MapTileWelder(this, otherTile));
@@ -661,7 +661,7 @@ public class MapTile {
                 return;
             }
             callVertexRetrieval();
-            if (tileBoundingBox.toMapsforgeBoundingBox().contains(
+            if (tileBoundingBox.toBoundingBox().contains(
                     getC().L.getTargetLatLong()
             )) {
                 float ele = elevationImage.getTileElevationLatitsFromMaxCoords(

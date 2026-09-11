@@ -6,9 +6,9 @@ import com.peaknav.utils.TileAndZoomElevFactor;
 import com.peaknav.utils.PeakNavThreadExecutor;
 import com.peaknav.viewer.tiles.MapTile;
 
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.model.Tile;
-import org.mapsforge.core.util.MercatorProjection;
+import com.peaknav.geo.LatLong;
+import com.peaknav.geo.Tile;
+import com.peaknav.geo.MercatorProjection;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -110,7 +110,7 @@ public class ElevationImageProviderManager {
         ElevationImageAbstract elevationImage = null;
         if (mapTiles.size() > 0) {
             MapTile mapTile = mapTiles.get(0);
-            if (mapTile.tileBoundingBox.toMapsforgeBoundingBox().contains(
+            if (mapTile.tileBoundingBox.toBoundingBox().contains(
                     new LatLong(targetLat, targetLon))) {
                 elevationImage = mapTile.elevationImage;
             }
@@ -150,7 +150,7 @@ public class ElevationImageProviderManager {
 
         int tileX = MercatorProjection.longitudeToTileX(targetLongitude, MapTile.ZOOM_LEVEL_MIN);
         int tileY = MercatorProjection.latitudeToTileY(targetLatitude, MapTile.ZOOM_LEVEL_MIN);
-        Tile cb = new Tile(tileX, tileY, MapTile.ZOOM_LEVEL_MIN, MapTile.MF_ZOOM);
+        Tile cb = new Tile(tileX, tileY, MapTile.ZOOM_LEVEL_MIN, MapTile.TILE_SIZE);
         synchronized (providers) {
             boolean flag = true;
             if (mapToRescale.containsKey(cb)) {

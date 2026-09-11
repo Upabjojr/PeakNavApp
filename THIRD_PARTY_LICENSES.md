@@ -33,7 +33,6 @@ This application includes links to external applications and makes use of extern
 This application incorporates the following open-source software components, each distributed under its respective license:
 
 * **Libgdx** is licensed under the [Apache License 2.0](https://github.com/libgdx/libgdx/blob/master/LICENSE).
-* **Mapsforge** library is under [LGPL v3 license](http://www.gnu.org/licenses/lgpl-3.0).
 * **OSM-binary** is licensed under [LGPL v3 license](https://github.com/openstreetmap/OSM-binary/blob/master/LICENSE).
 * **osmdroid** is licensed under [Apache License 2.0](https://github.com/osmdroid/osmdroid/blob/master/LICENSE).
 * **PNGJ** is licensed under [Apache License](https://github.com/alexdupre/pngj/blob/master/README.md).

@@ -1,6 +1,6 @@
 package com.peaknav.utils;
 
-import org.mapsforge.core.model.BoundingBox;
+import com.peaknav.geo.BoundingBox;
 
 public class BoundingBoxUtils {
 

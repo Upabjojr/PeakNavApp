@@ -8,7 +8,7 @@ import com.peaknav.pbf.PbfLayer;
 import com.peaknav.utils.PathUtils;
 import com.peaknav.viewer.tiles.MapTile;
 
-import org.mapsforge.core.model.Tile;
+import com.peaknav.geo.Tile;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -212,7 +212,7 @@ public class AreaRegistry {
      * never found.
      */
     static File areaTileFile(int tileX, int tileY) {
-        Tile tile = new Tile(tileX, tileY, (byte) ZOOM, MapTile.MF_ZOOM);
+        Tile tile = new Tile(tileX, tileY, (byte) ZOOM, MapTile.TILE_SIZE);
         return PathUtils.getPbfExternalFilePath(tile, PbfLayer.AREAS);
     }
 

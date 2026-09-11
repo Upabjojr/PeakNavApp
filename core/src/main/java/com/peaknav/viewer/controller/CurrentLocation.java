@@ -6,8 +6,8 @@ import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
 import static com.peaknav.utils.PreferencesManager.P;
 
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.util.LatLongUtils;
+import com.peaknav.geo.LatLong;
+import com.peaknav.geo.LatLongUtils;
 
 import com.badlogic.gdx.math.Vector3;
 import com.peaknav.viewer.MapViewerSingleton;

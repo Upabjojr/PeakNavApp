@@ -1,6 +1,6 @@
 package com.peaknav.ui;
 
-import org.mapsforge.core.model.LatLong;
+import com.peaknav.geo.LatLong;
 
 import java.io.Serializable;
 

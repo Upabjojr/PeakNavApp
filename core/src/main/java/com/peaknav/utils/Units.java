@@ -6,8 +6,8 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector3;
 import com.peaknav.viewer.tiles.TileId;
 
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.util.LatLongUtils;
+import com.peaknav.geo.LatLong;
+import com.peaknav.geo.LatLongUtils;
 
 public class Units {
     public final static double radiusOfEarth = 6371000.f; // meters

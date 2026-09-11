@@ -1,12 +1,8 @@
 package com.peaknav.pbf;
 
 
-import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.model.Tag;
-import org.mapsforge.core.model.Tile;
-import org.mapsforge.map.datastore.MapReadResult;
-import org.mapsforge.map.datastore.PointOfInterest;
-import org.mapsforge.map.datastore.Way;
+import com.peaknav.geo.LatLong;
+import com.peaknav.geo.Tile;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -117,7 +113,7 @@ public class PbfTileBinaryParser extends BinaryParser {
                 nodeId += deltaNodeId;
                 nodeIds.add(nodeId);
             }
-            // Way mWay = new Way(tile.zoomLevel, tags, null, null);
+            // Way mWay = new Way(tile.zoomLevel, tags, null);
             wayToNodeIds.put(wayId, nodeIds);
             addToWayToTags(wayId, tags);
             // Way w = new Way();
@@ -151,8 +147,7 @@ public class PbfTileBinaryParser extends BinaryParser {
             }
             LatLong[][] latLongs1 = new LatLong[1][latLongs.size()];
             latLongs.toArray(latLongs1[0]);
-            // TODO: understand if "labelPosition" is really necessary:
-            Way way = new Way(tile.zoomLevel, tags, latLongs1, null);
+            Way way = new Way(tile.zoomLevel, tags, latLongs1);
             mapReadResult.ways.add(way);
         }
     }

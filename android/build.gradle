@@ -7,7 +7,6 @@ buildscript {
 }
 apply plugin: 'com.android.application'
 
-
 android {
     namespace "com.peaknav"
     // 36 is required by androidx.core 1.17.0, which gdx-backend-android 1.14.2 pulls in.
@@ -135,10 +134,6 @@ dependencies {
     natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-arm64-v8a"
     natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86"
     natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86_64"
-
-    // Tile and BoundingBox, in MapSqliteAndroid and MapDataDownloadChooser: core's own
-    // mapsforge dependency is not exported.
-    implementation 'org.mapsforge:mapsforge-core:0.17.0'
 
     implementation 'org.openstreetmap.pbf:osmpbf:1.6.1'
 

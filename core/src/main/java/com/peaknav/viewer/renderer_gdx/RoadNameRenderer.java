@@ -26,7 +26,7 @@ import com.peaknav.viewer.render_tiles.ImpactPixmap;
 import com.peaknav.viewer.screens.MapViewerScreen;
 import com.peaknav.viewer.tiles.MapTile;
 
-import org.mapsforge.core.model.BoundingBox;
+import com.peaknav.geo.BoundingBox;
 
 import java.util.ArrayList;
 import java.util.Collections;
