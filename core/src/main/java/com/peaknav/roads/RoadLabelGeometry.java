@@ -86,6 +86,21 @@ public final class RoadLabelGeometry {
                 (float) Math.pow(fullSizeMeters / meters, DISTANCE_SCALE_EXPONENT));
     }
 
+    /**
+     * How far a view of this field of view is zoomed in, against the app's normal one: 4 when a
+     * quarter as much is seen across. A label's reach and size go by how far off it looks - its
+     * distance divided by this - so zooming in on a far valley brings up its trail labels as
+     * if it were near. Never below 1: zoomed out, labels keep their normal reach.
+     */
+    public static float zoom(float fieldOfViewDeg, float baseFieldOfViewDeg) {
+        if (!(fieldOfViewDeg > 0f) || !(baseFieldOfViewDeg > 0f)) {
+            return 1f;
+        }
+        double z = Math.tan(Math.toRadians(baseFieldOfViewDeg) * 0.5)
+                / Math.tan(Math.toRadians(Math.min(fieldOfViewDeg, 179f)) * 0.5);
+        return (float) Math.max(1.0, z);
+    }
+
     /** Folds a direction into (-90, 90], the range in which text reads left to right. */
     public static float readable(float angleDeg) {
         float a = angleDeg % 180f;

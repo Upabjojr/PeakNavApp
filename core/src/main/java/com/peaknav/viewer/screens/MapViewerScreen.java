@@ -953,6 +953,11 @@ public class MapViewerScreen implements Screen {
 		setCameraZ(Math.min(Math.max(z, ground), MAX_ELEV_BAR_ELEV));
 	}
 
+	/** The field of view the camera starts at, unzoomed, in degrees (vertical). */
+	public float getBaseFieldOfView() {
+		return baseFieldOfView;
+	}
+
 	/** Where the camera is now, in metres above sea level. */
 	public double getCameraAltitudeMeters() {
 		return Units.convertLatitsToMeters(cam.position.z);

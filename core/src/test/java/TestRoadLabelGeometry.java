@@ -100,6 +100,17 @@ class TestRoadLabelGeometry {
     }
 
     @Test
+    @DisplayName("zooming in narrows the field of view; the zoom is how much nearer things look")
+    void zoom() {
+        assertEquals(1f, RoadLabelGeometry.zoom(30f, 30f), 1e-6f);
+        assertEquals(1f, RoadLabelGeometry.zoom(90f, 30f), 0f, "zoomed out: the normal reach");
+        assertEquals(4f, RoadLabelGeometry.zoom(7.664f, 30f), 0.01f, "tan 15° / tan 3.832°");
+        assertTrue(RoadLabelGeometry.zoom(5f, 30f) > RoadLabelGeometry.zoom(10f, 30f));
+        assertEquals(1f, RoadLabelGeometry.zoom(Float.NaN, 30f), 0f);
+        assertEquals(1f, RoadLabelGeometry.zoom(0f, 30f), 0f);
+    }
+
+    @Test
     @DisplayName("turned rectangles collide only where they really touch")
     void overlaps() {
         Box a = new Box().set(0, 0, 50, 8, 0);

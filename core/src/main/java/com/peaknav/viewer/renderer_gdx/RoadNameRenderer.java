@@ -59,7 +59,10 @@ import java.util.Map;
  * already on screen keep their places against newcomers of the same rank, so nothing flickers.
  * Within a rank the nearer labels come first. Trail labels reach ten kilometres, road names
  * nine; past the first kilometre and a half they are written smaller the farther off they are,
- * so the distant ones look distant and more of them fit near the horizon. Between decisions the chosen labels are re-projected every frame, so they move and turn
+ * so the distant ones look distant and more of them fit near the horizon. All of this goes by
+ * how far off a label looks: zoomed in four times, trail labels reach forty kilometres (or as
+ * far as the roads are drawn), and one ten kilometres off is written as one at two and a half
+ * would be. Between decisions the chosen labels are re-projected every frame, so they move and turn
  * smoothly with the camera.
  */
 public class RoadNameRenderer {
@@ -81,7 +84,7 @@ public class RoadNameRenderer {
      */
     private static final float FULL_SIZE_METERS = 1500f;
     private static final float MIN_DISTANT_SCALE = 0.62f;
-    /** The farthest any label is written, the largest of {@link #rangeMeters}. */
+    /** The farthest any label is written unzoomed, the largest of {@link #rangeMeters}. */
     private static final double MAX_RANGE_METERS = 12000;
     /**
      * A label further off the camera's heading than half the screen's diagonal field of view
@@ -160,6 +163,8 @@ public class RoadNameRenderer {
     /** Font scales for road and trail labels, set each frame from the font and preferences. */
     private float roadScale;
     private float trailScale;
+    /** How far the view is zoomed in ({@link RoadLabelGeometry#zoom}), set each frame. */
+    private float zoom = 1f;
 
     /**
      * What became of the candidates in range at the last decision, by reason - so "why is this
@@ -222,6 +227,7 @@ public class RoadNameRenderer {
             return;
         }
         PerspectiveCameraExt cam = viewer.cam;
+        zoom = RoadLabelGeometry.zoom(cam.fieldOfView, viewer.getBaseFieldOfView());
         BitmapFont font = getC().styleSingleton.getBitmapFontSmallWhite();
         float prevScaleX = font.getScaleX();
         float prevScaleY = font.getScaleY();
@@ -315,7 +321,7 @@ public class RoadNameRenderer {
                 : Math.cos(Math.min(Math.PI, halfDiagonal + Math.toRadians(BEARING_MARGIN_DEG)));
 
         int worldBudget = WORLD_BUDGET_PER_DECISION;
-        for (MapTile tile : tilesNearestFirst(camLat, camLon, cosLat)) {
+        for (MapTile tile : tilesNearestFirst(camLat, camLon, cosLat, MAX_RANGE_METERS * zoom)) {
             List<RoadLabelCandidate> candidates = tile.roadLabels;
             for (int i = 0; i < candidates.size(); i++) {
                 RoadLabelCandidate c = candidates.get(i);
@@ -324,7 +330,8 @@ public class RoadNameRenderer {
                 }
                 double dy = (c.anchorLatitude() - camLat) * RoadGeo.METERS_PER_DEGREE;
                 double dx = (c.anchorLongitude() - camLon) * RoadGeo.METERS_PER_DEGREE * cosLat;
-                double range = rangeMeters(c.roadClass);
+                // Zoomed in, as much farther as the view is magnified.
+                double range = rangeMeters(c.roadClass) * zoom;
                 double d2 = dx * dx + dy * dy;
                 if (d2 > range * range) {
                     continue;
@@ -401,9 +408,11 @@ public class RoadNameRenderer {
     }
 
     /**
-     * How far off a way's labels are written. The roads are drawn out to
-     * {@code TileRendererRunner.ROAD_CUTOFF_DEGREES}, a good deal further; past these the labels,
-     * however small, would crowd the horizon without saying much.
+     * How far off a way's labels are written at the app's normal field of view; zoomed in, they
+     * reach as much farther as the view is magnified. The roads are drawn out to
+     * {@code TileRendererRunner.ROAD_CUTOFF_DEGREES}, a good deal further, and that is as far as
+     * any zoom can take the labels; unzoomed, past these ranges the labels, however small, would
+     * crowd the horizon without saying much.
      */
     private static double rangeMeters(RoadClass roadClass) {
         switch (roadClass) {
@@ -422,7 +431,8 @@ public class RoadNameRenderer {
      * The tiles that may hold a label in range, nearest first: the terrain lookups a decision
      * can afford go to the labels in front of the viewer before those on the horizon.
      */
-    private static List<MapTile> tilesNearestFirst(double camLat, double camLon, double cosLat) {
+    private static List<MapTile> tilesNearestFirst(double camLat, double camLon, double cosLat,
+                                                   double maxRangeMeters) {
         final List<MapTile> tiles = new ArrayList<>();
         final Map<MapTile, Double> meters = new IdentityHashMap<>();
         for (MapTile tile : getC().mapTileStorage.getMapTiles()) {
@@ -436,7 +446,7 @@ public class RoadNameRenderer {
             double halfH = (bb.maxLatitude - bb.minLatitude) * 0.5 * RoadGeo.METERS_PER_DEGREE;
             double halfW = (bb.maxLongitude - bb.minLongitude) * 0.5 * RoadGeo.METERS_PER_DEGREE * cosLat;
             double nearest = Math.sqrt(dx * dx + dy * dy) - Math.sqrt(halfH * halfH + halfW * halfW);
-            if (nearest > MAX_RANGE_METERS) {
+            if (nearest > maxRangeMeters) {
                 continue;
             }
             tiles.add(tile);
@@ -499,11 +509,12 @@ public class RoadNameRenderer {
             return false;
         }
         lastReject = END_ON;
-        // Smaller the farther off (RoadLabelGeometry.distanceScale).
+        // Smaller the farther off it looks (RoadLabelGeometry.distanceScale): zoomed in, a far
+        // label is drawn the size of one that much nearer.
         float ex = w[3 * a] - cam.position.x, ey = w[3 * a + 1] - cam.position.y,
                 ez = w[3 * a + 2] - cam.position.z;
         float meters = Units.convertLatitsToMeters((float) Math.sqrt(ex * ex + ey * ey + ez * ez));
-        float factor = RoadLabelGeometry.distanceScale(meters, FULL_SIZE_METERS, MIN_DISTANT_SCALE);
+        float factor = RoadLabelGeometry.distanceScale(meters / zoom, FULL_SIZE_METERS, MIN_DISTANT_SCALE);
         boolean trail = c.isTrail();
         boolean plated = c.roadClass != RoadClass.WATER;
         float baseScale = trail ? trailScale : roadScale;
@@ -555,7 +566,7 @@ public class RoadNameRenderer {
         p.factor = factor;
         p.priority = c.priority(stride);
         p.order = p.priority
-                - NEAR_FIRST_WEIGHT * (float) Math.min(1.0, meters / rangeMeters(c.roadClass));
+                - NEAR_FIRST_WEIGHT * (float) Math.min(1.0, meters / (rangeMeters(c.roadClass) * zoom));
         p.incumbent = incumbent;
         p.plated = plated;
         p.plateHalfWidth = 0.5f * tw + padX;

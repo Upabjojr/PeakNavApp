@@ -64,7 +64,10 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     colour with dark or white text to suit it (street names on a fainter plate of the road
     colour, halo kept; river names halo only), falling back to the number alone where the full
     label is too long for the trail in view. Labels reach 10 km (trails; roads 9, tracks 7) and
-    shrink past 1.5 km (`RoadLabelGeometry.distanceScale`, to 62% at the least); candidates off
+    shrink past 1.5 km (`RoadLabelGeometry.distanceScale`, to 62% at the least), both going by
+    apparent distance - distance over `RoadLabelGeometry.zoom` (tan of half the 30° base field of
+    view over tan of half the current one), so zooming in on a far valley labels it, as far as
+    `ROAD_CUTOFF_DEGREES`; candidates off
     the camera's bearing are dropped before their terrain lookup, tiles are visited nearest
     first, and within a rank nearer labels win. `lastDecisionStats()` says why candidates in range
     were not shown (off screen, end-on, hidden, crowded out, ...) - ask it before tuning. The extracts carry almost no waterways and only the pistes
