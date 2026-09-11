@@ -26,6 +26,8 @@ import com.peaknav.viewer.render_tiles.ImpactPixmap;
 import com.peaknav.viewer.screens.MapViewerScreen;
 import com.peaknav.viewer.tiles.MapTile;
 
+import org.mapsforge.core.model.BoundingBox;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -47,14 +49,17 @@ import java.util.Map;
  * <p>Trail and track labels are a little larger and sit on a translucent plate of the trail's
  * own colour - yellow, red or blue by difficulty, ochre for a track, whatever the user has set -
  * so a number reads as belonging to its trail at a glance, the way a waymark does. The text on
- * a plate is dark or white, whichever the plate's colour needs. Road and river names keep a
- * halo instead: a plate would compete with the road it names.
+ * a plate is dark or white, whichever the plate's colour needs. Street names sit on a fainter
+ * plate of the road colour - enough to lift them off busy imagery without hiding the road they
+ * name - and keep their halo; river names, whose rivers are not drawn, have the halo alone.
  *
  * <p>Which labels are shown is decided a few times a second, like the area labels: in range,
  * in front of the camera, not hidden behind terrain, not seen end-on, and not colliding with a
  * label already placed - roads first, then trails (numbers before names), then tracks, and labels
  * already on screen keep their places against newcomers of the same rank, so nothing flickers.
- * Between decisions the chosen labels are re-projected every frame, so they move and turn
+ * Within a rank the nearer labels come first. Trail labels reach ten kilometres, road names
+ * nine; past the first kilometre and a half they are written smaller the farther off they are,
+ * so the distant ones look distant and more of them fit near the horizon. Between decisions the chosen labels are re-projected every frame, so they move and turn
  * smoothly with the camera.
  */
 public class RoadNameRenderer {
@@ -69,6 +74,29 @@ public class RoadNameRenderer {
     /** Terrain lookups per decision: spreads the first sight of a busy area over a few frames. */
     private static final int WORLD_BUDGET_PER_DECISION = 320;
 
+    /**
+     * Labels are written full size out to this distance, and smaller beyond it (see
+     * {@link RoadLabelGeometry#distanceScale}), down to {@link #MIN_DISTANT_SCALE} of it: small
+     * enough to look far off, large enough still to read.
+     */
+    private static final float FULL_SIZE_METERS = 1500f;
+    private static final float MIN_DISTANT_SCALE = 0.62f;
+    /** The farthest any label is written, the largest of {@link #rangeMeters}. */
+    private static final double MAX_RANGE_METERS = 12000;
+    /**
+     * A label further off the camera's heading than half the screen's diagonal field of view
+     * and this margin cannot be on screen, and costs no terrain lookup...
+     */
+    private static final double BEARING_MARGIN_DEG = 12;
+    /** ...unless it is nearer than this, where one below a camera looking down may still show. */
+    private static final double NEAR_BEARING_METERS = 800;
+    /**
+     * In a crowded spot, among labels of one rank, how much distance counts against a label:
+     * at the edge of its range, as much as a trail's number counts over its name. The nearer
+     * labels come first, and the far ones fill the room they leave.
+     */
+    private static final float NEAR_FIRST_WEIGHT = 0.9f;
+
     /** Line height of road and river names, in widget units; and with large fonts on. */
     private static final float ROAD_TEXT_UNITS = 0.32f;
     private static final float ROAD_TEXT_UNITS_LARGE = 0.40f;
@@ -77,6 +105,8 @@ public class RoadNameRenderer {
     private static final float TRAIL_TEXT_UNITS_LARGE = 0.46f;
     /** How opaque a trail's plate is: its colour clearly, the ground still showing through. */
     private static final float PLATE_ALPHA = 0.74f;
+    /** A street name's plate: fainter, the halo does most of the work. */
+    private static final float ROAD_PLATE_ALPHA = 0.42f;
 
     private static final Color ROAD_TEXT = new Color(0.10f, 0.12f, 0.16f, 1f);
     private static final Color ROAD_HALO = new Color(1f, 1f, 1f, 0.92f);
@@ -92,8 +122,12 @@ public class RoadNameRenderer {
         /** What is written: the candidate's label, or its number alone when that is all that fits. */
         String text;
         float x, y, angle, width, height, scale, priority, distance;
+        /** Its size, as a share of full size, for its distance. */
+        float factor;
+        /** Where it stands among labels of its rank: priority, less a little for distance. */
+        float order;
         boolean incumbent;
-        /** Trails and tracks: drawn on a plate of {@link #plate}, text dark or light to suit. */
+        /** Trails, tracks and streets: drawn on a plate of {@link #plate}, text dark or light to suit. */
         boolean plated;
         boolean darkText;
         float plateHalfWidth, plateHalfHeight;
@@ -139,6 +173,8 @@ public class RoadNameRenderer {
     private final int[] stats = new int[STAT_NAMES.length];
     /** Why the last call to place() said no. */
     private int lastReject = OFF_SCREEN;
+    /** How long the last decision took, in milliseconds. */
+    private float lastDecisionCostMs;
 
     public RoadNameRenderer(SpriteBatch batch, ShapeRenderer shapes, float widgetUnitStep) {
         this.batch = batch;
@@ -165,6 +201,7 @@ public class RoadNameRenderer {
             }
             sb.append(STAT_NAMES[i]).append('=').append(stats[i]);
         }
+        sb.append(" decisionMs=").append(Math.round(lastDecisionCostMs * 10f) / 10f);
         return sb.toString();
     }
 
@@ -264,11 +301,21 @@ public class RoadNameRenderer {
         poolUsed = 0;
 
         java.util.Arrays.fill(stats, 0);
+        long started = System.nanoTime();
+        // Where the camera looks, levelled: a label well off to the side or behind cannot be on
+        // screen, and is passed over before it costs a terrain lookup. The limit is half the
+        // screen's diagonal field of view and a margin, so a rolled camera misses nothing; a
+        // camera looking steeply down sees all round, and is not asked.
+        float hx = cam.direction.x, hy = cam.direction.y;
+        float level = (float) Math.sqrt(hx * hx + hy * hy);
+        double aspect = Gdx.graphics.getWidth() / (double) Math.max(1, Gdx.graphics.getHeight());
+        double halfDiagonal = Math.atan(Math.tan(Math.toRadians(cam.fieldOfView) * 0.5)
+                * Math.sqrt(1.0 + aspect * aspect));
+        double cosInView = level < 0.4f ? -2.0
+                : Math.cos(Math.min(Math.PI, halfDiagonal + Math.toRadians(BEARING_MARGIN_DEG)));
+
         int worldBudget = WORLD_BUDGET_PER_DECISION;
-        for (MapTile tile : getC().mapTileStorage.getMapTiles()) {
-            if (tile.isDisposed()) {
-                continue;
-            }
+        for (MapTile tile : tilesNearestFirst(camLat, camLon, cosLat)) {
             List<RoadLabelCandidate> candidates = tile.roadLabels;
             for (int i = 0; i < candidates.size(); i++) {
                 RoadLabelCandidate c = candidates.get(i);
@@ -278,10 +325,16 @@ public class RoadNameRenderer {
                 double dy = (c.anchorLatitude() - camLat) * RoadGeo.METERS_PER_DEGREE;
                 double dx = (c.anchorLongitude() - camLon) * RoadGeo.METERS_PER_DEGREE * cosLat;
                 double range = rangeMeters(c.roadClass);
-                if (dx * dx + dy * dy > range * range) {
+                double d2 = dx * dx + dy * dy;
+                if (d2 > range * range) {
                     continue;
                 }
                 stats[IN_RANGE]++;
+                if (d2 > NEAR_BEARING_METERS * NEAR_BEARING_METERS
+                        && dx * hx + dy * hy < cosInView * Math.sqrt(d2) * level) {
+                    stats[OFF_SCREEN]++;
+                    continue;
+                }
                 if (c.world == null || c.worldTargetLatitude != targetLat) {
                     if (worldBudget <= 0) {
                         stats[NO_TERRAIN]++;
@@ -309,7 +362,7 @@ public class RoadNameRenderer {
             }
         }
 
-        // Rank first, then the labels already on screen, then the nearer.
+        // Rank first, then the labels already on screen, then the nearer and weightier.
         Collections.sort(pending, (a, b) -> {
             int ta = (int) a.priority, tb = (int) b.priority;
             if (ta != tb) {
@@ -318,8 +371,8 @@ public class RoadNameRenderer {
             if (a.incumbent != b.incumbent) {
                 return a.incumbent ? -1 : 1;
             }
-            if (a.priority != b.priority) {
-                return Float.compare(b.priority, a.priority);
+            if (a.order != b.order) {
+                return Float.compare(b.order, a.order);
             }
             return Float.compare(a.distance, b.distance);
         });
@@ -344,19 +397,53 @@ public class RoadNameRenderer {
             kept.put(p.candidate, Boolean.TRUE);
         }
         angles.keySet().retainAll(kept.keySet());
+        lastDecisionCostMs = (System.nanoTime() - started) / 1e6f;
     }
 
+    /**
+     * How far off a way's labels are written. The roads are drawn out to
+     * {@code TileRendererRunner.ROAD_CUTOFF_DEGREES}, a good deal further; past these the labels,
+     * however small, would crowd the horizon without saying much.
+     */
     private static double rangeMeters(RoadClass roadClass) {
         switch (roadClass) {
             case ROAD:
-                return 4500;
+                return 9000;
             case WATER:
-                return 6000;
+                return MAX_RANGE_METERS;
             case PATH:
-                return 4500;
+                return 10000;
             default:
-                return 3500;
+                return 7000;
         }
+    }
+
+    /**
+     * The tiles that may hold a label in range, nearest first: the terrain lookups a decision
+     * can afford go to the labels in front of the viewer before those on the horizon.
+     */
+    private static List<MapTile> tilesNearestFirst(double camLat, double camLon, double cosLat) {
+        final List<MapTile> tiles = new ArrayList<>();
+        final Map<MapTile, Double> meters = new IdentityHashMap<>();
+        for (MapTile tile : getC().mapTileStorage.getMapTiles()) {
+            if (tile.isDisposed() || tile.roadLabels.isEmpty()) {
+                continue;
+            }
+            BoundingBox bb = tile.tile.getBoundingBox();
+            double dy = ((bb.maxLatitude + bb.minLatitude) * 0.5 - camLat) * RoadGeo.METERS_PER_DEGREE;
+            double dx = ((bb.maxLongitude + bb.minLongitude) * 0.5 - camLon)
+                    * RoadGeo.METERS_PER_DEGREE * cosLat;
+            double halfH = (bb.maxLatitude - bb.minLatitude) * 0.5 * RoadGeo.METERS_PER_DEGREE;
+            double halfW = (bb.maxLongitude - bb.minLongitude) * 0.5 * RoadGeo.METERS_PER_DEGREE * cosLat;
+            double nearest = Math.sqrt(dx * dx + dy * dy) - Math.sqrt(halfH * halfH + halfW * halfW);
+            if (nearest > MAX_RANGE_METERS) {
+                continue;
+            }
+            tiles.add(tile);
+            meters.put(tile, nearest);
+        }
+        Collections.sort(tiles, (a, b) -> Double.compare(meters.get(a), meters.get(b)));
+        return tiles;
     }
 
     /**
@@ -412,8 +499,14 @@ public class RoadNameRenderer {
             return false;
         }
         lastReject = END_ON;
-        boolean plated = c.isTrail();
-        float scale = plated ? trailScale : roadScale;
+        // Smaller the farther off (RoadLabelGeometry.distanceScale).
+        float ex = w[3 * a] - cam.position.x, ey = w[3 * a + 1] - cam.position.y,
+                ez = w[3 * a + 2] - cam.position.z;
+        float meters = Units.convertLatitsToMeters((float) Math.sqrt(ex * ex + ey * ey + ez * ez));
+        float factor = RoadLabelGeometry.distanceScale(meters, FULL_SIZE_METERS, MIN_DISTANT_SCALE);
+        boolean trail = c.isTrail();
+        boolean plated = c.roadClass != RoadClass.WATER;
+        float baseScale = trail ? trailScale : roadScale;
         String text = null;
         float tw = 0f, th = 0f, padX = 0f, padY = 0f;
         for (int attempt = 0; attempt < 2 && text == null; attempt++) {
@@ -421,9 +514,9 @@ public class RoadNameRenderer {
             if (candidateText == null) {
                 break;
             }
-            float[] size = size(font, scale, candidateText);
-            tw = size[0];
-            th = size[1];
+            float[] size = size(font, baseScale, candidateText);
+            tw = size[0] * factor;
+            th = size[1] * factor;
             padX = plated ? 0.5f * th : 0f;
             padY = plated ? 0.32f * th : 0f;
             int count = projectStretch(c, cam, ax, ay, 0.6f * (tw + 2f * padX));
@@ -450,7 +543,7 @@ public class RoadNameRenderer {
         // Beside the way rather than over it, so the line stays visible under its label.
         double r = Math.toRadians(angle);
         float nx = (float) -Math.sin(r), ny = (float) Math.cos(r);
-        float lift = 0.5f * th + padY + Math.max(2f, 0.06f * widgetUnitStep);
+        float lift = 0.5f * th + padY + Math.max(2f, 0.06f * widgetUnitStep * factor);
         p.candidate = c;
         p.text = text;
         p.x = ax + nx * lift;
@@ -458,25 +551,28 @@ public class RoadNameRenderer {
         p.angle = angle;
         p.width = tw;
         p.height = th;
-        p.scale = scale;
+        p.scale = baseScale * factor;
+        p.factor = factor;
         p.priority = c.priority(stride);
+        p.order = p.priority
+                - NEAR_FIRST_WEIGHT * (float) Math.min(1.0, meters / rangeMeters(c.roadClass));
         p.incumbent = incumbent;
         p.plated = plated;
         p.plateHalfWidth = 0.5f * tw + padX;
         p.plateHalfHeight = 0.5f * th + padY;
         if (plated) {
             RoadStyle colours = P.getRoadStyle();
-            int rgba = c.roadClass == RoadClass.TRACK
+            int rgba = !trail ? colours.color(RoadStyle.Swatch.ROADS)
+                    : c.roadClass == RoadClass.TRACK
                     ? colours.color(RoadStyle.Swatch.TRACKS) : colours.trailColor(c.attribute);
             p.plate.set(rgba);
-            p.plate.a = PLATE_ALPHA;
+            p.plate.a = trail ? PLATE_ALPHA : ROAD_PLATE_ALPHA;
             p.darkText = RoadStyle.prefersDarkText(rgba);
         }
-        float dxw = w[3 * a] - cam.position.x, dyw = w[3 * a + 1] - cam.position.y,
-                dzw = w[3 * a + 2] - cam.position.z;
-        p.distance = (float) Math.sqrt(dxw * dxw + dyw * dyw + dzw * dzw);
+        p.distance = meters;
         // A plate is its own margin; a haloed name keeps a little air around it.
-        float pad = plated ? Math.max(1.5f, 0.03f * widgetUnitStep) : Math.max(3f, 0.08f * widgetUnitStep);
+        float pad = plated ? Math.max(1.5f, 0.03f * widgetUnitStep * factor)
+                : Math.max(3f, 0.08f * widgetUnitStep * factor);
         p.box.set(p.x, p.y, p.plateHalfWidth + pad, p.plateHalfHeight + pad, angle);
         return true;
     }
@@ -563,26 +659,29 @@ public class RoadNameRenderer {
         }
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
-        float halo = Math.max(1f, 0.028f * widgetUnitStep);
-        float shadow = Math.max(1f, 0.02f * widgetUnitStep);
         batch.begin();
         try {
             for (int k = 0; k < visible.size(); k++) {
                 Placed p = visible.get(k);
                 RoadLabelCandidate c = p.candidate;
+                float halo = Math.max(1f, 0.028f * widgetUnitStep * p.factor);
+                float shadow = Math.max(1f, 0.02f * widgetUnitStep * p.factor);
                 font.getData().setScale(p.scale);
                 transform.idt().translate(p.x, p.y, 0f).rotate(0f, 0f, 1f, p.angle);
                 batch.setTransformMatrix(transform);
                 float left = -0.5f * p.width;
                 float top = 0.5f * p.height;
-                if (p.plated) {
-                    if (!p.darkText) {
-                        font.setColor(PLATE_SHADOW);
-                        font.draw(batch, p.text, left + shadow, top - shadow);
-                    }
-                    font.setColor(p.darkText ? DARK_ON_PLATE : LIGHT_ON_PLATE);
+                if (p.plated && !p.darkText) {
+                    font.setColor(PLATE_SHADOW);
+                    font.draw(batch, p.text, left + shadow, top - shadow);
+                    font.setColor(LIGHT_ON_PLATE);
+                    font.draw(batch, p.text, left, top);
+                } else if (p.plated && c.isTrail()) {
+                    font.setColor(DARK_ON_PLATE);
                     font.draw(batch, p.text, left, top);
                 } else {
+                    // A street's name over its faint plate, or a river's with none: dark text
+                    // in a white halo.
                     font.setColor(ROAD_HALO);
                     for (int i = 0; i < 8; i++) {
                         double t = i * Math.PI / 4.0;

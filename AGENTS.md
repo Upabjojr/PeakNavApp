@@ -61,8 +61,12 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     decided at draw time by `RoadLabelCandidate.label(stride)`, with a trail's number-and-name
     alternating with its number alone); `viewer/renderer_gdx/RoadNameRenderer` draws them
     tilted along their ways, trail and track labels on a translucent plate of the trail's own
-    colour with dark or white text to suit it, falling back to the number alone where the full
-    label is too long for the trail in view. `lastDecisionStats()` says why candidates in range
+    colour with dark or white text to suit it (street names on a fainter plate of the road
+    colour, halo kept; river names halo only), falling back to the number alone where the full
+    label is too long for the trail in view. Labels reach 10 km (trails; roads 9, tracks 7) and
+    shrink past 1.5 km (`RoadLabelGeometry.distanceScale`, to 62% at the least); candidates off
+    the camera's bearing are dropped before their terrain lookup, tiles are visited nearest
+    first, and within a rank nearer labels win. `lastDecisionStats()` says why candidates in range
     were not shown (off screen, end-on, hidden, crowded out, ...) - ask it before tuning. The extracts carry almost no waterways and only the pistes
     that are also highways, so rivers are labelled but not drawn and pistes are partial.
 - **`desktop`** — LWJGL3 launcher (`DesktopLauncher`), Swing-based native screens.

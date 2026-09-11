@@ -65,6 +65,27 @@ public final class RoadLabelGeometry {
         return true;
     }
 
+    /**
+     * How strongly labels shrink with distance: perspective itself is 1 (twice as far, half the
+     * size), which would leave a label ten kilometres off unreadable; at 0.3, twice as far is
+     * about four fifths the size.
+     */
+    static final double DISTANCE_SCALE_EXPONENT = 0.3;
+
+    /**
+     * The size a label is drawn at, this far from the camera, as a share of its full size: full
+     * size out to {@code fullSizeMeters}, then shrinking gently, down to {@code minScale}. Distant
+     * labels look distant, and more of them fit in the band near the horizon, where the ground
+     * is most foreshortened and the labels most crowded.
+     */
+    public static float distanceScale(float meters, float fullSizeMeters, float minScale) {
+        if (!(meters > fullSizeMeters)) {
+            return 1f; // near, or not known
+        }
+        return Math.max(minScale,
+                (float) Math.pow(fullSizeMeters / meters, DISTANCE_SCALE_EXPONENT));
+    }
+
     /** Folds a direction into (-90, 90], the range in which text reads left to right. */
     public static float readable(float angleDeg) {
         float a = angleDeg % 180f;

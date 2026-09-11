@@ -82,7 +82,7 @@ public final class RoadStyle {
     /** A trail label every 300 m and a road name every 1.2 km. */
     public static final int LABEL_FREQUENCY_DEFAULT = 2;
     private static final int[] LABEL_STRIDES = {8, 4, 2, 1};
-    private static final int[] MAX_LABELS = {16, 28, 40, 56};
+    private static final int[] MAX_LABELS = {20, 34, 48, 64};
 
     private final int[] colors = new int[Swatch.values().length];
     private volatile int dashCount = DASH_COUNT_DEFAULT;

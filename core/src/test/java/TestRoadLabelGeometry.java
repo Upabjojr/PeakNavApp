@@ -83,6 +83,23 @@ class TestRoadLabelGeometry {
     }
 
     @Test
+    @DisplayName("near labels are full size; farther ones shrink steadily, never below the floor")
+    void distanceScale() {
+        assertEquals(1f, RoadLabelGeometry.distanceScale(0f, 1500f, 0.62f), 0f);
+        assertEquals(1f, RoadLabelGeometry.distanceScale(1500f, 1500f, 0.62f), 0f);
+        assertEquals(1f, RoadLabelGeometry.distanceScale(Float.NaN, 1500f, 0.62f), 0f);
+        float previous = 1f;
+        for (float m = 1600f; m <= 20000f; m += 400f) {
+            float s = RoadLabelGeometry.distanceScale(m, 1500f, 0.62f);
+            assertTrue(s <= previous && s >= 0.62f, "at " + m + " m: " + s);
+            previous = s;
+        }
+        assertEquals(0.62f, RoadLabelGeometry.distanceScale(20000f, 1500f, 0.62f), 0f);
+        assertTrue(RoadLabelGeometry.distanceScale(3000f, 1500f, 0.62f) > 0.75f,
+                "gently: twice as far is not half the size");
+    }
+
+    @Test
     @DisplayName("turned rectangles collide only where they really touch")
     void overlaps() {
         Box a = new Box().set(0, 0, 50, 8, 0);
