@@ -1630,14 +1630,24 @@ public class MapViewerScreen implements Screen {
 
 		if (backgroundPicManager.getBackgroundPixmap() != null) {
 			float terrainAlpha = labelRenderer.getTerrainAlpha();
+			// The roads are drawn over the photograph whenever their layer is on, at full
+			// strength: the terrain bar fades the landscape, not the paths drawn on it.
+			boolean roadsOverPhoto = P.isViewerLayerVisibleBaseRoads();
 			if (terrainAlpha > 0f) {
 				// The terrain-opacity bar is up: draw sky and terrain as usual and the photo
 				// over them at the complementary opacity, which is the same picture as the
 				// terrain at that opacity over the photo.
 				skyRenderer.render();
 				tileBatchRenderer.render();
-			} else if (tableTool.isRefreshNeeded()) {
+			} else if (roadsOverPhoto || tableTool.isRefreshNeeded()) {
+				// None of the terrain is wanted on screen - the photo covers it whole - but its
+				// depth is, because the roads overlay tests against it to know what a ridge
+				// hides. Drawing with the colour mask closed leaves exactly that behind.
+				Gdx.gl.glColorMask(false, false, false, false);
 				tileBatchRenderer.render();
+				Gdx.gl.glColorMask(true, true, true, true);
+			}
+			if (terrainAlpha <= 0f && tableTool.isRefreshNeeded()) {
 				boolean refreshNeeded = false;
 				for (MapTile mapTile : getC().mapTileStorage.getMapTiles()) {
 					switch (mapTile.getMapTileState()) {
@@ -1651,6 +1661,9 @@ public class MapViewerScreen implements Screen {
 				tableTool.setRefreshNeeded(refreshNeeded);
 			}
 			labelRenderer.renderBackgroundPixmap(1f - terrainAlpha);
+			if (roadsOverPhoto) {
+				tileBatchRenderer.renderRoadsOverlay();
+			}
 		} else {
 			// Sky objects are drawn before the terrain so opaque terrain occludes anything below a
 			// ridge (correct horizon hiding for free). The Sun is always drawn; the other objects are

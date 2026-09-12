@@ -105,6 +105,18 @@ float roadDistance(float encoded) {
 
 // How much of a pixel a line of half-width hw covers, at distance d from its centre, when one
 // pixel spans px texels: a one-pixel ramp, so the edge is antialiased at any zoom.
+/**
+ * Lays a colour over what is already there, and keeps count of how much of the pixel the lines
+ * have covered. Drawn into the terrain the coverage starts at 1 and this is exactly
+ * mix(col, c, k); in the roads-only overlay pass it starts at 0, so what comes out is the lines
+ * and their own alpha, and every pixel they do not touch stays transparent.
+ */
+void over(inout vec3 col, inout float a, vec3 c, float k) {
+    float na = k + a * (1.0 - k);
+    col = na > 0.0 ? (c * k + col * a * (1.0 - k)) / na : c;
+    a = na;
+}
+
 float cover(float d, float hw, float px) {
     return clamp((hw - d) / px + 0.5, 0.0, 1.0);
 }
@@ -154,6 +166,12 @@ void main() {
     } else if (u_whiteBackground == 1) {
         gl_FragColor = vec4(vec3(light), 1.0);
     }
+
+    // What the roads add to this pixel on their own, and how much of it they cover. In the
+    // overlay pass this is all that reaches the frame (see TileBatchRenderer.renderRoadsOverlay),
+    // so the paths stay visible over a photograph however far down the terrain is faded.
+    vec3 roadsCol = vec3(0.0);
+    float roadsCov = 0.0;
 
     if (u_roadsSet == 1) {
         vec4 enc = texture2D(u_textureRoads, v_texCoord0);
@@ -212,7 +230,13 @@ void main() {
         float fadePiste = (1.0 - smoothstep(35.0, 60.0, metersPerPixel)) * bandFade;
 
         float lineLight = mix(1.0, light / flatLight, LINE_RELIEF);
+#ifdef ROADS_OVERLAY
+        vec3 col = vec3(0.0);
+        float acc = 0.0;
+#else
         vec3 col = gl_FragColor.rgb;
+        float acc = 1.0;
+#endif
 
         // Pistes, at the bottom: a translucent band with a thin line along the centre of a
         // piste drawn as a line, or around the edge of one drawn as an area.
@@ -223,8 +247,8 @@ void main() {
             float hwBand = max(max(12.0 / mpt, 1.4 * pxPiste), MIN_HALF_TEXELS);
             float band = cover(dPiste, hwBand, pxPiste) * 0.42 * fadePiste;
             float edge = cover(abs(dPiste), max(max(0.9 / mpt, 0.55 * pxPiste), MIN_HALF_TEXELS), pxPiste) * 0.75 * fadePiste;
-            col = mix(col, pc, band);
-            col = mix(col, pc, edge);
+            over(col, acc, pc, band);
+            over(col, acc, pc, edge);
         }
 
         // Roads: an outline and a core. A major road's extra width is already in its distance.
@@ -232,8 +256,8 @@ void main() {
             vec3 core = u_roadCore.rgb * lineLight;
             float hw = max(max(2.2 / mpt, 0.75 * pxRoad), MIN_HALF_TEXELS);
             float outline = max(0.9 / mpt, 0.8 * pxRoad);
-            col = mix(col, casingOf(u_roadCore.rgb), cover(dRoad, hw + outline, pxRoad) * 0.9 * fadeRoad);
-            col = mix(col, core, cover(dRoad, hw, pxRoad) * u_roadCore.a * fadeRoad);
+            over(col, acc, casingOf(u_roadCore.rgb), cover(dRoad, hw + outline, pxRoad) * 0.9 * fadeRoad);
+            over(col, acc, core, cover(dRoad, hw, pxRoad) * u_roadCore.a * fadeRoad);
         }
 
         // Tracks: the same, narrower.
@@ -241,8 +265,8 @@ void main() {
             vec3 core = u_trackCore.rgb * lineLight;
             float hw = max(max(1.6 / mpt, 0.65 * pxTrack), MIN_HALF_TEXELS);
             float outline = max(0.6 / mpt, 0.6 * pxTrack);
-            col = mix(col, casingOf(u_trackCore.rgb), cover(dTrack, hw + outline, pxTrack) * 0.85 * fadeTrack);
-            col = mix(col, core, cover(dTrack, hw, pxTrack) * u_trackCore.a * fadeTrack);
+            over(col, acc, casingOf(u_trackCore.rgb), cover(dTrack, hw + outline, pxTrack) * 0.85 * fadeTrack);
+            over(col, acc, core, cover(dTrack, hw, pxTrack) * u_trackCore.a * fadeTrack);
         }
 
         // Trails, on top: dashed, coloured by difficulty, each dash with a thin outline. The
@@ -264,10 +288,12 @@ void main() {
             float alpha = dash * fadeTrail;
             // A quiet dark edge whatever the colour: casingOf would give red and blue a light
             // one, which over dark forest makes them glow pink and pale instead of standing out.
-            col = mix(col, tc * 0.3, cover(dTrail, hw + outline, pxTrail) * 0.6 * alpha);
-            col = mix(col, tc * lineLight, cover(dTrail, hw, pxTrail) * alpha);
+            over(col, acc, tc * 0.3, cover(dTrail, hw + outline, pxTrail) * 0.6 * alpha);
+            over(col, acc, tc * lineLight, cover(dTrail, hw, pxTrail) * alpha);
         }
 
+        roadsCol = col;
+        roadsCov = acc;
         gl_FragColor = vec4(col, gl_FragColor.a);
     }
 
@@ -301,4 +327,8 @@ void main() {
         }
     }
 
+#ifdef ROADS_OVERLAY
+    // The overlay pass: the lines and nothing else, so they can be blended over a photograph.
+    gl_FragColor = vec4(roadsCol, roadsCov);
+#endif
 }

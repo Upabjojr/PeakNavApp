@@ -15,6 +15,9 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g3d.Attributes;
+import com.badlogic.gdx.graphics.g3d.Attribute;
+import com.badlogic.gdx.graphics.g3d.attributes.BlendingAttribute;
+import com.badlogic.gdx.graphics.g3d.attributes.DepthTestAttribute;
 import com.badlogic.gdx.graphics.g3d.Environment;
 import com.badlogic.gdx.graphics.g3d.ModelBatch;
 import com.badlogic.gdx.graphics.g3d.Renderable;
@@ -51,6 +54,9 @@ public class TileBatchRenderer {
     private final PerspectiveCameraExt camera;
     private final Environment environment;
     private final ModelBatch modelBatchPseudodistances;
+    /** The same terrain shader, compiled to draw the road lines alone (renderRoadsOverlay). */
+    private final ModelBatch modelBatchRoadsOverlay;
+    private final Environment environmentRoadsOverlay;
     private FrameBuffer fbo;
     private boolean pseudodistancesDirty = true;
     private long pseudodistancesMapTileUpdateTime = Long.MIN_VALUE;
@@ -66,10 +72,52 @@ public class TileBatchRenderer {
         this.camera = camera;
         this.environment = environment;
 
-        this.modelBatch = new ModelBatch(null,
+        this.modelBatch = new ModelBatch(null, terrainShaderProvider(terrainFragmentShader()), null);
+        // The roads again, over whatever is already on screen: same shader, told to keep only
+        // the lines (see renderRoadsOverlay and ROADS_OVERLAY in the fragment shader).
+        this.modelBatchRoadsOverlay = new ModelBatch(null,
+                terrainShaderProvider("#define ROADS_OVERLAY\n" + terrainFragmentShader()), null);
+        this.environmentRoadsOverlay = new Environment();
+        for (Attribute attribute : environment) {
+            environmentRoadsOverlay.set(attribute);
+        }
+        // Blended over what is there, and depth-tested against the terrain drawn before it
+        // without writing depth of its own, so a road behind a ridge stays behind it.
+        environmentRoadsOverlay.set(new BlendingAttribute(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA));
+        environmentRoadsOverlay.set(new DepthTestAttribute(GL20.GL_LEQUAL, false));
+
+        this.modelBatchPseudodistances = new ModelBatch(null,
                 new DefaultShaderProvider(
+                        Gdx.files.internal("vertex_shader_pseudodistances.glsl").readString(),
+                        Gdx.files.internal("fragment_shader_pseudodistances.glsl").readString()),
+                null);
+
+        // The FBO is deliberately NOT created here - see ensureFbo().
+    }
+
+    /** A road-style colour as a vec4 uniform, read from the preferences every frame. */
+    private static void registerSwatch(DefaultShader shader, String name, final RoadStyle.Swatch swatch) {
+        final BaseShader.Uniform uniform = new BaseShader.Uniform(name);
+        shader.register(uniform, new BaseShader.GlobalSetter() {
+            @Override
+            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                int c = P.getRoadStyle().color(swatch);
+                shader.program.setUniformf(uniform.alias,
+                        ((c >>> 24) & 0xFF) / 255f, ((c >>> 16) & 0xFF) / 255f,
+                        ((c >>> 8) & 0xFF) / 255f, (c & 0xFF) / 255f);
+            }
+        });
+    }
+
+    /**
+     * The terrain shader provider over a given fragment shader. Every uniform the terrain
+     * needs is registered here, so a second compilation of the same shader - the roads
+     * overlay - is given all of them too.
+     */
+    private DefaultShaderProvider terrainShaderProvider(String fragmentShader) {
+        return new DefaultShaderProvider(
                         Gdx.files.internal("vertex_shader.glsl").readString(),
-                        terrainFragmentShader()) {
+                        fragmentShader) {
                     @Override
                     protected Shader createShader(final Renderable renderable) {
                         // WARNING: do not read "userData" here, as "renderable" refers to the first
@@ -253,30 +301,7 @@ public class TileBatchRenderer {
 
                         return shader;
                     }
-                },
-                null);
-
-        this.modelBatchPseudodistances = new ModelBatch(null,
-                new DefaultShaderProvider(
-                        Gdx.files.internal("vertex_shader_pseudodistances.glsl").readString(),
-                        Gdx.files.internal("fragment_shader_pseudodistances.glsl").readString()),
-                null);
-
-        // The FBO is deliberately NOT created here - see ensureFbo().
-    }
-
-    /** A road-style colour as a vec4 uniform, read from the preferences every frame. */
-    private static void registerSwatch(DefaultShader shader, String name, final RoadStyle.Swatch swatch) {
-        final BaseShader.Uniform uniform = new BaseShader.Uniform(name);
-        shader.register(uniform, new BaseShader.GlobalSetter() {
-            @Override
-            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
-                int c = P.getRoadStyle().color(swatch);
-                shader.program.setUniformf(uniform.alias,
-                        ((c >>> 24) & 0xFF) / 255f, ((c >>> 16) & 0xFF) / 255f,
-                        ((c >>> 8) & 0xFF) / 255f, (c & 0xFF) / 255f);
-            }
-        });
+                };
     }
 
     /**
@@ -447,6 +472,35 @@ public class TileBatchRenderer {
         }
 
         // timeWarner.track("end modelBatch.end()");
+    }
+
+    /**
+     * Draws the roads, tracks and trails once more over what is already on screen, and nothing
+     * else: no terrain, no sky, no satellite imagery. This is what keeps the paths visible on a
+     * photograph, where the terrain bar may have faded the landscape away entirely - the bar
+     * fades the terrain, not the roads drawn on it.
+     *
+     * <p>It must run after whatever it is drawn over, and after a terrain pass that has filled
+     * the depth buffer: the lines are depth-tested against the terrain so a road behind a ridge
+     * stays hidden, but write no depth themselves.
+     */
+    public void renderRoadsOverlay() {
+        modelBatchRoadsOverlay.begin(camera);
+        try {
+            for (MapTile mapTile : getC().mapTileStorage.getMapTiles()) {
+                try {
+                    if (!mapTile.isDisposed() && mapTile.instance != null) {
+                        modelBatchRoadsOverlay.render(mapTile.instance, environmentRoadsOverlay);
+                    }
+                } catch (Throwable ignored) {
+                    // As in render(): one bad tile must not take the frame down.
+                }
+            }
+        } catch (Throwable ignored) {
+            // ditto
+        } finally {
+            modelBatchRoadsOverlay.end();
+        }
     }
 
     /*
