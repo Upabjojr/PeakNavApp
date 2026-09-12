@@ -1794,13 +1794,23 @@ public class MapViewerScreen implements Screen {
 				sw, sh);
 		if (background == null) {
 			return pixmap;
-		} else {
-			int iw = backgroundPicManager.getWidth(), ih = backgroundPicManager.getHeight();
-			Pixmap newPixmap = new Pixmap(iw, ih, pixmap.getFormat());
-			newPixmap.drawPixmap(pixmap, 0, 0, (sw-iw)/2, (sh-ih)/2, sw, sh);
-			pixmap.dispose();
-			return newPixmap;
 		}
+		// Over a photograph the picture is the photo's rectangle rather than the whole window,
+		// so what is shared is the photo and not a letterboxed screen. Only the part of that
+		// rectangle the window actually shows can be copied, though: a photo fitted by height
+		// hangs off both sides when it is wider than the screen (1600x756 in a 1200x700 window
+		// is drawn 1481 wide), and asking for the pixels beyond the edge - a source x of -140 -
+		// copied nothing at all and shared a blank image.
+		int iw = backgroundPicManager.getWidth(), ih = backgroundPicManager.getHeight();
+		int x = Math.max(0, (sw - iw) / 2), y = Math.max(0, (sh - ih) / 2);
+		int w = Math.min(iw, sw - x), h = Math.min(ih, sh - y);
+		if (w <= 0 || h <= 0) {
+			return pixmap;
+		}
+		Pixmap newPixmap = new Pixmap(w, h, pixmap.getFormat());
+		newPixmap.drawPixmap(pixmap, 0, 0, x, y, w, h);
+		pixmap.dispose();
+		return newPixmap;
 	}
 
 	void setOutlinePolyXUniforms(ShaderProgram shaderProgram) {

@@ -1233,6 +1233,63 @@ class PeakNavRendererTest {
         assertTrue(namesWithoutRoads.isEmpty(), "with the roads off, their names go too");
     }
 
+    @Test
+    @Order(23)
+    @DisplayName("over a photograph: the snapshot is the picture with the paths on it, not a blank frame")
+    void photoSnapshotCarriesThePictureAndThePaths() throws Exception {
+        // A snapshot taken over a photograph is cropped to the photo's own rectangle, so what
+        // is shared is the picture rather than a letterboxed window. A photo wider than the
+        // window - which is what fitting it by height usually gives - made that crop ask for
+        // pixels past the window's edge, and every such snapshot came back blank.
+        renderer.setLabel(PeakNavRenderer.Label.ROADS, true);
+        renderer.setLabel(PeakNavRenderer.Label.ROAD_NAMES, true);
+        renderer.moveTo(46.0200, 7.7400);
+        assertTrue(renderer.awaitTilesLoaded(120_000), "the view should reach a settled state");
+        renderer.aim(60f, -14f);
+        renderer.settle(500);
+
+        renderer.loadPhoto(gradientPhotoPng(3 * WIDTH, HEIGHT), 30_000);
+        // The terrain faded away entirely: the photograph, and the roads drawn over it.
+        renderer.setPhotoOverlay(1f, 0f);
+        renderer.settle(800);
+
+        File shot = newTempFile("photo-snapshot.png");
+        renderer.capture(shot);
+        BufferedImage img = ImageIO.read(shot);
+        assertTrue(img.getWidth() > 1 && img.getHeight() > 1,
+                "a real picture, not an empty one: " + img.getWidth() + "x" + img.getHeight());
+        assertTrue(img.getWidth() <= WIDTH && img.getHeight() <= HEIGHT,
+                "only what the window shows of the photo: " + img.getWidth() + "x" + img.getHeight());
+        int sampled = 0, withColour = 0;
+        for (int y = 0; y < img.getHeight(); y += 4) {
+            for (int x = 0; x < img.getWidth(); x += 4) {
+                sampled++;
+                if ((img.getRGB(x, y) & 0xFFFFFF) != 0) {
+                    withColour++;
+                }
+            }
+        }
+        assertTrue(withColour > sampled / 2, "a snapshot over a photograph should not be blank; only "
+                + withColour + " of " + sampled + " sampled pixels had any colour");
+        assertTrue(!renderer.roadNamesDrawn().isEmpty(), "road names are written over a photograph too");
+
+        renderer.clearPhoto();
+        renderer.settle(300);
+    }
+
+    /** A stand-in photograph of this size: a gradient, so a blank frame cannot pass for it. */
+    private static byte[] gradientPhotoPng(int w, int h) throws java.io.IOException {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                img.setRGB(x, y, (clamp255(x / (float) w) << 16) | (clamp255(y / (float) h) << 8) | 0x40);
+            }
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        ImageIO.write(img, "png", out);
+        return out.toByteArray();
+    }
+
     private static int clamp255(float v) {
         return Math.max(0, Math.min(255, Math.round(v * 255)));
     }

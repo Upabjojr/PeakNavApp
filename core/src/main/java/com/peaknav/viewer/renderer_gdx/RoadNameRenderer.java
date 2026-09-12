@@ -221,11 +221,6 @@ public class RoadNameRenderer {
             chosen.clear();
             return;
         }
-        // Over a photograph the view is about the peaks in the picture; street names would
-        // only write over it.
-        if (viewer.backgroundPicManager != null && viewer.backgroundPicManager.getBackgroundPixmap() != null) {
-            return;
-        }
         PerspectiveCameraExt cam = viewer.cam;
         zoom = RoadLabelGeometry.zoom(cam.fieldOfView, viewer.getBaseFieldOfView());
         BitmapFont font = getC().styleSingleton.getBitmapFontSmallWhite();
