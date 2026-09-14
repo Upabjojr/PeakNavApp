@@ -1514,8 +1514,27 @@ class PeakNavRendererTest {
             boolean[] graphs = renderer.gpxInfoGraphs();
             assertTrue(graphs[0], "the recorded heights beside the terrain's");
             assertTrue(!graphs[1] && texts[5].isEmpty(), "no times, no speed");
+            assertTrue(texts[6].isEmpty(), "no tour, no current elevation");
 
             renderer.startGpxTour().settle(6000);
+            String now = renderer.gpxInfoTexts()[6];
+            String[] axis = renderer.gpxInfoAxisLabels();
+            System.out.println("gpx pane touring: " + now + " | axes: " + String.join(" | ", axis));
+            assertTrue(now.matches(".*: \\d+ m"), "while the tour runs, the elevation where it is: " + now);
+            assertTrue(java.util.Arrays.asList(axis).contains("x:0:00"), "time since the start along the bottom");
+            assertTrue(java.util.Arrays.stream(axis).anyMatch(a -> a.startsWith("x:") && !a.equals("x:0:00")),
+                    "and later times: the walking time so far, for a track without times");
+            assertTrue(java.util.Arrays.stream(axis).anyMatch(a -> a.startsWith("y:") && a.endsWith(" m")),
+                    "heights up the side, in metres");
+            renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL).settle(500);
+            String[] feetAxis = renderer.gpxInfoAxisLabels();
+            String feetNow = renderer.gpxInfoTexts()[6];
+            renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.METRIC).settle(500);
+            System.out.println("gpx pane in feet: " + feetNow + " | axes: " + String.join(" | ", feetAxis));
+            assertTrue(java.util.Arrays.stream(feetAxis).anyMatch(a -> a.startsWith("y:") && a.endsWith(" ft")),
+                    "in feet when feet are chosen: " + String.join(" | ", feetAxis));
+            assertTrue(java.util.Arrays.stream(feetAxis).noneMatch(a -> a.endsWith(" m")), "and no metres left");
+            assertTrue(feetNow.endsWith(" ft"), feetNow);
             File open = newTempFile("gpx-pane.png");
             renderer.captureWithUi(open);
             float[] small = renderer.gpxInfoBounds();

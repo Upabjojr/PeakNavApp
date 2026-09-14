@@ -20,15 +20,19 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Align;
 import com.peaknav.gpx.GpxTrack;
 import com.peaknav.gpx.GpxTrackStats;
+import com.peaknav.gpx.GraphTicks;
 import com.peaknav.utils.PreferencesManager.UnitSystem;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * A small pane at the left side of the map while a GPX track is loaded: a row of two buttons -
  * one folds the pane down to that single button, the other makes it wide and back - and under
  * them the track's name, how long it is, how much it climbs and drops, the walking time, and its
- * altimetric profile, with a dot on the profile where a running tour has got to.
+ * altimetric profile, with a dot on the profile where a running tour has got to and, while it
+ * runs, the elevation there. The profile is labelled: heights up the side, in the chosen units,
+ * and the time since the start along the bottom - as recorded, or else the walking time so far.
  *
  * <p>A track that recorded its own heights has the terrain's drawn over them, with a legend; one
  * that recorded times has a speed graph under the profile. The graphs keep their proportions:
@@ -62,6 +66,11 @@ public class GpxInfoPane {
     /** Kept clear under the pane: the scrub bar and the coordinates beneath it. */
     private static final float BOTTOM_CLEAR_UNITS = 3.2f;
     private static final Color SCROLL_KNOB = new Color(1f, 1f, 1f, 0.55f);
+    private static final Color AXIS_TEXT = new Color(0.82f, 0.88f, 1f, 1f);
+    private static final Color GRID = new Color(1f, 1f, 1f, 0.2f);
+    /** Most labels an axis gets: the small pane, and the maximized one along its width. */
+    private static final int AXIS_TICKS = 3;
+    private static final int AXIS_TICKS_WIDE = 6;
     private static final String ICON_FOLD = "icons/icon_pane_fold.png";
     private static final String ICON_OPEN = "icons/icon_gpx_info.png";
     private static final String ICON_MAXIMIZE = "icons/icon_pane_maximize.png";
@@ -84,6 +93,11 @@ public class GpxInfoPane {
     private final Label climb;
     private final Label heights;
     private final Label speed;
+    private final Label current;
+    private final Label.LabelStyle axisStyle;
+    private final List<Label> yLabels = new ArrayList<>();
+    private final List<Label> xLabels = new ArrayList<>();
+    private final WidgetGroup speedGroup = new WidgetGroup();
     private final Image profile = new Image();
     private final Image dot;
     private final WidgetGroup profileGroup = new WidgetGroup();
@@ -104,6 +118,13 @@ public class GpxInfoPane {
     private int drawnProfileWidth, drawnProfileHeight, drawnSpeedWidth, drawnSpeedHeight;
     /** The body's width, and the most of its height shown before it scrolls, as last laid out. */
     private float width, visibleHeight;
+    /** The axes' ticks: heights in metres, and where along the graph each time label goes. */
+    private double[] yTicks = new double[0];
+    private float[] xTickFractions = new float[0];
+    /** Room left of the graphs for the height labels, stage units. */
+    private float gutter;
+    private boolean currentShown;
+    private String currentText = "";
 
     public GpxInfoPane(float widgetUnitStep) {
         this.widgetUnitStep = widgetUnitStep;
@@ -141,6 +162,10 @@ public class GpxInfoPane {
         climb = label(style);
         heights = label(style);
         speed = label(style);
+        current = label(style);
+        axisStyle = new Label.LabelStyle(style);
+        axisStyle.fontColor = AXIS_TEXT;
+        speedGroup.addActor(speedGraph);
 
         // The legend's words in the colours of their lines: the glyphs are baked white, so they tint.
         Label.LabelStyle recordedStyle = new Label.LabelStyle(style);
@@ -211,6 +236,7 @@ public class GpxInfoPane {
         open = true;
         width = targetWidth();
         visibleHeight = visibleHeight();
+        buildTimeAxis(); // more labels along a wider graph
         layoutPanel();
         scroll.setScrollY(0);
     }
@@ -246,14 +272,19 @@ public class GpxInfoPane {
         body.add(distance).row();
         body.add(time).row();
         body.add(climb).row();
-        body.add(heights).padBottom(0.08f * u).row();
-        if (stats != null && stats.hasTwoProfiles()) {
-            body.add(legend).row();
+        body.add(heights).row();
+        if (currentShown) {
+            body.add(current).row();
         }
-        body.add(profileGroup).height(width * PROFILE_UNITS / PANE_UNITS).row();
+        if (stats != null && stats.hasTwoProfiles()) {
+            body.add(legend).padTop(0.04f * u).row();
+        }
+        // The graphs' proportions are those of the area they draw in, beside the height labels.
+        float graphWidth = Math.max(u, width - gutter);
+        body.add(profileGroup).padTop(0.08f * u).height(graphWidth * PROFILE_UNITS / PANE_UNITS + axisBand()).row();
         if (stats != null && stats.speedKmh != null) {
             body.add(speed).padTop(0.08f * u).row();
-            body.add(speedGraph).height(width * SPEED_UNITS / PANE_UNITS).row();
+            body.add(speedGroup).height(graphWidth * SPEED_UNITS / PANE_UNITS).row();
         }
 
         panel.add(buttons).width(width).row();
@@ -294,9 +325,26 @@ public class GpxInfoPane {
         return Math.max(2f * u, room);
     }
 
-    /** The profile's and the speed graph's width and height, stage units, for tests. */
+    /** Height of the row of time labels under the profile. */
+    private float axisBand() {
+        return axisStyle.font.getLineHeight();
+    }
+
+    /** The profile's and the speed graph's drawing areas, width and height, stage units, for tests. */
     public float[] graphSizes() {
-        return new float[]{profileGroup.getWidth(), profileGroup.getHeight(), speedGraph.getWidth(), speedGraph.getHeight()};
+        return new float[]{profile.getWidth(), profile.getHeight(), speedGraph.getWidth(), speedGraph.getHeight()};
+    }
+
+    /** The axes' labels, for tests: "y:" and the height, then "x:" and the time. */
+    public String[] axisLabels() {
+        List<String> out = new ArrayList<>();
+        for (Label l : yLabels) {
+            out.add("y:" + l.getText());
+        }
+        for (Label l : xLabels) {
+            out.add("x:" + l.getText());
+        }
+        return out.toArray(new String[0]);
     }
 
     /** How far the body can scroll and how far it has, stage units, for tests. */
@@ -340,11 +388,15 @@ public class GpxInfoPane {
         return new boolean[]{stats != null && stats.hasTwoProfiles(), stats != null && stats.speedKmh != null};
     }
 
-    /** The texts shown, for tests and scripts: the track's name first, the speed last ("" without). */
+    /**
+     * The texts shown, for tests and scripts: the track's name, distance, time, climb, heights,
+     * speed ("" without) and the elevation where a running tour is ("" without).
+     */
     public String[] getTexts() {
         return new String[]{name.getText().toString(), distance.getText().toString(),
                 time.getText().toString(), climb.getText().toString(), heights.getText().toString(),
-                stats != null && stats.speedKmh != null ? speed.getText().toString() : ""};
+                stats != null && stats.speedKmh != null ? speed.getText().toString() : "",
+                currentShown ? currentText : ""};
     }
 
     /**
@@ -370,17 +422,98 @@ public class GpxInfoPane {
         if (stats == null) {
             return;
         }
+        float f = Math.max(0f, Math.min(1f, tourFraction));
+        boolean showCurrent = tourFraction >= 0f && plotted != null;
+        if (showCurrent) {
+            String text = s("Gpx_info_elevation_now") + ": " + GpxTrackStats.formatHeight(valueAt(plotted, f), units);
+            if (!text.equals(currentText)) {
+                currentText = text;
+                current.setText(text);
+            }
+        }
+        if (showCurrent != currentShown) {
+            currentShown = showCurrent;
+            layoutPanel();
+        }
+        placeAxes();
         redrawGraphs();
-        boolean showDot = open && tourFraction >= 0f && plotted != null;
+        boolean showDot = open && showCurrent;
         dot.setVisible(showDot);
-        float w = profileGroup.getWidth(), h = profileGroup.getHeight();
-        profile.setBounds(0, 0, w, h);
-        if (showDot && w > 0) {
-            float f = Math.max(0f, Math.min(1f, tourFraction));
-            int index = Math.round(f * (plotted.length - 1));
-            float y = graphY(plotted[index], plotLow, plotHigh, h);
+        if (showDot && profile.getWidth() > 0) {
+            float y = profile.getY() + graphY(valueAt(plotted, f), plotLow, plotHigh, profile.getHeight());
             float size = 0.3f * widgetUnitStep;
-            dot.setBounds(f * w - size / 2, y - size / 2, size, size);
+            dot.setBounds(profile.getX() + f * profile.getWidth() - size / 2, y - size / 2, size, size);
+        }
+    }
+
+    /** A series at a fraction 0..1 of the way along, between its samples. */
+    private static float valueAt(float[] series, float fraction) {
+        float position = fraction * (series.length - 1);
+        int i = Math.min(series.length - 2, (int) position);
+        return series[i] + (position - i) * (series[i + 1] - series[i]);
+    }
+
+    /**
+     * The profile's drawing area right of the height labels and above the time labels, and each
+     * label beside the height or under the time it names; the speed graph under the same span.
+     */
+    private void placeAxes() {
+        float u = widgetUnitStep;
+        float w = profileGroup.getWidth(), h = profileGroup.getHeight();
+        float band = axisBand();
+        float graphWidth = Math.max(1f, w - gutter), graphHeight = Math.max(1f, h - band);
+        profile.setBounds(gutter, band, graphWidth, graphHeight);
+        for (int i = 0; i < yLabels.size(); i++) {
+            Label l = yLabels.get(i);
+            float lw = l.getPrefWidth(), lh = l.getPrefHeight();
+            float y = band + graphY((float) yTicks[i], plotLow, plotHigh, graphHeight) - lh / 2;
+            l.setBounds(gutter - 0.08f * u - lw, Math.max(0f, Math.min(h - lh, y)), lw, lh);
+        }
+        for (int i = 0; i < xLabels.size(); i++) {
+            Label l = xLabels.get(i);
+            float lw = l.getPrefWidth();
+            float x = gutter + xTickFractions[i] * graphWidth - lw / 2;
+            l.setBounds(Math.max(0f, Math.min(w - lw, x)), 0f, lw, band);
+        }
+        speedGraph.setBounds(gutter, 0f, Math.max(1f, speedGroup.getWidth() - gutter), speedGroup.getHeight());
+    }
+
+    /** The height labels up the profile's side, and the room they take. */
+    private void buildHeightAxis(UnitSystem units) {
+        for (Label l : yLabels) {
+            l.remove();
+        }
+        yLabels.clear();
+        yTicks = plotted == null ? new double[0] : GraphTicks.heightTicksMetres(plotLow, plotHigh, units, AXIS_TICKS);
+        float widest = 0f;
+        for (double v : yTicks) {
+            Label l = new Label(GpxTrackStats.formatHeight(v, units), axisStyle);
+            profileGroup.addActor(l);
+            yLabels.add(l);
+            widest = Math.max(widest, l.getPrefWidth());
+        }
+        gutter = yLabels.isEmpty() ? 0f : widest + 0.16f * widgetUnitStep;
+    }
+
+    /** The time labels under the profile: round times since the start, where the track got to then. */
+    private void buildTimeAxis() {
+        for (Label l : xLabels) {
+            l.remove();
+        }
+        xLabels.clear();
+        xTickFractions = new float[0];
+        drawnProfileWidth = drawnProfileHeight = 0; // the grid follows the ticks
+        if (stats == null || plotted == null) {
+            return;
+        }
+        float[] elapsed = stats.elapsedMinutes;
+        double[] times = GraphTicks.timeTicksMinutes(elapsed[elapsed.length - 1], maximized ? AXIS_TICKS_WIDE : AXIS_TICKS);
+        xTickFractions = new float[times.length];
+        for (int i = 0; i < times.length; i++) {
+            xTickFractions[i] = GraphTicks.fractionAt(elapsed, times[i]);
+            Label l = new Label(GraphTicks.formatClock(times[i]), axisStyle);
+            profileGroup.addActor(l);
+            xLabels.add(l);
         }
     }
 
@@ -399,6 +532,8 @@ public class GpxInfoPane {
         disposeGraphs();
         plotted = null;
         if (stats == null) {
+            buildHeightAxis(units);
+            buildTimeAxis();
             layoutPanel();
             return;
         }
@@ -425,6 +560,9 @@ public class GpxInfoPane {
                 }
             }
         }
+        buildHeightAxis(units);
+        buildTimeAxis();
+        currentText = ""; // in the new units, next frame
         if (stats.speedKmh != null) {
             speed.setText(s("Gpx_info_speed") + ": " + s("Gpx_info_speed_average") + " "
                     + GpxTrackStats.formatSpeed(stats.averageSpeedKmh, units) + "   "
@@ -457,14 +595,18 @@ public class GpxInfoPane {
                 : com.badlogic.gdx.Gdx.graphics.getHeight() / root.getStage().getHeight();
         int lineHalf = Math.max(1, Math.round(0.025f * widgetUnitStep * pixelsPerUnit));
         if (plotted != null) {
-            int w = Math.min(GRAPH_MAX_PIXELS, Math.round(profileGroup.getWidth() * pixelsPerUnit));
-            int h = Math.min(GRAPH_MAX_PIXELS, Math.round(profileGroup.getHeight() * pixelsPerUnit));
+            int w = Math.min(GRAPH_MAX_PIXELS, Math.round(profile.getWidth() * pixelsPerUnit));
+            int h = Math.min(GRAPH_MAX_PIXELS, Math.round(profile.getHeight() * pixelsPerUnit));
             if (w > 2 && h > 2 && (Math.abs(w - drawnProfileWidth) > 2 || Math.abs(h - drawnProfileHeight) > 2)) {
                 if (profileTexture != null) {
                     profileTexture.dispose();
                 }
+                float[] gridValues = new float[yTicks.length];
+                for (int i = 0; i < yTicks.length; i++) {
+                    gridValues[i] = (float) yTicks[i];
+                }
                 profileTexture = drawGraph(plotted, plottedTerrain, plotLow, plotHigh,
-                        PROFILE_FILL, PROFILE_LINE, TERRAIN_LINE, w, h, lineHalf);
+                        PROFILE_FILL, PROFILE_LINE, TERRAIN_LINE, w, h, lineHalf, gridValues, xTickFractions);
                 profile.setDrawable(new TextureRegionDrawable(profileTexture));
                 drawnProfileWidth = w;
                 drawnProfileHeight = h;
@@ -478,7 +620,7 @@ public class GpxInfoPane {
                     speedTexture.dispose();
                 }
                 speedTexture = drawGraph(stats.speedKmh, null, 0f, (float) stats.maxSpeedKmh,
-                        SPEED_FILL, SPEED_LINE, null, w, h, lineHalf);
+                        SPEED_FILL, SPEED_LINE, null, w, h, lineHalf, null, null);
                 speedGraph.setDrawable(new TextureRegionDrawable(speedTexture));
                 drawnSpeedWidth = w;
                 drawnSpeedHeight = h;
@@ -496,20 +638,41 @@ public class GpxInfoPane {
     /**
      * A series as a filled area under a light line, and optionally a second series as a line of
      * its own colour over it, both in the same range, drawn at {@code width} by {@code height}
-     * pixels with lines {@code 2 * lineHalf + 1} pixels thick.
+     * pixels with lines {@code 2 * lineHalf + 1} pixels thick; faint grid lines at the given
+     * values across and fractions along, when there are any.
      */
     private static Texture drawGraph(float[] filled, float[] second, float low, float high,
-                                     Color fill, Color line, Color secondLine, int width, int height, int lineHalf) {
+                                     Color fill, Color line, Color secondLine, int width, int height, int lineHalf,
+                                     float[] gridValues, float[] gridFractions) {
         Pixmap pixmap = new Pixmap(width, height, Pixmap.Format.RGBA8888);
         pixmap.setBlending(Pixmap.Blending.None);
         pixmap.setColor(0, 0, 0, 0);
         pixmap.fill();
+        pixmap.setColor(fill);
+        for (int x = 0; x < width; x++) {
+            pixmap.drawLine(x, pixelY(filled, x, low, high, width, height), x, height - 1);
+        }
+        if (gridValues != null || gridFractions != null) {
+            pixmap.setBlending(Pixmap.Blending.SourceOver);
+            pixmap.setColor(GRID);
+            if (gridValues != null) {
+                for (float v : gridValues) {
+                    int y = height - 1 - Math.round(graphY(v, low, high, height - 1));
+                    pixmap.drawLine(0, y, width - 1, y);
+                }
+            }
+            if (gridFractions != null) {
+                for (float f : gridFractions) {
+                    int x = Math.round(f * (width - 1));
+                    pixmap.drawLine(x, 0, x, height - 1);
+                }
+            }
+            pixmap.setBlending(Pixmap.Blending.None);
+        }
+        pixmap.setColor(line);
         int previousY = -1;
         for (int x = 0; x < width; x++) {
             int y = pixelY(filled, x, low, high, width, height);
-            pixmap.setColor(fill);
-            pixmap.drawLine(x, y, x, height - 1);
-            pixmap.setColor(line);
             thickSegment(pixmap, x, previousY < 0 ? y : previousY, y, height, lineHalf);
             previousY = y;
         }

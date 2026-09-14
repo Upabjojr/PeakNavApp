@@ -49,6 +49,14 @@ public class TestGpxTrackStats {
         // GpxTrack keeps coordinates as floats: about a metre of precision.
         assertEquals(46.0, stats.startLat, 1e-5);
         assertEquals(46.025, stats.endLat, 1e-5);
+
+        // No times: the walking time so far, ending at the whole walk's.
+        assertTrue(!stats.elapsedRecorded);
+        assertEquals(0, stats.elapsedMinutes[0], 1e-3);
+        assertEquals(stats.walkingMinutes, stats.elapsedMinutes[GpxTrackStats.PROFILE_SAMPLES - 1], 1e-3);
+        for (int i = 1; i < GpxTrackStats.PROFILE_SAMPLES; i++) {
+            assertTrue(stats.elapsedMinutes[i] >= stats.elapsedMinutes[i - 1], "time only goes on: " + i);
+        }
     }
 
     @Test
@@ -110,6 +118,10 @@ public class TestGpxTrackStats {
             assertEquals(4.0, v, 0.05);
         }
         assertEquals(4.0, stats.maxSpeedKmh, 0.05);
+        assertTrue(stats.elapsedRecorded);
+        assertEquals(0, stats.elapsedMinutes[0], 1e-3);
+        assertEquals(60, stats.elapsedMinutes[GpxTrackStats.PROFILE_SAMPLES - 1], 0.01, "an hour, as recorded");
+        assertEquals(30, stats.elapsedMinutes[GpxTrackStats.PROFILE_SAMPLES / 2], 0.5, "half an hour halfway");
 
         // The same walk with an hour's stop halfway: the stop shows, and halves the average.
         GpxTrack stop = timedTrack(new double[][]{

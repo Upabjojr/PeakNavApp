@@ -988,6 +988,13 @@ public final class PeakNavRenderer implements AutoCloseable {
         return out[0];
     }
 
+    /** The GPX info pane's axis labels: "y:" and a height, then "x:" and a time since the start. */
+    public String[] gpxInfoAxisLabels() {
+        final String[][] out = new String[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.axisLabels());
+        return out[0];
+    }
+
     /** How far the GPX info pane's body can scroll, and how far it has, stage units. */
     public float[] gpxInfoScroll() {
         final float[][] out = new float[1][];

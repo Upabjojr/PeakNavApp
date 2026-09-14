@@ -64,11 +64,19 @@ public final class GpxTrackStats {
     public final double averageSpeedKmh;
     /** NaN without times. */
     public final double maxSpeedKmh;
+    /**
+     * Minutes since the start at the profile's points: as recorded when the track has times,
+     * otherwise the walking time built up along the way, ending at {@link #walkingMinutes}.
+     */
+    public final float[] elapsedMinutes;
+    /** Whether {@link #elapsedMinutes} comes from recorded times rather than the estimate. */
+    public final boolean elapsedRecorded;
 
     private GpxTrackStats(String name, double startLat, double startLon, double endLat, double endLon,
                           double distanceMetres, double ascentMetres, double descentMetres,
                           double highestMetres, double lowestMetres, float[] profileMetres,
-                          float[] recordedProfileMetres, float[] terrainProfileMetres, Speed speed) {
+                          float[] recordedProfileMetres, float[] terrainProfileMetres, Speed speed,
+                          float[] elapsedMinutes) {
         this.name = name;
         this.startLat = startLat;
         this.startLon = startLon;
@@ -85,6 +93,8 @@ public final class GpxTrackStats {
         this.speedKmh = speed == null ? null : speed.kmh;
         this.averageSpeedKmh = speed == null ? Double.NaN : speed.average;
         this.maxSpeedKmh = speed == null ? Double.NaN : speed.max;
+        this.elapsedMinutes = elapsedMinutes;
+        this.elapsedRecorded = speed != null;
         this.walkingMinutes = walkingMinutes(distanceMetres, ascentMetres, descentMetres);
     }
 
@@ -163,23 +173,60 @@ public final class GpxTrackStats {
                 terrainProfile = resample(along, terrain, PROFILE_SAMPLES);
             }
         }
+        Speed speed = speed(points, along);
+        float[] elapsed = speed != null ? speed.elapsed
+                : estimatedElapsed(along[n - 1], profile, walkingMinutes(along[n - 1], ascent, descent));
         GpxTrack.Point first = points.get(0);
         GpxTrack.Point last = points.get(n - 1);
         return new GpxTrackStats(track.getName(), first.lat, first.lon, last.lat, last.lon,
                 along[n - 1], ascent, descent, highest, lowest, profile, recordedProfile, terrainProfile,
-                speed(points, along));
+                speed, elapsed);
     }
 
     private static final class Speed {
         final float[] kmh;
         final double average;
         final double max;
+        /** Minutes since the first recorded time, at the profile's points. */
+        final float[] elapsed;
 
-        Speed(float[] kmh, double average, double max) {
+        Speed(float[] kmh, double average, double max, float[] elapsed) {
             this.kmh = kmh;
             this.average = average;
             this.max = max;
+            this.elapsed = elapsed;
         }
+    }
+
+    /**
+     * The walking time built up at each of the profile's points - DIN 33466 over the distance,
+     * ascent and descent so far - scaled to end at the whole track's {@code totalMinutes}.
+     */
+    private static float[] estimatedElapsed(double totalMetres, float[] profile, double totalMinutes) {
+        float[] out = new float[PROFILE_SAMPLES];
+        double ascent = 0, descent = 0;
+        double anchor = profile == null ? 0 : profile[0];
+        for (int s = 0; s < PROFILE_SAMPLES; s++) {
+            if (profile != null && s > 0) {
+                double h = profile[s];
+                if (h - anchor >= CLIMB_THRESHOLD_METRES) {
+                    ascent += h - anchor;
+                    anchor = h;
+                } else if (anchor - h >= CLIMB_THRESHOLD_METRES) {
+                    descent += anchor - h;
+                    anchor = h;
+                }
+            }
+            out[s] = (float) walkingMinutes(totalMetres * s / (PROFILE_SAMPLES - 1), ascent, descent);
+        }
+        float end = out[PROFILE_SAMPLES - 1];
+        if (end > 0) {
+            float scale = (float) (totalMinutes / end);
+            for (int s = 0; s < PROFILE_SAMPLES; s++) {
+                out[s] *= scale;
+            }
+        }
+        return out;
     }
 
     /**
@@ -243,7 +290,12 @@ public final class GpxTrackStats {
                 kmh[s] = kmh[s + 1];
             }
         }
-        return new Speed(kmh, (last - first) / (t[m - 1] - t[0]) * 3.6, max);
+        float[] elapsed = new float[PROFILE_SAMPLES];
+        for (int s = 0; s < PROFILE_SAMPLES; s++) {
+            double at = Math.max(first, Math.min(last, total * s / (PROFILE_SAMPLES - 1)));
+            elapsed[s] = (float) ((arrival(d, t, m, at) - t[0]) / 60.0);
+        }
+        return new Speed(kmh, (last - first) / (t[m - 1] - t[0]) * 3.6, max, elapsed);
     }
 
     /** When the track first reached {@code at} metres along it. */
