@@ -927,6 +927,29 @@ public final class PeakNavRenderer implements AutoCloseable {
         return this;
     }
 
+    /** "Route to here" from where the viewer stands to this point, as the map-tap button computes it. */
+    public com.peaknav.routing.RouteToPoint.Result routeTo(double toLatitude, double toLongitude) {
+        return com.peaknav.routing.RouteToPoint.compute(getC().mapDataManager.getMultiMapDataStore(),
+                getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude(), toLatitude, toLongitude);
+    }
+
+    /** Opens a route as the button does: as a GPX track, with the map framing it. Returns the tracks added. */
+    public int openRoute(com.peaknav.routing.WalkingRouter.Route route, double toLatitude, double toLongitude) {
+        final String gpx = com.peaknav.routing.RouteToPoint.gpxFor(route, toLatitude, toLongitude);
+        final int[] added = new int[1];
+        onRenderThread(() -> added[0] = getC().gpxManager.loadFromXml(gpx, true));
+        return added[0];
+    }
+
+    /** Removes every loaded GPX track, and ends a tour of one. */
+    public PeakNavRenderer clearGpx() {
+        onRenderThread(() -> {
+            mapApp.mapViewerScreen.stopGpxFlythrough();
+            getC().gpxManager.clear();
+        });
+        return this;
+    }
+
     public Vector3 cameraPosition() {
         final Vector3 out = new Vector3();
         onRenderThread(() -> out.set(mapApp.mapViewerScreen.cam.position));

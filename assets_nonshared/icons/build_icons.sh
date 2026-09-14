@@ -34,6 +34,7 @@ ICONS=(
   "icon_gpx_play:128:128"
   "icon_gpx_pause:128:128"
   "icon_gpx_clear:128:128"
+  "icon_route_to:128:128"
   "icon_checkbox_large_towns:128:128"
   "icon_checkbox_download_data:128:128"
   "icon_checkbox_download_data2:128:128"

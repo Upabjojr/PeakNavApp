@@ -550,6 +550,8 @@ public class WidgetGetter {
         public final Button buttonGoToDest;
         public final Button buttonOrbitDest;
         public final Button buttonOpenCoordinate;
+        /** Walks to the tapped point along the map's paths, as a GPX track. */
+        public final Button buttonRouteToDest;
         private final Button buttonCancelGoToDest;
         public final Table tableCancelGoToDest;
         /** Opacity of the rendered terrain over a photo; shown only while a photo is up. */
@@ -773,8 +775,30 @@ public class WidgetGetter {
                     getNativeScreenCaller().openCoordinate(latitude, longitude);
                 }
             });
-            tableCancelGoToDest.add(buttonOpenCoordinate).width(widgetUnitStep)
-                    .height(widgetUnitStep).colspan(3).right()
+            // Also on the second row: a walk to the point along the paths of the map data, opened
+            // as a GPX track (see RouteToPoint). It starts from where the viewer stands.
+            buttonRouteToDest = getC().widgetTextures.getButtonWithIcon("icons/icon_route_to.png");
+            buttonRouteToDest.setName("route_to");   // for /widgets, which places the tutorial's markers
+            buttonRouteToDest.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    Vector3 impact = mapApp.mapViewerScreen.impact;
+                    if (impact == null) {
+                        return;
+                    }
+                    double latitude = impact.y;
+                    double longitude = com.peaknav.utils.Units.convertLatitsToLonits(
+                            impact.x, (float) getC().L.getTargetLatitude());
+                    com.peaknav.routing.RouteToPoint.start(getC().L.getCurrentLatitude(),
+                            getC().L.getCurrentLongitude(), latitude, longitude);
+                    mapApp.mapViewerScreen.removeImpact();
+                }
+            });
+            Table secondRow = new Table();
+            secondRow.add(buttonRouteToDest).width(widgetUnitStep).height(widgetUnitStep)
+                    .padRight(0.35f * widgetUnitStep);
+            secondRow.add(buttonOpenCoordinate).width(widgetUnitStep).height(widgetUnitStep);
+            tableCancelGoToDest.add(secondRow).colspan(3).right()
                     .padTop(0.55f * widgetUnitStep);
             table.add(tableCancelGoToDest).right().expandY()
                     .padRight(borderPad)

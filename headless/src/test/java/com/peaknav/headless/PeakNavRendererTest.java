@@ -1389,4 +1389,40 @@ class PeakNavRendererTest {
             renderer.stopGpxTour();
         }
     }
+
+    @Test
+    @Order(27)
+    @DisplayName("route to a tapped point follows the paths of the map data and opens as a GPX track")
+    void routeToAPointFollowsThePaths() throws Exception {
+        renderer.moveTo(46.0207, 7.7491); // Zermatt
+        assertTrue(renderer.awaitTilesLoaded(120_000), "Zermatt settles");
+        // Findeln, up the slope east of the village: about 2.2 km as the crow flies.
+        double toLat = 46.0080, toLon = 7.7680;
+        double straight = com.peaknav.routing.WalkingRouter.metres(46.0207, 7.7491, toLat, toLon);
+        com.peaknav.routing.RouteToPoint.Result result = renderer.routeTo(toLat, toLon);
+        assertEquals(null, result.problem, "a route was found");
+        com.peaknav.routing.WalkingRouter.Route route = result.route;
+        System.out.println("route: " + route.size() + " points, " + Math.round(route.metres) + " m, straight "
+                + Math.round(straight) + " m");
+        assertTrue(route.size() > 10, "it follows the ways, bend by bend: " + route.size());
+        assertTrue(route.metres >= straight && route.metres < straight * 3,
+                "a walk, not a detour round the valley: " + route.metres + " vs " + straight);
+        // The viewer's position is kept as a float: a metre, not a nanodegree.
+        assertEquals(46.0207, route.lat[0], 1e-5, "from where the viewer stands");
+        assertEquals(toLon, route.lon[route.size() - 1], 1e-9, "to the point chosen");
+
+        try {
+            assertEquals(1, renderer.openRoute(route, toLat, toLon), "opened as one GPX track");
+            renderer.settle(6000); // the map flies to frame the track, as for a GPX file
+            File framed = newTempFile("route.png");
+            renderer.capture(framed);
+            System.out.println("route frame: " + framed.getAbsolutePath());
+        } finally {
+            renderer.clearGpx();
+        }
+
+        assertEquals("Route_too_far", renderer.routeTo(46.5, 8.3).problem, "Zermatt to Interlaken is not a walk");
+        renderer.moveTo(43.00, 5.00); // the Gulf of Lion: no ways to walk
+        assertEquals("Route_no_data", renderer.routeTo(43.01, 5.01).problem);
+    }
 }
