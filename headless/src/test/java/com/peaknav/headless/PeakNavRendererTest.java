@@ -1425,4 +1425,40 @@ class PeakNavRendererTest {
         renderer.moveTo(43.00, 5.00); // the Gulf of Lion: no ways to walk
         assertEquals("Route_no_data", renderer.routeTo(43.01, 5.01).problem);
     }
+
+    @Test
+    @Order(28)
+    @DisplayName("during a GPX tour the current point of the track is drawn, and holds when paused")
+    void gpxTourShowsItsCurrentPoint() throws Exception {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(60_000);
+        String gpx = "<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" version=\"1.1\"><trk>"
+                + "<name>t</name><trkseg>"
+                + "<trkpt lat=\"46.0207\" lon=\"7.7491\"><ele>1608</ele></trkpt>"
+                + "<trkpt lat=\"46.0000\" lon=\"7.7300\"><ele>2000</ele></trkpt>"
+                + "<trkpt lat=\"45.9833\" lon=\"7.7853\"><ele>3089</ele></trkpt>"
+                + "</trkseg></trk></gpx>";
+        renderer.loadGpx(gpx);
+        try {
+            assertEquals(null, renderer.gpxTourPointOnScreen(), "no tour, no point");
+            renderer.startGpxTour().settle(6000);
+            float[] point = renderer.gpxTourPointOnScreen();
+            assertTrue(point != null, "the tour's point is on the frame while it flies");
+            assertTrue(point[0] >= 0 && point[0] <= WIDTH && point[1] >= 0 && point[1] <= HEIGHT);
+            // With the interface: the point is an overlay, drawn after a plain capture is taken.
+            File flying = newTempFile("tour-point.png");
+            renderer.captureWithUi(flying);
+            System.out.println("tour point frame: " + flying.getAbsolutePath() + " at " + point[0] + "," + point[1]);
+
+            renderer.setGpxTourPaused(true).settle(500);
+            float[] held = renderer.gpxTourPointOnScreen();
+            renderer.settle(1000);
+            float[] later = renderer.gpxTourPointOnScreen();
+            assertTrue(held != null && later != null && held[0] == later[0] && held[1] == later[1],
+                    "paused, the point holds");
+        } finally {
+            renderer.stopGpxTour();
+            renderer.clearGpx();
+        }
+    }
 }

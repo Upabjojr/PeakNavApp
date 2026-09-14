@@ -729,6 +729,46 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         }
     }
 
+    /** Saves a GPX track where the user chooses, the way a snapshot is saved. */
+    @Override
+    public void shareGpx(final String fileName, final String xml) {
+        if (xml == null) {
+            return;
+        }
+        DesktopSwing.onEdt(() -> {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setDialogTitle(s("Save_gpx"));
+            chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
+            chooser.setAcceptAllFileFilterUsed(false);
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("GPX (*.gpx)", "gpx"));
+            chooser.setSelectedFile(new java.io.File(fileName));
+            if (chooser.showSaveDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION
+                    || chooser.getSelectedFile() == null) {
+                return;
+            }
+            java.io.File file = chooser.getSelectedFile();
+            if (!file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".gpx")) {
+                file = new java.io.File(file.getParentFile(), file.getName() + ".gpx");
+            }
+            if (file.exists() && javax.swing.JOptionPane.showConfirmDialog(null, s("Overwrite_prompt"),
+                    s("File_exists"), javax.swing.JOptionPane.YES_NO_OPTION) != javax.swing.JOptionPane.YES_OPTION) {
+                return;
+            }
+            try {
+                java.io.OutputStream out = new java.io.FileOutputStream(file);
+                try {
+                    out.write(xml.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                } finally {
+                    out.close();
+                }
+                makeToast(s("Gpx_saved") + ": " + file.getAbsolutePath());
+            } catch (java.io.IOException e) {
+                javax.swing.JOptionPane.showMessageDialog(null, s("Save_failed_msg") + "\n" + e.getMessage(),
+                        s("Save_failed"), javax.swing.JOptionPane.ERROR_MESSAGE);
+            }
+        });
+    }
+
     /** The toast currently on screen, if any. Only touched on the EDT. */
     private javax.swing.JWindow currentToast;
 

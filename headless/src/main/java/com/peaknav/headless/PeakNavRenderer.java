@@ -950,6 +950,16 @@ public final class PeakNavRenderer implements AutoCloseable {
         return this;
     }
 
+    /** Where the GPX tour's current point is drawn, in y-up pixels; null when none is. */
+    public float[] gpxTourPointOnScreen() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> {
+            Vector3 point = mapApp.mapViewerScreen.getGpxTourPointOnScreen();
+            out[0] = point == null ? null : new float[]{point.x, point.y};
+        });
+        return out[0];
+    }
+
     public Vector3 cameraPosition() {
         final Vector3 out = new Vector3();
         onRenderThread(() -> out.set(mapApp.mapViewerScreen.cam.position));

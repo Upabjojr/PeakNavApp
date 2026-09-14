@@ -151,6 +151,11 @@ final class FileSnapshotWriter extends NativeScreenCallerDesktop {
     }
 
     @Override
+    public void shareGpx(String fileName, String xml) {
+        // Headless: nobody to hand a file to, and a dialog would stop the run.
+    }
+
+    @Override
     public void shareSnapshot(Pixmap pixmap, com.peaknav.utils.SnapshotInfo info) {
         // Called on one of the app's generic executor threads, not the render thread.
         CountDownLatch latch = pending.getAndSet(null);

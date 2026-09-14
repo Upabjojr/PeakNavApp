@@ -396,6 +396,30 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         });
     }
 
+    /** The system share sheet, with the track as a .gpx file: to Files, Mail, another app... */
+    @Override
+    public void shareGpx(final String fileName, final String xml) {
+        if (xml == null) {
+            return;
+        }
+        onMainThread(() -> {
+            try {
+                java.io.File dir = new java.io.File(System.getProperty("java.io.tmpdir"), "peaknav_share");
+                dir.mkdirs();
+                java.io.File file = new java.io.File(dir, fileName);
+                java.io.FileOutputStream out = new java.io.FileOutputStream(file);
+                try {
+                    out.write(xml.getBytes("UTF-8"));
+                } finally {
+                    out.close();
+                }
+                present(new UIActivityViewController(new NSArray<NSObject>(new NSURL(file)), null));
+            } catch (java.io.IOException e) {
+                makeToast(s("Save_failed"));
+            }
+        });
+    }
+
     @Override
     public void openCoordinate(double latitude, double longitude) {
         // Apple Maps, by the documented URL scheme: this is a "show me where this is"

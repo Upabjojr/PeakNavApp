@@ -78,7 +78,8 @@ public final class RouteToPoint {
                         .replace("{km}", String.format(Locale.ROOT, "%.1f", result.route.metres / 1000));
                 Gdx.app.postRunnable(() -> {
                     // Opened as a GPX file is: the map frames the track, and the tour can fly it.
-                    getC().gpxManager.loadFromXml(gpx, true);
+                    getC().gpxManager.loadShareableXml(gpx, String.format(Locale.ROOT,
+                            "PeakNav_route_%.5f_%.5f", toLat, toLon), true);
                     toast(found);
                 });
             } catch (RuntimeException e) {

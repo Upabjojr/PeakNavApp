@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Save or share this GPX track": a dashed track leaving through a share arrow. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+  </defs>
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <g clip-path="url(#disc)">
+    <!-- the track, as the map draws a GPX path -->
+    <path d="M50 176 C 76 150, 70 124, 96 116 C 118 110, 116 150, 140 150"
+          fill="none" stroke="#1f4d7d" stroke-width="15" stroke-linecap="round"/>
+    <path d="M50 176 C 76 150, 70 124, 96 116 C 118 110, 116 150, 140 150"
+          fill="none" stroke="#5aa0e0" stroke-width="7" stroke-linecap="round" stroke-dasharray="14 10"/>
+    <!-- a tray with an arrow rising out of it -->
+    <path d="M132 132 L132 178 L196 178 L196 132" fill="none" stroke="#10202b" stroke-width="9"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M164 150 L164 62" fill="none" stroke="#2f6fb0" stroke-width="11" stroke-linecap="round"/>
+    <path d="M140 86 L164 60 L188 86" fill="none" stroke="#2f6fb0" stroke-width="11"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#10202b" stroke-width="3"/>
+</svg>

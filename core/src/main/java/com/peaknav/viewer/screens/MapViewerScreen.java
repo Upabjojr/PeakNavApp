@@ -526,7 +526,7 @@ public class MapViewerScreen implements Screen {
 			Vector3 aim = path.get(Math.min(m - 1, i + lookahead));
 			Vector3 dir = new Vector3(aim).sub(camPos).nor();
 			gpxTourFrames.add(new GpxTourFrame(camPos, dir,
-					i == 0 ? GPX_TOUR_INTRO_SECONDS : stepSeconds, i == 0));
+					i == 0 ? GPX_TOUR_INTRO_SECONDS : stepSeconds, i == 0, path.get(i)));
 		}
 
 		// Exactly one orbit of the end point, starting from wherever the fly-along left off.
@@ -546,7 +546,7 @@ public class MapViewerScreen implements Screen {
 			Vector3 od = new Vector3(lookAt).sub(op).nor();
 			float t = (float) s / GPX_ORBIT_STEPS;
 			gpxTourFrames.add(new GpxTourFrame(op, od,
-					GPX_ORBIT_STEP_SECONDS * (1f + (GPX_ORBIT_SLOWDOWN - 1f) * t * t), false));
+					GPX_ORBIT_STEP_SECONDS * (1f + (GPX_ORBIT_SLOWDOWN - 1f) * t * t), false, endW));
 		}
 
 		queueGpxTourFrom(0);
@@ -558,11 +558,14 @@ public class MapViewerScreen implements Screen {
 		final Vector3 dir;
 		final float seconds;
 		final boolean intro; // the first frame eases in from wherever the camera currently is
-		GpxTourFrame(Vector3 pos, Vector3 dir, float seconds, boolean intro) {
+		/** The point of the track this frame shows the tour at (the end, while it circles it). */
+		final Vector3 point;
+		GpxTourFrame(Vector3 pos, Vector3 dir, float seconds, boolean intro, Vector3 point) {
 			this.pos = pos;
 			this.dir = dir;
 			this.seconds = seconds;
 			this.intro = intro;
+			this.point = point;
 		}
 	}
 
@@ -608,6 +611,44 @@ public class MapViewerScreen implements Screen {
 		gpxFrameHoldUntilMs = System.currentTimeMillis() + (long) ((total + 2f) * 1000f);
 		gpxFrameLat = getC().L.getTargetLatitude();
 		gpxFrameLon = getC().L.getTargetLongitude();
+	}
+
+	/**
+	 * Where along the track the tour is, in world space, while one is playing or paused; null
+	 * otherwise. It is the track point of the frame being flown to, so it moves with the camera -
+	 * paused, it holds; after a seek, it jumps with the view.
+	 */
+	public Vector3 getGpxTourPoint() {
+		int total = gpxTourFrames.size();
+		if (!gpxTourActive || total == 0 || moveCameraAction.isComplete()) {
+			return null;
+		}
+		int index = MathUtils.clamp(total - moveCameraAction.remainingSteps(), 0, total - 1);
+		return gpxTourFrames.get(index).point;
+	}
+
+	private final Vector3 gpxTourPointOnScreen = new Vector3();
+
+	/**
+	 * The tour's current point on the screen, in y-up pixels, or null when there is no tour or
+	 * the point is behind the camera or off the frame.
+	 */
+	public Vector3 getGpxTourPointOnScreen() {
+		Vector3 point = getGpxTourPoint();
+		if (point == null) {
+			return null;
+		}
+		gpxTourPointOnScreen.set(point);
+		// In front of the camera only: project() folds points behind it onto the frame.
+		if (gpxTourPointOnScreen.cpy().sub(cam.position).dot(cam.direction) <= 0f) {
+			return null;
+		}
+		cam.project(gpxTourPointOnScreen);
+		if (gpxTourPointOnScreen.x < 0 || gpxTourPointOnScreen.x > Gdx.graphics.getWidth()
+				|| gpxTourPointOnScreen.y < 0 || gpxTourPointOnScreen.y > Gdx.graphics.getHeight()) {
+			return null;
+		}
+		return gpxTourPointOnScreen;
 	}
 
 	/** Progress through the tour, 0..1, for the scrub bar. */
@@ -730,6 +771,10 @@ public class MapViewerScreen implements Screen {
 		tableLocation.buttonGpxFly.setVisible(hasGpx);
 		if (tableLocation.buttonGpxClear != null) {
 			tableLocation.buttonGpxClear.setVisible(hasGpx);
+		}
+		if (tableLocation.buttonGpxShare != null) {
+			// Only a track that exists nowhere else on the device: downloaded, or made on the map.
+			tableLocation.buttonGpxShare.setVisible(hasGpx && getC().gpxManager.hasShareable());
 		}
 		boolean showPause = isGpxTourPlaying();
 		if (showPause != gpxButtonShowingPause) {
@@ -1737,6 +1782,11 @@ public class MapViewerScreen implements Screen {
 		}
 
 		labelRenderer.renderLevelingLine();
+		// Where the GPX tour is along the track, while it plays or is paused.
+		Vector3 tourPoint = getGpxTourPointOnScreen();
+		if (tourPoint != null) {
+			labelRenderer.renderGpxTourPoint(tourPoint.x, tourPoint.y);
+		}
 		boolean pinned = com.peaknav.gesture.PhotoPin.isActive() && backgroundPicManager.getBackgroundPixmap() != null;
 		if (pinned) {
 			labelRenderer.renderPhotoPin();

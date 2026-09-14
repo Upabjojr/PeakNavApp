@@ -24,6 +24,11 @@ public class MapViewerSingleton {
         return mapApp;
     }
 
+    /** Whether the app exists yet. Unlike getAppInstance, never creates it. */
+    public static boolean hasAppInstance() {
+        return mapApp != null;
+    }
+
     public static void setAppInstance(MapApp mapApp) {
         synchronized (MapViewerSingleton.class) {
             MapViewerSingleton.mapApp = mapApp;

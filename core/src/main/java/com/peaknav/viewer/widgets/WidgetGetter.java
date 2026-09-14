@@ -568,6 +568,8 @@ public class WidgetGetter {
         private Button shareButton;
         public final Button buttonGpxFly; // cinematic tour of the loaded GPX; shown only when one is loaded
         public final Button buttonGpxClear; // discards the loaded GPX; shown alongside buttonGpxFly
+        /** Saves (desktop) or shares (phone) a GPX that exists nowhere else: downloaded, or made on the map. */
+        public final Button buttonGpxShare;
         public final Label copyrightLabel;
         /** Scrub bar for the GPX tour: shown only while one is running, drag to jump along it. */
         public final Table gpxSeekTable;
@@ -836,6 +838,24 @@ public class WidgetGetter {
             });
             buttonGpxClear.setVisible(false);
             table.add(buttonGpxClear).width(widgetUnitStep).height(widgetUnitStep).expandY()
+                    .right()
+                    .padRight(borderPad)
+                    .row();
+
+            // Save or share the track, when it exists nowhere else on the device. Hidden otherwise.
+            buttonGpxShare = getC().widgetTextures.getButtonWithIcon("icons/icon_gpx_share.png", null);
+            buttonGpxShare.setName("gpx_share");   // for /widgets, which places the tutorial's markers
+            buttonGpxShare.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    String xml = getC().gpxManager.getShareableXml();
+                    if (xml != null && getNativeScreenCaller() != null) {
+                        getNativeScreenCaller().shareGpx(getC().gpxManager.getShareableName(), xml);
+                    }
+                }
+            });
+            buttonGpxShare.setVisible(false);
+            table.add(buttonGpxShare).width(widgetUnitStep).height(widgetUnitStep).expandY()
                     .right()
                     .padRight(borderPad)
                     .row();

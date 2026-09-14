@@ -667,6 +667,40 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         }
     }
 
+    /**
+     * The system share sheet with the track as a .gpx file: written to the cache's "shared"
+     * folder, and handed over through the app's FileProvider with read permission granted, so
+     * any app - Files, Drive, a hiking app, mail - can take it, on every Android version.
+     */
+    @Override
+    public void shareGpx(final String fileName, final String xml) {
+        if (xml == null) {
+            return;
+        }
+        try {
+            java.io.File dir = new java.io.File(context.getCacheDir(), "shared");
+            dir.mkdirs();
+            java.io.File file = new java.io.File(dir, fileName);
+            OutputStream out = new java.io.FileOutputStream(file);
+            try {
+                out.write(xml.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            } finally {
+                out.close();
+            }
+            Uri uri = androidx.core.content.FileProvider.getUriForFile(
+                    context, context.getPackageName() + ".fileprovider", file);
+            Intent intentShare = new Intent(Intent.ACTION_SEND);
+            intentShare.setType("application/gpx+xml");
+            intentShare.putExtra(Intent.EXTRA_STREAM, uri);
+            intentShare.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent intentChooser = Intent.createChooser(intentShare, s("Share_gpx"));
+            intentChooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityAndPause(intentChooser);
+        } catch (IOException | IllegalArgumentException e) {
+            makeToast(s("Save_failed"));
+        }
+    }
+
     public void runOnUiThread(Runnable action) {
         mainActivity.runOnUiThread(action);
     }
