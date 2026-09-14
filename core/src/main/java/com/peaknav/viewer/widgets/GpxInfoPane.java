@@ -25,7 +25,7 @@ import com.peaknav.utils.Units;
 import java.util.List;
 
 /**
- * A collapsible pane over the top of the map while a GPX track is loaded: its name in a header that
+ * A collapsible pane at the left side of the map while a GPX track is loaded: its name in a header that
  * folds the pane open and shut, and below it where the track starts and ends, how long it is, how
  * much it climbs and drops, the walking time, and its altimetric profile - with a dot on the profile
  * where a running tour has got to.
@@ -38,6 +38,7 @@ public class GpxInfoPane {
     private static final Color PANEL = new Color(0.03f, 0.08f, 0.14f, 0.72f);
     private static final Color PROFILE_FILL = new Color(0.10f, 0.45f, 0.90f, 0.55f);
     private static final Color PROFILE_LINE = new Color(0.62f, 0.83f, 1f, 1f);
+    private static final float PANE_UNITS = 6.2f;
     private static final int PROFILE_WIDTH = 512;
     private static final int PROFILE_HEIGHT = 128;
 
@@ -64,7 +65,8 @@ public class GpxInfoPane {
     public GpxInfoPane(float widgetUnitStep) {
         this.widgetUnitStep = widgetUnitStep;
         root.setFillParent(true);
-        root.top().padTop(0.2f * widgetUnitStep + widgetUnitStep);
+        // On the left, beside the column of zoom and gallery buttons, so the middle of the map stays clear.
+        root.top().left().padTop(1.2f * widgetUnitStep).padLeft(1.5f * widgetUnitStep);
         root.setVisible(false);
 
         panel.setBackground(getC().widgetTextures.getUniformDrawable(PANEL));
@@ -102,7 +104,7 @@ public class GpxInfoPane {
         profileGroup.addActor(profile);
         profileGroup.addActor(dot);
 
-        float width = 7f * widgetUnitStep;
+        float width = PANE_UNITS * widgetUnitStep;
         body.defaults().left().width(width);
         body.add(position).row();
         body.add(distance).row();
@@ -137,7 +139,7 @@ public class GpxInfoPane {
         panel.getCell(body).height(value ? -1 : 0);
         body.clearChildren();
         if (value) {
-            float width = 7f * widgetUnitStep;
+            float width = PANE_UNITS * widgetUnitStep;
             body.add(position).row();
             body.add(distance).row();
             body.add(time).row();
