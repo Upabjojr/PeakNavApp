@@ -21,13 +21,22 @@ public class TestGpxTrackStats {
     }
 
     @Test
-    void walkingTimeFollowsDin33466() {
-        // 12 km on the flat: 3 h.
-        assertEquals(180, GpxTrackStats.walkingMinutes(12000, 0, 0), 1e-9);
-        // 4 km and 900 m up: 60 min across, 180 min up -> 180 + 30.
-        assertEquals(210, GpxTrackStats.walkingMinutes(4000, 900, 0), 1e-9);
-        // 6 km, 500 m down: 90 min across, 60 min down -> 90 + 30.
-        assertEquals(120, GpxTrackStats.walkingMinutes(6000, 0, 500), 1e-9);
+    void walkingTimeFollowsTheSlope() {
+        double[] level = {0, 2520, 5040};
+        // 5.04 km on the level at about 5 km/h: an hour.
+        assertEquals(60, GpxTrackStats.walkingMinutes(level, null), 0.1);
+        assertEquals(60, GpxTrackStats.walkingMinutes(level, new double[]{1000, 1000, 1000}), 0.1);
+        // The same distance up 500 m takes longer than down 500 m, and down a gentle 5 % is quickest.
+        double up = GpxTrackStats.walkingMinutes(level, new double[]{1000, 1250, 1500});
+        double down = GpxTrackStats.walkingMinutes(level, new double[]{1500, 1250, 1000});
+        double gentlyDown = GpxTrackStats.walkingMinutes(level, new double[]{1252, 1126, 1000});
+        assertTrue(up > 60 && up > down, "up " + up + " down " + down);
+        assertTrue(gentlyDown < 60 && gentlyDown < down, "gently down " + gentlyDown);
+        // Cumulative along the way.
+        double[] at = GpxTrackStats.walkingMinutesAt(level, null, new double[]{0, 2520, 5040});
+        assertEquals(0, at[0], 1e-9);
+        assertEquals(30, at[1], 0.1);
+        assertEquals(60, at[2], 0.1);
     }
 
     @Test

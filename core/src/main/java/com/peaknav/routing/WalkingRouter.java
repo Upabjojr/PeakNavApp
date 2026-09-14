@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.PriorityQueue;
 
 /**
- * The shortest walk between two points over OpenStreetMap ways - roads, tracks, paths - for
+ * The quickest walk between two points over OpenStreetMap ways - roads, tracks, paths - for
  * "route to here".
  *
  * <p>The graph is made of the ways as the map data holds them: two ways meet where they share a
@@ -20,22 +20,33 @@ import java.util.PriorityQueue;
  * bridge over a road, a tunnel under one - share no node and stay unconnected, as they should.
  * Both ends are snapped onto the nearest segment of the network and joined to it by a straight
  * leg, so the route starts at the walker and ends at the point chosen, not at the nearest junction.
- * The search is A* on distance, with the straight-line distance as its heuristic.
+ * The search is A* on walking time: every stretch is timed by {@link WalkingSpeed} from the slope
+ * the terrain gives it, sampled every {@link WalkingSpeed#STRETCH_METRES} along it, so a longer
+ * path round a hill can beat a shorter one over it. The heuristic is the straight line at the
+ * fastest walking speed, which never overestimates. Without heights, the ground is taken as flat
+ * and the quickest walk is the shortest.
  *
  * <p>Pure: no rendering and no files, so it is fully covered by unit tests.
  */
 public final class WalkingRouter {
 
-    /** A found route: the points in order, and its length along them. */
+    /** The terrain's height at a point, in metres; NaN where it is not known. */
+    public interface Elevation {
+        float metres(double lat, double lon);
+    }
+
+    /** A found route: the points in order, its length along them, and the time to walk it. */
     public static final class Route {
         public final double[] lat;
         public final double[] lon;
         public final double metres;
+        public final double seconds;
 
-        Route(double[] lat, double[] lon, double metres) {
+        Route(double[] lat, double[] lon, double metres, double seconds) {
             this.lat = lat;
             this.lon = lon;
             this.metres = metres;
+            this.seconds = seconds;
         }
 
         public int size() {
@@ -78,13 +89,21 @@ public final class WalkingRouter {
         return true;
     }
 
-    /**
-     * The shortest walk, or null when either end is further than {@code maxSnapMetres} from any
-     * walkable way, or the two are not connected.
-     */
+    /** The shortest walk, on ground taken as flat; see {@link #route(List, double, double, double, double, double, Elevation)}. */
     public static Route route(List<Way> ways, double fromLat, double fromLon, double toLat, double toLon,
                               double maxSnapMetres) {
-        Graph graph = new Graph();
+        return route(ways, fromLat, fromLon, toLat, toLon, maxSnapMetres, null);
+    }
+
+    /**
+     * The quickest walk, or null when either end is further than {@code maxSnapMetres} from any
+     * walkable way, or the two are not connected.
+     *
+     * @param elevation the terrain's heights; null for flat ground
+     */
+    public static Route route(List<Way> ways, double fromLat, double fromLon, double toLat, double toLon,
+                              double maxSnapMetres, Elevation elevation) {
+        Graph graph = new Graph(elevation);
         for (Way way : ways) {
             if (way == null || way.latLongs == null || !walkable(way.tags)) {
                 continue;
@@ -114,7 +133,7 @@ public final class WalkingRouter {
         int t = graph.attach(end);
         if (start.a == end.a && start.b == end.b) {
             // Both ends on one segment: the walk along it between them.
-            graph.link(s, t, Math.abs(start.along - end.along));
+            graph.link(s, t);
         }
         int[] previous = graph.shortest(s, t);
         if (previous == null) {
@@ -137,7 +156,7 @@ public final class WalkingRouter {
         lat[count - 1] = toLat;
         lon[count - 1] = toLon;
         // Joining legs of zero length (an end exactly on a node) leave duplicate points: drop them.
-        return dedupe(lat, lon);
+        return dedupe(lat, lon, elevation);
     }
 
     /** Distance on the sphere, in metres. */
@@ -151,17 +170,46 @@ public final class WalkingRouter {
         return 2 * EARTH_RADIUS * Math.asin(Math.min(1, Math.sqrt(h)));
     }
 
-    private static Route dedupe(double[] lat, double[] lon) {
+    /**
+     * Seconds to walk straight from one point to another, timing each stretch of about
+     * {@link WalkingSpeed#STRETCH_METRES} by its slope. Heights not known count as level ground.
+     *
+     * @param fromHeight the height at the start, or NaN to look it up; likewise {@code toHeight}
+     */
+    static double legSeconds(double fromLat, double fromLon, double fromHeight,
+                             double toLat, double toLon, double toHeight, Elevation elevation) {
+        double length = metres(fromLat, fromLon, toLat, toLon);
+        if (elevation == null) {
+            return WalkingSpeed.seconds(length, 0);
+        }
+        int stretches = Math.max(1, (int) Math.ceil(length / WalkingSpeed.STRETCH_METRES));
+        double previous = Double.isNaN(fromHeight) ? elevation.metres(fromLat, fromLon) : fromHeight;
+        double seconds = 0;
+        for (int k = 1; k <= stretches; k++) {
+            double t = (double) k / stretches;
+            double height = k == stretches && !Double.isNaN(toHeight) ? toHeight
+                    : elevation.metres(fromLat + t * (toLat - fromLat), fromLon + t * (toLon - fromLon));
+            double rise = Double.isNaN(height) || Double.isNaN(previous) ? 0 : height - previous;
+            seconds += WalkingSpeed.seconds(length / stretches, rise);
+            if (!Double.isNaN(height)) {
+                previous = height;
+            }
+        }
+        return seconds;
+    }
+
+    private static Route dedupe(double[] lat, double[] lon, Elevation elevation) {
         double[] outLat = new double[lat.length];
         double[] outLon = new double[lon.length];
         int n = 0;
-        double length = 0;
+        double length = 0, seconds = 0;
         for (int i = 0; i < lat.length; i++) {
             if (n > 0 && outLat[n - 1] == lat[i] && outLon[n - 1] == lon[i]) {
                 continue;
             }
             if (n > 0) {
                 length += metres(outLat[n - 1], outLon[n - 1], lat[i], lon[i]);
+                seconds += legSeconds(outLat[n - 1], outLon[n - 1], Double.NaN, lat[i], lon[i], Double.NaN, elevation);
             }
             outLat[n] = lat[i];
             outLon[n] = lon[i];
@@ -171,7 +219,7 @@ public final class WalkingRouter {
         double[] finalLon = new double[n];
         System.arraycopy(outLat, 0, finalLat, 0, n);
         System.arraycopy(outLon, 0, finalLon, 0, n);
-        return new Route(finalLat, finalLon, length);
+        return new Route(finalLat, finalLon, length, seconds);
     }
 
     /** Where a point meets the network: on segment a-b, {@code along} metres from a. */
@@ -198,7 +246,13 @@ public final class WalkingRouter {
         private final List<double[]> coordinates = new ArrayList<>();
         private final List<int[]> segments = new ArrayList<>();
         private final List<List<Integer>> neighbours = new ArrayList<>();
-        private final List<List<Double>> lengths = new ArrayList<>();
+        /** Each node's height, looked up the first time a walk touches it (NaN: not known). */
+        private final List<Double> heights = new ArrayList<>();
+        private final Elevation elevation;
+
+        Graph(Elevation elevation) {
+            this.elevation = elevation;
+        }
 
         int node(double lat, double lon) {
             long key = Double.doubleToLongBits(lat) * 31 + Double.doubleToLongBits(lon);
@@ -212,7 +266,7 @@ public final class WalkingRouter {
             int id = coordinates.size();
             coordinates.add(new double[]{lat, lon});
             neighbours.add(new ArrayList<Integer>());
-            lengths.add(new ArrayList<Double>());
+            heights.add(null);
             if (found == null) {
                 index.put(key, id);
             }
@@ -227,19 +281,31 @@ public final class WalkingRouter {
             return coordinates.get(node)[1];
         }
 
+        double height(int node) {
+            Double h = heights.get(node);
+            if (h == null) {
+                h = elevation == null ? Double.NaN : (double) elevation.metres(lat(node), lon(node));
+                heights.set(node, h);
+            }
+            return h;
+        }
+
+        /** Seconds to walk from one node to a neighbour: uphill and downhill differ. */
+        double seconds(int from, int to) {
+            return legSeconds(lat(from), lon(from), height(from), lat(to), lon(to), height(to), elevation);
+        }
+
         void addEdge(int a, int b) {
             if (a == b) {
                 return;
             }
             segments.add(new int[]{a, b});
-            link(a, b, metres(lat(a), lon(a), lat(b), lon(b)));
+            link(a, b);
         }
 
-        void link(int a, int b, double length) {
+        void link(int a, int b) {
             neighbours.get(a).add(b);
-            lengths.get(a).add(length);
             neighbours.get(b).add(a);
-            lengths.get(b).add(length);
         }
 
         int edgeCount() {
@@ -276,14 +342,13 @@ public final class WalkingRouter {
             int id = coordinates.size();
             coordinates.add(new double[]{snap.lat, snap.lon});
             neighbours.add(new ArrayList<Integer>());
-            lengths.add(new ArrayList<Double>());
-            double segmentMetres = metres(lat(snap.a), lon(snap.a), lat(snap.b), lon(snap.b));
-            link(id, snap.a, snap.along);
-            link(id, snap.b, Math.max(0, segmentMetres - snap.along));
+            heights.add(null);
+            link(id, snap.a);
+            link(id, snap.b);
             return id;
         }
 
-        /** A* from s to t; the predecessor of every settled node, or null when t is unreachable. */
+        /** A* on time from s to t; the predecessor of every settled node, or null when t is unreachable. */
         int[] shortest(int s, int t) {
             int n = coordinates.size();
             double[] cost = new double[n];
@@ -294,7 +359,8 @@ public final class WalkingRouter {
             final double targetLat = lat(t), targetLon = lon(t);
             PriorityQueue<double[]> open = new PriorityQueue<>(64, (x, y) -> Double.compare(x[0], y[0]));
             cost[s] = 0;
-            open.add(new double[]{metres(lat(s), lon(s), targetLat, targetLon), s});
+            final double fastest = WalkingSpeed.maxKmh() / 3.6; // metres a second
+            open.add(new double[]{metres(lat(s), lon(s), targetLat, targetLon) / fastest, s});
             while (!open.isEmpty()) {
                 int current = (int) open.poll()[1];
                 if (done[current]) {
@@ -305,14 +371,16 @@ public final class WalkingRouter {
                 }
                 done[current] = true;
                 List<Integer> next = neighbours.get(current);
-                List<Double> length = lengths.get(current);
                 for (int i = 0; i < next.size(); i++) {
                     int to = next.get(i);
-                    double candidate = cost[current] + length.get(i);
-                    if (!done[to] && candidate < cost[to]) {
+                    if (done[to]) {
+                        continue;
+                    }
+                    double candidate = cost[current] + seconds(current, to);
+                    if (candidate < cost[to]) {
                         cost[to] = candidate;
                         previous[to] = current;
-                        open.add(new double[]{candidate + metres(lat(to), lon(to), targetLat, targetLon), to});
+                        open.add(new double[]{candidate + metres(lat(to), lon(to), targetLat, targetLon) / fastest, to});
                     }
                 }
             }

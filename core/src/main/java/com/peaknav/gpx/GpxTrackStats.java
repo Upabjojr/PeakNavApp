@@ -1,5 +1,6 @@
 package com.peaknav.gpx;
 
+import com.peaknav.routing.WalkingSpeed;
 import com.peaknav.utils.PreferencesManager.UnitSystem;
 
 import java.util.List;
@@ -9,9 +10,9 @@ import java.util.Locale;
  * What the GPX info pane says about a track: where it starts and ends, how long it is, how much it
  * climbs and drops, how long it takes on foot, and its altimetric profile.
  *
- * <p>Walking time follows DIN 33466, the rule of the Alpine clubs' and Swiss trail signs: 4 km an
- * hour on the flat, 300 m an hour up and 500 m an hour down; the larger of the horizontal and
- * vertical times plus half the smaller. No breaks.
+ * <p>Walking time follows the slope: the track is cut into stretches of
+ * {@link WalkingSpeed#STRETCH_METRES}, each walked at the speed {@link WalkingSpeed} gives its
+ * gradient - slower uphill, fastest on a gentle descent, slower again down a steep one. No breaks.
  *
  * <p>Ascent and descent ignore changes smaller than {@link #CLIMB_THRESHOLD_METRES} before they turn,
  * so a recorded track's noise - GPS altitude wanders by metres - is not counted as climbing.
@@ -35,9 +36,8 @@ public final class GpxTrackStats {
     /** Speed is measured over at least this much of the track, so GPS jitter does not read as a sprint. */
     static final double SPEED_WINDOW_METRES = 100.0;
 
-    private static final double FLAT_KMH = 4.0;
-    private static final double ASCENT_METRES_PER_HOUR = 300.0;
-    private static final double DESCENT_METRES_PER_HOUR = 500.0;
+    /** Most stretches a track is timed in; a longer track gets longer stretches. */
+    private static final int MAX_STRETCHES = 200_000;
 
     public final String name;
     public final double startLat, startLon, endLat, endLon;
@@ -76,7 +76,7 @@ public final class GpxTrackStats {
                           double distanceMetres, double ascentMetres, double descentMetres,
                           double highestMetres, double lowestMetres, float[] profileMetres,
                           float[] recordedProfileMetres, float[] terrainProfileMetres, Speed speed,
-                          float[] elapsedMinutes) {
+                          double walkingMinutes, float[] elapsedMinutes) {
         this.name = name;
         this.startLat = startLat;
         this.startLon = startLon;
@@ -95,7 +95,7 @@ public final class GpxTrackStats {
         this.maxSpeedKmh = speed == null ? Double.NaN : speed.max;
         this.elapsedMinutes = elapsedMinutes;
         this.elapsedRecorded = speed != null;
-        this.walkingMinutes = walkingMinutes(distanceMetres, ascentMetres, descentMetres);
+        this.walkingMinutes = walkingMinutes;
     }
 
     /** Whether there are recorded and terrain heights to draw side by side. */
@@ -103,11 +103,47 @@ public final class GpxTrackStats {
         return recordedProfileMetres != null && terrainProfileMetres != null;
     }
 
-    /** DIN 33466: the longer of the horizontal and vertical times, plus half the shorter. */
-    static double walkingMinutes(double distanceMetres, double ascentMetres, double descentMetres) {
-        double horizontal = distanceMetres / 1000.0 / FLAT_KMH * 60.0;
-        double vertical = (ascentMetres / ASCENT_METRES_PER_HOUR + descentMetres / DESCENT_METRES_PER_HOUR) * 60.0;
-        return Math.max(horizontal, vertical) + Math.min(horizontal, vertical) / 2.0;
+    /**
+     * Minutes to walk a track at the speed its slopes allow, at each of {@code at} (metres along it,
+     * in order): cumulative, so the last is the whole walk when it is the track's length.
+     *
+     * @param along   metres along the track at each point, from 0
+     * @param heights metres at each point, gaps filled; null for level ground
+     */
+    static double[] walkingMinutesAt(double[] along, double[] heights, double[] at) {
+        int n = along.length;
+        double total = along[n - 1];
+        int stretches = (int) Math.max(1, Math.min(MAX_STRETCHES, Math.ceil(total / WalkingSpeed.STRETCH_METRES)));
+        double stretch = total / stretches;
+        double[] cumulative = new double[stretches + 1];
+        int segment = 0;
+        double previous = heights == null ? 0 : heights[0];
+        for (int k = 1; k <= stretches; k++) {
+            double position = total * k / stretches;
+            double height = 0;
+            if (heights != null) {
+                while (segment < n - 2 && along[segment + 1] < position) {
+                    segment++;
+                }
+                double length = along[segment + 1] - along[segment];
+                double t = length <= 0 ? 1 : Math.max(0, Math.min(1, (position - along[segment]) / length));
+                height = heights[segment] + t * (heights[segment + 1] - heights[segment]);
+            }
+            cumulative[k] = cumulative[k - 1] + WalkingSpeed.seconds(stretch, height - previous) / 60.0;
+            previous = height;
+        }
+        double[] out = new double[at.length];
+        for (int i = 0; i < at.length; i++) {
+            double k = total <= 0 ? 0 : Math.max(0, Math.min(stretches, at[i] / stretch));
+            int lower = Math.min(stretches - 1, (int) k);
+            out[i] = cumulative[lower] + (k - lower) * (cumulative[lower + 1] - cumulative[lower]);
+        }
+        return out;
+    }
+
+    /** Minutes to walk the whole of a track at the speed its slopes allow. */
+    static double walkingMinutes(double[] along, double[] heights) {
+        return walkingMinutesAt(along, heights, new double[]{along[along.length - 1]})[0];
     }
 
     /**
@@ -173,14 +209,27 @@ public final class GpxTrackStats {
                 terrainProfile = resample(along, terrain, PROFILE_SAMPLES);
             }
         }
+        double[] samplesAt = new double[PROFILE_SAMPLES];
+        for (int s = 0; s < PROFILE_SAMPLES; s++) {
+            samplesAt[s] = along[n - 1] * s / (PROFILE_SAMPLES - 1);
+        }
+        double[] walkedAt = walkingMinutesAt(along, anyHeight ? heights : null, samplesAt);
+        double walking = walkedAt[PROFILE_SAMPLES - 1];
         Speed speed = speed(points, along);
-        float[] elapsed = speed != null ? speed.elapsed
-                : estimatedElapsed(along[n - 1], profile, walkingMinutes(along[n - 1], ascent, descent));
+        float[] elapsed;
+        if (speed != null) {
+            elapsed = speed.elapsed;
+        } else {
+            elapsed = new float[PROFILE_SAMPLES];
+            for (int s = 0; s < PROFILE_SAMPLES; s++) {
+                elapsed[s] = (float) walkedAt[s];
+            }
+        }
         GpxTrack.Point first = points.get(0);
         GpxTrack.Point last = points.get(n - 1);
         return new GpxTrackStats(track.getName(), first.lat, first.lon, last.lat, last.lon,
                 along[n - 1], ascent, descent, highest, lowest, profile, recordedProfile, terrainProfile,
-                speed, elapsed);
+                speed, walking, elapsed);
     }
 
     private static final class Speed {
@@ -196,37 +245,6 @@ public final class GpxTrackStats {
             this.max = max;
             this.elapsed = elapsed;
         }
-    }
-
-    /**
-     * The walking time built up at each of the profile's points - DIN 33466 over the distance,
-     * ascent and descent so far - scaled to end at the whole track's {@code totalMinutes}.
-     */
-    private static float[] estimatedElapsed(double totalMetres, float[] profile, double totalMinutes) {
-        float[] out = new float[PROFILE_SAMPLES];
-        double ascent = 0, descent = 0;
-        double anchor = profile == null ? 0 : profile[0];
-        for (int s = 0; s < PROFILE_SAMPLES; s++) {
-            if (profile != null && s > 0) {
-                double h = profile[s];
-                if (h - anchor >= CLIMB_THRESHOLD_METRES) {
-                    ascent += h - anchor;
-                    anchor = h;
-                } else if (anchor - h >= CLIMB_THRESHOLD_METRES) {
-                    descent += anchor - h;
-                    anchor = h;
-                }
-            }
-            out[s] = (float) walkingMinutes(totalMetres * s / (PROFILE_SAMPLES - 1), ascent, descent);
-        }
-        float end = out[PROFILE_SAMPLES - 1];
-        if (end > 0) {
-            float scale = (float) (totalMinutes / end);
-            for (int s = 0; s < PROFILE_SAMPLES; s++) {
-                out[s] *= scale;
-            }
-        }
-        return out;
     }
 
     /**

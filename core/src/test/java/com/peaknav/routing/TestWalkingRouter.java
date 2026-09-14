@@ -53,6 +53,34 @@ public class TestWalkingRouter {
     }
 
     @Test
+    void aLongerWayRoundAHillBeatsAShorterOneOverIt() {
+        List<Way> ways = Arrays.asList(
+                way(t("highway", "path"), S, W, S, E),                         // short, over a 400 m hump
+                way(t("highway", "path"), S, W, N, W),                         // long, on the level
+                way(t("highway", "path"), N, W, N, E),
+                way(t("highway", "path"), N, E, S, E));
+        WalkingRouter.Elevation hump = (lat, lon) -> lat < S + 0.002
+                ? (float) (1000 + 400 * Math.sin(Math.PI * (lon - W) / (E - W))) : 1000f;
+
+        WalkingRouter.Route flat = WalkingRouter.route(ways, S, W, S, E, 50);
+        assertEquals(2, flat.size(), "on flat ground, the short way");
+        assertEquals(flat.metres / (WalkingSpeed.kmh(0) / 3.6), flat.seconds, 1.0, "walked at 5 km/h");
+
+        WalkingRouter.Route hilly = WalkingRouter.route(ways, S, W, S, E, 50, hump);
+        assertNotNull(hilly);
+        assertEquals(4, hilly.size(), "over the hill it is quicker to go round");
+        assertTrue(hilly.metres > flat.metres * 3);
+        assertEquals(hilly.metres / (WalkingSpeed.kmh(0) / 3.6), hilly.seconds, 1.0, "and round is all level");
+
+        // Up a slope and back down it: the climb takes longer.
+        double up = WalkingRouter.legSeconds(S, W, 1000, N, W, 1200, null);
+        assertEquals(WalkingRouter.legSeconds(N, W, 1200, S, W, 1000, null), up, 1e-9, "without heights, direction does not matter");
+        WalkingRouter.Elevation slope = (lat, lon) -> (float) (1000 + (lat - S) / (N - S) * 200);
+        assertTrue(WalkingRouter.legSeconds(S, W, Double.NaN, N, W, Double.NaN, slope)
+                > WalkingRouter.legSeconds(N, W, Double.NaN, S, W, Double.NaN, slope));
+    }
+
+    @Test
     void motorwaysAndPrivateWaysAreNotWalked() {
         List<Way> ways = Arrays.asList(
                 way(t("highway", "motorway"), S, W, S, E),

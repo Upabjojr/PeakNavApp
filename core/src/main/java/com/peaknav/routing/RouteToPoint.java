@@ -20,8 +20,9 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * "Route to here": from where the viewer stands to a point tapped on the map, the shortest walk
- * along the roads, tracks and paths of the downloaded map data, opened as a GPX track.
+ * "Route to here": from where the viewer stands to a point tapped on the map, the quickest walk
+ * along the roads, tracks and paths of the downloaded map data - timed on the slopes of the loaded
+ * terrain - opened as a GPX track.
  *
  * <p>The ways come from the same OpenStreetMap extracts the road layer draws ({@link
  * PbfMapDataStore}), read over the area between the two points with a margin - a path may leave
@@ -109,7 +110,9 @@ public final class RouteToPoint {
         if (ways.isEmpty()) {
             return new Result(null, "Route_no_data");
         }
-        WalkingRouter.Route route = WalkingRouter.route(ways, fromLat, fromLon, toLat, toLon, MAX_SNAP_METRES);
+        WalkingRouter.Route route = WalkingRouter.route(ways, fromLat, fromLon, toLat, toLon, MAX_SNAP_METRES,
+                // ElevationUtils' own lookup never finds a tile; the loaded terrain does. NaN where none is.
+                (lat, lon) -> com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon));
         return route == null ? new Result(null, "Route_not_found") : new Result(route, null);
     }
 
