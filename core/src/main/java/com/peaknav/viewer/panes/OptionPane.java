@@ -1443,15 +1443,27 @@ public class OptionPane {
         List<Table> buttons = new ArrayList<>(16);
 
         // Label visibility toggles live in their own submenu (peaks, places, alpine huts, plus the
-        // ranged labels: islands, cities, mountain ranges).
+        // ranged labels: islands, cities, mountain ranges), opened by a "..." like the other
+        // submenus - or by the row's name itself.
         ImageTextButtonOptionPane buttonLabelsMenu = getC().widgetGetter.getImageTextButton(
                 "icons/icon_checkbox_peak_names.png", s("Labels_menu"), false);
-        buttonLabelsMenu.addClickListener(() -> {
+        Runnable openLabels = () -> {
             selectLabels.setVisible(true);
             table.setVisible(false);
             tableOneColumn.setVisible(false);
+        };
+        buttonLabelsMenu.addClickListener(openLabels::run);
+        Table tableLabels = new Table();
+        tableLabels.add(buttonLabelsMenu).width(buttonWidth * 0.8f);
+        TextButton buttonLabelsOptions = getC().widgetGetter.getTextButton("...", false);
+        buttonLabelsOptions.addListener(new ChangeListener() {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                openLabels.run();
+            }
         });
-        buttons.add(buttonLabelsMenu);
+        tableLabels.add(buttonLabelsOptions).width(buttonWidth * 0.2f).height(height);
+        buttons.add(tableLabels);
 
         ImageTextButtonOptionPane checkBoxLargeFonts = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_large_fonts.png", s("Large_fonts"), true);
         addCheckingStateProperty(checkBoxLargeFonts, ()->P.getViewLargeFonts());

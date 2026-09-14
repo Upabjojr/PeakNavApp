@@ -1714,6 +1714,10 @@ class PeakNavRendererTest {
 
         // The menus: Roads "..." holds roads and paths and ski pistes, each with a "..." of its own.
         StringBuilder menus = new StringBuilder("ski menu frames:");
+        renderer.setOptionsPane(true).settle(400);
+        File mainMenu = newTempFile("main-menu.png");
+        renderer.captureWithUi(mainMenu);
+        System.out.println("main menu frame: " + mainMenu.getAbsolutePath());
         for (int level = 1; level <= 3; level++) {
             renderer.openRoadsMenu(level).settle(400);
             File menu = newTempFile("roads-menu-" + level + ".png");
