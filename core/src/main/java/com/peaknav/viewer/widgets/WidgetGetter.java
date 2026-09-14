@@ -243,7 +243,10 @@ public class WidgetGetter {
                     getNativeScreenCaller().openCameraPictureView();
                 }
             });
-            table.add(buttonCameraPicture).width(widgetUnitStep).left().height(widgetUnitStep)
+            // Where there is no camera to take a picture with - a computer - the cell stays,
+            // empty: everything else in this corner then keeps the place it had.
+            table.add(platformHas(true) ? buttonCameraPicture : null)
+                    .width(widgetUnitStep).left().height(widgetUnitStep)
                     .padTop(borderPad)
                     //.padLeft(borderPad)
                     .row();
@@ -296,7 +299,12 @@ public class WidgetGetter {
                     }
                 }
             });
-            table.add(buttonOrientation).width(widgetUnitStep).height(widgetUnitStep)
+            // Likewise for a machine that cannot tell how it is being held. The button is
+            // still built - the photo match and the options pane un-check it - it is only
+            // never added, and the cell it would have filled holds the column open so the
+            // photo bar stays centred on the same line.
+            table.add(platformHas(false) ? buttonOrientation : null)
+                    .width(widgetUnitStep).height(widgetUnitStep)
                     .padLeft(borderPad).padBottom(borderPad)
                     .padRight(2*widgetUnitStep);
 
@@ -516,6 +524,20 @@ public class WidgetGetter {
 
     public TableDownloadData getTableDownloadData() {
         return new TableDownloadData();
+    }
+
+    /**
+     * Whether this platform has the camera ({@code camera} true) or the motion sensors
+     * ({@code camera} false) behind one of the two device buttons. Written as one helper
+     * because both cells ask the same question of a caller that may not be set yet - and
+     * when it is not, the buttons stay, which is what every platform but the desktop wants.
+     */
+    private static boolean platformHas(boolean camera) {
+        com.peaknav.compatibility.NativeScreenCaller caller = getNativeScreenCaller();
+        if (caller == null) {
+            return true;
+        }
+        return camera ? caller.hasCamera() : caller.hasOrientationSensors();
     }
 
     public class TableLocation extends TableContainer {

@@ -65,6 +65,22 @@ public abstract class NativeScreenCaller {
 
     public abstract OrientationPointerListener getOrientationPointerListener();
 
+    /**
+     * Whether this device can take a picture with a camera of its own, and whether it can
+     * tell which way it is pointed. Both are true on a phone and false on a computer, which
+     * has no camera the app can use and, save for a few convertibles, no motion sensors at
+     * all - the buttons for them are left out of the interface there rather than sitting in
+     * it doing nothing.
+     */
+    public boolean hasCamera() {
+        return true;
+    }
+
+    /** @see #hasCamera() */
+    public boolean hasOrientationSensors() {
+        return true;
+    }
+
     public abstract CurrentLocationListener getCurrentLocationListener();
 
     public abstract void askForDownloadScreen(double lat, double lon);

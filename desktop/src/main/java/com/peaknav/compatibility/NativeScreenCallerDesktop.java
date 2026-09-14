@@ -255,6 +255,36 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         });
     }
 
+    /**
+     * True while the headless renderer is drawing, and false in the app itself.
+     *
+     * <p>The desktop hides the camera and gyroscope buttons, having neither - but the
+     * headless renderer runs on this same platform layer, and what it draws is the
+     * interface the phones show: the tutorial's own screenshots come from it, and their
+     * markers are placed on those two buttons. So it asks for them back.
+     */
+    private static volatile boolean deviceWidgetsShown = false;
+
+    /** Called by the headless renderer; see {@link #deviceWidgetsShown}. */
+    public static void setDeviceWidgetsShown(boolean shown) {
+        deviceWidgetsShown = shown;
+    }
+
+    /** No camera a desktop app can use; the button is left out. */
+    @Override
+    public boolean hasCamera() {
+        return deviceWidgetsShown;
+    }
+
+    /**
+     * No accelerometer or gyroscope on a desktop or on all but a few laptops, and Java has
+     * no way to read one anyway, so the view cannot follow how the machine is held.
+     */
+    @Override
+    public boolean hasOrientationSensors() {
+        return deviceWidgetsShown;
+    }
+
     @Override
     public void openCameraPictureView() {
 

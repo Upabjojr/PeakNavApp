@@ -148,6 +148,10 @@ public final class PeakNavRenderer implements AutoCloseable {
         PreferencesManager.setEphemeral(true);
 
         MapViewerDesktopSingleton.initializeDesktopLoadFactory();
+        // What this renders is the phones' interface - the tutorial's screenshots and their
+        // markers come from here - so it keeps the camera and gyroscope buttons the desktop
+        // app itself leaves out.
+        com.peaknav.compatibility.NativeScreenCallerDesktop.setDeviceWidgetsShown(true);
         final MapApp app = MapViewerDesktopSingleton.getAppInstance();
 
         final CountDownLatch running = new CountDownLatch(1);
