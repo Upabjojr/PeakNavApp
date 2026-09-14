@@ -226,7 +226,8 @@ public class RoadNameRenderer {
         }
         showRoadNames = P.isViewerLayerVisibleBaseRoads() && P.getRoadStyle().isRoadNames();
         showPisteNames = P.isSkiSlopesVisible() && P.isPisteLabelsVisible();
-        if (!showRoadNames && !showPisteNames) {
+        showLiftNames = P.isLiftsVisible() && P.isLiftLabelsVisible();
+        if (!showRoadNames && !showPisteNames && !showLiftNames) {
             chosen.clear();
             return;
         }
@@ -251,7 +252,10 @@ public class RoadNameRenderer {
     }
 
     /** Which labels this frame writes: the roads' and trails', the ski runs', or both. */
-    private boolean showRoadNames, showPisteNames;
+    private boolean showRoadNames, showPisteNames, showLiftNames;
+
+    /** A ski lift's plate: the dark grey of its cable. */
+    private static final int LIFT_PLATE_RGBA = 0x2B2F36FF;
 
     /** A ski run's plate: blue, red or black, as the ski slopes viewer draws the run. */
     private static int pisteRgba(float difficulty) {
@@ -338,10 +342,12 @@ public class RoadNameRenderer {
 
         int worldBudget = WORLD_BUDGET_PER_DECISION;
         for (MapTile tile : tilesNearestFirst(camLat, camLon, cosLat, MAX_RANGE_METERS * zoom)) {
-            for (int source = 0; source < 2; source++) {
+            for (int source = 0; source < 3; source++) {
             List<RoadLabelCandidate> candidates = source == 0
                     ? (showRoadNames ? tile.roadLabels : Collections.<RoadLabelCandidate>emptyList())
-                    : (showPisteNames ? tile.pisteLabels : Collections.<RoadLabelCandidate>emptyList());
+                    : source == 1
+                    ? (showPisteNames ? tile.pisteLabels : Collections.<RoadLabelCandidate>emptyList())
+                    : (showLiftNames ? tile.liftLabels : Collections.<RoadLabelCandidate>emptyList());
             for (int i = 0; i < candidates.size(); i++) {
                 RoadLabelCandidate c = candidates.get(i);
                 if (!c.kept(stride) || c.label(stride) == null) {
@@ -442,6 +448,7 @@ public class RoadNameRenderer {
                 return MAX_RANGE_METERS;
             case PATH:
             case PISTE:
+            case LIFT:
                 return 10000;
             default:
                 return 7000;
@@ -457,7 +464,8 @@ public class RoadNameRenderer {
         final List<MapTile> tiles = new ArrayList<>();
         final Map<MapTile, Double> meters = new IdentityHashMap<>();
         for (MapTile tile : getC().mapTileStorage.getMapTiles()) {
-            if (tile.isDisposed() || (tile.roadLabels.isEmpty() && tile.pisteLabels.isEmpty())) {
+            if (tile.isDisposed() || (tile.roadLabels.isEmpty() && tile.pisteLabels.isEmpty()
+                    && tile.liftLabels.isEmpty())) {
                 continue;
             }
             BoundingBox bb = tile.tile.getBoundingBox();
@@ -538,7 +546,8 @@ public class RoadNameRenderer {
         float factor = RoadLabelGeometry.distanceScale(meters / zoom, FULL_SIZE_METERS, MIN_DISTANT_SCALE);
         boolean trail = c.isNumbered();
         boolean plated = c.roadClass != RoadClass.WATER;
-        float baseScale = c.roadClass == RoadClass.PISTE ? pisteScale : trail ? trailScale : roadScale;
+        float baseScale = c.roadClass == RoadClass.PISTE || c.roadClass == RoadClass.LIFT ? pisteScale
+                : trail ? trailScale : roadScale;
         String text = null;
         float tw = 0f, th = 0f, padX = 0f, padY = 0f;
         for (int attempt = 0; attempt < 2 && text == null; attempt++) {
@@ -595,6 +604,7 @@ public class RoadNameRenderer {
         if (plated) {
             RoadStyle colours = P.getRoadStyle();
             int rgba = c.roadClass == RoadClass.PISTE ? pisteRgba(c.attribute)
+                    : c.roadClass == RoadClass.LIFT ? LIFT_PLATE_RGBA
                     : !trail ? colours.color(RoadStyle.Swatch.ROADS)
                     : c.roadClass == RoadClass.TRACK
                     ? colours.color(RoadStyle.Swatch.TRACKS) : colours.trailColor(c.attribute);

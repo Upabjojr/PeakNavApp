@@ -1679,8 +1679,9 @@ class PeakNavRendererTest {
         renderer.capture(above);
         System.out.println("ski slopes above frame: " + above.getAbsolutePath());
 
-        // The runs' names, with the roads' names off so only the pistes' can be counted.
-        renderer.setLabel(PeakNavRenderer.Label.ROAD_NAMES, false).setLabel(PeakNavRenderer.Label.PISTE_NAMES, true);
+        // The runs' names, with the roads' and the lifts' names off so only the pistes' can be counted.
+        renderer.setLabel(PeakNavRenderer.Label.ROAD_NAMES, false).setLabel(PeakNavRenderer.Label.LIFT_NAMES, false)
+                .setLabel(PeakNavRenderer.Label.PISTE_NAMES, true);
         renderer.settle(1500);
         java.util.List<String> pisteNames = renderer.roadNamesDrawn();
         File named = newTempFile("ski-slopes-names.png");
@@ -1690,6 +1691,26 @@ class PeakNavRendererTest {
         renderer.setLabel(PeakNavRenderer.Label.PISTE_NAMES, false).settle(1200);
         assertTrue(renderer.roadNamesDrawn().isEmpty(), "and not when their names are switched off");
         renderer.setLabel(PeakNavRenderer.Label.PISTE_NAMES, true).setLabel(PeakNavRenderer.Label.ROAD_NAMES, true);
+
+        // The lifts: drawn, moving, and named - with the roads' and the runs' names off.
+        renderer.setLabel(PeakNavRenderer.Label.LIFTS, true).setLabel(PeakNavRenderer.Label.LIFT_NAMES, true);
+        int liftTiles = renderer.skiLiftTiles();
+        System.out.println("ski lift tiles: " + liftTiles);
+        assertTrue(liftTiles > 0, "the Zermatt lifts are drawn");
+        renderer.setLabel(PeakNavRenderer.Label.ROAD_NAMES, false).setLabel(PeakNavRenderer.Label.PISTE_NAMES, false);
+        renderer.settle(1500);
+        java.util.List<String> liftNames = renderer.roadNamesDrawn();
+        File lifts = newTempFile("ski-lifts.png");
+        renderer.captureWithUi(lifts);
+        renderer.settle(600);
+        File liftsLater = newTempFile("ski-lifts-later.png");
+        renderer.captureWithUi(liftsLater);
+        System.out.println("ski lift names: " + liftNames + " frames: " + lifts.getAbsolutePath() + " " + liftsLater.getAbsolutePath());
+        assertTrue(!liftNames.isEmpty(), "the lifts in view are named");
+        renderer.setLabel(PeakNavRenderer.Label.LIFT_NAMES, false).settle(1200);
+        assertTrue(renderer.roadNamesDrawn().isEmpty(), "and not when their names are switched off");
+        renderer.setLabel(PeakNavRenderer.Label.LIFT_NAMES, true).setLabel(PeakNavRenderer.Label.PISTE_NAMES, true)
+                .setLabel(PeakNavRenderer.Label.ROAD_NAMES, true);
 
         // The menus: Roads "..." holds roads and paths and ski pistes, each with a "..." of its own.
         StringBuilder menus = new StringBuilder("ski menu frames:");

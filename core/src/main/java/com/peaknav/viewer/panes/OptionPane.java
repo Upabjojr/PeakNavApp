@@ -913,7 +913,7 @@ public class OptionPane {
         return table;
     }
 
-    /** The ski pistes' "..." submenu: their names written along the runs or not, and Back. */
+    /** The ski pistes' "..." submenu: the runs' names, the lifts and their names, and Back. */
     private Table createPistesMenu() {
         final Table table = new Table();
         table.center();
@@ -933,8 +933,30 @@ public class OptionPane {
             openRoadsGroup(); // one level up
         });
 
+        // The lifts: cables with their cabins, chairs and handles moving uphill, and their names.
+        final ImageTextButtonOptionPane checkBoxLifts = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_lifts.png", s("Ski_lifts"), true);
+        checkBoxLifts.addClickListener(() -> changer.execute(() -> {
+            boolean checked = checkBoxLifts.isChecked();
+            P.setLiftsVisible(checked);
+            if (checked) {
+                getC().tileManager.startAerialAndDataRenderExecutors();
+            }
+        }));
+        checkBoxLifts.setProgrammaticChangeEvents(false);
+        roadMenuRefreshers.add(() -> checkBoxLifts.setChecked(P.isLiftsVisible()));
+
+        final ImageTextButtonOptionPane checkBoxLiftNames = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_lifts.png", s("Ski_lift_names"), true);
+        checkBoxLiftNames.addClickListener(() -> changer.execute(
+                () -> P.setLiftLabelsVisible(checkBoxLiftNames.isChecked())));
+        checkBoxLiftNames.setProgrammaticChangeEvents(false);
+        roadMenuRefreshers.add(() -> checkBoxLiftNames.setChecked(P.isLiftLabelsVisible()));
+
         List<Table> rows = new ArrayList<>();
         rows.add(checkBoxNames);
+        rows.add(checkBoxLifts);
+        rows.add(checkBoxLiftNames);
         rows.add(back);
         addButtonsToTable(table, rows, true);
         table.setVisible(false);

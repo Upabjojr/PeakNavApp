@@ -60,7 +60,15 @@ uniform float u_pixelAngle;
 // B the difficulty, 0 blue, 0.5 red, 1 black; A coverage, a ramp across a run's edge and a flat
 // 0.45 inside an area.
 uniform sampler2D u_texturePistes;
-uniform int u_skiSlopesSet;          // radians per pixel; only without screen derivatives
+uniform int u_skiSlopesSet;
+
+// ---- Ski lifts ----------------------------------------------------------------------------------
+// LiftRasterizer's texture: RG the travel phase along the nearest lift, one turn every 160 m,
+// growing uphill, as sine and cosine; B the kind - cable car, gondola, chairlift, drag lift, magic
+// carpet - each in the middle of its fifth; A a distance field, 1 on the line and 0 at the edge of
+// its reach (10 m, or a few texels far off).
+uniform sampler2D u_textureLifts;
+uniform int u_liftsSet;          // radians per pixel; only without screen derivatives
 
 // Must match RoadTileRasterizer.
 const float ROAD_BAND = 8.0;
@@ -347,6 +355,91 @@ void main() {
             float k = cov * 0.9;
             gl_FragColor = vec4(mix(gl_FragColor.rgb, pc, k), gl_FragColor.a);
             over(roadsCol, roadsCov, pc, k);
+        }
+    }
+
+    // Ski lifts, over the runs: a cable with carriers travelling uphill, each kind in its own way.
+    //   cable car   - a dark cable, big red cabins, few and far between;
+    //   gondola     - a dark cable, orange cabins, closer together;
+    //   chairlift   - a dark cable, small white chairs in a quick procession;
+    //   drag lift   - a dashed ground line, yellow handles;
+    //   magic carpet - a short blue belt of moving stripes.
+    // Every carrier has a dark outline, and when they get too small to tell apart they merge into
+    // the plain cable rather than shimmer.
+    if (u_liftsSet == 1) {
+        vec4 lf = texture2D(u_textureLifts, v_texCoord0);
+        if (lf.a > 0.01) {
+            float kind = floor(clamp(lf.b, 0.0, 0.999) * 5.0);
+            vec2 lsc = lf.rg * 2.0 - 1.0;
+            float turn = atan(lsc.x, lsc.y) * 0.15915494;
+            float across = 1.0 - lf.a;                  // 0 on the line, 1 at the edge of its reach
+            // Per kind: carriers per 160 m, how big they are on the ground (metres from their centre),
+            // how fast they climb (turns of their own spacing a second), their colour, and the
+            // cable's width (a fraction of the field's reach). Cabins are square, chairs and drag
+            // handles round points; a magic carpet is a belt of stripes.
+            float density = 8.0, radius = 3.2, speed = 0.5, cableWidth = 0.12;
+            float square = 0.0;
+            vec3 carrier = vec3(0.97, 0.97, 0.95);
+            if (kind < 0.5) {            // cable car
+                density = 1.0; radius = 7.0; speed = 0.12; square = 1.0;
+                carrier = vec3(0.86, 0.14, 0.12);
+            } else if (kind < 1.5) {     // gondola
+                density = 4.0; radius = 4.6; speed = 0.35; square = 1.0;
+                carrier = vec3(1.0, 0.62, 0.08);
+            } else if (kind < 2.5) {     // chairlift
+                density = 8.0; radius = 3.2; speed = 0.5;
+            } else if (kind < 3.5) {     // drag lift
+                density = 10.0; radius = 2.6; speed = 0.6; cableWidth = 0.1;
+                carrier = vec3(1.0, 0.86, 0.12);
+            } else {                     // magic carpet
+                density = 32.0; radius = 2.0; speed = 1.2; cableWidth = 0.34;
+                carrier = vec3(0.20, 0.55, 0.96);
+            }
+            float cycles = turn * density;
+            float m = fract(cycles - u_time * speed);
+            float period = 160.0 / density;              // metres between carriers
+            float alongM = (m - 0.5) * period;           // from the nearest carrier's centre
+            float acrossM = across * 10.0;               // LiftRasterizer.REACH_METRES
+#ifdef ROADS_DERIVATIVES
+            float fwA = max(fwidth(lf.a), 1e-3);
+            float cpp = min(fwidth(cycles), fwidth(fract(cycles + 0.5)));
+            // Metres per pixel, from quantities that do not jump where the pattern wraps.
+            float fwM = max(max(fwidth(acrossM), cpp * period), 1e-3);
+#else
+            float fwA = 0.08;
+            float cpp = 0.05;
+            float fwM = 1.0;
+#endif
+            float lineLightLift = mix(1.0, light / flatLight, LINE_RELIEF);
+            // Merge the carriers into the cable when they get finer than a few pixels.
+            float resolved = 1.0 - smoothstep(0.12, 0.3, cpp);
+            float cableCov = clamp((cableWidth - across) / fwA + 0.5, 0.0, 1.0);
+            vec3 cableCol = vec3(0.12, 0.13, 0.15);
+            if (kind > 2.5 && kind < 3.5) {
+                // A drag lift runs on the ground: its line is dashed.
+                float dash = clamp((0.25 - abs(fract(cycles * 2.0 + 0.25) - 0.5)) / max(cpp * 2.0, 1e-4) + 0.5, 0.0, 1.0);
+                cableCov *= mix(0.85, dash, resolved);
+            }
+            float bodyCov;
+            float rimCov;
+            if (kind > 3.5) {
+                cableCol = mix(carrier, vec3(0.9), 0.5);   // the belt itself, pale
+                float stripe = clamp((0.25 - abs(m - 0.5)) / max(cpp, 1e-4) + 0.5, 0.0, 1.0) * resolved;
+                bodyCov = stripe * clamp((0.3 - across) / fwA + 0.5, 0.0, 1.0);
+                rimCov = 0.0;
+            } else {
+                // A point or a cabin: round, or square for the cabins, a dark rim around it.
+                float d = mix(length(vec2(alongM, acrossM)), max(abs(alongM), abs(acrossM)), square);
+                bodyCov = clamp((radius - d) / fwM + 0.5, 0.0, 1.0) * resolved;
+                rimCov = clamp((radius + 1.2 - d) / fwM + 0.5, 0.0, 1.0) * resolved;
+            }
+            vec3 col = gl_FragColor.rgb;
+            col = mix(col, cableCol * lineLightLift, cableCov * 0.95);
+            col = mix(col, vec3(0.06, 0.06, 0.07), rimCov);
+            col = mix(col, carrier * lineLightLift, bodyCov);
+            float k = max(cableCov * 0.95, max(rimCov, bodyCov));
+            gl_FragColor = vec4(col, gl_FragColor.a);
+            over(roadsCol, roadsCov, col, k);
         }
     }
 

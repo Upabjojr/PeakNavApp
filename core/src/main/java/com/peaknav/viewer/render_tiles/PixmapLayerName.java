@@ -10,4 +10,6 @@ public enum PixmapLayerName {
     GPX_PATH,
     /** The roads' aux texture: trail dash phase and difficulties (see RoadTileRasterizer). */
     ROADS_AUX,
+    /** The ski lifts, drawn with the ski slopes (see LiftRasterizer). */
+    SKI_LIFTS,
 }

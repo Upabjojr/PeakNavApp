@@ -28,6 +28,8 @@ public final class RoadLabelPlanner {
     public static final double TRAIL_SPACING_METERS = 150.0;
     /** Distance between two spots along a ski run, at the highest label frequency. */
     public static final double PISTE_SPACING_METERS = 300.0;
+    /** Distance between two spots along a ski lift, at the highest label frequency. */
+    public static final double LIFT_SPACING_METERS = 400.0;
     /**
      * Reach of the stretch around an anchor, each way: long enough to carry a trail's number and
      * name together without the renderer judging it seen end-on.
@@ -43,11 +45,22 @@ public final class RoadLabelPlanner {
     private RoadLabelPlanner() {
     }
 
-    /** The spots for roads, tracks, trails and rivers; ski runs are left to {@link #planPistes}. */
+    /** The spots for roads, tracks, trails and rivers; ski runs and lifts are left to their own planners. */
     public static List<RoadLabelCandidate> plan(List<RoadFeature> features,
                                                 double north, double south,
                                                 double east, double west) {
-        return plan(features, north, south, east, west, false);
+        return plan(features, north, south, east, west, null);
+    }
+
+    /**
+     * The spots for ski lifts ({@link RoadClass#LIFT} features, their attribute the lift's kind):
+     * named like a run, with the lift's number and name alternating, a spot every
+     * {@link #LIFT_SPACING_METERS}.
+     */
+    public static List<RoadLabelCandidate> planLifts(List<RoadFeature> features,
+                                                     double north, double south,
+                                                     double east, double west) {
+        return plan(features, north, south, east, west, RoadClass.LIFT);
     }
 
     /**
@@ -58,20 +71,22 @@ public final class RoadLabelPlanner {
     public static List<RoadLabelCandidate> planPistes(List<RoadFeature> features,
                                                       double north, double south,
                                                       double east, double west) {
-        return plan(features, north, south, east, west, true);
+        return plan(features, north, south, east, west, RoadClass.PISTE);
     }
 
+    /** @param ski {@link RoadClass#PISTE} or {@link RoadClass#LIFT} for those alone; null for everything else */
     private static List<RoadLabelCandidate> plan(List<RoadFeature> features,
                                                  double north, double south,
-                                                 double east, double west, boolean pistes) {
+                                                 double east, double west, RoadClass ski) {
         List<RoadLabelCandidate> out = new ArrayList<>();
         for (RoadFeature f : features) {
-            boolean piste = f.roadClass == RoadClass.PISTE;
-            if (piste != pistes) {
+            boolean skiFeature = f.roadClass == RoadClass.PISTE || f.roadClass == RoadClass.LIFT;
+            if (ski == null ? skiFeature : f.roadClass != ski) {
                 continue;
             }
+            boolean piste = f.roadClass == RoadClass.PISTE;
             String name = blankToNull(f.name);
-            boolean trail = f.roadClass == RoadClass.PATH || f.roadClass == RoadClass.TRACK || piste;
+            boolean trail = f.roadClass == RoadClass.PATH || f.roadClass == RoadClass.TRACK || skiFeature;
             String number = trail ? blankToNull(f.number) : null;
             if ((name == null && number == null) || f.area || f.size() < 2) {
                 continue;
@@ -81,7 +96,8 @@ public final class RoadLabelPlanner {
             if (length < MIN_WAY_METERS) {
                 continue;
             }
-            double spacing = piste ? PISTE_SPACING_METERS : trail ? TRAIL_SPACING_METERS : ROAD_SPACING_METERS;
+            double spacing = f.roadClass == RoadClass.LIFT ? LIFT_SPACING_METERS
+                    : piste ? PISTE_SPACING_METERS : trail ? TRAIL_SPACING_METERS : ROAD_SPACING_METERS;
             // A hair of slack, so a way measured a rounding error short of a whole number of
             // spacings still gets the spot its length is worth.
             int count = Math.max(1, (int) Math.floor(length / spacing + 1e-6));

@@ -1183,6 +1183,19 @@ public final class PeakNavRenderer implements AutoCloseable {
         return out;
     }
 
+    /** How many live tiles have ski lifts drawn on them (a texture, not drawn empty). */
+    public int skiLiftTiles() {
+        final int[] out = new int[1];
+        onRenderThread(() -> {
+            for (com.peaknav.viewer.tiles.MapTile tile : getC().mapTileStorage.getMapTiles()) {
+                if (!tile.isDisposed() && tile.hasLayerTexture(com.peaknav.viewer.render_tiles.PixmapLayerName.SKI_LIFTS)) {
+                    out[0]++;
+                }
+            }
+        });
+        return out[0];
+    }
+
     /** How many live tiles have ski slopes drawn on them (a texture, not drawn empty). */
     public int skiSlopeTiles() {
         final int[] out = new int[1];
@@ -1217,6 +1230,8 @@ public final class PeakNavRenderer implements AutoCloseable {
             states.put(Label.ROADS, P.isViewerLayerVisibleBaseRoads());
             states.put(Label.PISTES, P.isSkiSlopesVisible());
             states.put(Label.PISTE_NAMES, P.isPisteLabelsVisible());
+            states.put(Label.LIFTS, P.isLiftsVisible());
+            states.put(Label.LIFT_NAMES, P.isLiftLabelsVisible());
             states.put(Label.NAVIGATION, P.getLayerVisibleNavigation());
             states.put(Label.ROAD_NAMES, P.getRoadStyle().isRoadNames());
         });
@@ -1229,6 +1244,8 @@ public final class PeakNavRenderer implements AutoCloseable {
         ROADS, PISTES, NAVIGATION,
         /** Ski runs' names, drawn along them while the ski slopes are shown. */
         PISTE_NAMES,
+        /** Ski lifts, their carriers moving uphill; and their names. */
+        LIFTS, LIFT_NAMES,
         /** Street, track and trail names, drawn along their ways. */
         ROAD_NAMES
     }
@@ -1247,6 +1264,8 @@ public final class PeakNavRenderer implements AutoCloseable {
                 case ROADS:           P.setViewerLayerVisibleBaseRoads(visible); break;
                 case PISTES:          P.setPisteVisible(visible); break;
                 case PISTE_NAMES:     P.setPisteLabelsVisible(visible); break;
+                case LIFTS:           P.setLiftsVisible(visible); break;
+                case LIFT_NAMES:      P.setLiftLabelsVisible(visible); break;
                 case NAVIGATION:      P.setLayerVisibleNavigation(visible); break;
                 case ROAD_NAMES:      P.getRoadStyle().setRoadNames(visible); break;
                 default: throw new IllegalArgumentException("unhandled label: " + label);

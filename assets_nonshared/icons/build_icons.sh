@@ -26,6 +26,7 @@ ICONS=(
   "icon_checkbox_satellite:128:128"
   "icon_checkbox_roads:128:128"
   "icon_checkbox_ski:128:128"
+  "icon_checkbox_lifts:128:128"
   "icon_checkbox_place_names:128:128"
   "icon_checkbox_alpine_huts:145:134"
   "icon_checkbox_peak_names:128:128"

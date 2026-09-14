@@ -74,7 +74,7 @@ public final class RoadLabelCandidate {
 
     /** Trails, tracks and ski runs: numbered, their number and name alternating along the way. */
     public boolean isNumbered() {
-        return isTrail() || roadClass == RoadClass.PISTE;
+        return isTrail() || roadClass == RoadClass.PISTE || roadClass == RoadClass.LIFT;
     }
 
     /** Whether a frequency keeping every {@code stride}-th spot keeps this one. */
@@ -144,6 +144,9 @@ public final class RoadLabelCandidate {
                 break;
             case PISTE:
                 base = 2.5f;
+                break;
+            case LIFT:
+                base = 2.6f;
                 break;
             default:
                 base = 1f;

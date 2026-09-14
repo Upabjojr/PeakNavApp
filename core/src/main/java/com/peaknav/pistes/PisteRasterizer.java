@@ -343,7 +343,7 @@ public final class PisteRasterizer {
      * difficulty 0 (blue) and phase 0, a black run's rim would blend through red and blue, and
      * the flow would jitter. With the halo both sides of the edge agree.
      */
-    private static void dilate(float[] cov, float[] phase, float[] difficulty, boolean[] directed, int res) {
+    static void dilate(float[] cov, float[] phase, float[] difficulty, boolean[] directed, int res) {
         int n = res * res;
         for (int i = 0; i < n; i++) {
             if (cov[i] <= 0f) {

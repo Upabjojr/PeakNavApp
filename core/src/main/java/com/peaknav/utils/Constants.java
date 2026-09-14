@@ -18,6 +18,8 @@ public interface Constants {
         String VIEWER_SHOW_LAKES = "viewerShowLakes";
         String VIEWER_SHOW_PISTES = "viewerShowPistes";
         String VIEWER_SHOW_PISTE_LABELS = "viewerShowPisteLabels";
+        String VIEWER_SHOW_LIFTS = "viewerShowLifts";
+        String VIEWER_SHOW_LIFT_LABELS = "viewerShowLiftLabels";
         String VIEWER_LARGE_FONTS = "viewerLargeFonts";
         String VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER = "viewerLayerVisibleUnderlayLayer";
         String VIEWER_LAYER_VISIBLE_BASE_ROADS = "viewerLayerVisibleBaseRoads";

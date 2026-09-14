@@ -57,8 +57,13 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     sine and cosine (oriented by the loaded terrain's heights at its ends, else by the way's
     direction), blue/red/black difficulty, coverage - in `TileRendererRunnerPistes`, on the
     roads' executor; the ski slopes block of `assets/fragment_shader.glsl` paints fat runs with a
-    band flowing downhill on `u_time`, and piste areas as a translucent fill. Switched by "Ski
-    pistes" in the Roads "..." submenu (`P.isSkiSlopesVisible()`); independent of
+    band flowing downhill on `u_time`, and piste areas as a translucent fill. `LiftRasterizer`
+    writes the `SKI_LIFTS` texture from the same ways - travel phase uphill, the kind of lift, a
+    distance field across the line - and the lifts block draws each kind its own way: red cabins
+    for cable cars, orange for gondolas, white chairs, yellow handles on a dashed line for drag
+    lifts, blue stripes for magic carpets. Runs and lifts are labelled through `RoadLabelPlanner.
+    planPistes`/`planLifts` and `RoadNameRenderer`. Switched in the Roads "..." submenu: "Ski
+    pistes" (`P.isSkiSlopesVisible()`), and in its "..." piste names, lifts and lift names; independent of
     `PISTES_IN_MAP_DATA`, which still gates the pistes the road textures would carry.
   - `roads/` — roads, tracks, trails and pistes, drawn by the GPU on every platform.
     `RoadClassifier` sorts the OSM ways of `PBF_HIGHWAYS` into classes (road rank, SAC trail
