@@ -72,6 +72,11 @@ public final class RoadLabelCandidate {
         return roadClass == RoadClass.PATH || roadClass == RoadClass.TRACK;
     }
 
+    /** Trails, tracks and ski runs: numbered, their number and name alternating along the way. */
+    public boolean isNumbered() {
+        return isTrail() || roadClass == RoadClass.PISTE;
+    }
+
     /** Whether a frequency keeping every {@code stride}-th spot keeps this one. */
     public boolean kept(int stride) {
         int s = Math.max(1, stride);
@@ -97,7 +102,7 @@ public final class RoadLabelCandidate {
         if (!kept(stride)) {
             return null;
         }
-        if (!isTrail()) {
+        if (!isNumbered()) {
             return name;
         }
         if (nameSpot(stride) && name != null) {
@@ -108,7 +113,7 @@ public final class RoadLabelCandidate {
 
     /** Whether what is written here at this stride is a trail's number alone. */
     public boolean isNumberOnly(int stride) {
-        return isTrail() && kept(stride) && number != null && !(nameSpot(stride) && name != null);
+        return isNumbered() && kept(stride) && number != null && !(nameSpot(stride) && name != null);
     }
 
     /**
@@ -117,7 +122,7 @@ public final class RoadLabelCandidate {
      * still shows. Null otherwise.
      */
     public String shortText(int stride) {
-        return isTrail() && kept(stride) && nameSpot(stride) && name != null ? number : null;
+        return isNumbered() && kept(stride) && nameSpot(stride) && name != null ? number : null;
     }
 
     /**
@@ -136,6 +141,9 @@ public final class RoadLabelCandidate {
                 break;
             case PATH:
                 base = 2f;
+                break;
+            case PISTE:
+                base = 2.5f;
                 break;
             default:
                 base = 1f;

@@ -41,6 +41,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_MOUNTAIN_RANGE
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_LAKES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PEAKS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PISTES;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PISTE_LABELS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PLACE_NAMES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_UNIT_SYSTEM;
 import static com.peaknav.viewer.render_tiles.PixmapLayerName.BASE_ROADS;
@@ -68,6 +69,7 @@ public class PreferencesManager {
     private final Preferences preferences;
 
     private boolean pisteVisible;
+    private boolean pisteLabelsVisible;
     private boolean peakVisible;
     private boolean visiblePlaceNames;
     private boolean visibleAlpineHuts;
@@ -220,6 +222,7 @@ public class PreferencesManager {
         visibleMountainRanges = preferences.getBoolean(VIEWER_SHOW_MOUNTAIN_RANGES, true);
         visibleLakes = preferences.getBoolean(VIEWER_SHOW_LAKES, true);
         pisteVisible = preferences.getBoolean(VIEWER_SHOW_PISTES, true);
+        pisteLabelsVisible = preferences.getBoolean(VIEWER_SHOW_PISTE_LABELS, true);
         layerVisibleUnderlayLayer = preferences.getBoolean(VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER, true);
         sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
         horizonCompass = preferences.getBoolean(VIEWER_HORIZON_COMPASS, true);
@@ -327,6 +330,17 @@ public class PreferencesManager {
      */
     public boolean isSkiSlopesVisible() {
         return pisteVisible;
+    }
+
+    /** Whether the ski slopes viewer writes the runs' names along them (while it is on). */
+    public boolean isPisteLabelsVisible() {
+        return pisteLabelsVisible;
+    }
+
+    public void setPisteLabelsVisible(boolean visible) {
+        pisteLabelsVisible = visible;
+        preferences.putBoolean(VIEWER_SHOW_PISTE_LABELS, visible);
+        preferences.flush();
     }
 
     public void setPisteVisible(boolean visible) {

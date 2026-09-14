@@ -314,8 +314,7 @@ void main() {
     }
 
     // Ski slopes: fat runs in the colour of their difficulty, with a brighter band flowing down each
-    // one at the pace of the GPX flow, and a rim - dark around blue and red, light around black -
-    // so a run keeps its edge on snow, forest and rock alike. A piste area is a translucent fill
+    // one at the pace of the GPX flow, and a darker rim. A piste area is a translucent fill
     // without a flow. Over the roads, under a GPX track.
     if (u_skiSlopesSet == 1) {
         vec4 ps = texture2D(u_texturePistes, v_texCoord0);
@@ -340,9 +339,10 @@ void main() {
             float m = fract(phase - u_time * 0.5);
             float band = smoothstep(0.5, 0.92, m) * (1.0 - smoothstep(0.92, 1.0, m)) * run;
             float isBlack = 1.0 - step(0.2, dot(base, vec3(0.2126, 0.7152, 0.0722)));
-            vec3 glow = mix(mix(base, vec3(1.0), 0.38), vec3(0.5), isBlack);
+            // A black run is black through and through: its flowing band only a dark grey, its rim black.
+            vec3 glow = mix(mix(base, vec3(1.0), 0.38), vec3(0.3), isBlack);
             vec3 pc = mix(base, glow, band) * mix(1.0, light / flatLight, LINE_RELIEF);
-            vec3 rim = mix(base * 0.35, vec3(0.9), isBlack);
+            vec3 rim = base * 0.35;
             pc = mix(rim, pc, mix(1.0, inner, run));
             float k = cov * 0.9;
             gl_FragColor = vec4(mix(gl_FragColor.rgb, pc, k), gl_FragColor.a);

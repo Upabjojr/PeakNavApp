@@ -7,13 +7,15 @@ import com.peaknav.geo.BoundingBox;
 import com.peaknav.pbf.MapReadResult;
 import com.peaknav.pbf.PbfLayer;
 import com.peaknav.pistes.PisteRasterizer;
+import com.peaknav.roads.RoadLabelPlanner;
 import com.peaknav.viewer.PhotoSkylineAligner;
 import com.peaknav.viewer.tiles.MapTile;
 
 /**
  * Draws one tile's ski runs for the ski slopes viewer: reads the downhill pistes from the
  * {@link PbfLayer#PBF_PISTES} data and rasterizes them (see {@link PisteRasterizer}) into the
- * {@link PixmapLayerName#SKI_SLOPES} texture the terrain shader paints and animates.
+ * {@link PixmapLayerName#SKI_SLOPES} texture the terrain shader paints and animates, and plans
+ * where the runs' names may be written (see RoadNameRenderer).
  */
 public class TileRendererRunnerPistes extends TileRendererRunner {
 
@@ -44,6 +46,9 @@ public class TileRendererRunnerPistes extends TileRendererRunner {
         }
         BoundingBox bb = tile.getBoundingBox();
         MapReadResult data = tileRenderer.pbfMapDataStore.readMapDataPadded(tile, READ_PAD, PbfLayer.PBF_PISTES);
+        // Where the runs' names may go, whether or not they are shown: the switch acts at once.
+        mapTile.pisteLabels = RoadLabelPlanner.planPistes(PisteRasterizer.labelFeatures(data.ways),
+                bb.maxLatitude, bb.minLatitude, bb.maxLongitude, bb.minLongitude);
         PisteRasterizer.Result result = PisteRasterizer.rasterize(data.ways,
                 bb.maxLatitude, bb.minLatitude, bb.maxLongitude, bb.minLongitude, RES,
                 // Downhill from the loaded terrain; NaN where it is not loaded, and then the way's direction.

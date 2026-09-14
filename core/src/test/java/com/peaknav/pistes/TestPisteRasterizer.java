@@ -76,6 +76,14 @@ public class TestPisteRasterizer {
         double tenMetres = 10 / 111320.0, thirtyMetres = 30 / 111320.0;
         assertEquals(255, u(r.rgba[texel(r, lat + tenMetres, 11.005) + 3]), "fat");
         assertEquals(0, u(r.rgba[texel(r, lat + thirtyMetres, 11.005) + 3]));
+        // Just past the edge, uncovered but still black: filtering across the edge stays black.
+        // In texels: this box's texels are taller than they are wide, and the width is set east-west.
+        double rows = PisteRasterizer.HALF_WIDTH_METRES / ((E - W) * 111320.0 * Math.cos(Math.toRadians(lat)) / RES)
+                + PisteRasterizer.FEATHER_TEXELS + 1.0;
+        double edge = rows / RES * (N - S);
+        int outside = texel(r, lat + edge, 11.005);
+        assertEquals(0, u(r.rgba[outside + 3]), "past the edge");
+        assertEquals(255, u(r.rgba[outside + 2]), "the halo keeps the run's difficulty");
 
         // Along the run the phase grows downhill, eastwards: 20 m further on, about a fifth of a band.
         double twentyMetres = 20 / (111320.0 * Math.cos(Math.toRadians(lat)));
@@ -117,5 +125,31 @@ public class TestPisteRasterizer {
                 way(new String[]{"piste:type", "nordic", "piste:difficulty", "easy"}, 46.003, 11.001, 46.003, 11.009));
         assertTrue(PisteRasterizer.rasterize(ways, N, S, E, W, RES, null).empty);
         assertTrue(PisteRasterizer.rasterize(new ArrayList<Way>(), N, S, E, W, RES, null).empty);
+    }
+
+    @Test
+    void runsAreNamedLikeTrails() {
+        // A black run of about 690 m, named and numbered; a blue area; a lift.
+        Way run = way(new String[]{"piste:type", "downhill", "piste:difficulty", "advanced",
+                "piste:name", "Kelle", "piste:ref", "7"}, 46.002, 11.001, 46.002, 11.010);
+        Way area = way(new String[]{"piste:type", "downhill", "piste:difficulty", "easy", "area", "yes", "name", "Wiese"},
+                46.004, 11.002, 46.004, 11.006, 46.008, 11.006, 46.004, 11.002);
+        Way lift = way(new String[]{"aerialway", "chair_lift", "name", "Lift"}, 46.001, 11.001, 46.009, 11.009);
+        java.util.List<com.peaknav.roads.RoadFeature> features = PisteRasterizer.labelFeatures(Arrays.asList(run, area, lift));
+        assertEquals(2, features.size(), "the run and the area, not the lift");
+        java.util.List<com.peaknav.roads.RoadLabelCandidate> spots =
+                com.peaknav.roads.RoadLabelPlanner.planPistes(features, N, S, E, W);
+        assertTrue(spots.size() >= 2, "a spot every 300 m along the run: " + spots.size());
+        java.util.Set<String> texts = new java.util.HashSet<>();
+        for (com.peaknav.roads.RoadLabelCandidate c : spots) {
+            assertEquals(com.peaknav.roads.RoadClass.PISTE, c.roadClass);
+            assertEquals(PisteRasterizer.BLACK, c.attribute, 1e-6, "its plate is black");
+            texts.add(c.label(1));
+        }
+        assertTrue(texts.contains("7" + com.peaknav.roads.RoadLabelPlanner.NUMBER_NAME_SEPARATOR + "Kelle"),
+                "number and name together: " + texts);
+        assertTrue(texts.contains("7"), "and the number alone between: " + texts);
+        assertTrue(com.peaknav.roads.RoadLabelPlanner.plan(features, N, S, E, W).isEmpty(),
+                "the roads' planner leaves the runs to their own");
     }
 }

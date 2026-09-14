@@ -300,6 +300,8 @@ public class MapTile {
      * reads it without a lock.
      */
     public volatile List<RoadLabelCandidate> roadLabels = Collections.emptyList();
+    /** Where this tile's ski runs may have their names written, set when its ski slopes are drawn. */
+    public volatile List<RoadLabelCandidate> pisteLabels = Collections.emptyList();
     /** Ground metres per texel of the road distance texture, for the shader's line widths. */
     private volatile float roadMetersPerTexel = 1f;
 

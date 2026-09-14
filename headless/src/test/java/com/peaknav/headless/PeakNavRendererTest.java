@@ -1679,6 +1679,29 @@ class PeakNavRendererTest {
         renderer.capture(above);
         System.out.println("ski slopes above frame: " + above.getAbsolutePath());
 
+        // The runs' names, with the roads' names off so only the pistes' can be counted.
+        renderer.setLabel(PeakNavRenderer.Label.ROAD_NAMES, false).setLabel(PeakNavRenderer.Label.PISTE_NAMES, true);
+        renderer.settle(1500);
+        java.util.List<String> pisteNames = renderer.roadNamesDrawn();
+        File named = newTempFile("ski-slopes-names.png");
+        renderer.captureWithUi(named);
+        System.out.println("ski slope names: " + pisteNames + " frame: " + named.getAbsolutePath());
+        assertTrue(!pisteNames.isEmpty(), "the runs in view are named");
+        renderer.setLabel(PeakNavRenderer.Label.PISTE_NAMES, false).settle(1200);
+        assertTrue(renderer.roadNamesDrawn().isEmpty(), "and not when their names are switched off");
+        renderer.setLabel(PeakNavRenderer.Label.PISTE_NAMES, true).setLabel(PeakNavRenderer.Label.ROAD_NAMES, true);
+
+        // The menus: Roads "..." holds roads and paths and ski pistes, each with a "..." of its own.
+        StringBuilder menus = new StringBuilder("ski menu frames:");
+        for (int level = 1; level <= 3; level++) {
+            renderer.openRoadsMenu(level).settle(400);
+            File menu = newTempFile("roads-menu-" + level + ".png");
+            renderer.captureWithUi(menu);
+            menus.append(' ').append(menu.getAbsolutePath());
+        }
+        renderer.setOptionsPane(false);
+        System.out.println(menus);
+
         renderer.setLabel(PeakNavRenderer.Label.PISTES, false).settle(500);
         File off = newTempFile("ski-slopes-off.png");
         renderer.capture(off);

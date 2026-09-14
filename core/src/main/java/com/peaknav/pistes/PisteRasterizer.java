@@ -3,7 +3,10 @@ package com.peaknav.pistes;
 import com.peaknav.geo.LatLong;
 import com.peaknav.pbf.Tag;
 import com.peaknav.pbf.Way;
+import com.peaknav.roads.RoadClass;
+import com.peaknav.roads.RoadFeature;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -92,6 +95,50 @@ public final class PisteRasterizer {
             default:
                 return RED;
         }
+    }
+
+    /**
+     * The downhill runs among {@code ways} as features for the label planner
+     * ({@code RoadLabelPlanner.planPistes}): a {@link RoadClass#PISTE} each, its attribute the
+     * difficulty code, named from {@code name} or else {@code piste:name}, numbered from
+     * {@code piste:ref} or else {@code ref}. Areas are kept but marked, and are not labelled.
+     */
+    public static List<RoadFeature> labelFeatures(List<Way> ways) {
+        List<RoadFeature> out = new ArrayList<>();
+        if (ways == null) {
+            return out;
+        }
+        for (Way way : ways) {
+            if (way == null || way.latLongs == null) {
+                continue;
+            }
+            Float grade = difficultyOf(way.tags);
+            if (grade == null) {
+                continue;
+            }
+            String name = value(way.tags, "name");
+            if (name == null) {
+                name = value(way.tags, "piste:name");
+            }
+            String number = value(way.tags, "piste:ref");
+            if (number == null) {
+                number = value(way.tags, "ref");
+            }
+            boolean areaTagged = "yes".equalsIgnoreCase(value(way.tags, "area"));
+            for (LatLong[] line : way.latLongs) {
+                if (line == null || line.length < 2 || hasNull(line)) {
+                    continue;
+                }
+                double[] lat = new double[line.length], lon = new double[line.length];
+                for (int i = 0; i < line.length; i++) {
+                    lat[i] = line[i].latitude;
+                    lon[i] = line[i].longitude;
+                }
+                boolean closed = lat[0] == lat[lat.length - 1] && lon[0] == lon[lon.length - 1];
+                out.add(new RoadFeature(RoadClass.PISTE, grade, lat, lon, closed && areaTagged, name, number));
+            }
+        }
+        return out;
     }
 
     /**
@@ -258,11 +305,15 @@ public final class PisteRasterizer {
         return wrote;
     }
 
+    /** Texels beyond a run's or an area's edge that are given its difficulty and phase, uncovered. */
+    static final int HALO_TEXELS = 2;
+
     private static byte[] encode(float[] cov, float[] phase, float[] difficulty, boolean[] directed, int res) {
+        dilate(cov, phase, difficulty, directed, res);
         byte[] out = new byte[res * res * 4];
         for (int i = 0; i < res * res; i++) {
             float c = cov[i];
-            if (c <= 0f) {
+            if (c <= 0f && !halo(difficulty, i)) {
                 continue;
             }
             int o = i * 4;
@@ -275,9 +326,56 @@ public final class PisteRasterizer {
                 out[o + 1] = unorm(0.5f);
             }
             out[o + 2] = unorm(difficulty[i]);
-            out[o + 3] = unorm(Math.min(1f, c));
+            out[o + 3] = unorm(Math.max(0f, Math.min(1f, c)));
         }
         return out;
+    }
+
+    /** Marks a halo texel: its coverage stays 0, and a negative difficulty stands for "none". */
+    private static boolean halo(float[] difficulty, int i) {
+        return difficulty[i] >= 0f;
+    }
+
+    /**
+     * Spreads each covered texel's difficulty and phase into the uncovered texels around it, a
+     * texel at a time, {@link #HALO_TEXELS} times. The texture is filtered linearly, and at a run's
+     * edge the shader samples between a covered texel and an empty one: were the empty one left at
+     * difficulty 0 (blue) and phase 0, a black run's rim would blend through red and blue, and
+     * the flow would jitter. With the halo both sides of the edge agree.
+     */
+    private static void dilate(float[] cov, float[] phase, float[] difficulty, boolean[] directed, int res) {
+        int n = res * res;
+        for (int i = 0; i < n; i++) {
+            if (cov[i] <= 0f) {
+                difficulty[i] = -1f;
+            }
+        }
+        float[] nextDifficulty = new float[n];
+        for (int pass = 0; pass < HALO_TEXELS; pass++) {
+            System.arraycopy(difficulty, 0, nextDifficulty, 0, n);
+            for (int y = 0; y < res; y++) {
+                for (int x = 0; x < res; x++) {
+                    int i = y * res + x;
+                    if (difficulty[i] >= 0f) {
+                        continue;
+                    }
+                    for (int k = 0; k < 4; k++) {
+                        int nx = x + (k == 0 ? 1 : k == 1 ? -1 : 0), ny = y + (k == 2 ? 1 : k == 3 ? -1 : 0);
+                        if (nx < 0 || ny < 0 || nx >= res || ny >= res) {
+                            continue;
+                        }
+                        int j = ny * res + nx;
+                        if (difficulty[j] >= 0f) {
+                            nextDifficulty[i] = difficulty[j];
+                            phase[i] = phase[j];
+                            directed[i] = directed[j];
+                            break;
+                        }
+                    }
+                }
+            }
+            System.arraycopy(nextDifficulty, 0, difficulty, 0, n);
+        }
     }
 
     private static boolean hasNull(LatLong[] line) {

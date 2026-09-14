@@ -1216,6 +1216,7 @@ public final class PeakNavRenderer implements AutoCloseable {
             states.put(Label.ALPINE_HUTS, P.isVisibleAlpineHuts());
             states.put(Label.ROADS, P.isViewerLayerVisibleBaseRoads());
             states.put(Label.PISTES, P.isSkiSlopesVisible());
+            states.put(Label.PISTE_NAMES, P.isPisteLabelsVisible());
             states.put(Label.NAVIGATION, P.getLayerVisibleNavigation());
             states.put(Label.ROAD_NAMES, P.getRoadStyle().isRoadNames());
         });
@@ -1226,6 +1227,8 @@ public final class PeakNavRenderer implements AutoCloseable {
     public enum Label {
         PEAKS, PLACE_NAMES, CITIES, MOUNTAIN_RANGES, ISLANDS, LAKES, ALPINE_HUTS,
         ROADS, PISTES, NAVIGATION,
+        /** Ski runs' names, drawn along them while the ski slopes are shown. */
+        PISTE_NAMES,
         /** Street, track and trail names, drawn along their ways. */
         ROAD_NAMES
     }
@@ -1243,6 +1246,7 @@ public final class PeakNavRenderer implements AutoCloseable {
                 case ALPINE_HUTS:     P.setVisibleAlpineHuts(visible); break;
                 case ROADS:           P.setViewerLayerVisibleBaseRoads(visible); break;
                 case PISTES:          P.setPisteVisible(visible); break;
+                case PISTE_NAMES:     P.setPisteLabelsVisible(visible); break;
                 case NAVIGATION:      P.setLayerVisibleNavigation(visible); break;
                 case ROAD_NAMES:      P.getRoadStyle().setRoadNames(visible); break;
                 default: throw new IllegalArgumentException("unhandled label: " + label);
@@ -1677,6 +1681,22 @@ public final class PeakNavRenderer implements AutoCloseable {
                 mapApp.mapViewerScreen.optionPane.show();
             } else {
                 mapApp.mapViewerScreen.optionPane.hide();
+            }
+        });
+        return this;
+    }
+
+    /** The roads menus, as their "..." buttons open them: 1 roads and pistes, 2 the roads' style, 3 the pistes'. */
+    public PeakNavRenderer openRoadsMenu(final int level) {
+        onRenderThread(() -> {
+            com.peaknav.viewer.panes.OptionPane pane = mapApp.mapViewerScreen.optionPane;
+            pane.show();
+            if (level == 2) {
+                pane.openRoadsStyleSubmenu();
+            } else if (level == 3) {
+                pane.openPistesSubmenu();
+            } else {
+                pane.openRoadsSubmenu();
             }
         });
         return this;
