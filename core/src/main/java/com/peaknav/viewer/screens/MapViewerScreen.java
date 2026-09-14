@@ -570,6 +570,15 @@ public class MapViewerScreen implements Screen {
 
 	/** (Re)queues the tour from the given keyframe, replacing anything already queued. */
 	private void queueGpxTourFrom(int firstFrame) {
+		queueGpxTourFrom(firstFrame, true);
+	}
+
+	/**
+	 * @param easeIn whether the first frame is flown to from wherever the camera is; false when
+	 *               the camera has already been put on that frame, so nothing is spent easing
+	 *               from a pose to itself.
+	 */
+	private void queueGpxTourFrom(int firstFrame, boolean easeIn) {
 		if (gpxTourFrames.isEmpty()) {
 			return;
 		}
@@ -579,7 +588,7 @@ public class MapViewerScreen implements Screen {
 		for (int i = firstFrame; i < gpxTourFrames.size(); i++) {
 			GpxTourFrame f = gpxTourFrames.get(i);
 			total += f.seconds;
-			if (i == firstFrame) {
+			if (i == firstFrame && easeIn) {
 				// Ease in from the current view rather than cutting to the new pose.
 				moveCameraAction.setCameraVectors(f.pos, f.dir, Vector3.Z,
 						true, Interpolation.smooth, false, 0f, 1f,
@@ -611,13 +620,30 @@ public class MapViewerScreen implements Screen {
 		return MathUtils.clamp((total - remaining) / (float) total, 0f, 1f);
 	}
 
-	/** Jumps the tour to a fraction of the way along and carries on from there. */
+	/**
+	 * Jumps the tour to a fraction of the way along and carries on from there - or, when the
+	 * tour is paused, stays paused but shows that point.
+	 *
+	 * <p>Paused, the camera action advances nothing, so the eased fly to the new frame that
+	 * the queue starts with never ran: the knob moved and the map did not, until the tour was
+	 * played again (issue #23). So a paused seek puts the camera on the frame itself, and
+	 * queues the rest from there without an ease-in - resuming then continues along the track
+	 * from exactly the view on screen.
+	 */
 	public void seekGpxTour(float fraction) {
 		if (gpxTourFrames.isEmpty()) {
 			return;
 		}
 		boolean wasPaused = moveCameraAction.isPaused();
-		queueGpxTourFrom(Math.round(MathUtils.clamp(fraction, 0f, 1f) * (gpxTourFrames.size() - 1)));
+		int frame = Math.round(MathUtils.clamp(fraction, 0f, 1f) * (gpxTourFrames.size() - 1));
+		if (wasPaused) {
+			GpxTourFrame f = gpxTourFrames.get(frame);
+			cam.position.set(f.pos);
+			cam.direction.set(f.dir);
+			cam.up.set(Vector3.Z);
+			cam.update();
+		}
+		queueGpxTourFrom(frame, !wasPaused);
 		moveCameraAction.setPaused(wasPaused);
 	}
 

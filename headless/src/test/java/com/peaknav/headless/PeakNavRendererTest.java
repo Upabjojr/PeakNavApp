@@ -1,6 +1,7 @@
 package com.peaknav.headless;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -1299,6 +1300,93 @@ class PeakNavRendererTest {
             Thread.sleep(millis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    /** The peaks this frame shows, each as the objects JSON reports it. */
+    private java.util.List<com.badlogic.gdx.utils.JsonValue> drawnPeaks() {
+        java.util.List<com.badlogic.gdx.utils.JsonValue> peaks = new java.util.ArrayList<>();
+        com.badlogic.gdx.utils.JsonValue all = new com.badlogic.gdx.utils.JsonReader()
+                .parse(renderer.objectsJson("displayable", true)).get("objects");
+        for (com.badlogic.gdx.utils.JsonValue o = all.child; o != null; o = o.next) {
+            if ("peak".equals(o.getString("kind")) && o.has("text")) {
+                peaks.add(o);
+            }
+        }
+        return peaks;
+    }
+
+    @Test
+    @Order(24)
+    @DisplayName("switching units relabels the peaks already on screen, at once (#22)")
+    void unitSwitchRelabelsPeaksAtOnce() {
+        renderer.moveTo(LAT, LON);
+        renderer.setLabel(PeakNavRenderer.Label.PEAKS, true);
+        renderer.awaitTilesLoaded(60_000);
+        renderer.aim(210f, 6f);
+        assertTrue(renderer.awaitLabelsRendered(60_000), "peak labels to switch");
+        try {
+            renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.METRIC).settle(500);
+            java.util.List<com.badlogic.gdx.utils.JsonValue> metric = drawnPeaks();
+            assertFalse(metric.isEmpty(), "Zermatt's skyline has peaks on it");
+            for (com.badlogic.gdx.utils.JsonValue p : metric) {
+                assertEquals(p.getString("name") + " - " + (int) p.getFloat("elevation_m") + " m",
+                        p.getString("text"));
+            }
+
+            // No reload, no new tiles: the same labels, which used to keep "m" until their
+            // POIs were next loaded.
+            renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL).settle(500);
+            java.util.List<com.badlogic.gdx.utils.JsonValue> imperial = drawnPeaks();
+            assertFalse(imperial.isEmpty(), "the peaks are still there");
+            for (com.badlogic.gdx.utils.JsonValue p : imperial) {
+                assertEquals(p.getString("name") + " - "
+                                + Math.round(3.280839895f * p.getFloat("elevation_m")) + " ft",
+                        p.getString("text"));
+            }
+        } finally {
+            renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.METRIC);
+        }
+    }
+
+    @Test
+    @Order(25)
+    @DisplayName("a paused GPX tour follows the scrub bar and stays paused (#23)")
+    void pausedTourFollowsTheScrubBar() {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(60_000);
+        String gpx = "<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" version=\"1.1\"><trk>"
+                + "<name>t</name><trkseg>"
+                + "<trkpt lat=\"46.0207\" lon=\"7.7491\"><ele>1608</ele></trkpt>"
+                + "<trkpt lat=\"46.0000\" lon=\"7.7300\"><ele>2000</ele></trkpt>"
+                + "<trkpt lat=\"45.9833\" lon=\"7.7853\"><ele>3089</ele></trkpt>"
+                + "</trkseg></trk></gpx>";
+        renderer.loadGpx(gpx);
+        try {
+            renderer.startGpxTour().settle(4000); // past the ease-in, flying along the track
+            renderer.setGpxTourPaused(true).settle(300);
+            assertTrue(renderer.isGpxTourPaused(), "paused");
+            com.badlogic.gdx.math.Vector3 held = renderer.cameraPosition();
+            renderer.settle(800);
+            assertTrue(held.dst(renderer.cameraPosition()) < 1e-5f, "a paused tour holds the camera");
+
+            renderer.seekGpxTour(0.85f).settle(500);
+            com.badlogic.gdx.math.Vector3 sought = renderer.cameraPosition();
+            assertTrue(held.dst(sought) > 1e-3f,
+                    "dragging the bar while paused moves the view (it used to wait for play): moved "
+                            + held.dst(sought));
+            assertTrue(renderer.isGpxTourPaused(), "and the tour is still paused");
+            assertEquals(0.85f, renderer.gpxTourProgress(), 0.05f, "the bar stays where it was dropped");
+
+            renderer.settle(1000);
+            assertTrue(sought.dst(renderer.cameraPosition()) < 1e-5f, "still paused: no playback after the seek");
+
+            // Resuming carries on from the view on screen, forwards along the track.
+            renderer.setGpxTourPaused(false).settle(1500);
+            assertFalse(renderer.isGpxTourPaused(), "resumed");
+            assertTrue(renderer.gpxTourProgress() >= 0.85f - 0.01f, "resumed from the seek point, not before it");
+        } finally {
+            renderer.stopGpxTour();
         }
     }
 }

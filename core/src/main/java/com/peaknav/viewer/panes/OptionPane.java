@@ -1198,6 +1198,18 @@ public class OptionPane {
                 });
     }
 
+    /**
+     * Switches the unit system for everything on screen at once. Peak labels carry their
+     * elevation in the unit they were built with, so without telling them they kept the
+     * old one until their POIs were next loaded (issue #22). Not persisted here: the
+     * buttons save the choice separately, and the headless renderer - which shares the
+     * desktop app's preferences - must not.
+     */
+    public static void applyUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem unitSystem) {
+        P.setUnitSystemNoPersist(unitSystem);
+        com.peaknav.viewer.labels.DrawLabel.invalidateAllTexts();
+    }
+
     private Table createSelectBoxUnitSystem() {
         Table table = new Table();
         table.center();
@@ -1217,7 +1229,7 @@ public class OptionPane {
         buttonUnitsMetric.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
-                P.setUnitSystemNoPersist(METRIC);
+                applyUnitSystem(METRIC);
                 changer.submit(() -> P.setUnitSystem(METRIC));
                 buttonUnitsMetric.setChecked(true);
                 buttonUnitsImperial.setChecked(false);
@@ -1228,7 +1240,7 @@ public class OptionPane {
         buttonUnitsImperial.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
-                P.setUnitSystemNoPersist(IMPERIAL);
+                applyUnitSystem(IMPERIAL);
                 changer.submit(() -> P.setUnitSystem(IMPERIAL));
                 buttonUnitsMetric.setChecked(false);
                 buttonUnitsImperial.setChecked(true);

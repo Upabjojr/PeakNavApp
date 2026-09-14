@@ -739,6 +739,11 @@ public final class PeakNavRenderer implements AutoCloseable {
                 o.addChild("kind", new JsonValue(
                         poi.drawLabelCategory.name().toLowerCase(Locale.ROOT)));
                 o.addChild("name", new JsonValue(poi.name));
+                if (label != null) {
+                    // What the label actually says, in the current unit system. Not "label":
+                    // that key is the drawn name's position, further down.
+                    o.addChild("text", new JsonValue(label.getDisplayedText()));
+                }
                 o.addChild("lat", new JsonValue(poi.lat));
                 o.addChild("lon", new JsonValue(poi.lon));
                 o.addChild("elevation_m", new JsonValue(poi.elevation));
@@ -871,6 +876,57 @@ public final class PeakNavRenderer implements AutoCloseable {
     }
 
     /** Where the camera is, in the app's world frame. */
+    /**
+     * Switches metric/imperial the way the options pane does - without saving it, since this
+     * renderer shares the desktop app's preferences.
+     */
+    public PeakNavRenderer setUnitSystem(final com.peaknav.utils.PreferencesManager.UnitSystem unitSystem) {
+        onRenderThread(() -> com.peaknav.viewer.panes.OptionPane.applyUnitSystem(unitSystem));
+        return this;
+    }
+
+    /** Starts the flythrough along the loaded GPX track, as its play button does. */
+    public PeakNavRenderer startGpxTour() {
+        onRenderThread(() -> mapApp.mapViewerScreen.startGpxFlythrough());
+        return this;
+    }
+
+    /** Pauses or resumes a running tour, as the play/pause button does. */
+    public PeakNavRenderer setGpxTourPaused(final boolean paused) {
+        onRenderThread(() -> {
+            com.peaknav.viewer.screens.MapViewerScreen screen = mapApp.mapViewerScreen;
+            if (paused ? screen.isGpxTourPlaying() : screen.isGpxTourPaused()) {
+                screen.toggleGpxFlythrough();
+            }
+        });
+        return this;
+    }
+
+    /** Moves the tour to a fraction of its length, as dragging the scrub bar does. */
+    public PeakNavRenderer seekGpxTour(final float fraction) {
+        onRenderThread(() -> mapApp.mapViewerScreen.seekGpxTour(fraction));
+        return this;
+    }
+
+    public boolean isGpxTourPaused() {
+        final boolean[] out = new boolean[1];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.isGpxTourPaused());
+        return out[0];
+    }
+
+    /** How far along the tour is, 0..1 - what the scrub bar shows. */
+    public float gpxTourProgress() {
+        final float[] out = new float[1];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.getGpxTourProgress());
+        return out[0];
+    }
+
+    /** Ends a tour and gives the camera back. */
+    public PeakNavRenderer stopGpxTour() {
+        onRenderThread(() -> mapApp.mapViewerScreen.stopGpxFlythrough());
+        return this;
+    }
+
     public Vector3 cameraPosition() {
         final Vector3 out = new Vector3();
         onRenderThread(() -> out.set(mapApp.mapViewerScreen.cam.position));
