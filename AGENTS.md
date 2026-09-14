@@ -50,6 +50,16 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     zooms around while a photo is shown. Its accuracy is measured, not assumed: see the
     `skylineBenchmark` tool below, and keep the thresholds in `SkylineMatcher`
     tied to what the benchmark reports.
+  - `pistes/` — the ski slopes viewer, drawn from its own data layer `PBF_PISTES` (OpenSnowMap's
+    extract, zoom-10 tiles in zoom-8 archives, not on the server yet: `PeakNavDownloadManager.
+    PISTES_ON_SERVER` keeps them out of the download queue until they are). `PisteRasterizer`
+    writes each nearby tile's `SKI_SLOPES` texture - flow phase down the nearest downhill run as
+    sine and cosine (oriented by the loaded terrain's heights at its ends, else by the way's
+    direction), blue/red/black difficulty, coverage - in `TileRendererRunnerPistes`, on the
+    roads' executor; the ski slopes block of `assets/fragment_shader.glsl` paints fat runs with a
+    band flowing downhill on `u_time`, and piste areas as a translucent fill. Switched by "Ski
+    pistes" in the Roads "..." submenu (`P.isSkiSlopesVisible()`); independent of
+    `PISTES_IN_MAP_DATA`, which still gates the pistes the road textures would carry.
   - `roads/` — roads, tracks, trails and pistes, drawn by the GPU on every platform.
     `RoadClassifier` sorts the OSM ways of `PBF_HIGHWAYS` into classes (road rank, SAC trail
     difficulty, piste difficulty; tunnels, pavements and plazas dropped; relation tags from

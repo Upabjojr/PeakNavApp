@@ -52,7 +52,15 @@ uniform vec4 u_trailMountain;
 uniform vec4 u_trailAlpine;
 uniform vec3 u_dash;                 // x dashes per stored phase turn, y dash share, z cycles/s
 uniform int u_pistesSet;
-uniform float u_pixelAngle;          // radians per pixel; only without screen derivatives
+uniform float u_pixelAngle;
+
+// ---- Ski slopes ----------------------------------------------------------------------------------
+// The ski slopes viewer's own texture (see PisteRasterizer): RG the flow phase along the nearest
+// run, growing downhill, as sine and cosine (both 0.5 inside a piste area, which has no direction);
+// B the difficulty, 0 blue, 0.5 red, 1 black; A coverage, a ramp across a run's edge and a flat
+// 0.45 inside an area.
+uniform sampler2D u_texturePistes;
+uniform int u_skiSlopesSet;          // radians per pixel; only without screen derivatives
 
 // Must match RoadTileRasterizer.
 const float ROAD_BAND = 8.0;
@@ -135,6 +143,14 @@ vec3 trailColor(float difficulty) {
         return mix(u_trailEasy.rgb, u_trailMountain.rgb, difficulty * 2.0);
     }
     return mix(u_trailMountain.rgb, u_trailAlpine.rgb, difficulty * 2.0 - 1.0);
+}
+
+// The ski slopes viewer's colours: blue, red and black runs.
+vec3 slopeColor(float difficulty) {
+    vec3 blue = vec3(0.12, 0.42, 0.95);
+    vec3 red = vec3(0.92, 0.16, 0.16);
+    vec3 black = vec3(0.05, 0.05, 0.06);
+    return difficulty < 0.5 ? mix(blue, red, difficulty * 2.0) : mix(red, black, difficulty * 2.0 - 1.0);
 }
 
 // Piste colours as every ski map has them: novice green, easy blue, intermediate red, advanced
@@ -295,6 +311,43 @@ void main() {
         roadsCol = col;
         roadsCov = acc;
         gl_FragColor = vec4(col, gl_FragColor.a);
+    }
+
+    // Ski slopes: fat runs in the colour of their difficulty, with a brighter band flowing down each
+    // one at the pace of the GPX flow, and a rim - dark around blue and red, light around black -
+    // so a run keeps its edge on snow, forest and rock alike. A piste area is a translucent fill
+    // without a flow. Over the roads, under a GPX track.
+    if (u_skiSlopesSet == 1) {
+        vec4 ps = texture2D(u_texturePistes, v_texCoord0);
+        if (ps.a > 0.01) {
+            vec3 base = slopeColor(ps.b);
+            vec2 psc = ps.rg * 2.0 - 1.0;
+            // A run carries a direction, an area none; filtering shortens the pair only a little.
+            float run = smoothstep(0.25, 0.6, length(psc));
+            // The coverage ramp is a distance field across the run's edge: cut it at a threshold,
+            // antialiased over one pixel, and the edge stays crisp however close the camera is
+            // instead of showing the bilinear blur of the texels. The rim is the ring between two
+            // such cuts.
+#ifdef ROADS_DERIVATIVES
+            float fw = max(fwidth(ps.a), 1e-3);
+#else
+            float fw = 0.08;
+#endif
+            float outer = clamp((ps.a - 0.3) / fw + 0.5, 0.0, 1.0);
+            float inner = clamp((ps.a - 0.85) / fw + 0.5, 0.0, 1.0);
+            float cov = mix(0.4 * clamp((ps.a - 0.2) / fw + 0.5, 0.0, 1.0), outer, run);
+            float phase = atan(psc.x, psc.y) * 0.15915494;
+            float m = fract(phase - u_time * 0.5);
+            float band = smoothstep(0.5, 0.92, m) * (1.0 - smoothstep(0.92, 1.0, m)) * run;
+            float isBlack = 1.0 - step(0.2, dot(base, vec3(0.2126, 0.7152, 0.0722)));
+            vec3 glow = mix(mix(base, vec3(1.0), 0.38), vec3(0.5), isBlack);
+            vec3 pc = mix(base, glow, band) * mix(1.0, light / flatLight, LINE_RELIEF);
+            vec3 rim = mix(base * 0.35, vec3(0.9), isBlack);
+            pc = mix(rim, pc, mix(1.0, inner, run));
+            float k = cov * 0.9;
+            gl_FragColor = vec4(mix(gl_FragColor.rgb, pc, k), gl_FragColor.a);
+            over(roadsCol, roadsCov, pc, k);
+        }
     }
 
     // GPX path, painted onto the tile surface (over the lit terrain and the roads, so a track

@@ -1183,6 +1183,19 @@ public final class PeakNavRenderer implements AutoCloseable {
         return out;
     }
 
+    /** How many live tiles have ski slopes drawn on them (a texture, not drawn empty). */
+    public int skiSlopeTiles() {
+        final int[] out = new int[1];
+        onRenderThread(() -> {
+            for (com.peaknav.viewer.tiles.MapTile tile : getC().mapTileStorage.getMapTiles()) {
+                if (!tile.isDisposed() && tile.hasLayerTexture(com.peaknav.viewer.render_tiles.PixmapLayerName.SKI_SLOPES)) {
+                    out[0]++;
+                }
+            }
+        });
+        return out[0];
+    }
+
     /** The camera's current up vector. */
     public Vector3 cameraUp() {
         final Vector3 out = new Vector3();
@@ -1202,7 +1215,7 @@ public final class PeakNavRenderer implements AutoCloseable {
             states.put(Label.LAKES, P.isVisibleLakes());
             states.put(Label.ALPINE_HUTS, P.isVisibleAlpineHuts());
             states.put(Label.ROADS, P.isViewerLayerVisibleBaseRoads());
-            states.put(Label.PISTES, P.getPisteVisible());
+            states.put(Label.PISTES, P.isSkiSlopesVisible());
             states.put(Label.NAVIGATION, P.getLayerVisibleNavigation());
             states.put(Label.ROAD_NAMES, P.getRoadStyle().isRoadNames());
         });

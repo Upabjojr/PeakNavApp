@@ -1649,4 +1649,39 @@ class PeakNavRendererTest {
             renderer.clearGpx();
         }
     }
+
+    @Test
+    @Order(31)
+    @DisplayName("ski slopes are drawn from the piste data, and flow")
+    void skiSlopesAreDrawnFromThePisteData() throws Exception {
+        java.io.File pistes = new java.io.File(com.badlogic.gdx.Gdx.files.external(
+                com.peaknav.utils.PathUtils.getMapFolder()).file(), "PBF_PISTES");
+        assumeTrue(pistes.isDirectory(), "no PBF_PISTES data on this machine");
+        renderer.setLabel(PeakNavRenderer.Label.PISTES, true);
+        // Above Zermatt, looking up at the Sunnegga and Rothorn runs.
+        renderer.moveTo(46.0300, 7.7500);
+        renderer.aim(120f, -8f);
+        renderer.awaitTilesLoaded(120_000);
+        int tiles = renderer.skiSlopeTiles();
+        System.out.println("ski slope tiles: " + tiles);
+        assertTrue(tiles > 0, "the Zermatt runs are drawn");
+        File first = newTempFile("ski-slopes.png");
+        renderer.capture(first);
+        renderer.settle(700);
+        File later = newTempFile("ski-slopes-later.png");
+        renderer.capture(later);
+        System.out.println("ski slope frames: " + first.getAbsolutePath() + " " + later.getAbsolutePath());
+
+        // From above, the runs down to the village: widths and colours at a glance.
+        renderer.setElevationMeters(800).aim(125f, -22f);
+        renderer.awaitTilesLoaded(120_000);
+        File above = newTempFile("ski-slopes-above.png");
+        renderer.capture(above);
+        System.out.println("ski slopes above frame: " + above.getAbsolutePath());
+
+        renderer.setLabel(PeakNavRenderer.Label.PISTES, false).settle(500);
+        File off = newTempFile("ski-slopes-off.png");
+        renderer.capture(off);
+        System.out.println("ski slopes off frame: " + off.getAbsolutePath());
+    }
 }

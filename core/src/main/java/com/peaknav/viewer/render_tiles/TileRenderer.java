@@ -101,7 +101,9 @@ public class TileRenderer {
      * nothing for tiles past {@link TileRendererRunner#ROAD_CUTOFF_DEGREES}, which never get one.
      */
     public int pendingRoadWork() {
-        if (!P.isPixmapLayerNameVisible(PixmapLayerName.BASE_ROADS))
+        boolean roads = P.isPixmapLayerNameVisible(PixmapLayerName.BASE_ROADS);
+        boolean slopes = P.isPixmapLayerNameVisible(PixmapLayerName.SKI_SLOPES);
+        if (!roads && !slopes)
             return 0;
         int pending = 0;
         for (MapTile mapTile : getC().mapTileStorage.getMapTiles()) {
@@ -109,7 +111,10 @@ public class TileRenderer {
                 continue;
             if (!TileRendererRunner.roadsExpectedFor(mapTile.tile))
                 continue;
-            if (!mapTile.isLayerDrawn(PixmapLayerName.BASE_ROADS))
+            if (roads && !mapTile.isLayerDrawn(PixmapLayerName.BASE_ROADS))
+                pending++;
+            // The ski slopes are rasterized on the same executor, and wait the same way.
+            if (slopes && !mapTile.isLayerDrawn(PixmapLayerName.SKI_SLOPES))
                 pending++;
         }
         return pending;
@@ -122,7 +127,7 @@ public class TileRenderer {
     }
 
     public void drawArea(PixmapLayerName pixmapLayerName) {
-        if (pixmapLayerName != PixmapLayerName.BASE_ROADS)
+        if (pixmapLayerName != PixmapLayerName.BASE_ROADS && pixmapLayerName != PixmapLayerName.SKI_SLOPES)
             return;
 
         // Nearest tile first. These are rasterised one at a time, and a full neighbourhood takes
@@ -141,7 +146,9 @@ public class TileRenderer {
                 LatLongUtils.distance(b.getImpWhiteTileIndex(), target)));
 
         for (MapTile mapTile : waiting) {
-            TileRendererRunner renderer = new TileRendererRunnerRoads(this, mapTile);
+            TileRendererRunner renderer = pixmapLayerName == PixmapLayerName.SKI_SLOPES
+                    ? new TileRendererRunnerPistes(this, mapTile)
+                    : new TileRendererRunnerRoads(this, mapTile);
             renderer.setPriority(Thread.MIN_PRIORITY);
             tileRendererExecutor.executeStoppableRunnable(renderer);
         }

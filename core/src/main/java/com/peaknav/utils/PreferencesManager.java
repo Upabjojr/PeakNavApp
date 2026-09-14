@@ -285,7 +285,7 @@ public class PreferencesManager {
     public boolean isPixmapLayerNameVisible(PixmapLayerName pixmapLayerName) {
         switch (pixmapLayerName) {
             case SKI_SLOPES:
-                return getPisteVisible();
+                return isSkiSlopesVisible();
             case BASE_ROADS:
                 return isViewerLayerVisibleBaseRoads();
             case UNDERLAY_LAYER:
@@ -319,6 +319,14 @@ public class PreferencesManager {
 
     public boolean getPisteVisible() {
         return PISTES_IN_MAP_DATA && pisteVisible;
+    }
+
+    /**
+     * Whether the ski slopes viewer is on. It draws from its own data layer, PBF_PISTES, so unlike
+     * {@link #getPisteVisible} it does not wait for the highway tiles to carry the pistes.
+     */
+    public boolean isSkiSlopesVisible() {
+        return pisteVisible;
     }
 
     public void setPisteVisible(boolean visible) {

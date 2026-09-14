@@ -80,6 +80,9 @@ public class PeakNavDownloadManager {
             addQueueElevations(lat, lon);
             addQueuePois(lat, lon);
             addQueueHighways(lat, lon);
+            if (PISTES_ON_SERVER && P.isSkiSlopesVisible()) {
+                addQueuePistes(lat, lon);
+            }
             addQueueAreas(lat, lon);
         } finally {
             mapSqlite.endQueueBatch();
@@ -157,6 +160,18 @@ public class PeakNavDownloadManager {
 
     private void addQueueHighways(double lat, double lon) {
         addQueueMapData(lat, lon, zoomHighwaysCompressed, 2, PbfLayer.PBF_HIGHWAYS);
+    }
+
+    /**
+     * Whether the dataset serves the PBF_PISTES archives yet. They are built but not uploaded:
+     * until they are, every queued one would fail its attempts and be dropped, so none is queued.
+     * Set it once {@code map_folder/PBF_PISTES} is on the server.
+     */
+    static final boolean PISTES_ON_SERVER = false;
+
+    /** The ski pistes, cut like the highways: a 2x2 block of zoom-8 archives. */
+    private void addQueuePistes(double lat, double lon) {
+        addQueueMapData(lat, lon, zoomHighwaysCompressed, 2, PbfLayer.PBF_PISTES);
     }
 
     private void addQueuePois(double lat, double lon) {

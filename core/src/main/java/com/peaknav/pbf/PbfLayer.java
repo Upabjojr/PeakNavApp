@@ -10,6 +10,12 @@ public enum PbfLayer {
     PBF_HIGHWAYS((byte) 8, ".tar", ".osm.pbf"),
     PBF_POI((byte) 6, ".tar", ".osm.pbf"),
     /**
+     * Ski pistes and lifts, from OpenSnowMap's extract of OpenStreetMap: the ski slopes viewer
+     * draws the downhill runs (see {@code com.peaknav.pistes.PisteRasterizer}). Same layout as the
+     * highways - zoom-10 tiles in zoom-8 archives.
+     */
+    PBF_PISTES((byte) 8, ".tar", ".osm.pbf"),
+    /**
      * Named areas — islands, lakes, mountain ranges, cities — whose labels the viewer draws.
      *
      * <p>Fetched exactly like the PBF extracts: one archive per tile under

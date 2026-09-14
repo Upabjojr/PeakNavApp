@@ -4,7 +4,6 @@ import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
 import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.utils.PreferencesManager.P;
-import static com.peaknav.utils.PreferencesManager.PISTES_IN_MAP_DATA;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
@@ -705,13 +704,18 @@ public class OptionPane {
                 });
         roadMenuRefreshers.add(() -> dashSpeed[0].setValue(P.getRoadStyle().dashSpeed()));
 
-        // Offered only once the map data carries the pistes (see PISTES_IN_MAP_DATA).
+        // The ski slopes viewer: runs from the piste data, coloured by difficulty and flowing downhill.
         final ImageTextButtonOptionPane checkBoxPistes = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_roads.png", s("Ski_pistes"), true);
-        addCheckingStateProperty(checkBoxPistes, () -> P.getPisteVisible());
-        checkBoxPistes.addClickListener(() ->
-                changer.execute(() -> P.setPisteVisible(checkBoxPistes.isChecked())));
-        roadMenuRefreshers.add(() -> checkBoxPistes.setChecked(P.getPisteVisible()));
+                "icons/icon_checkbox_ski.png", s("Ski_pistes"), true);
+        addCheckingStateProperty(checkBoxPistes, () -> P.isSkiSlopesVisible());
+        checkBoxPistes.addClickListener(() -> changer.execute(() -> {
+            boolean checked = checkBoxPistes.isChecked();
+            P.setPisteVisible(checked);
+            if (checked) {
+                getC().tileManager.startAerialAndDataRenderExecutors();
+            }
+        }));
+        roadMenuRefreshers.add(() -> checkBoxPistes.setChecked(P.isSkiSlopesVisible()));
 
         // Road and trail names on or off: the same setting as in the Labels submenu.
         final ImageTextButtonOptionPane checkBoxNames = getC().widgetGetter.getImageTextButton(
@@ -761,20 +765,14 @@ public class OptionPane {
             rows.add(dashSpeedRow);
             rows.add(labelFrequencyRow);
             rows.add(checkBoxNames);
-            if (PISTES_IN_MAP_DATA) {
-                rows.add(checkBoxPistes);
-            }
+            rows.add(checkBoxPistes);
             rows.add(buttonReset);
             rows.add(back);
             addButtonsToTable(table, rows, true, buttonWidth * 1.2f);
         } else {
             addPair(table, swatches.get(0), swatches.get(1));
             addPair(table, swatches.get(2), swatches.get(3));
-            if (PISTES_IN_MAP_DATA) {
-                addPair(table, swatches.get(4), checkBoxPistes);
-            } else {
-                addSingle(table, swatches.get(4));
-            }
+            addPair(table, swatches.get(4), checkBoxPistes);
             // Six rows, as tall as the main options menu: any taller and it runs under the
             // camera and compass buttons at the top of a phone held sideways.
             addPair(table, dashLengthRow, dashSpeedRow);
