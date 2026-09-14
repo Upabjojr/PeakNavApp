@@ -41,7 +41,11 @@ public final class DesktopSwing {
     private static final long TOAST_MILLIS = 6000;
 
     /**
-     * Said on the console when a window cannot be opened. "Headless" is avoided here: in
+     * Said on the console when a window cannot be opened - once, on stdout, which is where
+     * the app's own logging goes and the only stream that still arrives once libGDX is up
+     * (it takes stderr over, and a line written there afterwards is never seen).
+     *
+     * <p>"Headless" is avoided here: in
      * this project that word means PeakNav's own off-screen renderer (the {@code :headless}
      * module, {@code peaknav-headless.jar}), which is a different thing entirely - this is
      * about the Java installation the app was started with.
@@ -65,9 +69,37 @@ public final class DesktopSwing {
         }
     }
 
-    /** True when Swing windows can be opened; false on a headless runtime. */
+    /** True when Swing windows can be opened; false on a runtime without AWT. */
     public static boolean isAvailable() {
         return AVAILABLE;
+    }
+
+    /**
+     * True when this runtime can open windows; when it cannot, says so exactly as every
+     * other blocked button does and returns false.
+     *
+     * <p>For the paths that hand work to the desktop itself rather than to Swing - opening
+     * the tutorial page or a map link in a browser, through {@code java.awt.Desktop} - so
+     * that every button blocked by the same missing AWT gives the same answer, instead of
+     * each one improvising from whatever its own failure happened to look like.
+     */
+    /**
+     * Says on the console, once per run, that windows cannot be opened - for the launcher,
+     * so the warning is there before anything is clicked. A button blocked later adds its
+     * toast but not a second copy of this paragraph.
+     */
+    public static void announceIfUnavailable() {
+        if (!AVAILABLE) {
+            printOnce();
+        }
+    }
+
+    public static boolean requireWindows() {
+        if (AVAILABLE) {
+            return true;
+        }
+        reportUnavailable();
+        return false;
     }
 
     /**
@@ -92,15 +124,16 @@ public final class DesktopSwing {
         });
     }
 
-    /** The map's own toast, which needs no AWT, plus a line on the console for whoever started it. */
-    private static void reportUnavailable() {
+    private static void printOnce() {
         if (!reported) {
             reported = true;
-            // Both streams on purpose: the app routes its own logging to stdout, and a
-            // launcher script may keep only one of the two.
             System.out.println(NO_WINDOWS_CONSOLE);
-            System.err.println(NO_WINDOWS_CONSOLE);
         }
+    }
+
+    /** The map's own toast, which needs no AWT, plus a line on the console for whoever started it. */
+    private static void reportUnavailable() {
+        printOnce();
         // The toast touches the scene, so it belongs on the render thread.
         Gdx.app.postRunnable(() -> MapViewerSingleton.getViewerInstance()
                 .toast(PeakNavUtils.s("Java_no_desktop"), TOAST_MILLIS));

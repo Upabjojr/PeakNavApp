@@ -51,6 +51,9 @@ public interface Constants {
         String COLLECT_DOWNLOAD_INFO = "collectDownloadInfo";
         // String COLLECT_ANONYMOUS_STATS_PROMPTED = "collectAnonStatsPrompted";
         String LOCATION_PERMISSION_DENIED = "locationPermissionDenied";
+        // Desktop only: consent to estimate the position from the internet connection,
+        // which means handing the IP address to an online service. Asked once.
+        String IP_LOCATION_CONSENT = "ipLocationConsent";
         String LAST_LATITUDE = "lastLatitude";
         String LAST_LONGITUDE = "lastLongitude";
 

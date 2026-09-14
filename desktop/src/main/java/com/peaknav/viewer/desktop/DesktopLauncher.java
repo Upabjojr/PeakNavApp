@@ -55,10 +55,7 @@ public class DesktopLauncher {
 	 * the Java term for it - "headless" - is not PeakNav's own headless renderer.
 	 */
 	private static void warnIfNoDesktopSupport () {
-		if (!DesktopSwing.isAvailable()) {
-			System.out.println(DesktopSwing.NO_WINDOWS_CONSOLE);
-			System.err.println(DesktopSwing.NO_WINDOWS_CONSOLE);
-		}
+		DesktopSwing.announceIfUnavailable();
 	}
 
 	public static void main (String[] arg) {

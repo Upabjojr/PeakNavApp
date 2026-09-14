@@ -14,6 +14,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.LAST_CAMERA_UP_Y;
 import static com.peaknav.utils.Constants.PREFERENCES.LAST_CAMERA_UP_Z;
 import static com.peaknav.utils.Constants.PREFERENCES.LAST_LATITUDE;
 import static com.peaknav.utils.Constants.PREFERENCES.LAST_LONGITUDE;
+import static com.peaknav.utils.Constants.PREFERENCES.IP_LOCATION_CONSENT;
 import static com.peaknav.utils.Constants.PREFERENCES.LOCATION_PERMISSION_DENIED;
 import static com.peaknav.utils.Constants.PREFERENCES.PREF_NAME;
 import static com.peaknav.utils.Constants.PREFERENCES.UNDERLAY_IMAGE_PROVIDER;
@@ -98,6 +99,8 @@ public class PreferencesManager {
     private SatelliteProviderRegistry satelliteProviderRegistry;
     private boolean locationPermissionDenied;
     private boolean collectDownloadInfo;
+    /** Desktop only; see {@link Constants.PREFERENCES#IP_LOCATION_CONSENT}. */
+    private boolean ipLocationConsent;
     private boolean firstTimeAppRun;
     /** Colours, dashes and names of the roads and trails; see {@link RoadStyle}. */
     private final RoadStyle roadStyle = new RoadStyle();
@@ -105,6 +108,17 @@ public class PreferencesManager {
 
     public boolean isCollectDownloadInfo() {
         return collectDownloadInfo;
+    }
+
+    /** Whether the user agreed to the position being estimated from the internet connection. */
+    public boolean isIpLocationConsent() {
+        return ipLocationConsent;
+    }
+
+    public void setIpLocationConsent(boolean ipLocationConsent) {
+        this.ipLocationConsent = ipLocationConsent;
+        preferences.putBoolean(IP_LOCATION_CONSENT, ipLocationConsent);
+        preferences.flush();
     }
 
     public boolean isLocationPermissionDenied() {
@@ -232,6 +246,8 @@ public class PreferencesManager {
         collectDownloadInfo = preferences.getBoolean(COLLECT_DOWNLOAD_INFO, true);
         // collectAnonymousStatsPrompted = preferences.getBoolean(COLLECT_ANONYMOUS_STATS_PROMPTED, false);
         locationPermissionDenied = preferences.getBoolean(LOCATION_PERMISSION_DENIED, false);
+        // Default false: nothing leaves the machine until the user says so.
+        ipLocationConsent = preferences.getBoolean(IP_LOCATION_CONSENT, false);
 
         satelliteProviderRegistry = new SatelliteProviderRegistry(
                 new JsonConfigStore(SatelliteProviderRegistry.CONFIG_FILE));

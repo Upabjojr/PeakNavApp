@@ -401,6 +401,9 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                 Gdx.files.internal(parent + related)
                         .copyTo(new com.badlogic.gdx.files.FileHandle(target));
             }
+            if (!DesktopSwing.requireWindows()) {
+                return; // no AWT: no browser to open it in, and one message for every button
+            }
             Desktop.getDesktop().open(page);
         } catch (Exception e) {
             alertMessage(internalPath + ": " + e.getMessage());
@@ -422,6 +425,9 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         // app's own, so the page comes up in the same language as the interface.
         String url = com.peaknav.utils.CoordinateLinks.geoHackUrl(
                 latitude, longitude, java.util.Locale.getDefault().getLanguage());
+        if (!DesktopSwing.requireWindows()) {
+            return; // opening a browser goes through java.awt.Desktop, which needs AWT too
+        }
         try {
             com.badlogic.gdx.Gdx.net.openURI(url);
         } catch (Exception e) {
@@ -429,12 +435,65 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         }
     }
 
+    /**
+     * "Go to my position" on a machine with no GPS: the position is estimated from the
+     * internet connection (see {@link com.peaknav.viewer.desktop.IpLocationDesktop}), which
+     * is the only source a desktop has. It used to do nothing at all - the button was there,
+     * and pressing it produced neither a move nor a word.
+     *
+     * <p>The estimate leaves the machine's address with an online service, so it is asked
+     * for once and the answer remembered; and it is an estimate, so the toast names the
+     * place it landed on rather than quietly moving the map somewhere odd.
+     */
     private final CurrentLocationListener currentLocationListener = new CurrentLocationListener() {
         @Override
         public void getCurrentLocation(CurrentLocationCallback currentLocationCallback) {
-
+            if (P.isIpLocationConsent()) {
+                estimatePositionFromNetwork(currentLocationCallback);
+                return;
+            }
+            DesktopSwing.onEdt(() -> {
+                // Wrapped: a paragraph handed to JOptionPane as plain text is laid out on one
+                // line, and this one came out a metre and a half wide.
+                int answer = JOptionPane.showConfirmDialog(
+                        null,
+                        "<html><body style='width:380px'>"
+                                + escapeHtml(s("Ip_location_consent")) + "</body></html>",
+                        s("Ip_location_title"),
+                        JOptionPane.YES_NO_OPTION);
+                if (answer != JOptionPane.YES_OPTION) {
+                    return;
+                }
+                // Off the EDT: writing a preference flushes it to disk.
+                getC().submitExecutorGeneric(() -> P.setIpLocationConsent(true));
+                estimatePositionFromNetwork(currentLocationCallback);
+            });
         }
     };
+
+    /** Asks the network where this machine is, and hands the answer to the map. */
+    private void estimatePositionFromNetwork(CurrentLocationCallback callback) {
+        makeToast(s("Ip_location_searching"));
+        com.peaknav.viewer.desktop.IpLocationDesktop.locate(
+                new com.peaknav.viewer.desktop.IpLocationDesktop.Listener() {
+                    @Override
+                    public void located(double latitude, double longitude, String placeName) {
+                        // The callback moves the camera, which belongs on the render thread;
+                        // the HTTP answer arrives on a network one.
+                        Gdx.app.postRunnable(() -> callback.setCurrentLocation(
+                                (float) longitude, (float) latitude));
+                        String where = placeName.isEmpty()
+                                ? String.format(java.util.Locale.ROOT, "%.3f, %.3f", latitude, longitude)
+                                : placeName;
+                        makeToast(s("Ip_location_estimated") + " " + where);
+                    }
+
+                    @Override
+                    public void failed() {
+                        makeToast(s("Ip_location_failed"));
+                    }
+                });
+    }
 
     @Override
     public CurrentLocationListener getCurrentLocationListener() {
