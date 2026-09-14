@@ -69,7 +69,8 @@ run {
 // You can uncomment the next line if your IDE claims a build failure even when the app closed properly.
     //setIgnoreExitValue(true)
 
-    if (os.contains('mac')) jvmArgs += "-XstartOnFirstThread"
+    // No -XstartOnFirstThread on macOS: DesktopLauncher switches GLFW to glfw_async instead,
+    // and that flag would stop every Swing window (search, file choosers) from opening.
 }
 
 jar {
@@ -147,6 +148,11 @@ construo {
     humanName.set("PeakNav")
     // Optional, defaults to project version property
     version.set("$projectVersion")
+    // The .app must not start the JVM on the first thread either: DesktopLauncher uses
+    // glfw_async, which needs that thread free for AWT - or search and the file choosers hang.
+    roast {
+        runOnFirstThread.set(false)
+    }
 
     targets.configure {
         register("linuxX64", Target.Linux) {

@@ -19,93 +19,51 @@ public class DesktopLauncher {
 	}
 
 	/**
-	 * macOS only: re-launches this jar in a new JVM with {@code -XstartOnFirstThread},
-	 * and returns true when it did (the caller must then do nothing else).
+	 * macOS only: lets the map window and the Swing windows (place search, image and GPX
+	 * choosers, dialogs) live in the same process.
 	 *
-	 * <p>GLFW, which LWJGL and so libGDX use for the window, may only run its event loop
-	 * on the process's very first thread on macOS. A JVM started without that flag puts
-	 * {@code main} on a different thread, and the app dies as soon as it opens the
-	 * window - which is what {@code java -jar peaknav.jar} did on every Mac, whatever
-	 * the Java version. The packaged .app does not come through here: its native
-	 * launcher (construo's "roast") already starts the JVM on the first thread.
+	 * <p>GLFW, which LWJGL and so libGDX use for the window, may only touch the window system
+	 * from the process's first thread on macOS. The usual answer is to start the JVM with
+	 * {@code -XstartOnFirstThread}, and the launcher used to re-exec itself with that flag - but
+	 * that flag also hands the first thread to GLFW's loop, and AWT needs that same thread for
+	 * its own: every Swing window then waited forever, so search and "open an image" did
+	 * nothing at all on a Mac.
 	 *
-	 * <p>Everything is deliberately Java 8: this runs before anything else, so it must
-	 * load on whatever JVM the user happens to have.
+	 * <p>LWJGL's "glfw_async" build solves both: it runs GLFW's calls on the first thread itself,
+	 * so the JVM starts normally, the first thread stays AWT's, and no flag is needed. AWT is
+	 * brought up before GLFW so that it, not GLFW, owns the application object on that thread.
+	 * The packaged .app starts the same way; see {@code roast.runOnFirstThread} in the build.
+	 *
+	 * <p>Deliberately Java 8 and failure-proof: this runs before anything else.
 	 */
-	private static boolean restartedOnFirstThreadForMac (String[] arg) {
-		try {
-			return restartOnFirstThread(arg);
-		} catch (Throwable neverStopTheApp) {
-			System.err.println("PeakNav: first-thread check failed (" + neverStopTheApp + ")");
-			return false;
-		}
-	}
-
-	private static boolean restartOnFirstThread (String[] arg) {
+	private static void prepareMacWindowSystem () {
 		String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ENGLISH);
 		if (!os.contains("mac") && !os.contains("darwin")) {
-			return false;
-		}
-		// The child we spawned below: it already has the flag.
-		if (RESTART_MARKER.equals(System.getProperty(RESTART_PROPERTY))) {
-			return false;
-		}
-		String jar = jarPath();
-		if (jar == null) {
-			// Not running from a jar (an IDE, say); the developer can pass the flag.
-			System.err.println("PeakNav: on macOS, start the JVM with -XstartOnFirstThread.");
-			return false;
-		}
-		// The packaged .app: its native launcher already put us on the first thread, and
-		// spawning a second JVM there would be both wasteful and wrong.
-		if (jar.contains(".app" + java.io.File.separator + "Contents" + java.io.File.separator)) {
-			return false;
+			return;
 		}
 		try {
-			java.util.List<String> command = new java.util.ArrayList<String>();
-			command.add(System.getProperty("java.home") + java.io.File.separator + "bin"
-					+ java.io.File.separator + "java");
-			command.add("-XstartOnFirstThread");
-			command.add("-D" + RESTART_PROPERTY + "=" + RESTART_MARKER);
-			command.add("-jar");
-			command.add(jar);
-			for (String a : arg) {
-				command.add(a);
-			}
-			ProcessBuilder builder = new ProcessBuilder(command);
-			builder.redirectErrorStream(false);
-			builder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-			builder.redirectError(ProcessBuilder.Redirect.INHERIT);
-			builder.redirectInput(ProcessBuilder.Redirect.INHERIT);
-			System.exit(builder.start().waitFor());
-			return true;
-		} catch (Exception restartFailed) {
-			// Better to try running here - it may still work - than to refuse to start.
-			System.err.println("PeakNav: could not restart on the first thread ("
-					+ restartFailed + "); continuing, which may fail on macOS.");
-			return false;
+			Lwjgl3ApplicationConfiguration.useGlfwAsync();
+			java.awt.Toolkit.getDefaultToolkit();
+		} catch (Throwable neverStopTheApp) {
+			System.err.println("PeakNav: macOS window-system setup failed (" + neverStopTheApp + ")");
 		}
 	}
 
-	private static final String RESTART_PROPERTY = "peaknav.startOnFirstThread";
-	private static final String RESTART_MARKER = "true";
-
-	/** The jar this class was loaded from, or null when it was not loaded from one. */
-	private static String jarPath () {
-		try {
-			java.net.URL source = DesktopLauncher.class.getProtectionDomain()
-					.getCodeSource().getLocation();
-			java.io.File file = new java.io.File(source.toURI());
-			return file.isFile() && file.getName().endsWith(".jar") ? file.getAbsolutePath() : null;
-		} catch (Exception notAJar) {
-			return null;
+	/**
+	 * Says so at once when this Java cannot open a window, rather than letting the user
+	 * find out by clicking search and getting nothing. See {@link DesktopSwing}; note that
+	 * the Java term for it - "headless" - is not PeakNav's own headless renderer.
+	 */
+	private static void warnIfNoDesktopSupport () {
+		if (!DesktopSwing.isAvailable()) {
+			System.out.println(DesktopSwing.NO_WINDOWS_CONSOLE);
+			System.err.println(DesktopSwing.NO_WINDOWS_CONSOLE);
 		}
 	}
 
 	public static void main (String[] arg) {
-		if (restartedOnFirstThreadForMac(arg)) {
-			return;
-		}
+		prepareMacWindowSystem();
+		warnIfNoDesktopSupport();
 		Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
 		config.setForegroundFPS(60);
 		config.setTitle(appName);

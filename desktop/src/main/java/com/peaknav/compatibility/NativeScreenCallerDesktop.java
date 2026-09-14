@@ -16,6 +16,7 @@ import com.peaknav.ui.CurrentLocationCallback;
 import com.peaknav.ui.CurrentLocationListener;
 import com.peaknav.ui.TextFieldsCallback;
 import com.peaknav.viewer.MapViewerSingleton;
+import com.peaknav.viewer.desktop.DesktopSwing;
 import com.peaknav.viewer.desktop.GalleryPickDesktop;
 import com.peaknav.viewer.desktop.MapViewerDesktopSingleton;
 
@@ -125,7 +126,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     public void openScreenSearchLocation(ClickCallback callback) {
         // The whole window is built on the EDT (this method is called from the GL render thread;
         // constructing Swing UI there is undefined behaviour and deadlock-prone on macOS).
-        SwingUtilities.invokeLater(() -> {
+        DesktopSwing.onEdt(() -> {
             if (openSearchFrame != null) {
                 // One search window, and clicking the button again is a request to SEE it:
                 // un-minimised, above the map, with the caret back in the search box.
@@ -226,7 +227,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                 // The callback arrives on a network thread: the list model and the shared result
                 // list may only be touched on the EDT, and only if no newer search superseded us.
                 getC().onlineSearch.parseDestinationText(searchText,
-                        nominatimResponses -> SwingUtilities.invokeLater(() -> {
+                        nominatimResponses -> DesktopSwing.onEdt(() -> {
                     if (generation != searchGeneration) {
                         return; // stale response of an earlier search
                     }
@@ -268,7 +269,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void pickGpxFile() {
-        SwingUtilities.invokeLater(() -> {
+        DesktopSwing.onEdt(() -> {
             javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
             chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
             chooser.setAcceptAllFileFilterUsed(false);
@@ -305,7 +306,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void promptGoToImageLocation(double lat, double lon) {
-        SwingUtilities.invokeLater(() -> {
+        DesktopSwing.onEdt(() -> {
             int dialogResult = JOptionPane.showConfirmDialog(
                     null,
                     s("Go_to_image_location_prompt"), // message
@@ -321,7 +322,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void promptYesNo(String title, String message, Runnable onYes) {
-        SwingUtilities.invokeLater(() -> {
+        DesktopSwing.onEdt(() -> {
             int dialogResult = JOptionPane.showConfirmDialog(
                     null, message, title, JOptionPane.YES_NO_OPTION);
             if (dialogResult == JOptionPane.YES_OPTION) {
@@ -332,7 +333,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void warnCannotReadImageLocation() {
-        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+        DesktopSwing.onEdt(() -> JOptionPane.showMessageDialog(
                 null,
                 s("Image_location_missing"),
                 s("Image_location_missing_title"),
@@ -442,7 +443,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void chooseSkyTime() {
-        SwingUtilities.invokeLater(() -> {
+        DesktopSwing.onEdt(() -> {
             com.peaknav.sky.SkyModel sky = getC().skyModel;
             long init = sky.currentTimeMillis();
             javax.swing.JSpinner spinner = new javax.swing.JSpinner(new javax.swing.SpinnerDateModel(
@@ -465,7 +466,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         // Marshalled to the EDT: this is reached from inside MapViewerScreen.render (a camera fly
         // ending over missing data), and a synchronous JOptionPane there both violates Swing
         // threading and freezes the whole render loop until the user answers.
-        SwingUtilities.invokeLater(() -> {
+        DesktopSwing.onEdt(() -> {
             int dialogResult = JOptionPane.showConfirmDialog(
                     null,
                     s("Missing_data_prompt"), // message
@@ -513,7 +514,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         // Default file name carries a timestamp so successive shots don't collide.
         String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
         final String defaultName = "PeakNav_" + stamp + ".png";
-        SwingUtilities.invokeLater(() -> {
+        DesktopSwing.onEdt(() -> {
             try {
                 javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
                 chooser.setDialogTitle(s("Save_image"));
@@ -563,10 +564,10 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                 Thread saver = new Thread(() -> {
                     try {
                         savePixmapToFile(pixmap, target, asJpeg, info);
-                        SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
+                        DesktopSwing.onEdt(() -> javax.swing.JOptionPane.showMessageDialog(
                                 null, s("Image_saved") + ":\n" + target.getAbsolutePath()));
                     } catch (Exception e) {
-                        SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
+                        DesktopSwing.onEdt(() -> javax.swing.JOptionPane.showMessageDialog(
                                 null, s("Save_failed_msg") + "\n" + e.getMessage(),
                                 s("Save_failed"), javax.swing.JOptionPane.ERROR_MESSAGE));
                     } finally {
@@ -647,11 +648,16 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         if (message == null || message.isEmpty()) {
             return;
         }
+        if (!com.peaknav.viewer.desktop.DesktopSwing.isAvailable()) {
+            // No AWT to float a window over the map: the map has a toast of its own, and
+            // saying so on the console costs nothing. Deliberately not DesktopSwing.onEdt:
+            // a toast is not worth explaining the runtime for, once per toast.
+            System.err.println("[Toast] " + message);
+            com.badlogic.gdx.Gdx.app.postRunnable(
+                    () -> com.peaknav.viewer.MapViewerSingleton.getViewerInstance().toast(message));
+            return;
+        }
         javax.swing.SwingUtilities.invokeLater(() -> {
-            if (java.awt.GraphicsEnvironment.isHeadless()) {
-                System.err.println("[Toast] " + message);
-                return;
-            }
             // A burst of toasts (e.g. several provider errors) replaces the previous one instead
             // of stacking identical always-on-top windows on the same spot.
             if (currentToast != null) {
@@ -706,7 +712,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         if (message == null || message.isEmpty()) {
             return;
         }
-        javax.swing.SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
+        com.peaknav.viewer.desktop.DesktopSwing.onEdt(() -> javax.swing.JOptionPane.showMessageDialog(
                 null, message, "PeakNav", javax.swing.JOptionPane.WARNING_MESSAGE));
     }
 
@@ -717,7 +723,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     @Override
     public void promptForTextFields(
             String title, String message, String[] labels, String[] initialValues, TextFieldsCallback callback) {
-        javax.swing.SwingUtilities.invokeLater(() -> {
+        com.peaknav.viewer.desktop.DesktopSwing.onEdt(() -> {
             javax.swing.JPanel fieldsPanel = new javax.swing.JPanel(
                     new java.awt.GridLayout(labels.length * 2, 1, 0, 2));
             javax.swing.JTextField[] fields = new javax.swing.JTextField[labels.length];

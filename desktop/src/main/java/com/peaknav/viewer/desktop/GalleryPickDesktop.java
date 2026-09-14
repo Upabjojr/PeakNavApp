@@ -53,7 +53,7 @@ public class GalleryPickDesktop {
      * the second call brings that one to the front rather than opening another.
      */
     public static void open() {
-        SwingUtilities.invokeLater(() -> {
+        DesktopSwing.onEdt(() -> {
             if (!OPEN.compareAndSet(false, true)) {
                 // Already asking: show the user the chooser they already have, wherever it
                 // has ended up - behind the map window, or minimised. See WindowRaiser.
