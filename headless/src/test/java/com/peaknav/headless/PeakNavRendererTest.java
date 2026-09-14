@@ -1712,6 +1712,15 @@ class PeakNavRendererTest {
         renderer.setLabel(PeakNavRenderer.Label.LIFT_NAMES, true).setLabel(PeakNavRenderer.Label.PISTE_NAMES, true)
                 .setLabel(PeakNavRenderer.Label.ROAD_NAMES, true);
 
+        // The main menu's Labels switch hides every label at once, and brings them all back.
+        renderer.setAllLabels(false).settle(1200);
+        assertTrue(renderer.roadNamesDrawn().isEmpty(), "no road, piste or lift names with every label off");
+        File noLabels = newTempFile("all-labels-off.png");
+        renderer.captureWithUi(noLabels);
+        renderer.setAllLabels(true).settle(1500);
+        System.out.println("all labels off frame: " + noLabels.getAbsolutePath());
+        assertTrue(!renderer.roadNamesDrawn().isEmpty(), "and back when switched on");
+
         // The menus: Roads "..." holds roads and paths and ski pistes, each with a "..." of its own.
         StringBuilder menus = new StringBuilder("ski menu frames:");
         renderer.setOptionsPane(true).settle(400);

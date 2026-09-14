@@ -1442,24 +1442,24 @@ public class OptionPane {
 
         List<Table> buttons = new ArrayList<>(16);
 
-        // Label visibility toggles live in their own submenu (peaks, places, alpine huts, plus the
-        // ranged labels: islands, cities, mountain ranges), opened by a "..." like the other
-        // submenus - or by the row's name itself.
-        ImageTextButtonOptionPane buttonLabelsMenu = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_peak_names.png", s("Labels_menu"), false);
-        Runnable openLabels = () -> {
-            selectLabels.setVisible(true);
-            table.setVisible(false);
-            tableOneColumn.setVisible(false);
-        };
-        buttonLabelsMenu.addClickListener(openLabels::run);
+        // Labels: every label on or off at once, plus a "..." submenu for each kind (peaks, places,
+        // alpine huts, and the ranged labels: islands, cities, mountain ranges) - the same
+        // composite scheme as the rows below. Only the "..." opens the submenu.
+        ImageTextButtonOptionPane checkBoxLabels = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_peak_names.png", s("Labels_menu"), true);
+        addCheckingStateProperty(checkBoxLabels, () -> P.isLabelsVisible());
+        checkBoxLabels.addClickListener(() -> changer.execute(
+                () -> P.setLabelsVisible(checkBoxLabels.isChecked())));
+        checkBoxLabels.setProgrammaticChangeEvents(false);
         Table tableLabels = new Table();
-        tableLabels.add(buttonLabelsMenu).width(buttonWidth * 0.8f);
+        tableLabels.add(checkBoxLabels).width(buttonWidth * 0.8f);
         TextButton buttonLabelsOptions = getC().widgetGetter.getTextButton("...", false);
         buttonLabelsOptions.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
-                openLabels.run();
+                selectLabels.setVisible(true);
+                table.setVisible(false);
+                tableOneColumn.setVisible(false);
             }
         });
         tableLabels.add(buttonLabelsOptions).width(buttonWidth * 0.2f).height(height);

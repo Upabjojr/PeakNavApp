@@ -44,6 +44,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PISTES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PISTE_LABELS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_LIFTS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_LIFT_LABELS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ALL_LABELS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PLACE_NAMES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_UNIT_SYSTEM;
 import static com.peaknav.viewer.render_tiles.PixmapLayerName.BASE_ROADS;
@@ -74,6 +75,7 @@ public class PreferencesManager {
     private boolean pisteLabelsVisible;
     private boolean liftsVisible;
     private boolean liftLabelsVisible;
+    private boolean labelsVisible;
     private boolean peakVisible;
     private boolean visiblePlaceNames;
     private boolean visibleAlpineHuts;
@@ -229,6 +231,7 @@ public class PreferencesManager {
         pisteLabelsVisible = preferences.getBoolean(VIEWER_SHOW_PISTE_LABELS, true);
         liftsVisible = preferences.getBoolean(VIEWER_SHOW_LIFTS, true);
         liftLabelsVisible = preferences.getBoolean(VIEWER_SHOW_LIFT_LABELS, true);
+        labelsVisible = preferences.getBoolean(VIEWER_SHOW_ALL_LABELS, true);
         layerVisibleUnderlayLayer = preferences.getBoolean(VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER, true);
         sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
         horizonCompass = preferences.getBoolean(VIEWER_HORIZON_COMPASS, true);
@@ -359,6 +362,20 @@ public class PreferencesManager {
         liftsVisible = visible;
         preferences.putBoolean(VIEWER_SHOW_LIFTS, visible);
         lastChange.put(SKI_SLOPES, System.currentTimeMillis());
+        preferences.flush();
+    }
+
+    /**
+     * The main menu's Labels switch: every label at once - peaks, places, huts, areas, road,
+     * piste and lift names - on or off, leaving each kind's own setting as it was.
+     */
+    public boolean isLabelsVisible() {
+        return labelsVisible;
+    }
+
+    public void setLabelsVisible(boolean visible) {
+        labelsVisible = visible;
+        preferences.putBoolean(VIEWER_SHOW_ALL_LABELS, visible);
         preferences.flush();
     }
 

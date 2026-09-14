@@ -117,12 +117,15 @@ public class LabelRenderer {
 
     public void render(float deltaTime) {
         labelsDrawnThisFrame = 0;
-        // Road names first, underneath: the peaks, places and areas are drawn over them.
+        // Road names first, underneath: the peaks, places and areas are drawn over them. The road
+        // name renderer asks the main Labels switch itself, so it forgets what it was showing.
         roadNameRenderer.render();
         // renderBackgroundPixmap();
-        renderAreas();
-        renderLabelLines();
-        renderLabelTexts();
+        if (P.isLabelsVisible()) {
+            renderAreas();
+            renderLabelLines();
+            renderLabelTexts();
+        }
         renderHorizonCompass();
         MapViewerScreen viewer = MapViewerSingleton.getViewerInstance();
         if (getAppState().isLoadingMapData() || (viewer != null && viewer.isBusy())) {

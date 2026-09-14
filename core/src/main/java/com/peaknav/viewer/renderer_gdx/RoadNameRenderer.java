@@ -227,7 +227,7 @@ public class RoadNameRenderer {
         showRoadNames = P.isViewerLayerVisibleBaseRoads() && P.getRoadStyle().isRoadNames();
         showPisteNames = P.isSkiSlopesVisible() && P.isPisteLabelsVisible();
         showLiftNames = P.isLiftsVisible() && P.isLiftLabelsVisible();
-        if (!showRoadNames && !showPisteNames && !showLiftNames) {
+        if (!P.isLabelsVisible() || (!showRoadNames && !showPisteNames && !showLiftNames)) {
             chosen.clear();
             return;
         }

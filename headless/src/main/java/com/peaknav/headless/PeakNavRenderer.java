@@ -1274,6 +1274,12 @@ public final class PeakNavRenderer implements AutoCloseable {
         return this;
     }
 
+    /** The main menu's Labels switch: every label on or off at once, each kind's own setting kept. */
+    public PeakNavRenderer setAllLabels(final boolean visible) {
+        onRenderThread(() -> P.setLabelsVisible(visible));
+        return this;
+    }
+
     /** Turns every label category off, as a base to switch individual ones back on. */
     public PeakNavRenderer clearLabels() {
         for (Label label : Label.values()) {
