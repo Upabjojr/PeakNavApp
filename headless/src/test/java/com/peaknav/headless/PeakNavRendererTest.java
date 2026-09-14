@@ -1447,6 +1447,16 @@ class PeakNavRendererTest {
             float[] point = renderer.gpxTourPointOnScreen();
             assertTrue(point != null, "the tour's point is on the frame while it flies");
             assertTrue(point[0] >= 0 && point[0] <= WIDTH && point[1] >= 0 && point[1] <= HEIGHT);
+            // On the path as recorded and painted - the camera's smoothed line cut its bends.
+            for (int k = 0; k < 4; k++) {
+                double off = renderer.gpxTourPointOffTrackMetres();
+                assertTrue(off < 0.5, "the point is on the path, not beside it: " + off + " m");
+                renderer.settle(700);
+            }
+            float[] bar = renderer.gpxSeekBarBounds();
+            System.out.println("gpx seek bar: " + java.util.Arrays.toString(bar));
+            assertTrue(bar[0] > 0 && bar[0] + bar[2] < bar[4] && bar[3] < 0.1f * bar[5],
+                    "the scrub bar fits the screen: " + java.util.Arrays.toString(bar));
             // With the interface: the point is an overlay, drawn after a plain capture is taken.
             File flying = newTempFile("tour-point.png");
             renderer.captureWithUi(flying);
@@ -1517,10 +1527,12 @@ class PeakNavRendererTest {
             assertTrue(texts[6].isEmpty(), "no tour, no current elevation");
 
             renderer.startGpxTour().settle(6000);
-            String now = renderer.gpxInfoTexts()[6];
+            String[] touringTexts = renderer.gpxInfoTexts();
+            String now = touringTexts[6] + " | " + touringTexts[7];
             String[] axis = renderer.gpxInfoAxisLabels();
             System.out.println("gpx pane touring: " + now + " | axes: " + String.join(" | ", axis));
-            assertTrue(now.matches(".*: \\d+ m"), "while the tour runs, the elevation where it is: " + now);
+            assertTrue(now.matches(".*: \\d+ m \\| .*: [\\d.]+ k?m"),
+                    "while the tour runs, the elevation where it is and the distance walked: " + now);
             assertTrue(java.util.Arrays.asList(axis).contains("x:0:00"), "time since the start along the bottom");
             assertTrue(java.util.Arrays.stream(axis).anyMatch(a -> a.startsWith("x:") && !a.equals("x:0:00")),
                     "and later times: the walking time so far, for a track without times");
@@ -1528,13 +1540,14 @@ class PeakNavRendererTest {
                     "heights up the side, in metres");
             renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL).settle(500);
             String[] feetAxis = renderer.gpxInfoAxisLabels();
-            String feetNow = renderer.gpxInfoTexts()[6];
+            String[] feetTexts = renderer.gpxInfoTexts();
+            String feetNow = feetTexts[6] + " | " + feetTexts[7];
             renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.METRIC).settle(500);
             System.out.println("gpx pane in feet: " + feetNow + " | axes: " + String.join(" | ", feetAxis));
             assertTrue(java.util.Arrays.stream(feetAxis).anyMatch(a -> a.startsWith("y:") && a.endsWith(" ft")),
                     "in feet when feet are chosen: " + String.join(" | ", feetAxis));
             assertTrue(java.util.Arrays.stream(feetAxis).noneMatch(a -> a.endsWith(" m")), "and no metres left");
-            assertTrue(feetNow.endsWith(" ft"), feetNow);
+            assertTrue(feetNow.matches(".*: \\d+ ft \\| .*: [\\d.]+ (ft|mi)"), feetNow);
             File open = newTempFile("gpx-pane.png");
             renderer.captureWithUi(open);
             float[] small = renderer.gpxInfoBounds();

@@ -1021,6 +1021,25 @@ public final class PeakNavRenderer implements AutoCloseable {
         return out[0];
     }
 
+    /** How far the GPX tour's point is from the recorded track, horizontally, in metres; NaN without a tour. */
+    public double gpxTourPointOffTrackMetres() {
+        final double[] out = new double[1];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.getGpxTourPointOffTrackMetres());
+        return out[0];
+    }
+
+    /** The GPX scrub bar's x, y, width and height, then the stage's width and height, stage units. */
+    public float[] gpxSeekBarBounds() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> {
+            com.badlogic.gdx.scenes.scene2d.ui.Slider bar = mapApp.mapViewerScreen.tableLocation.gpxSeekSlider;
+            com.badlogic.gdx.math.Vector2 v = bar.localToStageCoordinates(new com.badlogic.gdx.math.Vector2());
+            out[0] = new float[]{v.x, v.y, bar.getWidth(), bar.getHeight(),
+                    bar.getStage().getWidth(), bar.getStage().getHeight()};
+        });
+        return out[0];
+    }
+
     /** The GPX tour's current point in world space; null when there is none. */
     public float[] gpxTourPointWorld() {
         final float[][] out = new float[1][];

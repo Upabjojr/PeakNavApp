@@ -600,14 +600,28 @@ public class WidgetGetter {
             Slider.SliderStyle gpxSeekStyle = new Slider.SliderStyle();
             gpxSeekStyle.knob = getC().widgetTextures.getTextureRegionDrawable(
                     "icons/icon_slider_alpha.png");
-            gpxSeekStyle.knob.setMinHeight(widgetUnitStep);
-            gpxSeekStyle.knob.setMinWidth(widgetUnitStep);
-            gpxSeekStyle.background = getC().widgetTextures.getNinePatchDrawable(
-                    "icons/slider_nine_patch.png");
+            gpxSeekStyle.knob.setMinHeight(0.55f * widgetUnitStep);
+            gpxSeekStyle.knob.setMinWidth(0.55f * widgetUnitStep);
+            // A thin track, sized from the widget unit: a slider draws its background at the
+            // background's own minimum height, and the nine-patch's 50 px made the bar a thick band
+            // whatever the cell said, larger still on a dense screen.
+            TextureRegionDrawable gpxSeekTrack = new TextureRegionDrawable(
+                    getC().widgetTextures.getUniformDrawable(new Color(0f, 0f, 0f, 0.55f)));
+            gpxSeekTrack.setMinHeight(0.16f * widgetUnitStep);
+            gpxSeekTrack.setMinWidth(widgetUnitStep);
+            gpxSeekStyle.background = gpxSeekTrack;
             gpxSeekSlider = new Slider(0f, 1f, 0.002f, false, gpxSeekStyle);
+            // Measured in stage units, like the rest of the interface, and from the table as laid
+            // out: the screen's width in pixels made the bar too wide wherever the two differ, and
+            // it did not follow the window when it was resized.
             gpxSeekTable.add(gpxSeekSlider)
-                    .width(Gdx.graphics.getWidth() - 6f * widgetUnitStep)
-                    .height(widgetUnitStep)
+                    .width(new com.badlogic.gdx.scenes.scene2d.ui.Value() {
+                        @Override
+                        public float get(com.badlogic.gdx.scenes.scene2d.Actor context) {
+                            return Math.max(2f * widgetUnitStep, gpxSeekTable.getWidth() - 6f * widgetUnitStep);
+                        }
+                    })
+                    .height(0.5f * widgetUnitStep)
                     .padBottom(2.2f * widgetUnitStep);
 
             progressBarTable = new Table();

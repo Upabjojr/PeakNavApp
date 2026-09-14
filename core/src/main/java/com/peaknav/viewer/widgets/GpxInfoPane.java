@@ -31,7 +31,7 @@ import java.util.List;
  * one folds the pane down to that single button, the other makes it wide and back - and under
  * them the track's name, how long it is, how much it climbs and drops, the walking time, and its
  * altimetric profile, with a dot on the profile where a running tour has got to and, while it
- * runs, the elevation there. The profile is labelled: heights up the side, in the chosen units,
+ * runs, the elevation there and the distance walked so far. The profile is labelled: heights up the side, in the chosen units,
  * and the time since the start along the bottom - as recorded, or else the walking time so far.
  *
  * <p>A track that recorded its own heights has the terrain's drawn over them, with a legend; one
@@ -94,6 +94,7 @@ public class GpxInfoPane {
     private final Label heights;
     private final Label speed;
     private final Label current;
+    private final Label walked;
     private final Label.LabelStyle axisStyle;
     private final List<Label> yLabels = new ArrayList<>();
     private final List<Label> xLabels = new ArrayList<>();
@@ -125,6 +126,7 @@ public class GpxInfoPane {
     private float gutter;
     private boolean currentShown;
     private String currentText = "";
+    private String walkedText = "";
 
     public GpxInfoPane(float widgetUnitStep) {
         this.widgetUnitStep = widgetUnitStep;
@@ -163,6 +165,7 @@ public class GpxInfoPane {
         heights = label(style);
         speed = label(style);
         current = label(style);
+        walked = label(style);
         axisStyle = new Label.LabelStyle(style);
         axisStyle.fontColor = AXIS_TEXT;
         speedGroup.addActor(speedGraph);
@@ -275,6 +278,7 @@ public class GpxInfoPane {
         body.add(heights).row();
         if (currentShown) {
             body.add(current).row();
+            body.add(walked).row();
         }
         if (stats != null && stats.hasTwoProfiles()) {
             body.add(legend).padTop(0.04f * u).row();
@@ -390,13 +394,14 @@ public class GpxInfoPane {
 
     /**
      * The texts shown, for tests and scripts: the track's name, distance, time, climb, heights,
-     * speed ("" without) and the elevation where a running tour is ("" without).
+     * speed ("" without), and the elevation where a running tour is and the distance it has
+     * walked ("" without).
      */
     public String[] getTexts() {
         return new String[]{name.getText().toString(), distance.getText().toString(),
                 time.getText().toString(), climb.getText().toString(), heights.getText().toString(),
                 stats != null && stats.speedKmh != null ? speed.getText().toString() : "",
-                currentShown ? currentText : ""};
+                currentShown ? currentText : "", currentShown ? walkedText : ""};
     }
 
     /**
@@ -429,6 +434,12 @@ public class GpxInfoPane {
             if (!text.equals(currentText)) {
                 currentText = text;
                 current.setText(text);
+            }
+            // The tour's frames are evenly spaced along the track, so the fraction is of its distance.
+            String walkedNow = s("Gpx_info_walked") + ": " + GpxTrackStats.formatDistance(f * stats.distanceMetres, units);
+            if (!walkedNow.equals(walkedText)) {
+                walkedText = walkedNow;
+                walked.setText(walkedNow);
             }
         }
         if (showCurrent != currentShown) {
@@ -563,6 +574,7 @@ public class GpxInfoPane {
         buildHeightAxis(units);
         buildTimeAxis();
         currentText = ""; // in the new units, next frame
+        walkedText = "";
         if (stats.speedKmh != null) {
             speed.setText(s("Gpx_info_speed") + ": " + s("Gpx_info_speed_average") + " "
                     + GpxTrackStats.formatSpeed(stats.averageSpeedKmh, units) + "   "

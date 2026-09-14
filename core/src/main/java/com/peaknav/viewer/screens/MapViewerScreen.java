@@ -472,6 +472,14 @@ public class MapViewerScreen implements Screen {
 		if (raw.size() < 2) {
 			return;
 		}
+		// The track itself, for the tour's point: the camera flies a smoothed line, but the point
+		// has to sit on the path as it is painted, bends and all.
+		gpxTourTrack.clear();
+		gpxTourTrack.addAll(raw);
+		gpxTourTrackAlong = new float[raw.size()];
+		for (int i = 1; i < raw.size(); i++) {
+			gpxTourTrackAlong[i] = gpxTourTrackAlong[i - 1] + gpxHoriz(raw.get(i - 1), raw.get(i));
+		}
 
 		// De-noise, then space evenly, then polish — in that order, and it matters. Arc length
 		// along a raw GPS trace is dominated by the jitter rather than by forward progress, so
@@ -527,7 +535,7 @@ public class MapViewerScreen implements Screen {
 			Vector3 aim = path.get(Math.min(m - 1, i + lookahead));
 			Vector3 dir = new Vector3(aim).sub(camPos).nor();
 			gpxTourFrames.add(new GpxTourFrame(camPos, dir,
-					i == 0 ? GPX_TOUR_INTRO_SECONDS : stepSeconds, i == 0, path.get(i)));
+					i == 0 ? GPX_TOUR_INTRO_SECONDS : stepSeconds, i == 0));
 		}
 
 		// Exactly one orbit of the end point, starting from wherever the fly-along left off.
@@ -547,7 +555,7 @@ public class MapViewerScreen implements Screen {
 			Vector3 od = new Vector3(lookAt).sub(op).nor();
 			float t = (float) s / GPX_ORBIT_STEPS;
 			gpxTourFrames.add(new GpxTourFrame(op, od,
-					GPX_ORBIT_STEP_SECONDS * (1f + (GPX_ORBIT_SLOWDOWN - 1f) * t * t), false, endW));
+					GPX_ORBIT_STEP_SECONDS * (1f + (GPX_ORBIT_SLOWDOWN - 1f) * t * t), false));
 		}
 
 		queueGpxTourFrom(0);
@@ -559,27 +567,31 @@ public class MapViewerScreen implements Screen {
 		final Vector3 dir;
 		final float seconds;
 		final boolean intro; // the first frame eases in from wherever the camera currently is
-		/** The point of the track this frame shows the tour at (the end, while it circles it). */
-		final Vector3 point;
-		GpxTourFrame(Vector3 pos, Vector3 dir, float seconds, boolean intro, Vector3 point) {
+		GpxTourFrame(Vector3 pos, Vector3 dir, float seconds, boolean intro) {
 			this.pos = pos;
 			this.dir = dir;
 			this.seconds = seconds;
 			this.intro = intro;
-			this.point = point;
 		}
 	}
 
 	private final java.util.List<GpxTourFrame> gpxTourFrames = new java.util.ArrayList<>();
 	/** How many of the tour's frames follow the track; the rest circle its end. */
 	private int gpxTourTrackFrames = 0;
+	/** The track as recorded, in world space, and the horizontal distance along it at each point. */
+	private final java.util.List<Vector3> gpxTourTrack = new java.util.ArrayList<>();
+	private float[] gpxTourTrackAlong = new float[0];
+	/** The frame the queued moves start from: that first move goes straight onto it. */
+	private int gpxTourQueuedFrom = 0;
 
 	/** The GPX info pane (see GpxInfoPane); null until the stage is built. */
 	public com.peaknav.viewer.widgets.GpxInfoPane gpxInfoPane;
 
 	/**
 	 * How far along the track the tour is, 0..1 by distance (the frames are evenly spaced along
-	 * it), 1 while it circles the end; -1 when no tour is running or paused.
+	 * it), 1 while it circles the end; -1 when no tour is running or paused. It moves smoothly:
+	 * between the frame left and the frame being flown to, as far as that move has got - except on
+	 * the first move queued, which flies (or holds) straight onto its own frame.
 	 */
 	public float getGpxTourFraction() {
 		int total = gpxTourFrames.size();
@@ -587,7 +599,8 @@ public class MapViewerScreen implements Screen {
 			return -1f;
 		}
 		int index = MathUtils.clamp(total - moveCameraAction.remainingSteps(), 0, total - 1);
-		return Math.min(1f, index / (float) (gpxTourTrackFrames - 1));
+		float along = index <= gpxTourQueuedFrom ? index : index - 1 + moveCameraAction.currentStepProgress();
+		return MathUtils.clamp(along / (gpxTourTrackFrames - 1), 0f, 1f);
 	}
 
 	/** (Re)queues the tour from the given keyframe, replacing anything already queued. */
@@ -605,6 +618,7 @@ public class MapViewerScreen implements Screen {
 			return;
 		}
 		firstFrame = MathUtils.clamp(firstFrame, 0, gpxTourFrames.size() - 1);
+		gpxTourQueuedFrom = firstFrame;
 		moveCameraAction.clearSteps();
 		float total = 0f;
 		for (int i = firstFrame; i < gpxTourFrames.size(); i++) {
@@ -634,8 +648,9 @@ public class MapViewerScreen implements Screen {
 
 	/**
 	 * Where along the track the tour is, in world space, while one is playing or paused; null
-	 * otherwise. It is the track point of the frame being flown to, so it moves with the camera -
-	 * paused, it holds; after a seek, it jumps with the view.
+	 * otherwise. It is on the recorded track itself, at {@link #getGpxTourFraction} of its length,
+	 * so it glides along the path as painted with the camera - paused, it holds; after a seek, it
+	 * jumps with the view.
 	 *
 	 * <p>On the ground, where the track is painted (GpxTileRasterizer draws it into the terrain
 	 * tiles), not at the height the GPX recorded: those differ by tens of metres, and while the
@@ -647,8 +662,7 @@ public class MapViewerScreen implements Screen {
 		if (!gpxTourActive || total == 0 || moveCameraAction.isComplete()) {
 			return null;
 		}
-		int index = MathUtils.clamp(total - moveCameraAction.remainingSteps(), 0, total - 1);
-		Vector3 point = gpxTourFrames.get(index).point;
+		Vector3 point = gpxTourPointOnTrack(Math.max(0f, getGpxTourFraction()));
 		float lat = point.y;
 		float lon = Units.convertLatitsToLonits(point.x, (float) getC().L.getTargetLatitude());
 		// The loaded terrain as road names read it: ElevationUtils' own lookup never finds a tile.
@@ -661,6 +675,38 @@ public class MapViewerScreen implements Screen {
 	}
 
 	private final Vector3 gpxTourPointOnGround = new Vector3();
+	private final Vector3 gpxTourTrackPoint = new Vector3();
+
+	/** The recorded track's point {@code fraction} of its length along: on the path, never across a bend. */
+	private Vector3 gpxTourPointOnTrack(float fraction) {
+		int n = gpxTourTrack.size();
+		float want = fraction * gpxTourTrackAlong[n - 1];
+		int lo = 1, hi = n - 1; // the first point at or beyond the distance wanted
+		while (lo < hi) {
+			int mid = (lo + hi) >>> 1;
+			if (gpxTourTrackAlong[mid] < want) lo = mid + 1; else hi = mid;
+		}
+		float segment = gpxTourTrackAlong[lo] - gpxTourTrackAlong[lo - 1];
+		float t = segment <= 0f ? 0f : MathUtils.clamp((want - gpxTourTrackAlong[lo - 1]) / segment, 0f, 1f);
+		return gpxTourTrackPoint.set(gpxTourTrack.get(lo - 1)).lerp(gpxTourTrack.get(lo), t);
+	}
+
+	/** For tests: the tour's point's horizontal distance from the recorded track, metres; NaN without a tour. */
+	public double getGpxTourPointOffTrackMetres() {
+		Vector3 p = getGpxTourPoint();
+		if (p == null) {
+			return Double.NaN;
+		}
+		double best = Double.MAX_VALUE;
+		for (int i = 1; i < gpxTourTrack.size(); i++) {
+			Vector3 a = gpxTourTrack.get(i - 1), b = gpxTourTrack.get(i);
+			double dx = b.x - a.x, dy = b.y - a.y, lengthSquared = dx * dx + dy * dy;
+			double t = lengthSquared == 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared));
+			double ex = a.x + t * dx - p.x, ey = a.y + t * dy - p.y;
+			best = Math.min(best, Math.sqrt(ex * ex + ey * ey));
+		}
+		return Units.convertLatitsToMeters((float) best);
+	}
 
 	private final Vector3 gpxTourPointOnScreen = new Vector3();
 
