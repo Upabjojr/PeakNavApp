@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Make the pane large": four corners pushed outwards. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <g fill="none" stroke="#10202b" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M62 102 L62 62 L102 62"/>
+    <path d="M138 62 L178 62 L178 102"/>
+    <path d="M178 138 L178 178 L138 178"/>
+    <path d="M102 178 L62 178 L62 138"/>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#10202b" stroke-width="3"/>
+</svg>

@@ -1503,7 +1503,7 @@ class PeakNavRendererTest {
             String[] texts = renderer.gpxInfoTexts();
             assertTrue(texts != null, "the pane shows with the track");
             System.out.println("gpx pane: " + String.join(" | ", texts));
-            assertTrue(texts[0].contains("Zermatt - Gornergrat"), "named after the track: " + texts[0]);
+            assertEquals("Zermatt - Gornergrat", texts[0], "named after the track");
             assertTrue(!String.join(" ", texts).contains(" N,"), "no start or end coordinates");
             assertTrue(texts[1].contains("km"), texts[1]);
             assertTrue(texts[2].contains("h"), "a walking time: " + texts[2]);
@@ -1513,16 +1513,30 @@ class PeakNavRendererTest {
             renderer.startGpxTour().settle(6000);
             File open = newTempFile("gpx-pane.png");
             renderer.captureWithUi(open);
-            float[] edge = renderer.gpxInfoRightEdgeAndStageWidth();
-            assertTrue(edge != null && edge[0] < edge[1] / 2,
+            float[] small = renderer.gpxInfoBounds();
+            assertTrue(small != null && small[0] + small[2] < small[4] / 2,
                     "the pane stops short of the middle, where the tour circles the end: "
-                            + java.util.Arrays.toString(edge));
+                            + java.util.Arrays.toString(small));
             float[] bodyBefore = renderer.gpxInfoBodyPosition();
             assertTrue(bodyBefore != null, "open, the body is laid out");
+
+            renderer.setGpxInfoMaximized(true).settle(500);
+            File large = newTempFile("gpx-pane-large.png");
+            renderer.captureWithUi(large);
+            float[] big = renderer.gpxInfoBounds();
+            assertTrue(big[2] > 0.6f * big[4] && big[3] > small[3],
+                    "maximized, it spans most of the screen: " + java.util.Arrays.toString(big));
+            renderer.setGpxInfoMaximized(false).settle(500);
+            float[] back = renderer.gpxInfoBounds();
+            assertTrue(Math.abs(back[2] - small[2]) < 1 && Math.abs(back[3] - small[3]) < 1,
+                    "restored, it is the small pane again: " + java.util.Arrays.toString(back));
+
             renderer.setGpxInfoOpen(false).settle(500);
             File folded = newTempFile("gpx-pane-folded.png");
             renderer.captureWithUi(folded);
-            assertTrue(renderer.gpxInfoTexts()[0].startsWith("↓"), "folded, the header says so");
+            float[] button = renderer.gpxInfoBounds();
+            assertTrue(Math.abs(button[2] - button[3]) < 1 && button[2] < small[2] / 3,
+                    "folded, it is a single button: " + java.util.Arrays.toString(button));
             renderer.setGpxInfoOpen(true).settle(500);
             File reopened = newTempFile("gpx-pane-reopened.png");
             renderer.captureWithUi(reopened);
@@ -1532,7 +1546,7 @@ class PeakNavRendererTest {
                     "reopened, the text is back where it was: " + java.util.Arrays.toString(bodyBefore)
                             + " vs " + java.util.Arrays.toString(bodyAfter));
             System.out.println("gpx pane frames: " + open.getAbsolutePath() + " " + folded.getAbsolutePath()
-                    + " " + reopened.getAbsolutePath());
+                    + " " + reopened.getAbsolutePath() + " " + large.getAbsolutePath());
         } finally {
             renderer.stopGpxTour();
             renderer.clearGpx();

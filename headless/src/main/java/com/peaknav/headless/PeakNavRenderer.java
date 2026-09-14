@@ -950,7 +950,7 @@ public final class PeakNavRenderer implements AutoCloseable {
         return this;
     }
 
-    /** The GPX info pane's texts, header first; null while the pane is hidden. */
+    /** The GPX info pane's texts, the track's name first; null while the pane is hidden. */
     public String[] gpxInfoTexts() {
         final String[][] out = new String[1][];
         onRenderThread(() -> {
@@ -966,11 +966,17 @@ public final class PeakNavRenderer implements AutoCloseable {
         return this;
     }
 
-    /** The GPX info pane's right edge and the stage's width, in stage units. */
-    public float[] gpxInfoRightEdgeAndStageWidth() {
+    /** The GPX info pane's x, y, width and height, then the stage's width and height, stage units. */
+    public float[] gpxInfoBounds() {
         final float[][] out = new float[1][];
-        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.rightEdgeAndStageWidth());
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.boundsOnStage());
         return out[0];
+    }
+
+    /** Makes the GPX info pane large or small again, as its size button does. */
+    public PeakNavRenderer setGpxInfoMaximized(final boolean maximized) {
+        onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.setMaximized(maximized));
+        return this;
     }
 
     /** Stage position of the GPX info pane's first body label; null when folded or hidden. */

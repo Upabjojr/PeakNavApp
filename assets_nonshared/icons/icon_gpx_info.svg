@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Show the track's info": a height profile under a dot, as the GPX info pane draws it. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+  </defs>
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <g clip-path="url(#disc)">
+    <path d="M40 176 L78 136 L104 150 L146 88 L170 112 L200 76 L200 176 Z" fill="#5aa0e0"/>
+    <path d="M40 176 L78 136 L104 150 L146 88 L170 112 L200 76" fill="none" stroke="#1f4d7d"
+          stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M40 184 L200 184" fill="none" stroke="#10202b" stroke-width="9" stroke-linecap="round"/>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#10202b" stroke-width="3"/>
+</svg>
