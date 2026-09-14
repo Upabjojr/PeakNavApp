@@ -966,6 +966,42 @@ public final class PeakNavRenderer implements AutoCloseable {
         return this;
     }
 
+    /** The GPX info pane's right edge and the stage's width, in stage units. */
+    public float[] gpxInfoRightEdgeAndStageWidth() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.rightEdgeAndStageWidth());
+        return out[0];
+    }
+
+    /** Stage position of the GPX info pane's first body label; null when folded or hidden. */
+    public float[] gpxInfoBodyPosition() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.bodyPositionOnStage());
+        return out[0];
+    }
+
+    /** The GPX tour's current point in world space; null when there is none. */
+    public float[] gpxTourPointWorld() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> {
+            Vector3 point = mapApp.mapViewerScreen.getGpxTourPoint();
+            out[0] = point == null ? null : new float[]{point.x, point.y, point.z};
+        });
+        return out[0];
+    }
+
+    /** World z of the loaded terrain at a point, as the map draws it; null where none is loaded. */
+    public Float groundWorldZ(final double latitude, final double longitude) {
+        final Float[] out = new Float[1];
+        onRenderThread(() -> {
+            float metres = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(latitude, longitude);
+            out[0] = Float.isNaN(metres) ? null : com.peaknav.utils.Units.convertMetersToLatits(metres)
+                    - com.peaknav.elevation.ElevationUtils
+                    .getElevationCorrectionForRoundEarth((float) latitude, (float) longitude);
+        });
+        return out[0];
+    }
+
     /** Where the GPX tour's current point is drawn, in y-up pixels; null when none is. */
     public float[] gpxTourPointOnScreen() {
         final float[][] out = new float[1][];

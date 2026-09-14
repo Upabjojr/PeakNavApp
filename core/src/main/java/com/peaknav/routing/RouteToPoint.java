@@ -10,7 +10,6 @@ import com.peaknav.geo.MercatorProjection;
 import com.peaknav.geo.Tile;
 import com.peaknav.pbf.PbfMapDataStore;
 import com.peaknav.pbf.Way;
-import com.peaknav.utils.Units;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -94,8 +93,9 @@ public final class RouteToPoint {
     public static String gpxFor(WalkingRouter.Route route, double toLat, double toLon) {
         return RouteGpx.toGpx(String.format(Locale.ROOT, s("Route_name"), toLat, toLon), route,
                 (lat, lon) -> {
-                    Float latits = ElevationUtils.getElevationLatitsFromMaxCoords(lon, lat, false);
-                    return latits == null ? null : Units.convertLatitsToMeters(latits);
+                    // ElevationUtils' own lookup never finds a tile; the loaded terrain does.
+                    float metres = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+                    return Float.isNaN(metres) ? null : metres;
                 });
     }
 

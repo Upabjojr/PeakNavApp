@@ -1456,6 +1456,28 @@ class PeakNavRendererTest {
             float[] later = renderer.gpxTourPointOnScreen();
             assertTrue(held != null && later != null && held[0] == later[0] && held[1] == later[1],
                     "paused, the point holds");
+
+            // Circling the end, the point stays on the end of the track, on the ground where the
+            // track is painted - not at the recorded height, which swung it around as the camera turned.
+            renderer.seekGpxTour(0.85f).settle(500);
+            renderer.awaitTilesLoaded(60_000); // the end's terrain, now that the camera is there
+            Float endGround = renderer.groundWorldZ(45.9833, 7.7853);
+            assertTrue(endGround != null, "terrain loaded at the end of the track");
+            float[] orbitA = renderer.gpxTourPointWorld();
+            File orbitFrameA = newTempFile("tour-orbit-a.png");
+            renderer.captureWithUi(orbitFrameA);
+            renderer.seekGpxTour(0.97f).settle(500);
+            float[] orbitB = renderer.gpxTourPointWorld();
+            File orbitFrameB = newTempFile("tour-orbit-b.png");
+            renderer.captureWithUi(orbitFrameB);
+            System.out.println("tour orbit frames: " + orbitFrameA.getAbsolutePath() + " " + orbitFrameB.getAbsolutePath()
+                    + " point " + java.util.Arrays.toString(orbitA) + " ground " + endGround);
+            assertTrue(orbitA != null && orbitB != null, "the point shows while circling the end");
+            assertTrue(orbitA[0] == orbitB[0] && orbitA[1] == orbitB[1] && orbitA[2] == orbitB[2],
+                    "circling, the point stays put: " + java.util.Arrays.toString(orbitA) + " vs "
+                            + java.util.Arrays.toString(orbitB));
+            assertEquals(45.9833, orbitA[1], 1e-4, "at the end of the track");
+            assertEquals(endGround, orbitA[2], 1e-5, "on the ground");
         } finally {
             renderer.stopGpxTour();
             renderer.clearGpx();
@@ -1482,21 +1504,35 @@ class PeakNavRendererTest {
             assertTrue(texts != null, "the pane shows with the track");
             System.out.println("gpx pane: " + String.join(" | ", texts));
             assertTrue(texts[0].contains("Zermatt - Gornergrat"), "named after the track: " + texts[0]);
-            assertTrue(texts[1].contains("46.02070 N") && texts[1].contains("45.98330 N"), texts[1]);
-            assertTrue(texts[2].contains("km"), texts[2]);
-            assertTrue(texts[3].contains("h"), "a walking time: " + texts[3]);
-            assertTrue(texts[4].contains("1481 m"), "1608 to 3089 m, all up: " + texts[4]);
-            assertTrue(texts[5].contains("3089 m") && texts[5].contains("1608 m"), texts[5]);
+            assertTrue(!String.join(" ", texts).contains(" N,"), "no start or end coordinates");
+            assertTrue(texts[1].contains("km"), texts[1]);
+            assertTrue(texts[2].contains("h"), "a walking time: " + texts[2]);
+            assertTrue(texts[3].contains("1481 m"), "1608 to 3089 m, all up: " + texts[3]);
+            assertTrue(texts[4].contains("3089 m") && texts[4].contains("1608 m"), texts[4]);
 
             renderer.startGpxTour().settle(6000);
             File open = newTempFile("gpx-pane.png");
             renderer.captureWithUi(open);
+            float[] edge = renderer.gpxInfoRightEdgeAndStageWidth();
+            assertTrue(edge != null && edge[0] < edge[1] / 2,
+                    "the pane stops short of the middle, where the tour circles the end: "
+                            + java.util.Arrays.toString(edge));
+            float[] bodyBefore = renderer.gpxInfoBodyPosition();
+            assertTrue(bodyBefore != null, "open, the body is laid out");
             renderer.setGpxInfoOpen(false).settle(500);
             File folded = newTempFile("gpx-pane-folded.png");
             renderer.captureWithUi(folded);
             assertTrue(renderer.gpxInfoTexts()[0].startsWith("↓"), "folded, the header says so");
-            renderer.setGpxInfoOpen(true).settle(300);
-            System.out.println("gpx pane frames: " + open.getAbsolutePath() + " " + folded.getAbsolutePath());
+            renderer.setGpxInfoOpen(true).settle(500);
+            File reopened = newTempFile("gpx-pane-reopened.png");
+            renderer.captureWithUi(reopened);
+            float[] bodyAfter = renderer.gpxInfoBodyPosition();
+            assertTrue(bodyAfter != null && Math.abs(bodyAfter[0] - bodyBefore[0]) < 1
+                            && Math.abs(bodyAfter[1] - bodyBefore[1]) < 1,
+                    "reopened, the text is back where it was: " + java.util.Arrays.toString(bodyBefore)
+                            + " vs " + java.util.Arrays.toString(bodyAfter));
+            System.out.println("gpx pane frames: " + open.getAbsolutePath() + " " + folded.getAbsolutePath()
+                    + " " + reopened.getAbsolutePath());
         } finally {
             renderer.stopGpxTour();
             renderer.clearGpx();

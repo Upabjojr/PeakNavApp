@@ -16,17 +16,15 @@ import com.badlogic.gdx.scenes.scene2d.ui.WidgetGroup;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Align;
-import com.peaknav.elevation.ElevationUtils;
 import com.peaknav.gpx.GpxTrack;
 import com.peaknav.gpx.GpxTrackStats;
 import com.peaknav.utils.PreferencesManager.UnitSystem;
-import com.peaknav.utils.Units;
 
 import java.util.List;
 
 /**
  * A collapsible pane at the left side of the map while a GPX track is loaded: its name in a header that
- * folds the pane open and shut, and below it where the track starts and ends, how long it is, how
+ * folds the pane open and shut, and below it how long the track is, how
  * much it climbs and drops, the walking time, and its altimetric profile - with a dot on the profile
  * where a running tour has got to.
  *
@@ -46,7 +44,6 @@ public class GpxInfoPane {
     private final Table panel = new Table();
     private final Table body = new Table();
     private final TextButton header;
-    private final Label position;
     private final Label distance;
     private final Label time;
     private final Label climb;
@@ -61,6 +58,8 @@ public class GpxInfoPane {
     private UnitSystem shownUnits;
     private boolean open = true;
     private GpxTrackStats stats;
+    /** The panel's inner width, stage units: PANE_UNITS, or less where that would reach the middle. */
+    private float width;
 
     public GpxInfoPane(float widgetUnitStep) {
         this.widgetUnitStep = widgetUnitStep;
@@ -85,7 +84,6 @@ public class GpxInfoPane {
         Label.LabelStyle style = new Label.LabelStyle();
         style.font = getC().styleSingleton.getBitmapFontSmallWhite();
         style.fontColor = Color.WHITE;
-        position = label(style);
         distance = label(style);
         time = label(style);
         climb = label(style);
@@ -104,17 +102,8 @@ public class GpxInfoPane {
         profileGroup.addActor(profile);
         profileGroup.addActor(dot);
 
-        float width = PANE_UNITS * widgetUnitStep;
-        body.defaults().left().width(width);
-        body.add(position).row();
-        body.add(distance).row();
-        body.add(time).row();
-        body.add(climb).row();
-        body.add(heights).padBottom(0.1f * widgetUnitStep).row();
-        body.add(profileGroup).height(1.6f * widgetUnitStep).row();
-
-        panel.add(header).width(width).height(0.8f * widgetUnitStep).row();
-        panel.add(body).width(width);
+        width = PANE_UNITS * widgetUnitStep;
+        layoutPanel();
         root.add(panel);
     }
 
@@ -135,20 +124,63 @@ public class GpxInfoPane {
 
     public void setOpen(boolean value) {
         open = value;
-        body.setVisible(value);
-        panel.getCell(body).height(value ? -1 : 0);
-        body.clearChildren();
-        if (value) {
-            float width = PANE_UNITS * widgetUnitStep;
-            body.add(position).row();
-            body.add(distance).row();
-            body.add(time).row();
-            body.add(climb).row();
-            body.add(heights).padBottom(0.1f * widgetUnitStep).row();
-            body.add(profileGroup).width(width).height(1.6f * widgetUnitStep).row();
-        }
+        layoutPanel();
         updateHeader();
+    }
+
+    /**
+     * The header, and under it the body when open, at the current width. Folding takes the body
+     * out of the panel whole rather than squeezing its cell, which left the labels misplaced on
+     * reopening; its rows are laid out afresh, with all their settings, every time.
+     */
+    private void layoutPanel() {
+        body.clearChildren();
+        body.defaults().left().width(width);
+        body.add(distance).row();
+        body.add(time).row();
+        body.add(climb).row();
+        body.add(heights).padBottom(0.1f * widgetUnitStep).row();
+        body.add(profileGroup).height(1.6f * widgetUnitStep).row();
+        panel.clearChildren();
+        panel.add(header).width(width).height(0.8f * widgetUnitStep).row();
+        if (open) {
+            panel.add(body).width(width);
+        }
         panel.invalidateHierarchy();
+    }
+
+    /**
+     * The width that keeps the panel short of the middle of the screen, where a GPX tour centres
+     * the track while it circles the end: on a narrow window the full width covered that point.
+     */
+    private float fittedWidth() {
+        float full = PANE_UNITS * widgetUnitStep;
+        if (root.getStage() == null) {
+            return full;
+        }
+        float room = root.getStage().getWidth() / 2 - 1.5f * widgetUnitStep // left padding
+                - 2 * 0.18f * widgetUnitStep // panel padding
+                - 0.4f * widgetUnitStep; // clear of the tour point's dot
+        return Math.max(3f * widgetUnitStep, Math.min(full, room));
+    }
+
+    /** The panel's right edge and the stage's width, stage units, for tests. */
+    public float[] rightEdgeAndStageWidth() {
+        if (panel.getStage() == null) {
+            return null;
+        }
+        com.badlogic.gdx.math.Vector2 v = panel.localToStageCoordinates(
+                new com.badlogic.gdx.math.Vector2(panel.getWidth(), 0));
+        return new float[]{v.x, panel.getStage().getWidth()};
+    }
+
+    /** Stage position of the first body label, for tests: null when folded or not laid out yet. */
+    public float[] bodyPositionOnStage() {
+        if (!open || distance.getStage() == null) {
+            return null;
+        }
+        com.badlogic.gdx.math.Vector2 v = distance.localToStageCoordinates(new com.badlogic.gdx.math.Vector2());
+        return new float[]{v.x, v.y};
     }
 
     /** The stats shown, or null when no track is. */
@@ -158,8 +190,7 @@ public class GpxInfoPane {
 
     /** The texts shown, for tests and scripts: header first. */
     public String[] getTexts() {
-        return new String[]{header.getText().toString(), position.getText().toString(),
-                distance.getText().toString(), time.getText().toString(), climb.getText().toString(),
+        return new String[]{header.getText().toString(), distance.getText().toString(), time.getText().toString(), climb.getText().toString(),
                 heights.getText().toString()};
     }
 
@@ -169,6 +200,11 @@ public class GpxInfoPane {
      * or hides it when negative. Render thread, every frame; cheap unless something changed.
      */
     public void update(int gpxVersion, List<GpxTrack> tracks, float tourFraction) {
+        float fitted = fittedWidth();
+        if (Math.abs(fitted - width) > 0.5f) {
+            width = fitted;
+            layoutPanel();
+        }
         UnitSystem units = P.getUnitSystem();
         if (gpxVersion != shownVersion || units != shownUnits) {
             shownVersion = gpxVersion;
@@ -201,8 +237,9 @@ public class GpxInfoPane {
             }
         }
         stats = longest == null ? null : GpxTrackStats.of(longest, (lat, lon) -> {
-            Float latits = ElevationUtils.getElevationLatitsFromMaxCoords(lon, lat, false);
-            return latits == null ? null : Units.convertLatitsToMeters(latits);
+            // ElevationUtils' own lookup never finds a tile; the loaded terrain does.
+            float metres = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+            return Float.isNaN(metres) ? null : metres;
         });
         if (profileTexture != null) {
             profileTexture.dispose();
@@ -211,8 +248,6 @@ public class GpxInfoPane {
         if (stats == null) {
             return;
         }
-        position.setText(s("Gpx_info_start") + ": " + GpxTrackStats.formatPosition(stats.startLat, stats.startLon)
-                + "\n" + s("Gpx_info_end") + ": " + GpxTrackStats.formatPosition(stats.endLat, stats.endLon));
         distance.setText(s("Gpx_info_distance") + ": " + GpxTrackStats.formatDistance(stats.distanceMetres, units));
         time.setText(s("Gpx_info_time") + ": " + GpxTrackStats.formatDuration(stats.walkingMinutes));
         climb.setText(s("Gpx_info_ascent") + ": " + GpxTrackStats.formatHeight(stats.ascentMetres, units)

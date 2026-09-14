@@ -636,6 +636,11 @@ public class MapViewerScreen implements Screen {
 	 * Where along the track the tour is, in world space, while one is playing or paused; null
 	 * otherwise. It is the track point of the frame being flown to, so it moves with the camera -
 	 * paused, it holds; after a seek, it jumps with the view.
+	 *
+	 * <p>On the ground, where the track is painted (GpxTileRasterizer draws it into the terrain
+	 * tiles), not at the height the GPX recorded: those differ by tens of metres, and while the
+	 * camera circles the end a point floating above or sunk below the ground swung around the
+	 * track's end instead of staying on it. The recorded height is kept only where no terrain is loaded.
 	 */
 	public Vector3 getGpxTourPoint() {
 		int total = gpxTourFrames.size();
@@ -643,8 +648,19 @@ public class MapViewerScreen implements Screen {
 			return null;
 		}
 		int index = MathUtils.clamp(total - moveCameraAction.remainingSteps(), 0, total - 1);
-		return gpxTourFrames.get(index).point;
+		Vector3 point = gpxTourFrames.get(index).point;
+		float lat = point.y;
+		float lon = Units.convertLatitsToLonits(point.x, (float) getC().L.getTargetLatitude());
+		// The loaded terrain as road names read it: ElevationUtils' own lookup never finds a tile.
+		float groundMeters = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+		if (Float.isNaN(groundMeters)) {
+			return point;
+		}
+		return gpxTourPointOnGround.set(point.x, point.y, Units.convertMetersToLatits(groundMeters)
+				- com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
 	}
+
+	private final Vector3 gpxTourPointOnGround = new Vector3();
 
 	private final Vector3 gpxTourPointOnScreen = new Vector3();
 
