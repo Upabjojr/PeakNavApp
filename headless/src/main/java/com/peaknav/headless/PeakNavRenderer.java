@@ -981,6 +981,26 @@ public final class PeakNavRenderer implements AutoCloseable {
         return out[0];
     }
 
+    /** The GPX info pane's profile and speed graph: width and height of each, stage units. */
+    public float[] gpxInfoGraphSizes() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.graphSizes());
+        return out[0];
+    }
+
+    /** How far the GPX info pane's body can scroll, and how far it has, stage units. */
+    public float[] gpxInfoScroll() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.scrollState());
+        return out[0];
+    }
+
+    /** Scrolls the GPX info pane's body, 0 at the top and 1 at the bottom, as a drag would. */
+    public PeakNavRenderer scrollGpxInfo(final float fraction) {
+        onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.scrollTo(fraction));
+        return this;
+    }
+
     /** Makes the GPX info pane large or small again, as its size button does. */
     public PeakNavRenderer setGpxInfoMaximized(final boolean maximized) {
         onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.setMaximized(maximized));

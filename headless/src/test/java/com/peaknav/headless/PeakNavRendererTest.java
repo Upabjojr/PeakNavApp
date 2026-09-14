@@ -1525,12 +1525,19 @@ class PeakNavRendererTest {
             float[] bodyBefore = renderer.gpxInfoBodyPosition();
             assertTrue(bodyBefore != null, "open, the body is laid out");
 
+            float[] smallGraph = renderer.gpxInfoGraphSizes();
             renderer.setGpxInfoMaximized(true).settle(500);
             File large = newTempFile("gpx-pane-large.png");
             renderer.captureWithUi(large);
             float[] big = renderer.gpxInfoBounds();
-            assertTrue(big[2] > 0.6f * big[4] && big[3] <= small[3] + 2,
-                    "maximized, it spans most of the width but grows no taller: " + java.util.Arrays.toString(big));
+            float[] bigGraph = renderer.gpxInfoGraphSizes();
+            assertTrue(big[2] > 0.6f * big[4], "maximized, it spans most of the width: " + java.util.Arrays.toString(big));
+            assertTrue(big[1] >= 0 && big[1] + big[3] <= big[5],
+                    "and stays on the screen, scrolling what does not fit: " + java.util.Arrays.toString(big));
+            assertTrue(bigGraph[0] > smallGraph[0] && bigGraph[1] > smallGraph[1]
+                            && Math.abs(bigGraph[0] / bigGraph[1] - smallGraph[0] / smallGraph[1]) < 0.02f * smallGraph[0] / smallGraph[1],
+                    "the profile grows with the pane and keeps its proportions: " + java.util.Arrays.toString(smallGraph)
+                            + " vs " + java.util.Arrays.toString(bigGraph));
             renderer.setGpxInfoMaximized(false).settle(500);
             float[] back = renderer.gpxInfoBounds();
             assertTrue(Math.abs(back[2] - small[2]) < 1 && Math.abs(back[3] - small[3]) < 1,
@@ -1585,16 +1592,27 @@ class PeakNavRendererTest {
             assertTrue(texts[5].contains("km/h"), texts[5]);
             File small = newTempFile("gpx-speed.png");
             renderer.captureWithUi(small);
-            float[] smallBounds = renderer.gpxInfoBounds();
+            float[] smallGraphs = renderer.gpxInfoGraphSizes();
             renderer.setGpxInfoMaximized(true).settle(500);
             File large = newTempFile("gpx-speed-large.png");
             renderer.captureWithUi(large);
             float[] largeBounds = renderer.gpxInfoBounds();
-            assertTrue(largeBounds[3] <= smallBounds[3] + 2, // less wrapping may make it shorter
-                    "maximized, wider but no taller: " + java.util.Arrays.toString(smallBounds) + " vs "
-                            + java.util.Arrays.toString(largeBounds));
+            float[] largeGraphs = renderer.gpxInfoGraphSizes();
+            assertTrue(Math.abs(largeGraphs[2] / largeGraphs[3] - smallGraphs[2] / smallGraphs[3])
+                            < 0.02f * smallGraphs[2] / smallGraphs[3],
+                    "the speed graph keeps its proportions too: " + java.util.Arrays.toString(smallGraphs)
+                            + " vs " + java.util.Arrays.toString(largeGraphs));
+            assertTrue(largeBounds[1] >= 0 && largeBounds[1] + largeBounds[3] <= largeBounds[5],
+                    "on the screen: " + java.util.Arrays.toString(largeBounds));
+            float[] scrollable = renderer.gpxInfoScroll();
+            assertTrue(scrollable[0] > 0, "too tall for a 400 px window, so it scrolls: " + java.util.Arrays.toString(scrollable));
+            renderer.scrollGpxInfo(1f).settle(500);
+            File bottom = newTempFile("gpx-speed-large-bottom.png");
+            renderer.captureWithUi(bottom);
+            assertTrue(renderer.gpxInfoScroll()[1] > 0, "scrolled down to the speed graph");
             renderer.setGpxInfoMaximized(false).settle(300);
-            System.out.println("gpx speed frames: " + small.getAbsolutePath() + " " + large.getAbsolutePath());
+            System.out.println("gpx speed frames: " + small.getAbsolutePath() + " " + large.getAbsolutePath()
+                    + " " + bottom.getAbsolutePath());
         } finally {
             renderer.clearGpx();
         }
