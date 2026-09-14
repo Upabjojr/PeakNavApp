@@ -1414,6 +1414,8 @@ class PeakNavRendererTest {
         try {
             assertEquals(1, renderer.openRoute(route, toLat, toLon), "opened as one GPX track");
             renderer.settle(6000); // the map flies to frame the track, as for a GPX file
+            boolean[] graphs = renderer.gpxInfoGraphs();
+            assertTrue(!graphs[0], "a route's heights are the terrain's own: a single profile");
             File framed = newTempFile("route.png");
             renderer.capture(framed);
             System.out.println("route frame: " + framed.getAbsolutePath());
@@ -1509,6 +1511,9 @@ class PeakNavRendererTest {
             assertTrue(texts[2].contains("h"), "a walking time: " + texts[2]);
             assertTrue(texts[3].contains("1481 m"), "1608 to 3089 m, all up: " + texts[3]);
             assertTrue(texts[4].contains("3089 m") && texts[4].contains("1608 m"), texts[4]);
+            boolean[] graphs = renderer.gpxInfoGraphs();
+            assertTrue(graphs[0], "the recorded heights beside the terrain's");
+            assertTrue(!graphs[1] && texts[5].isEmpty(), "no times, no speed");
 
             renderer.startGpxTour().settle(6000);
             File open = newTempFile("gpx-pane.png");
@@ -1524,8 +1529,8 @@ class PeakNavRendererTest {
             File large = newTempFile("gpx-pane-large.png");
             renderer.captureWithUi(large);
             float[] big = renderer.gpxInfoBounds();
-            assertTrue(big[2] > 0.6f * big[4] && big[3] > small[3],
-                    "maximized, it spans most of the screen: " + java.util.Arrays.toString(big));
+            assertTrue(big[2] > 0.6f * big[4] && big[3] <= small[3] + 2,
+                    "maximized, it spans most of the width but grows no taller: " + java.util.Arrays.toString(big));
             renderer.setGpxInfoMaximized(false).settle(500);
             float[] back = renderer.gpxInfoBounds();
             assertTrue(Math.abs(back[2] - small[2]) < 1 && Math.abs(back[3] - small[3]) < 1,
@@ -1553,5 +1558,45 @@ class PeakNavRendererTest {
         }
         renderer.settle(500);
         assertEquals(null, renderer.gpxInfoTexts(), "cleared, the pane goes");
+    }
+
+    @Test
+    @Order(30)
+    @DisplayName("a GPX track that recorded times gets a speed graph under its profile")
+    void gpxInfoPaneShowsTheSpeedOfATimedTrack() throws Exception {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(60_000);
+        // Zermatt to Gornergrat in four hours, with a long halt at Riffelalp.
+        String gpx = "<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" version=\"1.1\"><trk>"
+                + "<name>Timed</name><trkseg>"
+                + "<trkpt lat=\"46.0207\" lon=\"7.7491\"><ele>1608</ele><time>2026-07-01T07:00:00Z</time></trkpt>"
+                + "<trkpt lat=\"46.0100\" lon=\"7.7400\"><ele>1800</ele><time>2026-07-01T07:40:00Z</time></trkpt>"
+                + "<trkpt lat=\"46.0000\" lon=\"7.7300\"><ele>2000</ele><time>2026-07-01T08:30:00Z</time></trkpt>"
+                + "<trkpt lat=\"46.0000\" lon=\"7.7300\"><ele>2000</ele><time>2026-07-01T09:15:00Z</time></trkpt>"
+                + "<trkpt lat=\"45.9833\" lon=\"7.7853\"><ele>3089</ele><time>2026-07-01T11:00:00Z</time></trkpt>"
+                + "</trkseg></trk></gpx>";
+        renderer.loadGpx(gpx);
+        try {
+            renderer.settle(500);
+            String[] texts = renderer.gpxInfoTexts();
+            boolean[] graphs = renderer.gpxInfoGraphs();
+            System.out.println("gpx speed: " + texts[5]);
+            assertTrue(graphs[1], "times recorded, so a speed graph");
+            assertTrue(texts[5].contains("km/h"), texts[5]);
+            File small = newTempFile("gpx-speed.png");
+            renderer.captureWithUi(small);
+            float[] smallBounds = renderer.gpxInfoBounds();
+            renderer.setGpxInfoMaximized(true).settle(500);
+            File large = newTempFile("gpx-speed-large.png");
+            renderer.captureWithUi(large);
+            float[] largeBounds = renderer.gpxInfoBounds();
+            assertTrue(largeBounds[3] <= smallBounds[3] + 2, // less wrapping may make it shorter
+                    "maximized, wider but no taller: " + java.util.Arrays.toString(smallBounds) + " vs "
+                            + java.util.Arrays.toString(largeBounds));
+            renderer.setGpxInfoMaximized(false).settle(300);
+            System.out.println("gpx speed frames: " + small.getAbsolutePath() + " " + large.getAbsolutePath());
+        } finally {
+            renderer.clearGpx();
+        }
     }
 }

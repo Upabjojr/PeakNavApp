@@ -36,6 +36,17 @@ public class TestGpxManagerSharing {
     }
 
     @Test
+    void aRouteMadeOnTheMapIsMarkedAsHavingComputedHeights() {
+        GpxManager manager = new GpxManager();
+        assertEquals(1, manager.loadFromXml(GPX, false));
+        assertFalse(manager.getTracks().get(0).hasComputedHeights(), "a file's heights were recorded");
+        assertEquals(1, manager.loadComputedXml(GPX, "PeakNav_route", false));
+        assertTrue(manager.getTracks().get(1).hasComputedHeights(), "a route's came from the terrain");
+        assertTrue(manager.hasShareable(), "and it can be saved or shared, like a download");
+        assertEquals("PeakNav_route.gpx", manager.getShareableName());
+    }
+
+    @Test
     void fileNamesAreSafeOnEveryFileSystem() {
         assertEquals("PeakNav_route_46.00800_7.76800.gpx", GpxManager.safeFileName("PeakNav_route_46.00800_7.76800"));
         assertEquals("track.gpx", GpxManager.safeFileName("C:\\Users\\me\\track.GPX"));

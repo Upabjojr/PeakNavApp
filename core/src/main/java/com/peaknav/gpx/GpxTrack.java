@@ -31,6 +31,8 @@ public class GpxTrack {
 
     private final String name;
     private final List<Point> points = new ArrayList<>();
+    /** The heights were not recorded but computed from the terrain, as "route to here" writes them. */
+    private boolean computedHeights;
 
     public GpxTrack(String name) {
         this.name = (name == null) ? "" : name;
@@ -51,5 +53,13 @@ public class GpxTrack {
 
     public int size() {
         return points.size();
+    }
+
+    public boolean hasComputedHeights() {
+        return computedHeights;
+    }
+
+    public void markHeightsComputed() {
+        computedHeights = true;
     }
 }

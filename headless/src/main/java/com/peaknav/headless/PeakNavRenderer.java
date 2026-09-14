@@ -937,7 +937,8 @@ public final class PeakNavRenderer implements AutoCloseable {
     public int openRoute(com.peaknav.routing.WalkingRouter.Route route, double toLatitude, double toLongitude) {
         final String gpx = com.peaknav.routing.RouteToPoint.gpxFor(route, toLatitude, toLongitude);
         final int[] added = new int[1];
-        onRenderThread(() -> added[0] = getC().gpxManager.loadFromXml(gpx, true));
+        // As the button does: a route's heights are the terrain's, and it can be saved or shared.
+        onRenderThread(() -> added[0] = getC().gpxManager.loadComputedXml(gpx, "PeakNav_route", true));
         return added[0];
     }
 
@@ -970,6 +971,13 @@ public final class PeakNavRenderer implements AutoCloseable {
     public float[] gpxInfoBounds() {
         final float[][] out = new float[1][];
         onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.boundsOnStage());
+        return out[0];
+    }
+
+    /** Which graphs the GPX info pane shows: recorded and terrain heights side by side, and speed. */
+    public boolean[] gpxInfoGraphs() {
+        final boolean[][] out = new boolean[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.graphs());
         return out[0];
     }
 

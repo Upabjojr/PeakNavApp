@@ -70,7 +70,10 @@ public class GpxManager {
      * the headless renderer's, a framing fly would fight it. Returns how many paths were added.
      */
     public int loadFromXml(String xml, boolean navigate) {
-        List<GpxTrack> parsed = GpxParser.parse(xml);
+        return loadParsed(GpxParser.parse(xml), navigate);
+    }
+
+    private int loadParsed(List<GpxTrack> parsed, boolean navigate) {
         if (parsed.isEmpty()) {
             if (navigate) {
                 toast(s("Gpx_no_path_found"));
@@ -99,6 +102,26 @@ public class GpxManager {
      */
     public int loadShareableXml(String xml, String fileName, boolean navigate) {
         int added = loadFromXml(xml, navigate);
+        keepShareable(added, xml, fileName);
+        return added;
+    }
+
+    /**
+     * Loads GPX the app made itself, whose heights it took from the terrain - a route to a tapped
+     * point - as {@link #loadShareableXml} does, marking its tracks so no one compares those
+     * heights with the terrain they came from.
+     */
+    public int loadComputedXml(String xml, String fileName, boolean navigate) {
+        List<GpxTrack> parsed = GpxParser.parse(xml);
+        for (GpxTrack track : parsed) {
+            track.markHeightsComputed();
+        }
+        int added = loadParsed(parsed, navigate);
+        keepShareable(added, xml, fileName);
+        return added;
+    }
+
+    private void keepShareable(int added, String xml, String fileName) {
         if (added > 0) {
             synchronized (this) {
                 shareableXml = xml;
@@ -106,7 +129,6 @@ public class GpxManager {
                 version++;
             }
         }
-        return added;
     }
 
     public synchronized boolean hasShareable() {

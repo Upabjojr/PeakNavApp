@@ -66,6 +66,71 @@ public class TestGpxTrackStats {
     }
 
     @Test
+    void aRecordedTrackGetsTheTerrainsProfileBesideItsOwn() {
+        GpxTrack t = track(new double[][]{{46.000, 7.700, 1000}, {46.010, 7.700, 1100}, {46.020, 7.700, 1200}});
+        GpxTrackStats.Elevation terrainTwentyHigher = (lat, lon) -> (float) (1020 + (lat - 46.0) * 10_000);
+        GpxTrackStats stats = GpxTrackStats.of(t, terrainTwentyHigher);
+        assertTrue(stats.hasTwoProfiles());
+        assertEquals(1000, stats.recordedProfileMetres[0], 1e-3);
+        assertEquals(1020, stats.terrainProfileMetres[0], 0.1);
+        assertEquals(1220, stats.terrainProfileMetres[GpxTrackStats.PROFILE_SAMPLES - 1], 0.1);
+        assertEquals(200, stats.ascentMetres, 1e-6, "the stats keep to the recorded heights");
+
+        GpxTrack route = track(new double[][]{{46.000, 7.700, 1000}, {46.010, 7.700, 1100}});
+        route.markHeightsComputed();
+        GpxTrackStats routeStats = GpxTrackStats.of(route, terrainTwentyHigher);
+        assertNull(routeStats.terrainProfileMetres, "heights taken from the terrain are not set beside it");
+        assertTrue(!routeStats.hasTwoProfiles());
+
+        GpxTrack noHeights = track(new double[][]{{46.000, 7.700}, {46.010, 7.700}});
+        GpxTrackStats noHeightStats = GpxTrackStats.of(noHeights, terrainTwentyHigher);
+        assertNull(noHeightStats.recordedProfileMetres);
+        assertTrue(!noHeightStats.hasTwoProfiles(), "nothing recorded to compare");
+        assertNotNull(noHeightStats.profileMetres, "the terrain's is the one profile");
+    }
+
+    private static GpxTrack timedTrack(double[][] latLonMinutes) {
+        GpxTrack track = new GpxTrack("Timed");
+        for (double[] p : latLonMinutes) {
+            track.add((float) p[0], (float) p[1], 0f, false, Math.round(p[2] * 60_000), true);
+        }
+        return track;
+    }
+
+    @Test
+    void speedComesFromTheRecordedTimes() {
+        // 0.009 degrees of latitude, about 1001 m, every quarter of an hour: 4 km/h.
+        GpxTrack steady = timedTrack(new double[][]{
+                {46.000, 7.7, 0}, {46.009, 7.7, 15}, {46.018, 7.7, 30}, {46.027, 7.7, 45}, {46.036, 7.7, 60}});
+        GpxTrackStats stats = GpxTrackStats.of(steady, null);
+        assertNotNull(stats.speedKmh);
+        assertEquals(GpxTrackStats.PROFILE_SAMPLES, stats.speedKmh.length);
+        assertEquals(4.0, stats.averageSpeedKmh, 0.05);
+        for (float v : stats.speedKmh) {
+            assertEquals(4.0, v, 0.05);
+        }
+        assertEquals(4.0, stats.maxSpeedKmh, 0.05);
+
+        // The same walk with an hour's stop halfway: the stop shows, and halves the average.
+        GpxTrack stop = timedTrack(new double[][]{
+                {46.000, 7.7, 0}, {46.009, 7.7, 15}, {46.018, 7.7, 30}, {46.018, 7.7, 90},
+                {46.027, 7.7, 105}, {46.036, 7.7, 120}});
+        GpxTrackStats stopStats = GpxTrackStats.of(stop, null);
+        assertEquals(2.0, stopStats.averageSpeedKmh, 0.05);
+        float slowest = Float.MAX_VALUE;
+        for (float v : stopStats.speedKmh) {
+            slowest = Math.min(slowest, v);
+        }
+        assertTrue(slowest < 1f, "the stop: " + slowest);
+        assertEquals(4.0, stopStats.speedKmh[0], 0.05, "walking at the start");
+        assertEquals(4.0, stopStats.speedKmh[GpxTrackStats.PROFILE_SAMPLES - 1], 0.05, "and at the end");
+
+        GpxTrackStats untimed = GpxTrackStats.of(track(new double[][]{{46.0, 7.7, 1000}, {46.01, 7.7, 1100}}), null);
+        assertNull(untimed.speedKmh, "no times, no speed");
+        assertTrue(Double.isNaN(untimed.averageSpeedKmh));
+    }
+
+    @Test
     void numbersAreWrittenInTheChosenUnits() {
         assertEquals("12.4 km", GpxTrackStats.formatDistance(12400, UnitSystem.METRIC));
         assertEquals("850 m", GpxTrackStats.formatDistance(850, UnitSystem.METRIC));
@@ -74,6 +139,9 @@ public class TestGpxTrackStats {
         assertEquals("1234 m", GpxTrackStats.formatHeight(1234.4, UnitSystem.METRIC));
         assertEquals("4049 ft", GpxTrackStats.formatHeight(1234.2, UnitSystem.IMPERIAL));
         assertEquals("-", GpxTrackStats.formatHeight(Double.NaN, UnitSystem.METRIC));
+        assertEquals("4.2 km/h", GpxTrackStats.formatSpeed(4.23, UnitSystem.METRIC));
+        assertEquals("2.6 mph", GpxTrackStats.formatSpeed(4.23, UnitSystem.IMPERIAL));
+        assertEquals("-", GpxTrackStats.formatSpeed(Double.NaN, UnitSystem.METRIC));
         assertEquals("3 h 05 min", GpxTrackStats.formatDuration(184.6));
         assertEquals("40 min", GpxTrackStats.formatDuration(40.2));
         assertEquals("46.02070 N, 7.74910 E", GpxTrackStats.formatPosition(46.0207, 7.7491));
