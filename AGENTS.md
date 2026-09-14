@@ -356,6 +356,11 @@ that is not something the build can fix.
   (e.g. Lucene is pinned to **3.6.2**, the last Android-compatible release — do
   not bump it).
 - Prefer writing shared, testable logic in `core` over duplicating it per platform.
+- **Option menus: Back is the last button of every submenu, and in a two-column layout it
+  sits in the left column** - where the main menu has it. `OptionPane.addButtonsToTable`
+  handles this: filling left to right would put Back on the right whenever the button count
+  is even, so it swaps the last two buttons then. A layout built by hand with `addPair` must
+  pass Back as the *left* argument (the Roads and paths submenu once put it on the right).
 
 ## Internationalization
 

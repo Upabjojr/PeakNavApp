@@ -779,7 +779,8 @@ public class OptionPane {
             // camera and compass buttons at the top of a phone held sideways.
             addPair(table, dashLengthRow, dashSpeedRow);
             addPair(table, labelFrequencyRow, checkBoxNames);
-            addPair(table, buttonReset, back);
+            // Back goes in the left column, as in every two-column menu (see addButtonsToTable).
+            addPair(table, back, buttonReset);
         }
 
         for (Runnable refresher : roadMenuRefreshers) {
@@ -1527,6 +1528,14 @@ public class OptionPane {
         addButtonsToTable(table, buttons, oneColumn, buttonWidth);
     }
 
+    /**
+     * Lays the buttons out one per row, or two per row filling left to right.
+     *
+     * <p>Back is always a menu's last button, and in two columns it must sit in the left column,
+     * where the eye starts and where the main menu has it. Filling in order would put it on the
+     * right whenever the count is even, so the last two buttons swap places then. A layout built
+     * by hand with {@link #addPair} has to follow the same rule: Back as the left argument.
+     */
     private void addButtonsToTable(Table table, List<Table> buttons, boolean oneColumn, float buttonWidth) {
 
         for (int j = 0; j < buttons.size(); j++) {
