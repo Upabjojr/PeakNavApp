@@ -950,6 +950,22 @@ public final class PeakNavRenderer implements AutoCloseable {
         return this;
     }
 
+    /** The GPX info pane's texts, header first; null while the pane is hidden. */
+    public String[] gpxInfoTexts() {
+        final String[][] out = new String[1][];
+        onRenderThread(() -> {
+            com.peaknav.viewer.widgets.GpxInfoPane pane = mapApp.mapViewerScreen.gpxInfoPane;
+            out[0] = pane == null || !pane.getTable().isVisible() ? null : pane.getTexts();
+        });
+        return out[0];
+    }
+
+    /** Folds the GPX info pane open or shut, as its header does. */
+    public PeakNavRenderer setGpxInfoOpen(final boolean open) {
+        onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.setOpen(open));
+        return this;
+    }
+
     /** Where the GPX tour's current point is drawn, in y-up pixels; null when none is. */
     public float[] gpxTourPointOnScreen() {
         final float[][] out = new float[1][];

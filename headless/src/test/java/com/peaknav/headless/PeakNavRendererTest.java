@@ -1461,4 +1461,47 @@ class PeakNavRendererTest {
             renderer.clearGpx();
         }
     }
+
+    @Test
+    @Order(29)
+    @DisplayName("a loaded GPX track gets a collapsible pane with its distance, walking time and profile")
+    void gpxInfoPaneDescribesTheTrack() throws Exception {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(60_000);
+        assertEquals(null, renderer.gpxInfoTexts(), "no track, no pane");
+        String gpx = "<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" version=\"1.1\"><trk>"
+                + "<name>Zermatt - Gornergrat</name><trkseg>"
+                + "<trkpt lat=\"46.0207\" lon=\"7.7491\"><ele>1608</ele></trkpt>"
+                + "<trkpt lat=\"46.0000\" lon=\"7.7300\"><ele>2000</ele></trkpt>"
+                + "<trkpt lat=\"45.9833\" lon=\"7.7853\"><ele>3089</ele></trkpt>"
+                + "</trkseg></trk></gpx>";
+        renderer.loadGpx(gpx);
+        try {
+            renderer.settle(500);
+            String[] texts = renderer.gpxInfoTexts();
+            assertTrue(texts != null, "the pane shows with the track");
+            System.out.println("gpx pane: " + String.join(" | ", texts));
+            assertTrue(texts[0].contains("Zermatt - Gornergrat"), "named after the track: " + texts[0]);
+            assertTrue(texts[1].contains("46.02070 N") && texts[1].contains("45.98330 N"), texts[1]);
+            assertTrue(texts[2].contains("km"), texts[2]);
+            assertTrue(texts[3].contains("h"), "a walking time: " + texts[3]);
+            assertTrue(texts[4].contains("1481 m"), "1608 to 3089 m, all up: " + texts[4]);
+            assertTrue(texts[5].contains("3089 m") && texts[5].contains("1608 m"), texts[5]);
+
+            renderer.startGpxTour().settle(6000);
+            File open = newTempFile("gpx-pane.png");
+            renderer.captureWithUi(open);
+            renderer.setGpxInfoOpen(false).settle(500);
+            File folded = newTempFile("gpx-pane-folded.png");
+            renderer.captureWithUi(folded);
+            assertTrue(renderer.gpxInfoTexts()[0].startsWith("↓"), "folded, the header says so");
+            renderer.setGpxInfoOpen(true).settle(300);
+            System.out.println("gpx pane frames: " + open.getAbsolutePath() + " " + folded.getAbsolutePath());
+        } finally {
+            renderer.stopGpxTour();
+            renderer.clearGpx();
+        }
+        renderer.settle(500);
+        assertEquals(null, renderer.gpxInfoTexts(), "cleared, the pane goes");
+    }
 }

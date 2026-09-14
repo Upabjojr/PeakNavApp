@@ -519,6 +519,7 @@ public class MapViewerScreen implements Screen {
 		camPath = gpxMovingAverage(camPath, window, GPX_SMOOTH_PASSES);
 
 		gpxTourFrames.clear();
+		gpxTourTrackFrames = m;
 		float stepSeconds = GPX_TOUR_SECONDS / Math.max(1, m - 1);
 		for (int i = 0; i < m; i++) {
 			Vector3 camPos = camPath.get(i);
@@ -570,6 +571,24 @@ public class MapViewerScreen implements Screen {
 	}
 
 	private final java.util.List<GpxTourFrame> gpxTourFrames = new java.util.ArrayList<>();
+	/** How many of the tour's frames follow the track; the rest circle its end. */
+	private int gpxTourTrackFrames = 0;
+
+	/** The GPX info pane (see GpxInfoPane); null until the stage is built. */
+	public com.peaknav.viewer.widgets.GpxInfoPane gpxInfoPane;
+
+	/**
+	 * How far along the track the tour is, 0..1 by distance (the frames are evenly spaced along
+	 * it), 1 while it circles the end; -1 when no tour is running or paused.
+	 */
+	public float getGpxTourFraction() {
+		int total = gpxTourFrames.size();
+		if (!gpxTourActive || total == 0 || moveCameraAction.isComplete() || gpxTourTrackFrames < 2) {
+			return -1f;
+		}
+		int index = MathUtils.clamp(total - moveCameraAction.remainingSteps(), 0, total - 1);
+		return Math.min(1f, index / (float) (gpxTourTrackFrames - 1));
+	}
 
 	/** (Re)queues the tour from the given keyframe, replacing anything already queued. */
 	private void queueGpxTourFrom(int firstFrame) {
@@ -771,6 +790,9 @@ public class MapViewerScreen implements Screen {
 		tableLocation.buttonGpxFly.setVisible(hasGpx);
 		if (tableLocation.buttonGpxClear != null) {
 			tableLocation.buttonGpxClear.setVisible(hasGpx);
+		}
+		if (gpxInfoPane != null) {
+			gpxInfoPane.update(getC().gpxManager.getVersion(), getC().gpxManager.getTracks(), getGpxTourFraction());
 		}
 		if (tableLocation.buttonGpxShare != null) {
 			// Only a track that exists nowhere else on the device: downloaded, or made on the map.
@@ -1307,6 +1329,8 @@ public class MapViewerScreen implements Screen {
 
 		stage.addActor(tableLocation.progressBarTable);
 		stage.addActor(tableLocation.gpxSeekTable);
+		gpxInfoPane = new com.peaknav.viewer.widgets.GpxInfoPane(widgetUnitStep);
+		stage.addActor(gpxInfoPane.getTable());
 		tableLocation.gpxSeekSlider.addListener(new ChangeListener() {
 			@Override
 			public void changed(ChangeEvent event, Actor actor) {
