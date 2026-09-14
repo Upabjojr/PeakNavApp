@@ -119,6 +119,21 @@ public class TestPisteRasterizer {
     }
 
     @Test
+    void anAreasOutlineIsNotARunButARoutesMemberIs() {
+        // As the parser hands them over: a way's own tags, then each relation's, from its type tag.
+        java.util.List<Tag> outline = Arrays.asList(new Tag("source", "bing"),
+                new Tag("type", "multipolygon"), new Tag("piste:type", "downhill"), new Tag("surface", "grass"));
+        assertNull(PisteRasterizer.difficultyOf(outline), "the edge of a piste area, as at Tulot in Pinzolo");
+        java.util.List<Tag> member = Arrays.asList(new Tag("surface", "grass"),
+                new Tag("type", "route"), new Tag("route", "piste"), new Tag("piste:type", "downhill"),
+                new Tag("piste:difficulty", "advanced"), new Tag("name", "Tulot"));
+        assertEquals(PisteRasterizer.BLACK, PisteRasterizer.difficultyOf(member), "a route lends its members its grade");
+        java.util.List<Tag> own = Arrays.asList(new Tag("piste:type", "downhill"), new Tag("piste:difficulty", "advanced"),
+                new Tag("type", "route"), new Tag("piste:type", "downhill"), new Tag("piste:difficulty", "easy"));
+        assertEquals(PisteRasterizer.BLACK, PisteRasterizer.difficultyOf(own), "a way's own grade comes first");
+    }
+
+    @Test
     void liftsAndCrossCountryDrawNothing() {
         List<Way> ways = Arrays.asList(
                 way(new String[]{"aerialway", "chair_lift"}, 46.002, 11.002, 46.008, 11.008),

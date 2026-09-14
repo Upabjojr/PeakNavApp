@@ -76,10 +76,10 @@ public final class PisteRasterizer {
 
     /** The difficulty code of a downhill run, or null for a way that is not one. */
     public static Float difficultyOf(List<Tag> tags) {
-        if (!"downhill".equalsIgnoreCase(value(tags, "piste:type"))) {
+        if (!"downhill".equalsIgnoreCase(pisteValue(tags, "piste:type"))) {
             return null;
         }
-        String difficulty = value(tags, "piste:difficulty");
+        String difficulty = pisteValue(tags, "piste:difficulty");
         if (difficulty == null) {
             return RED; // the most common grade
         }
@@ -116,15 +116,15 @@ public final class PisteRasterizer {
             if (grade == null) {
                 continue;
             }
-            String name = value(way.tags, "name");
+            String name = pisteValue(way.tags, "name");
             if (name == null) {
-                name = value(way.tags, "piste:name");
+                name = pisteValue(way.tags, "piste:name");
             }
-            String number = value(way.tags, "piste:ref");
+            String number = pisteValue(way.tags, "piste:ref");
             if (number == null) {
-                number = value(way.tags, "ref");
+                number = pisteValue(way.tags, "ref");
             }
-            boolean areaTagged = "yes".equalsIgnoreCase(value(way.tags, "area"));
+            boolean areaTagged = "yes".equalsIgnoreCase(pisteValue(way.tags, "area"));
             for (LatLong[] line : way.latLongs) {
                 if (line == null || line.length < 2 || hasNull(line)) {
                     continue;
@@ -169,7 +169,7 @@ public final class PisteRasterizer {
             if (grade == null) {
                 continue;
             }
-            boolean areaTagged = "yes".equalsIgnoreCase(value(way.tags, "area"));
+            boolean areaTagged = "yes".equalsIgnoreCase(pisteValue(way.tags, "area"));
             for (LatLong[] line : way.latLongs) {
                 if (line == null || line.length < 2 || hasNull(line)) {
                     continue;
@@ -396,6 +396,56 @@ public final class PisteRasterizer {
     private static byte unorm(float v) {
         int i = Math.round(v * 255f);
         return (byte) (i < 0 ? 0 : Math.min(255, i));
+    }
+
+    /**
+     * A piste tag of a way: from its own tags, or else from a piste route it belongs to.
+     *
+     * <p>The parser appends the tags of every relation a way belongs to after its own, each
+     * group starting at its {@code type} tag. A route's members often carry nothing themselves,
+     * so a route lends them its piste tags. A multipolygon does not: its members are the outline
+     * of a piste area, and read as runs they were drawn as lines along the area's edge - in red,
+     * the default for a missing grade, around every black run whose area was mapped that way.
+     */
+    static String pisteValue(List<Tag> tags, String key) {
+        if (tags == null) {
+            return null;
+        }
+        int ownEnd = nextGroup(tags, 0);
+        String own = valueIn(tags, 0, ownEnd, key);
+        if (own != null) {
+            return own;
+        }
+        for (int from = ownEnd; from < tags.size(); from = nextGroup(tags, from + 1)) {
+            int to = nextGroup(tags, from + 1);
+            if ("route".equalsIgnoreCase(valueIn(tags, from, to, "type"))) {
+                String lent = valueIn(tags, from, to, key);
+                if (lent != null) {
+                    return lent;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Where the next group of tags starts: the next {@code type} tag at or after {@code from}. */
+    private static int nextGroup(List<Tag> tags, int from) {
+        for (int i = from; i < tags.size(); i++) {
+            if (tags.get(i) != null && "type".equals(tags.get(i).key)) {
+                return i;
+            }
+        }
+        return tags.size();
+    }
+
+    private static String valueIn(List<Tag> tags, int from, int to, String key) {
+        for (int i = from; i < to && i < tags.size(); i++) {
+            Tag tag = tags.get(i);
+            if (tag != null && key.equals(tag.key) && tag.value != null && !tag.value.isEmpty()) {
+                return tag.value;
+            }
+        }
+        return null;
     }
 
     private static String value(List<Tag> tags, String key) {

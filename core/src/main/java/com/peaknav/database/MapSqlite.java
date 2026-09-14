@@ -44,8 +44,9 @@ public abstract class MapSqlite {
                     "WHEN '" + LAYER_ELEV + "' THEN 0 " +
                     "WHEN 'PBF_POI' THEN 1 " +
                     "WHEN 'PBF_HIGHWAYS' THEN 2 " +
-                    "WHEN 'AREAS' THEN 3 " +
-                    "ELSE 4 END, tile_z, tile_x, tile_y",
+                    "WHEN 'PBF_PISTES' THEN 3 " +
+                    "WHEN 'AREAS' THEN 4 " +
+                    "ELSE 5 END, tile_z, tile_x, tile_y",
             sqlQueryDownloadedTiles = "SELECT tile_x, tile_y, tile_z, layer_type " +
                     "FROM download_queue " +
                     "WHERE download_time IS NOT NULL AND layer_type = ?";

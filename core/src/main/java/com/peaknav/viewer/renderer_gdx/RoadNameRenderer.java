@@ -109,6 +109,9 @@ public class RoadNameRenderer {
     /** Trail and track names and numbers: a little larger, since they sit on a plate. */
     private static final float TRAIL_TEXT_UNITS = 0.38f;
     private static final float TRAIL_TEXT_UNITS_LARGE = 0.46f;
+    /** Ski runs' names: half as large again as a trail's, so they read across a ski area. */
+    private static final float PISTE_TEXT_UNITS = 1.5f * TRAIL_TEXT_UNITS;
+    private static final float PISTE_TEXT_UNITS_LARGE = 1.5f * TRAIL_TEXT_UNITS_LARGE;
     /** How opaque a trail's plate is: its colour clearly, the ground still showing through. */
     private static final float PLATE_ALPHA = 0.74f;
     /** A street name's plate: fainter, the halo does most of the work. */
@@ -166,6 +169,7 @@ public class RoadNameRenderer {
     /** Font scales for road and trail labels, set each frame from the font and preferences. */
     private float roadScale;
     private float trailScale;
+    private float pisteScale;
     /** How far the view is zoomed in ({@link RoadLabelGeometry#zoom}), set each frame. */
     private float zoom = 1f;
 
@@ -263,6 +267,7 @@ public class RoadNameRenderer {
         boolean large = P.getViewLargeFonts();
         roadScale = (large ? ROAD_TEXT_UNITS_LARGE : ROAD_TEXT_UNITS) * widgetUnitStep / base;
         trailScale = (large ? TRAIL_TEXT_UNITS_LARGE : TRAIL_TEXT_UNITS) * widgetUnitStep / base;
+        pisteScale = (large ? PISTE_TEXT_UNITS_LARGE : PISTE_TEXT_UNITS) * widgetUnitStep / base;
     }
 
     /** {width, height} of a text at a scale, measured once. */
@@ -533,7 +538,7 @@ public class RoadNameRenderer {
         float factor = RoadLabelGeometry.distanceScale(meters / zoom, FULL_SIZE_METERS, MIN_DISTANT_SCALE);
         boolean trail = c.isNumbered();
         boolean plated = c.roadClass != RoadClass.WATER;
-        float baseScale = trail ? trailScale : roadScale;
+        float baseScale = c.roadClass == RoadClass.PISTE ? pisteScale : trail ? trailScale : roadScale;
         String text = null;
         float tw = 0f, th = 0f, padX = 0f, padY = 0f;
         for (int attempt = 0; attempt < 2 && text == null; attempt++) {
