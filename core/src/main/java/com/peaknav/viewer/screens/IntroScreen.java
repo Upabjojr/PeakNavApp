@@ -280,7 +280,78 @@ public class IntroScreen implements Screen {
         spriteBatch.end();
 
         stage.act(delta);
+        boolean pointAtButton = !downloadStarted && tableDownloadMap.isVisible();
+        pointerTime += delta;
+        if (pointAtButton) {
+            drawDownloadButtonPointers(false);
+        }
         stage.draw();
+        if (pointAtButton) {
+            drawDownloadButtonPointers(true);
+        }
+    }
+
+    /** Seconds the pointers have been animating; only the fraction of each period matters. */
+    private float pointerTime = 0f;
+    private static final float POINTER_PERIOD = 1.2f;
+    private static final float HALO_PERIOD = 1.6f;
+    private static final int POINTER_CHEVRONS = 3;
+    private final Color colorPointer = new Color(1f, 0.70f, 0.05f, 1f);
+    private final Color colorHalo = new Color(1f, 0.85f, 0.30f, 1f);
+    private final com.badlogic.gdx.math.Vector2 buttonCentre = new com.badlogic.gdx.math.Vector2();
+
+    /**
+     * Makes the download button hard to miss: many people did not see that the welcome screen
+     * waits for it. Behind the button ({@code front} false) a halo swells and fades; beside it
+     * ({@code front} true) chevrons slide in from both sides towards it, fading in and out as
+     * they go. Drawn in the stage's own coordinates, so they follow the button wherever the
+     * layout puts it.
+     */
+    private void drawDownloadButtonPointers(boolean front) {
+        float w = buttonDM.getWidth();
+        float h = buttonDM.getHeight();
+        if (w <= 0 || h <= 0) {
+            return;
+        }
+        buttonDM.localToStageCoordinates(buttonCentre.set(w / 2f, h / 2f));
+        float cx = buttonCentre.x, cy = buttonCentre.y, r = Math.min(w, h) / 2f;
+        float u = widgetUnitStep;
+
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+        shapeRenderer.setProjectionMatrix(stage.getCamera().combined);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        if (!front) {
+            float t = (pointerTime % HALO_PERIOD) / HALO_PERIOD;
+            float haloRadius = r * (1.05f + 0.3f * Interpolation.pow2Out.apply(t));
+            colorHalo.a = 0.55f * (1f - t);
+            shapeRenderer.setColor(colorHalo);
+            shapeRenderer.circle(cx, cy, haloRadius, 48);
+        } else {
+            float size = 0.32f * u;          // half the chevron's height
+            float stroke = 0.13f * u;
+            for (int i = 0; i < POINTER_CHEVRONS; i++) {
+                float t = ((pointerTime / POINTER_PERIOD) + (float) i / POINTER_CHEVRONS) % 1f;
+                // From 3.4 units out to just beside the button, fading in and back out.
+                float distance = r + (2.4f - 1.9f * t) * u;
+                colorPointer.a = (float) Math.sin(Math.PI * t);
+                shapeRenderer.setColor(colorPointer);
+                drawChevron(cx - distance, cy, size, stroke, 1f);    // left, pointing right
+                drawChevron(cx + distance, cy, size, stroke, -1f);   // right, pointing left
+            }
+        }
+        shapeRenderer.end();
+        shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    /** A ">" with its tip at (tipX, y), or a "<" when {@code direction} is -1. */
+    private void drawChevron(float tipX, float y, float size, float stroke, float direction) {
+        float backX = tipX - direction * size;
+        shapeRenderer.rectLine(backX, y + size, tipX, y, stroke);
+        shapeRenderer.rectLine(backX, y - size, tipX, y, stroke);
+        shapeRenderer.circle(tipX, y, stroke / 2f, 12);
     }
 
     private float cumDelta = 0f;
