@@ -17,7 +17,7 @@ SourceCode: https://github.com/Upabjojr/PeakNavApp
 IssueTracker: https://github.com/Upabjojr/PeakNavApp/issues
 Changelog: https://github.com/Upabjojr/PeakNavApp/releases
 
-AutoName: PeakNav
+AutoName: PeakNav~
 
 # The name "PeakNav", the logo and the launcher icon are the author's, all rights reserved
 # (LICENSE, TRADEMARK-AND-ASSETS.md); the code and every other asset are GPL-3.0.
@@ -40,8 +40,10 @@ Builds:
       - yes
     # A package id of its own, com.peaknav.fdroid: F-Droid signs with its own key, and the id
     # lets its build be installed beside the Google Play one (android/build.gradle reads it).
+    # The launcher name PeakNav~ tells the two apart, as OsmAnd~ does.
     gradleprops:
       - peaknavApplicationId=com.peaknav.fdroid
+      - peaknavAppName=PeakNav~
     # Only the Android app is built. settings.gradle includes a module only when its directory
     # exists, so the other targets (construo, RoboVM, the headless renderer) are simply removed.
     rm:

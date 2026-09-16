@@ -81,7 +81,9 @@ android {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             resValue "drawable", "ic_launcher_app", "@mipmap/ic_launcher"
-            resValue "string", "app_name", "@string/app_name_releaseBundle"
+            // The F-Droid build passes peaknavAppName (PeakNav~) so it can be told apart from the
+            // Google Play app when both are installed.
+            resValue "string", "app_name", project.findProperty('peaknavAppName') ?: "@string/app_name_releaseBundle"
         }
         debug {
             applicationIdSuffix ".debug"
