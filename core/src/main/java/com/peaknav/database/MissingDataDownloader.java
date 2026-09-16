@@ -55,7 +55,7 @@ public class MissingDataDownloader {
 
         Gdx.app.postRunnable(() -> {
             WidgetGetter.TableLocation tableLocation = MapViewerSingleton.getViewerInstance().tableLocation;
-            tableLocation.progressBar.setValue(0.f);
+            tableLocation.setDownloadProgress(0f);
             tableLocation.progressBarTable.setVisible(true);
         });
 

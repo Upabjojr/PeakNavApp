@@ -576,6 +576,19 @@ public class WidgetGetter {
         public final Slider gpxSeekSlider;
         public final Table progressBarTable;
         public final ProgressBar progressBar;
+        /** The download's progress as a percentage, drawn over the middle of {@link #progressBar}. */
+        public final Label progressPercentLabel;
+
+        /**
+         * Shows how far the map data download has got, 0 to 1, on the bar and as a percentage.
+         * Called from the download workers: the label's text is set on the render thread, which
+         * is the one that lays it out and draws it.
+         */
+        public void setDownloadProgress(final float ratio) {
+            progressBar.setValue(ratio);
+            final int percent = Math.max(0, Math.min(100, (int) Math.floor(ratio * 100f)));
+            Gdx.app.postRunnable(() -> progressPercentLabel.setText(percent + "%"));
+        }
 
         public void setButtonHereFromGps() {
             if (getC().L.isTargetSetFromGPS()) {
@@ -653,7 +666,14 @@ public class WidgetGetter {
             progressBar = new ProgressBar(0f, 1f, 0.01f, false, progressBarStyle);
             progressBar.setValue(0.f);
             // progressBar.setAnimateDuration(1.f);
-            progressBarTable.add(progressBar).padTop(0).padRight(3.2f*widgetUnitStep + borderPad)
+            // The percentage sits on the bar itself, centred: the small font's white outline keeps
+            // it readable over both the green done part and the red remainder.
+            progressPercentLabel = new Label("0%", labelStyleVerySmall);
+            progressPercentLabel.setAlignment(com.badlogic.gdx.utils.Align.center);
+            com.badlogic.gdx.scenes.scene2d.ui.Stack progressStack = new com.badlogic.gdx.scenes.scene2d.ui.Stack();
+            progressStack.add(progressBar);
+            progressStack.add(progressPercentLabel);
+            progressBarTable.add(progressStack).padTop(0).padRight(3.2f*widgetUnitStep + borderPad)
                     .width(2*widgetUnitStep).height(widgetUnitStep).right();
 
             Button buttonSearch = getC().widgetTextures.getButtonWithIcon("icons/icon_search.png");

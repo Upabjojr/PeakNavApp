@@ -103,7 +103,7 @@ public class PeakNavAppState {
     public void setMapDataDownloadProgressRatio(float mapDataDownloadPercent) {
         this.mapDataDownloadProgressRatio = mapDataDownloadPercent;
         WidgetGetter.TableLocation tableLocation = MapViewerSingleton.getViewerInstance().tableLocation;
-        tableLocation.progressBar.setValue(mapDataDownloadPercent);
+        tableLocation.setDownloadProgress(mapDataDownloadPercent);
         tableLocation.progressBarTable.setVisible(!(mapDataDownloadPercent > 0.999f));
     }
 
