@@ -56,13 +56,15 @@ public class LabelLoading {
         tableCenterNoData.center();
         labelNoDataInThisArea = new Label(s("Loading"), getC().styleSingleton.getLabelStyle());
         // labelNoDataInThisArea.setFontScale(3f);
-        tableCenterNoData.add(labelNoDataInThisArea).height(height).row();
+        // Centred line by line: the download's percentage goes on a line of its own below.
+        labelNoDataInThisArea.setAlignment(com.badlogic.gdx.utils.Align.center);
+        tableCenterNoData.add(labelNoDataInThisArea).minHeight(height).row();
 
     }
 
     /**
      * While map data downloads, the centre of the screen says so and how far it has got - "Download
-     * in progress... 42%" - in place of "Loading..." or "No data for this area", which is what the
+     * in progress..." with "42%" on the line below - in place of "Loading..." or "No data for this area", which is what the
      * download is about to change. -1 when the download has finished: the state's own text again.
      * Render thread only.
      */
@@ -77,7 +79,7 @@ public class LabelLoading {
     }
 
     private String downloadingOr(String text) {
-        return downloadPercent < 0 ? text : s("Download_in_progress") + " " + downloadPercent + "%";
+        return downloadPercent < 0 ? text : s("Download_in_progress") + "\n" + downloadPercent + "%";
     }
 
     public Table getTableCenterNoData() {
