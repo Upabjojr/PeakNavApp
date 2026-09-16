@@ -1405,21 +1405,6 @@ public class MapViewerScreen implements Screen {
 		});
 
 		optionPane = new OptionPane(tableLocation.optionsButton, widgetUnitStep);
-		stage.addActor(optionPane.getTable());
-		stage.addActor(optionPane.getTableOneColumn());
-		stage.addActor(optionPane.getSelectBoxSatelliteSource());
-		stage.addActor(optionPane.getSelectBoxDownloadSource());
-		stage.addActor(optionPane.getSelectBoxUnits());
-		stage.addActor(optionPane.getSelectInfoOpts());
-		stage.addActor(optionPane.getSelectGpx());
-		stage.addActor(optionPane.getSelectLabels());
-		stage.addActor(optionPane.getSelectSky());
-		stage.addActor(optionPane.getSelectCompass());
-		stage.addActor(optionPane.getSelectRoads());
-		stage.addActor(optionPane.getSelectRoadsOneColumn());
-		stage.addActor(optionPane.getSelectRoadsGroup());
-		stage.addActor(optionPane.getSelectPistes());
-		// stage.addActor(optionPane.getTableAppInfo());
 		optionPane.hide();
 
 		buttonPinLoc = new ImageButton(getC().widgetTextures.getTextureRegionDrawable("icons/icon_loc_pin.png"));
@@ -1454,6 +1439,26 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(tableTool.getTable());
 		stage.addActor(tableTool.tableCameraControl);
 		stage.addActor(tableTool.buttonUnpin);
+
+		// The options menu and its submenus, over every button and pin added above: scene2d draws
+		// actors in the order they were added, and with the menu added first the location pin,
+		// the unpin button and the photo controls were drawn across an open menu. The toast,
+		// the loading label and the keyboard help below still come out on top of it.
+		stage.addActor(optionPane.getTable());
+		stage.addActor(optionPane.getTableOneColumn());
+		stage.addActor(optionPane.getSelectBoxSatelliteSource());
+		stage.addActor(optionPane.getSelectBoxDownloadSource());
+		stage.addActor(optionPane.getSelectBoxUnits());
+		stage.addActor(optionPane.getSelectInfoOpts());
+		stage.addActor(optionPane.getSelectGpx());
+		stage.addActor(optionPane.getSelectLabels());
+		stage.addActor(optionPane.getSelectSky());
+		stage.addActor(optionPane.getSelectCompass());
+		stage.addActor(optionPane.getSelectRoads());
+		stage.addActor(optionPane.getSelectRoadsOneColumn());
+		stage.addActor(optionPane.getSelectRoadsGroup());
+		stage.addActor(optionPane.getSelectPistes());
+		// stage.addActor(optionPane.getTableAppInfo());
 		stage.addActor(tableCenter);
 
 		labelLoading = new LabelLoading(widgetUnitStep);
