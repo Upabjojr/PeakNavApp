@@ -1,0 +1,6 @@
+First F-Droid release.
+- Ski pistes coloured by difficulty and flowing downhill, with names
+- Ski lifts, chairlifts and gondolas moving uphill, with names
+- GPX info pane: position, distance walked, elevation and speed profiles
+- Route to here along paths, with slope-aware walking time
+- Labels switch hides all labels at once

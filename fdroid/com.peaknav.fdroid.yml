@@ -1,7 +1,7 @@
 # Draft of the F-Droid packaging recipe for PeakNav, in the format of the fdroiddata repository
 # (https://gitlab.com/fdroid/fdroiddata, file metadata/com.peaknav.fdroid.yml). Kept here so it can be
 # tried with fdroidserver before being submitted; the copy that counts is the one merged into
-# fdroiddata. See README.md in this folder for the steps and the placeholders.
+# fdroiddata. See README.md in this folder for the steps.
 #
 # Name, summary, description, icon and screenshots are not set here: F-Droid reads them from
 # fastlane/metadata/android/ in this repository, at the commit it builds.
@@ -30,11 +30,11 @@ Repo: https://github.com/Upabjojr/PeakNavApp.git
 
 Builds:
   # The F-Droid build is made from the fdroid branch, which is kept apart from main and brought
-  # up to date with it for each release, and tagged fdroid-X.Y.Z. Replace the placeholders with
-  # that tag; android/build.gradle at the tag must carry exactly this versionCode and versionName.
-  - versionName: X.Y.Z
-    versionCode: NNN
-    commit: fdroid-X.Y.Z
+  # up to date with it for each release, and tagged fdroid-X.Y.Z; android/build.gradle at the tag
+  # must carry exactly this versionCode and versionName.
+  - versionName: 1.3.2
+    versionCode: 157
+    commit: fdroid-1.3.2
     subdir: android
     gradle:
       - yes
@@ -62,5 +62,5 @@ Builds:
 AutoUpdateMode: Version
 # Only the fdroid-X.Y.Z tags: the plain X.Y.Z release tags are on main, which does not build here.
 UpdateCheckMode: Tags ^fdroid-[0-9]+\.[0-9]+\.[0-9]+$
-CurrentVersion: X.Y.Z
-CurrentVersionCode: NNN
+CurrentVersion: 1.3.2
+CurrentVersionCode: 157
