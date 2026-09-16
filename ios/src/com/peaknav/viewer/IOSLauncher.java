@@ -9,6 +9,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.backends.iosrobovm.IOSApplication;
 import com.badlogic.gdx.backends.iosrobovm.IOSApplicationConfiguration;
 import com.badlogic.gdx.graphics.glutils.HdpiMode;
+import com.peaknav.compatibility.IOSDeviceTable;
 import com.peaknav.utils.PeakNavUtils;
 
 import java.io.ByteArrayOutputStream;
@@ -94,6 +95,8 @@ public class IOSLauncher extends IOSApplication.Delegate {
     @Override
     protected IOSApplication createApplication() {
         IOSApplicationConfiguration config = new IOSApplicationConfiguration();
+        // The screen densities of the devices libGDX's own table does not know (see IOSDeviceTable).
+        IOSDeviceTable.register(config);
         // Report sizes in real pixels, not points.
         //
         // The backend defaults to HdpiMode.Logical, where Gdx.graphics.getWidth() gives points
