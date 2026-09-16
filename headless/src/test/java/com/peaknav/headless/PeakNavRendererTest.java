@@ -1,6 +1,7 @@
 package com.peaknav.headless;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -1300,5 +1301,444 @@ class PeakNavRendererTest {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** The peaks this frame shows, each as the objects JSON reports it. */
+    private java.util.List<com.badlogic.gdx.utils.JsonValue> drawnPeaks() {
+        java.util.List<com.badlogic.gdx.utils.JsonValue> peaks = new java.util.ArrayList<>();
+        com.badlogic.gdx.utils.JsonValue all = new com.badlogic.gdx.utils.JsonReader()
+                .parse(renderer.objectsJson("displayable", true)).get("objects");
+        for (com.badlogic.gdx.utils.JsonValue o = all.child; o != null; o = o.next) {
+            if ("peak".equals(o.getString("kind")) && o.has("text")) {
+                peaks.add(o);
+            }
+        }
+        return peaks;
+    }
+
+    @Test
+    @Order(24)
+    @DisplayName("switching units relabels the peaks already on screen, at once (#22)")
+    void unitSwitchRelabelsPeaksAtOnce() {
+        renderer.moveTo(LAT, LON);
+        renderer.setLabel(PeakNavRenderer.Label.PEAKS, true);
+        renderer.awaitTilesLoaded(60_000);
+        renderer.aim(210f, 6f);
+        assertTrue(renderer.awaitLabelsRendered(60_000), "peak labels to switch");
+        try {
+            renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.METRIC).settle(500);
+            java.util.List<com.badlogic.gdx.utils.JsonValue> metric = drawnPeaks();
+            assertFalse(metric.isEmpty(), "Zermatt's skyline has peaks on it");
+            for (com.badlogic.gdx.utils.JsonValue p : metric) {
+                assertEquals(p.getString("name") + " - " + (int) p.getFloat("elevation_m") + " m",
+                        p.getString("text"));
+            }
+
+            // No reload, no new tiles: the same labels, which used to keep "m" until their
+            // POIs were next loaded.
+            renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL).settle(500);
+            java.util.List<com.badlogic.gdx.utils.JsonValue> imperial = drawnPeaks();
+            assertFalse(imperial.isEmpty(), "the peaks are still there");
+            for (com.badlogic.gdx.utils.JsonValue p : imperial) {
+                assertEquals(p.getString("name") + " - "
+                                + Math.round(3.280839895f * p.getFloat("elevation_m")) + " ft",
+                        p.getString("text"));
+            }
+        } finally {
+            renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.METRIC);
+        }
+    }
+
+    @Test
+    @Order(25)
+    @DisplayName("a paused GPX tour follows the scrub bar and stays paused (#23)")
+    void pausedTourFollowsTheScrubBar() {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(60_000);
+        String gpx = "<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" version=\"1.1\"><trk>"
+                + "<name>t</name><trkseg>"
+                + "<trkpt lat=\"46.0207\" lon=\"7.7491\"><ele>1608</ele></trkpt>"
+                + "<trkpt lat=\"46.0000\" lon=\"7.7300\"><ele>2000</ele></trkpt>"
+                + "<trkpt lat=\"45.9833\" lon=\"7.7853\"><ele>3089</ele></trkpt>"
+                + "</trkseg></trk></gpx>";
+        renderer.loadGpx(gpx);
+        try {
+            renderer.startGpxTour().settle(4000); // past the ease-in, flying along the track
+            renderer.setGpxTourPaused(true).settle(300);
+            assertTrue(renderer.isGpxTourPaused(), "paused");
+            com.badlogic.gdx.math.Vector3 held = renderer.cameraPosition();
+            renderer.settle(800);
+            assertTrue(held.dst(renderer.cameraPosition()) < 1e-5f, "a paused tour holds the camera");
+
+            renderer.seekGpxTour(0.85f).settle(500);
+            com.badlogic.gdx.math.Vector3 sought = renderer.cameraPosition();
+            assertTrue(held.dst(sought) > 1e-3f,
+                    "dragging the bar while paused moves the view (it used to wait for play): moved "
+                            + held.dst(sought));
+            assertTrue(renderer.isGpxTourPaused(), "and the tour is still paused");
+            assertEquals(0.85f, renderer.gpxTourProgress(), 0.05f, "the bar stays where it was dropped");
+
+            renderer.settle(1000);
+            assertTrue(sought.dst(renderer.cameraPosition()) < 1e-5f, "still paused: no playback after the seek");
+
+            // Resuming carries on from the view on screen, forwards along the track.
+            renderer.setGpxTourPaused(false).settle(1500);
+            assertFalse(renderer.isGpxTourPaused(), "resumed");
+            assertTrue(renderer.gpxTourProgress() >= 0.85f - 0.01f, "resumed from the seek point, not before it");
+        } finally {
+            renderer.stopGpxTour();
+        }
+    }
+
+    @Test
+    @Order(27)
+    @DisplayName("route to a tapped point follows the paths of the map data and opens as a GPX track")
+    void routeToAPointFollowsThePaths() throws Exception {
+        renderer.moveTo(46.0207, 7.7491); // Zermatt
+        assertTrue(renderer.awaitTilesLoaded(120_000), "Zermatt settles");
+        // Findeln, up the slope east of the village: about 2.2 km as the crow flies.
+        double toLat = 46.0080, toLon = 7.7680;
+        double straight = com.peaknav.routing.WalkingRouter.metres(46.0207, 7.7491, toLat, toLon);
+        com.peaknav.routing.RouteToPoint.Result result = renderer.routeTo(toLat, toLon);
+        assertEquals(null, result.problem, "a route was found");
+        com.peaknav.routing.WalkingRouter.Route route = result.route;
+        System.out.println("route: " + route.size() + " points, " + Math.round(route.metres) + " m, straight "
+                + Math.round(straight) + " m");
+        assertTrue(route.size() > 10, "it follows the ways, bend by bend: " + route.size());
+        assertTrue(route.metres >= straight && route.metres < straight * 3,
+                "a walk, not a detour round the valley: " + route.metres + " vs " + straight);
+        // The viewer's position is kept as a float: a metre, not a nanodegree.
+        assertEquals(46.0207, route.lat[0], 1e-5, "from where the viewer stands");
+        assertEquals(toLon, route.lon[route.size() - 1], 1e-9, "to the point chosen");
+
+        try {
+            assertEquals(1, renderer.openRoute(route, toLat, toLon), "opened as one GPX track");
+            renderer.settle(6000); // the map flies to frame the track, as for a GPX file
+            boolean[] graphs = renderer.gpxInfoGraphs();
+            assertTrue(!graphs[0], "a route's heights are the terrain's own: a single profile");
+            File framed = newTempFile("route.png");
+            renderer.capture(framed);
+            System.out.println("route frame: " + framed.getAbsolutePath());
+        } finally {
+            renderer.clearGpx();
+        }
+
+        assertEquals("Route_too_far", renderer.routeTo(46.5, 8.3).problem, "Zermatt to Interlaken is not a walk");
+        renderer.moveTo(43.00, 5.00); // the Gulf of Lion: no ways to walk
+        assertEquals("Route_no_data", renderer.routeTo(43.01, 5.01).problem);
+    }
+
+    @Test
+    @Order(28)
+    @DisplayName("during a GPX tour the current point of the track is drawn, and holds when paused")
+    void gpxTourShowsItsCurrentPoint() throws Exception {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(60_000);
+        String gpx = "<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" version=\"1.1\"><trk>"
+                + "<name>t</name><trkseg>"
+                + "<trkpt lat=\"46.0207\" lon=\"7.7491\"><ele>1608</ele></trkpt>"
+                + "<trkpt lat=\"46.0000\" lon=\"7.7300\"><ele>2000</ele></trkpt>"
+                + "<trkpt lat=\"45.9833\" lon=\"7.7853\"><ele>3089</ele></trkpt>"
+                + "</trkseg></trk></gpx>";
+        renderer.loadGpx(gpx);
+        try {
+            assertEquals(null, renderer.gpxTourPointOnScreen(), "no tour, no point");
+            renderer.startGpxTour().settle(6000);
+            float[] point = renderer.gpxTourPointOnScreen();
+            assertTrue(point != null, "the tour's point is on the frame while it flies");
+            assertTrue(point[0] >= 0 && point[0] <= WIDTH && point[1] >= 0 && point[1] <= HEIGHT);
+            // On the path as recorded and painted - the camera's smoothed line cut its bends.
+            for (int k = 0; k < 4; k++) {
+                double off = renderer.gpxTourPointOffTrackMetres();
+                assertTrue(off < 0.5, "the point is on the path, not beside it: " + off + " m");
+                renderer.settle(700);
+            }
+            float[] bar = renderer.gpxSeekBarBounds();
+            System.out.println("gpx seek bar: " + java.util.Arrays.toString(bar));
+            assertTrue(bar[0] > 0 && bar[0] + bar[2] < bar[4] && bar[3] < 0.1f * bar[5],
+                    "the scrub bar fits the screen: " + java.util.Arrays.toString(bar));
+            // With the interface: the point is an overlay, drawn after a plain capture is taken.
+            File flying = newTempFile("tour-point.png");
+            renderer.captureWithUi(flying);
+            System.out.println("tour point frame: " + flying.getAbsolutePath() + " at " + point[0] + "," + point[1]);
+
+            renderer.setGpxTourPaused(true).settle(500);
+            float[] held = renderer.gpxTourPointOnScreen();
+            renderer.settle(1000);
+            float[] later = renderer.gpxTourPointOnScreen();
+            assertTrue(held != null && later != null && held[0] == later[0] && held[1] == later[1],
+                    "paused, the point holds");
+
+            // Circling the end, the point stays on the end of the track, on the ground where the
+            // track is painted - not at the recorded height, which swung it around as the camera turned.
+            renderer.seekGpxTour(0.85f).settle(500);
+            renderer.awaitTilesLoaded(60_000); // the end's terrain, now that the camera is there
+            Float endGround = renderer.groundWorldZ(45.9833, 7.7853);
+            assertTrue(endGround != null, "terrain loaded at the end of the track");
+            float[] orbitA = renderer.gpxTourPointWorld();
+            File orbitFrameA = newTempFile("tour-orbit-a.png");
+            renderer.captureWithUi(orbitFrameA);
+            renderer.seekGpxTour(0.97f).settle(500);
+            float[] orbitB = renderer.gpxTourPointWorld();
+            File orbitFrameB = newTempFile("tour-orbit-b.png");
+            renderer.captureWithUi(orbitFrameB);
+            System.out.println("tour orbit frames: " + orbitFrameA.getAbsolutePath() + " " + orbitFrameB.getAbsolutePath()
+                    + " point " + java.util.Arrays.toString(orbitA) + " ground " + endGround);
+            assertTrue(orbitA != null && orbitB != null, "the point shows while circling the end");
+            assertTrue(orbitA[0] == orbitB[0] && orbitA[1] == orbitB[1] && orbitA[2] == orbitB[2],
+                    "circling, the point stays put: " + java.util.Arrays.toString(orbitA) + " vs "
+                            + java.util.Arrays.toString(orbitB));
+            assertEquals(45.9833, orbitA[1], 1e-4, "at the end of the track");
+            assertEquals(endGround, orbitA[2], 1e-5, "on the ground");
+        } finally {
+            renderer.stopGpxTour();
+            renderer.clearGpx();
+        }
+    }
+
+    @Test
+    @Order(29)
+    @DisplayName("a loaded GPX track gets a collapsible pane with its distance, walking time and profile")
+    void gpxInfoPaneDescribesTheTrack() throws Exception {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(60_000);
+        assertEquals(null, renderer.gpxInfoTexts(), "no track, no pane");
+        String gpx = "<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" version=\"1.1\"><trk>"
+                + "<name>Zermatt - Gornergrat</name><trkseg>"
+                + "<trkpt lat=\"46.0207\" lon=\"7.7491\"><ele>1608</ele></trkpt>"
+                + "<trkpt lat=\"46.0000\" lon=\"7.7300\"><ele>2000</ele></trkpt>"
+                + "<trkpt lat=\"45.9833\" lon=\"7.7853\"><ele>3089</ele></trkpt>"
+                + "</trkseg></trk></gpx>";
+        renderer.loadGpx(gpx);
+        try {
+            renderer.settle(500);
+            String[] texts = renderer.gpxInfoTexts();
+            assertTrue(texts != null, "the pane shows with the track");
+            System.out.println("gpx pane: " + String.join(" | ", texts));
+            assertEquals("Zermatt - Gornergrat", texts[0], "named after the track");
+            assertTrue(!String.join(" ", texts).contains(" N,"), "no start or end coordinates");
+            assertTrue(texts[1].contains("km"), texts[1]);
+            assertTrue(texts[2].contains("h"), "a walking time: " + texts[2]);
+            assertTrue(texts[3].contains("1481 m"), "1608 to 3089 m, all up: " + texts[3]);
+            assertTrue(texts[4].contains("3089 m") && texts[4].contains("1608 m"), texts[4]);
+            boolean[] graphs = renderer.gpxInfoGraphs();
+            assertTrue(graphs[0], "the recorded heights beside the terrain's");
+            assertTrue(!graphs[1] && texts[5].isEmpty(), "no times, no speed");
+            assertTrue(texts[6].isEmpty(), "no tour, no current elevation");
+
+            renderer.startGpxTour().settle(6000);
+            String[] touringTexts = renderer.gpxInfoTexts();
+            String now = touringTexts[6] + " | " + touringTexts[7];
+            String[] axis = renderer.gpxInfoAxisLabels();
+            System.out.println("gpx pane touring: " + now + " | axes: " + String.join(" | ", axis));
+            assertTrue(now.matches(".*: \\d+ m \\| .*: [\\d.]+ k?m"),
+                    "while the tour runs, the elevation where it is and the distance walked: " + now);
+            assertTrue(java.util.Arrays.asList(axis).contains("x:0:00"), "time since the start along the bottom");
+            assertTrue(java.util.Arrays.stream(axis).anyMatch(a -> a.startsWith("x:") && !a.equals("x:0:00")),
+                    "and later times: the walking time so far, for a track without times");
+            assertTrue(java.util.Arrays.stream(axis).anyMatch(a -> a.startsWith("y:") && a.endsWith(" m")),
+                    "heights up the side, in metres");
+            renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL).settle(500);
+            String[] feetAxis = renderer.gpxInfoAxisLabels();
+            String[] feetTexts = renderer.gpxInfoTexts();
+            String feetNow = feetTexts[6] + " | " + feetTexts[7];
+            renderer.setUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem.METRIC).settle(500);
+            System.out.println("gpx pane in feet: " + feetNow + " | axes: " + String.join(" | ", feetAxis));
+            assertTrue(java.util.Arrays.stream(feetAxis).anyMatch(a -> a.startsWith("y:") && a.endsWith(" ft")),
+                    "in feet when feet are chosen: " + String.join(" | ", feetAxis));
+            assertTrue(java.util.Arrays.stream(feetAxis).noneMatch(a -> a.endsWith(" m")), "and no metres left");
+            assertTrue(feetNow.matches(".*: \\d+ ft \\| .*: [\\d.]+ (ft|mi)"), feetNow);
+            File open = newTempFile("gpx-pane.png");
+            renderer.captureWithUi(open);
+            float[] small = renderer.gpxInfoBounds();
+            assertTrue(small != null && small[0] + small[2] < small[4] / 2,
+                    "the pane stops short of the middle, where the tour circles the end: "
+                            + java.util.Arrays.toString(small));
+            float[] bodyBefore = renderer.gpxInfoBodyPosition();
+            assertTrue(bodyBefore != null, "open, the body is laid out");
+
+            float[] smallGraph = renderer.gpxInfoGraphSizes();
+            renderer.setGpxInfoMaximized(true).settle(500);
+            File large = newTempFile("gpx-pane-large.png");
+            renderer.captureWithUi(large);
+            float[] big = renderer.gpxInfoBounds();
+            float[] bigGraph = renderer.gpxInfoGraphSizes();
+            assertTrue(big[2] > 0.6f * big[4], "maximized, it spans most of the width: " + java.util.Arrays.toString(big));
+            assertTrue(big[1] >= 0 && big[1] + big[3] <= big[5],
+                    "and stays on the screen, scrolling what does not fit: " + java.util.Arrays.toString(big));
+            assertTrue(bigGraph[0] > smallGraph[0] && bigGraph[1] > smallGraph[1]
+                            && Math.abs(bigGraph[0] / bigGraph[1] - smallGraph[0] / smallGraph[1]) < 0.02f * smallGraph[0] / smallGraph[1],
+                    "the profile grows with the pane and keeps its proportions: " + java.util.Arrays.toString(smallGraph)
+                            + " vs " + java.util.Arrays.toString(bigGraph));
+            renderer.setGpxInfoMaximized(false).settle(500);
+            float[] back = renderer.gpxInfoBounds();
+            assertTrue(Math.abs(back[2] - small[2]) < 1 && Math.abs(back[3] - small[3]) < 1,
+                    "restored, it is the small pane again: " + java.util.Arrays.toString(back));
+
+            renderer.setGpxInfoOpen(false).settle(500);
+            File folded = newTempFile("gpx-pane-folded.png");
+            renderer.captureWithUi(folded);
+            float[] button = renderer.gpxInfoBounds();
+            assertTrue(Math.abs(button[2] - button[3]) < 1 && button[2] < small[2] / 3,
+                    "folded, it is a single button: " + java.util.Arrays.toString(button));
+            renderer.setGpxInfoOpen(true).settle(500);
+            File reopened = newTempFile("gpx-pane-reopened.png");
+            renderer.captureWithUi(reopened);
+            float[] bodyAfter = renderer.gpxInfoBodyPosition();
+            assertTrue(bodyAfter != null && Math.abs(bodyAfter[0] - bodyBefore[0]) < 1
+                            && Math.abs(bodyAfter[1] - bodyBefore[1]) < 1,
+                    "reopened, the text is back where it was: " + java.util.Arrays.toString(bodyBefore)
+                            + " vs " + java.util.Arrays.toString(bodyAfter));
+            System.out.println("gpx pane frames: " + open.getAbsolutePath() + " " + folded.getAbsolutePath()
+                    + " " + reopened.getAbsolutePath() + " " + large.getAbsolutePath());
+        } finally {
+            renderer.stopGpxTour();
+            renderer.clearGpx();
+        }
+        renderer.settle(500);
+        assertEquals(null, renderer.gpxInfoTexts(), "cleared, the pane goes");
+    }
+
+    @Test
+    @Order(30)
+    @DisplayName("a GPX track that recorded times gets a speed graph under its profile")
+    void gpxInfoPaneShowsTheSpeedOfATimedTrack() throws Exception {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(60_000);
+        // Zermatt to Gornergrat in four hours, with a long halt at Riffelalp.
+        String gpx = "<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" version=\"1.1\"><trk>"
+                + "<name>Timed</name><trkseg>"
+                + "<trkpt lat=\"46.0207\" lon=\"7.7491\"><ele>1608</ele><time>2026-07-01T07:00:00Z</time></trkpt>"
+                + "<trkpt lat=\"46.0100\" lon=\"7.7400\"><ele>1800</ele><time>2026-07-01T07:40:00Z</time></trkpt>"
+                + "<trkpt lat=\"46.0000\" lon=\"7.7300\"><ele>2000</ele><time>2026-07-01T08:30:00Z</time></trkpt>"
+                + "<trkpt lat=\"46.0000\" lon=\"7.7300\"><ele>2000</ele><time>2026-07-01T09:15:00Z</time></trkpt>"
+                + "<trkpt lat=\"45.9833\" lon=\"7.7853\"><ele>3089</ele><time>2026-07-01T11:00:00Z</time></trkpt>"
+                + "</trkseg></trk></gpx>";
+        renderer.loadGpx(gpx);
+        try {
+            renderer.settle(500);
+            String[] texts = renderer.gpxInfoTexts();
+            boolean[] graphs = renderer.gpxInfoGraphs();
+            System.out.println("gpx speed: " + texts[5]);
+            assertTrue(graphs[1], "times recorded, so a speed graph");
+            assertTrue(texts[5].contains("km/h"), texts[5]);
+            File small = newTempFile("gpx-speed.png");
+            renderer.captureWithUi(small);
+            float[] smallGraphs = renderer.gpxInfoGraphSizes();
+            renderer.setGpxInfoMaximized(true).settle(500);
+            File large = newTempFile("gpx-speed-large.png");
+            renderer.captureWithUi(large);
+            float[] largeBounds = renderer.gpxInfoBounds();
+            float[] largeGraphs = renderer.gpxInfoGraphSizes();
+            assertTrue(Math.abs(largeGraphs[2] / largeGraphs[3] - smallGraphs[2] / smallGraphs[3])
+                            < 0.02f * smallGraphs[2] / smallGraphs[3],
+                    "the speed graph keeps its proportions too: " + java.util.Arrays.toString(smallGraphs)
+                            + " vs " + java.util.Arrays.toString(largeGraphs));
+            assertTrue(largeBounds[1] >= 0 && largeBounds[1] + largeBounds[3] <= largeBounds[5],
+                    "on the screen: " + java.util.Arrays.toString(largeBounds));
+            float[] scrollable = renderer.gpxInfoScroll();
+            assertTrue(scrollable[0] > 0, "too tall for a 400 px window, so it scrolls: " + java.util.Arrays.toString(scrollable));
+            renderer.scrollGpxInfo(1f).settle(500);
+            File bottom = newTempFile("gpx-speed-large-bottom.png");
+            renderer.captureWithUi(bottom);
+            assertTrue(renderer.gpxInfoScroll()[1] > 0, "scrolled down to the speed graph");
+            renderer.setGpxInfoMaximized(false).settle(300);
+            System.out.println("gpx speed frames: " + small.getAbsolutePath() + " " + large.getAbsolutePath()
+                    + " " + bottom.getAbsolutePath());
+        } finally {
+            renderer.clearGpx();
+        }
+    }
+
+    @Test
+    @Order(31)
+    @DisplayName("ski slopes are drawn from the piste data, and flow")
+    void skiSlopesAreDrawnFromThePisteData() throws Exception {
+        java.io.File pistes = new java.io.File(com.badlogic.gdx.Gdx.files.external(
+                com.peaknav.utils.PathUtils.getMapFolder()).file(), "PBF_PISTES");
+        assumeTrue(pistes.isDirectory(), "no PBF_PISTES data on this machine");
+        renderer.setLabel(PeakNavRenderer.Label.PISTES, true);
+        // Above Zermatt, looking up at the Sunnegga and Rothorn runs.
+        renderer.moveTo(46.0300, 7.7500);
+        renderer.aim(120f, -8f);
+        renderer.awaitTilesLoaded(120_000);
+        int tiles = renderer.skiSlopeTiles();
+        System.out.println("ski slope tiles: " + tiles);
+        assertTrue(tiles > 0, "the Zermatt runs are drawn");
+        File first = newTempFile("ski-slopes.png");
+        renderer.capture(first);
+        renderer.settle(700);
+        File later = newTempFile("ski-slopes-later.png");
+        renderer.capture(later);
+        System.out.println("ski slope frames: " + first.getAbsolutePath() + " " + later.getAbsolutePath());
+
+        // From above, the runs down to the village: widths and colours at a glance.
+        renderer.setElevationMeters(800).aim(125f, -22f);
+        renderer.awaitTilesLoaded(120_000);
+        File above = newTempFile("ski-slopes-above.png");
+        renderer.capture(above);
+        System.out.println("ski slopes above frame: " + above.getAbsolutePath());
+
+        // The runs' names, with the roads' and the lifts' names off so only the pistes' can be counted.
+        renderer.setLabel(PeakNavRenderer.Label.ROAD_NAMES, false).setLabel(PeakNavRenderer.Label.LIFT_NAMES, false)
+                .setLabel(PeakNavRenderer.Label.PISTE_NAMES, true);
+        renderer.settle(1500);
+        java.util.List<String> pisteNames = renderer.roadNamesDrawn();
+        File named = newTempFile("ski-slopes-names.png");
+        renderer.captureWithUi(named);
+        System.out.println("ski slope names: " + pisteNames + " frame: " + named.getAbsolutePath());
+        assertTrue(!pisteNames.isEmpty(), "the runs in view are named");
+        renderer.setLabel(PeakNavRenderer.Label.PISTE_NAMES, false).settle(1200);
+        assertTrue(renderer.roadNamesDrawn().isEmpty(), "and not when their names are switched off");
+        renderer.setLabel(PeakNavRenderer.Label.PISTE_NAMES, true).setLabel(PeakNavRenderer.Label.ROAD_NAMES, true);
+
+        // The lifts: drawn, moving, and named - with the roads' and the runs' names off.
+        renderer.setLabel(PeakNavRenderer.Label.LIFTS, true).setLabel(PeakNavRenderer.Label.LIFT_NAMES, true);
+        int liftTiles = renderer.skiLiftTiles();
+        System.out.println("ski lift tiles: " + liftTiles);
+        assertTrue(liftTiles > 0, "the Zermatt lifts are drawn");
+        renderer.setLabel(PeakNavRenderer.Label.ROAD_NAMES, false).setLabel(PeakNavRenderer.Label.PISTE_NAMES, false);
+        renderer.settle(1500);
+        java.util.List<String> liftNames = renderer.roadNamesDrawn();
+        File lifts = newTempFile("ski-lifts.png");
+        renderer.captureWithUi(lifts);
+        renderer.settle(600);
+        File liftsLater = newTempFile("ski-lifts-later.png");
+        renderer.captureWithUi(liftsLater);
+        System.out.println("ski lift names: " + liftNames + " frames: " + lifts.getAbsolutePath() + " " + liftsLater.getAbsolutePath());
+        assertTrue(!liftNames.isEmpty(), "the lifts in view are named");
+        renderer.setLabel(PeakNavRenderer.Label.LIFT_NAMES, false).settle(1200);
+        assertTrue(renderer.roadNamesDrawn().isEmpty(), "and not when their names are switched off");
+        renderer.setLabel(PeakNavRenderer.Label.LIFT_NAMES, true).setLabel(PeakNavRenderer.Label.PISTE_NAMES, true)
+                .setLabel(PeakNavRenderer.Label.ROAD_NAMES, true);
+
+        // The main menu's Labels switch hides every label at once, and brings them all back.
+        renderer.setAllLabels(false).settle(1200);
+        assertTrue(renderer.roadNamesDrawn().isEmpty(), "no road, piste or lift names with every label off");
+        File noLabels = newTempFile("all-labels-off.png");
+        renderer.captureWithUi(noLabels);
+        renderer.setAllLabels(true).settle(1500);
+        System.out.println("all labels off frame: " + noLabels.getAbsolutePath());
+        assertTrue(!renderer.roadNamesDrawn().isEmpty(), "and back when switched on");
+
+        // The menus: Roads "..." holds roads and paths and ski pistes, each with a "..." of its own.
+        StringBuilder menus = new StringBuilder("ski menu frames:");
+        renderer.setOptionsPane(true).settle(400);
+        File mainMenu = newTempFile("main-menu.png");
+        renderer.captureWithUi(mainMenu);
+        System.out.println("main menu frame: " + mainMenu.getAbsolutePath());
+        for (int level = 1; level <= 3; level++) {
+            renderer.openRoadsMenu(level).settle(400);
+            File menu = newTempFile("roads-menu-" + level + ".png");
+            renderer.captureWithUi(menu);
+            menus.append(' ').append(menu.getAbsolutePath());
+        }
+        renderer.setOptionsPane(false);
+        System.out.println(menus);
+
+        renderer.setLabel(PeakNavRenderer.Label.PISTES, false).settle(500);
+        File off = newTempFile("ski-slopes-off.png");
+        renderer.capture(off);
+        System.out.println("ski slopes off frame: " + off.getAbsolutePath());
     }
 }

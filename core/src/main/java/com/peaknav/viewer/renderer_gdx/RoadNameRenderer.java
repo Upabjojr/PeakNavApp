@@ -46,6 +46,9 @@ import java.util.Map;
  * road: the stretch of way around the label's spot (see {@code RoadLabelPlanner}) is projected,
  * and the text is laid along the principal axis of those points.
  *
+ * <p>Ski runs' names, when the ski slopes viewer is on, are written the same way as a trail's, on
+ * a plate of the run's blue, red or black.
+ *
  * <p>Trail and track labels are a little larger and sit on a translucent plate of the trail's
  * own colour - yellow, red or blue by difficulty, ochre for a track, whatever the user has set -
  * so a number reads as belonging to its trail at a glance, the way a waymark does. The text on
@@ -106,6 +109,9 @@ public class RoadNameRenderer {
     /** Trail and track names and numbers: a little larger, since they sit on a plate. */
     private static final float TRAIL_TEXT_UNITS = 0.38f;
     private static final float TRAIL_TEXT_UNITS_LARGE = 0.46f;
+    /** Ski runs' names: half as large again as a trail's, so they read across a ski area. */
+    private static final float PISTE_TEXT_UNITS = 1.5f * TRAIL_TEXT_UNITS;
+    private static final float PISTE_TEXT_UNITS_LARGE = 1.5f * TRAIL_TEXT_UNITS_LARGE;
     /** How opaque a trail's plate is: its colour clearly, the ground still showing through. */
     private static final float PLATE_ALPHA = 0.74f;
     /** A street name's plate: fainter, the halo does most of the work. */
@@ -163,6 +169,7 @@ public class RoadNameRenderer {
     /** Font scales for road and trail labels, set each frame from the font and preferences. */
     private float roadScale;
     private float trailScale;
+    private float pisteScale;
     /** How far the view is zoomed in ({@link RoadLabelGeometry#zoom}), set each frame. */
     private float zoom = 1f;
 
@@ -217,7 +224,10 @@ public class RoadNameRenderer {
         if (viewer == null || viewer.cam == null || getC().dataRetrieveThreadManager == null) {
             return;
         }
-        if (!P.isViewerLayerVisibleBaseRoads() || !P.getRoadStyle().isRoadNames()) {
+        showRoadNames = P.isViewerLayerVisibleBaseRoads() && P.getRoadStyle().isRoadNames();
+        showPisteNames = P.isSkiSlopesVisible() && P.isPisteLabelsVisible();
+        showLiftNames = P.isLiftsVisible() && P.isLiftLabelsVisible();
+        if (!P.isLabelsVisible() || (!showRoadNames && !showPisteNames && !showLiftNames)) {
             chosen.clear();
             return;
         }
@@ -241,12 +251,27 @@ public class RoadNameRenderer {
         }
     }
 
+    /** Which labels this frame writes: the roads' and trails', the ski runs', or both. */
+    private boolean showRoadNames, showPisteNames, showLiftNames;
+
+    /** A ski lift's plate: the dark grey of its cable. */
+    private static final int LIFT_PLATE_RGBA = 0x2B2F36FF;
+
+    /** A ski run's plate: blue, red or black, as the ski slopes viewer draws the run. */
+    private static int pisteRgba(float difficulty) {
+        if (difficulty < 0.25f) {
+            return 0x1F6BF2FF;
+        }
+        return difficulty < 0.75f ? 0xE02A2AFF : 0x111317FF;
+    }
+
     private void setScales(BitmapFont font) {
         font.getData().setScale(1f);
         float base = Math.max(1f, font.getLineHeight());
         boolean large = P.getViewLargeFonts();
         roadScale = (large ? ROAD_TEXT_UNITS_LARGE : ROAD_TEXT_UNITS) * widgetUnitStep / base;
         trailScale = (large ? TRAIL_TEXT_UNITS_LARGE : TRAIL_TEXT_UNITS) * widgetUnitStep / base;
+        pisteScale = (large ? PISTE_TEXT_UNITS_LARGE : PISTE_TEXT_UNITS) * widgetUnitStep / base;
     }
 
     /** {width, height} of a text at a scale, measured once. */
@@ -317,7 +342,12 @@ public class RoadNameRenderer {
 
         int worldBudget = WORLD_BUDGET_PER_DECISION;
         for (MapTile tile : tilesNearestFirst(camLat, camLon, cosLat, MAX_RANGE_METERS * zoom)) {
-            List<RoadLabelCandidate> candidates = tile.roadLabels;
+            for (int source = 0; source < 3; source++) {
+            List<RoadLabelCandidate> candidates = source == 0
+                    ? (showRoadNames ? tile.roadLabels : Collections.<RoadLabelCandidate>emptyList())
+                    : source == 1
+                    ? (showPisteNames ? tile.pisteLabels : Collections.<RoadLabelCandidate>emptyList())
+                    : (showLiftNames ? tile.liftLabels : Collections.<RoadLabelCandidate>emptyList());
             for (int i = 0; i < candidates.size(); i++) {
                 RoadLabelCandidate c = candidates.get(i);
                 if (!c.kept(stride) || c.label(stride) == null) {
@@ -361,6 +391,7 @@ public class RoadNameRenderer {
                     continue;
                 }
                 pending.add(p);
+            }
             }
         }
 
@@ -416,6 +447,8 @@ public class RoadNameRenderer {
             case WATER:
                 return MAX_RANGE_METERS;
             case PATH:
+            case PISTE:
+            case LIFT:
                 return 10000;
             default:
                 return 7000;
@@ -431,7 +464,8 @@ public class RoadNameRenderer {
         final List<MapTile> tiles = new ArrayList<>();
         final Map<MapTile, Double> meters = new IdentityHashMap<>();
         for (MapTile tile : getC().mapTileStorage.getMapTiles()) {
-            if (tile.isDisposed() || tile.roadLabels.isEmpty()) {
+            if (tile.isDisposed() || (tile.roadLabels.isEmpty() && tile.pisteLabels.isEmpty()
+                    && tile.liftLabels.isEmpty())) {
                 continue;
             }
             BoundingBox bb = tile.tile.getBoundingBox();
@@ -510,9 +544,10 @@ public class RoadNameRenderer {
                 ez = w[3 * a + 2] - cam.position.z;
         float meters = Units.convertLatitsToMeters((float) Math.sqrt(ex * ex + ey * ey + ez * ez));
         float factor = RoadLabelGeometry.distanceScale(meters / zoom, FULL_SIZE_METERS, MIN_DISTANT_SCALE);
-        boolean trail = c.isTrail();
+        boolean trail = c.isNumbered();
         boolean plated = c.roadClass != RoadClass.WATER;
-        float baseScale = trail ? trailScale : roadScale;
+        float baseScale = c.roadClass == RoadClass.PISTE || c.roadClass == RoadClass.LIFT ? pisteScale
+                : trail ? trailScale : roadScale;
         String text = null;
         float tw = 0f, th = 0f, padX = 0f, padY = 0f;
         for (int attempt = 0; attempt < 2 && text == null; attempt++) {
@@ -568,7 +603,9 @@ public class RoadNameRenderer {
         p.plateHalfHeight = 0.5f * th + padY;
         if (plated) {
             RoadStyle colours = P.getRoadStyle();
-            int rgba = !trail ? colours.color(RoadStyle.Swatch.ROADS)
+            int rgba = c.roadClass == RoadClass.PISTE ? pisteRgba(c.attribute)
+                    : c.roadClass == RoadClass.LIFT ? LIFT_PLATE_RGBA
+                    : !trail ? colours.color(RoadStyle.Swatch.ROADS)
                     : c.roadClass == RoadClass.TRACK
                     ? colours.color(RoadStyle.Swatch.TRACKS) : colours.trailColor(c.attribute);
             p.plate.set(rgba);
@@ -682,7 +719,7 @@ public class RoadNameRenderer {
                     font.draw(batch, p.text, left + shadow, top - shadow);
                     font.setColor(LIGHT_ON_PLATE);
                     font.draw(batch, p.text, left, top);
-                } else if (p.plated && c.isTrail()) {
+                } else if (p.plated && c.isNumbered()) {
                     font.setColor(DARK_ON_PLATE);
                     font.draw(batch, p.text, left, top);
                 } else {

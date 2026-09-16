@@ -20,6 +20,13 @@ public class GpxManager {
 
     private final List<GpxTrack> tracks = new ArrayList<>();
     private volatile int version = 0;
+    /**
+     * The text and a file name of the last GPX that exists nowhere on the device - downloaded from
+     * the web, or made on the map by "route to here" - so it can be saved or shared. A GPX opened
+     * from a file is already a file, and is not offered again. Null when there is none.
+     */
+    private String shareableXml;
+    private String shareableName;
 
     /** Bumped every time the set of paths changes, so the renderer knows to rebuild. */
     public int getVersion() {
@@ -36,6 +43,8 @@ public class GpxManager {
     }
 
     public synchronized void clear() {
+        shareableXml = null;
+        shareableName = null;
         if (tracks.isEmpty()) {
             return;
         }
@@ -61,7 +70,10 @@ public class GpxManager {
      * the headless renderer's, a framing fly would fight it. Returns how many paths were added.
      */
     public int loadFromXml(String xml, boolean navigate) {
-        List<GpxTrack> parsed = GpxParser.parse(xml);
+        return loadParsed(GpxParser.parse(xml), navigate);
+    }
+
+    private int loadParsed(List<GpxTrack> parsed, boolean navigate) {
         if (parsed.isEmpty()) {
             if (navigate) {
                 toast(s("Gpx_no_path_found"));
@@ -80,6 +92,79 @@ public class GpxManager {
             goToTracks(parsed);
         }
         return parsed.size();
+    }
+
+    /**
+     * Loads GPX that exists nowhere else on the device - a download, or a route made on the map -
+     * and keeps its text so it can be saved or shared (see {@link #getShareableXml()}).
+     *
+     * @param fileName what to call the file, without a folder; ".gpx" is added when missing
+     */
+    public int loadShareableXml(String xml, String fileName, boolean navigate) {
+        int added = loadFromXml(xml, navigate);
+        keepShareable(added, xml, fileName);
+        return added;
+    }
+
+    /**
+     * Loads GPX the app made itself, whose heights it took from the terrain - a route to a tapped
+     * point - as {@link #loadShareableXml} does, marking its tracks so no one compares those
+     * heights with the terrain they came from.
+     */
+    public int loadComputedXml(String xml, String fileName, boolean navigate) {
+        List<GpxTrack> parsed = GpxParser.parse(xml);
+        for (GpxTrack track : parsed) {
+            track.markHeightsComputed();
+        }
+        int added = loadParsed(parsed, navigate);
+        keepShareable(added, xml, fileName);
+        return added;
+    }
+
+    private void keepShareable(int added, String xml, String fileName) {
+        if (added > 0) {
+            synchronized (this) {
+                shareableXml = xml;
+                shareableName = safeFileName(fileName);
+                version++;
+            }
+        }
+    }
+
+    public synchronized boolean hasShareable() {
+        return shareableXml != null;
+    }
+
+    public synchronized String getShareableXml() {
+        return shareableXml;
+    }
+
+    public synchronized String getShareableName() {
+        return shareableName;
+    }
+
+    /** A plain file name ending in .gpx: no folders, nothing a file system could refuse. */
+    static String safeFileName(String name) {
+        String base = name == null ? "" : name.trim();
+        int slash = Math.max(base.lastIndexOf('/'), base.lastIndexOf('\\'));
+        if (slash >= 0) {
+            base = base.substring(slash + 1);
+        }
+        int query = base.indexOf('?');
+        if (query >= 0) {
+            base = base.substring(0, query);
+        }
+        base = base.replaceAll("[^A-Za-z0-9._-]+", "_").replaceAll("^[._]+", "");
+        if (base.toLowerCase(java.util.Locale.ROOT).endsWith(".gpx")) {
+            base = base.substring(0, base.length() - 4);
+        }
+        if (base.isEmpty()) {
+            base = "PeakNav_track";
+        }
+        if (base.length() > 80) {
+            base = base.substring(0, 80);
+        }
+        return base + ".gpx";
     }
 
     /**
@@ -155,7 +240,8 @@ public class GpxManager {
                 int status = httpResponse.getStatus().getStatusCode();
                 String body = httpResponse.getResultAsString();
                 if (status >= 200 && status < 400 && body != null && !body.isEmpty()) {
-                    loadFromXml(body);
+                    // Downloaded, so not on the device yet: offered for saving or sharing.
+                    loadShareableXml(body, url.trim(), true);
                 } else {
                     toast(s("Gpx_download_failed"));
                 }
@@ -174,7 +260,8 @@ public class GpxManager {
     }
 
     private static void toast(String message) {
-        if (getNativeScreenCaller() != null) {
+        // Only to an app that is running: asking for the screen caller would otherwise create one.
+        if (com.peaknav.viewer.MapViewerSingleton.hasAppInstance() && getNativeScreenCaller() != null) {
             getNativeScreenCaller().makeToast(message);
         }
         System.out.println("[GPX] " + message);

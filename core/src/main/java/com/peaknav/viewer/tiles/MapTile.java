@@ -82,6 +82,11 @@ public class MapTile {
     private final LatLong center;
     private float[] vertices = null;
 
+    /** Whether a texture of this layer has reached the GPU, as opposed to being drawn empty. */
+    public boolean hasLayerTexture(PixmapLayerName pixmapLayerName) {
+        return textureMap.containsKey(pixmapLayerName);
+    }
+
     public boolean isLayerDrawn(PixmapLayerName pixmapLayerName) {
         return textureLayerAdded.contains(pixmapLayerName);
     }
@@ -295,6 +300,10 @@ public class MapTile {
      * reads it without a lock.
      */
     public volatile List<RoadLabelCandidate> roadLabels = Collections.emptyList();
+    /** Where this tile's ski runs may have their names written, set when its ski slopes are drawn. */
+    public volatile List<RoadLabelCandidate> pisteLabels = Collections.emptyList();
+    /** Where this tile's ski lifts may have their names written, set with its ski slopes. */
+    public volatile List<RoadLabelCandidate> liftLabels = Collections.emptyList();
     /** Ground metres per texel of the road distance texture, for the shader's line widths. */
     private volatile float roadMetersPerTexel = 1f;
 
@@ -388,7 +397,10 @@ public class MapTile {
         // interpolate cleanly, and nearest sampling was what made the path look pixelated up
         // close. No mip-maps: they would thin the alpha of a line only a few texels wide until it
         // faded out at distance.
-        if (layer == PixmapLayerName.GPX_PATH) {
+        // The ski slopes are stored the same way (phase as sine and cosine, a coverage ramp; see
+        // PisteRasterizer) and are filtered the same way.
+        if (layer == PixmapLayerName.GPX_PATH || layer == PixmapLayerName.SKI_SLOPES
+                || layer == PixmapLayerName.SKI_LIFTS) {
             Texture texture = new Texture(pixmap);
         ResourceStats.texturesCreated.incrementAndGet();
             ResourceStats.texturesCreated.incrementAndGet();
@@ -581,7 +593,9 @@ public class MapTile {
                 textureMap.get(PixmapLayerName.UNDERLAY_LAYER),
                 textureMap.get(PixmapLayerName.GPX_PATH),
                 textureMap.get(PixmapLayerName.ROADS_AUX),
-                roadMetersPerTexel);
+                roadMetersPerTexel,
+                textureMap.get(PixmapLayerName.SKI_SLOPES),
+                textureMap.get(PixmapLayerName.SKI_LIFTS));
     }
 
     public void dispose() {
@@ -723,6 +737,10 @@ public class MapTile {
         public final Texture textureRoadsAux;
         /** Ground metres per texel of {@link #textureRoads}. */
         public final float roadMetersPerTexel;
+        /** The ski slopes viewer's runs (see PisteRasterizer); null where the tile has none. */
+        public final Texture texturePistes;
+        /** The ski lifts (see LiftRasterizer); null where the tile has none. */
+        public final Texture textureLifts;
         // public final Texture textureNormals;
 
         public RenderableUserData(MapTile mapTile,
@@ -730,7 +748,9 @@ public class MapTile {
                                   Texture textureSatellite,
                                   Texture textureGpx,
                                   Texture textureRoadsAux,
-                                  float roadMetersPerTexel
+                                  float roadMetersPerTexel,
+                                  Texture texturePistes,
+                                  Texture textureLifts
                                   ) {
             this.mapTile = mapTile;
             this.textureRoads = textureRoads;
@@ -738,6 +758,8 @@ public class MapTile {
             this.textureGpx = textureGpx;
             this.textureRoadsAux = textureRoadsAux;
             this.roadMetersPerTexel = roadMetersPerTexel;
+            this.texturePistes = texturePistes;
+            this.textureLifts = textureLifts;
         }
 
     }

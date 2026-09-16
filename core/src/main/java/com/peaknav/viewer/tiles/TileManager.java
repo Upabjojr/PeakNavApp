@@ -40,6 +40,8 @@ public class TileManager {
             tileRenderer.drawSatelliteLayer();
         if (P.isPixmapLayerNameVisible(PixmapLayerName.BASE_ROADS))
             tileRenderer.drawArea(PixmapLayerName.BASE_ROADS);
+        if (P.isPixmapLayerNameVisible(PixmapLayerName.SKI_SLOPES))
+            tileRenderer.drawArea(PixmapLayerName.SKI_SLOPES);
     }
 
 }

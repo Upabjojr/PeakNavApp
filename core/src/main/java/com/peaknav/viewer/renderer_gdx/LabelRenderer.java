@@ -117,12 +117,15 @@ public class LabelRenderer {
 
     public void render(float deltaTime) {
         labelsDrawnThisFrame = 0;
-        // Road names first, underneath: the peaks, places and areas are drawn over them.
+        // Road names first, underneath: the peaks, places and areas are drawn over them. The road
+        // name renderer asks the main Labels switch itself, so it forgets what it was showing.
         roadNameRenderer.render();
         // renderBackgroundPixmap();
-        renderAreas();
-        renderLabelLines();
-        renderLabelTexts();
+        if (P.isLabelsVisible()) {
+            renderAreas();
+            renderLabelLines();
+            renderLabelTexts();
+        }
         renderHorizonCompass();
         MapViewerScreen viewer = MapViewerSingleton.getViewerInstance();
         if (getAppState().isLoadingMapData() || (viewer != null && viewer.isBusy())) {
@@ -319,6 +322,23 @@ public class LabelRenderer {
 
             shapeRenderer.end();
         }
+    }
+
+    /**
+     * The GPX tour's current point: a blue dot in a white ring with a dark edge, the colours of
+     * the track itself, so it reads as "here on the path" over any terrain. Screen coordinates,
+     * y up.
+     */
+    public void renderGpxTourPoint(float x, float y) {
+        float r = 0.2f * widgetUnitStep;
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0.03f, 0.12f, 0.28f, 1f);
+        shapeRenderer.circle(x, y, r + 2f);
+        shapeRenderer.setColor(Color.WHITE);
+        shapeRenderer.circle(x, y, r);
+        shapeRenderer.setColor(0.10f, 0.45f, 0.90f, 1f);
+        shapeRenderer.circle(x, y, 0.62f * r);
+        shapeRenderer.end();
     }
 
     /** The pinned spot of the photo: a red ring with a dot, in screen coordinates. */

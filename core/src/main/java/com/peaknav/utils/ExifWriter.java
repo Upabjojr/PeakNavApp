@@ -61,7 +61,18 @@ public final class ExifWriter {
         return out.toByteArray();
     }
 
-    /** The PNG with an {@code eXIf} chunk inserted right after {@code IHDR}. */
+    /**
+     * The PNG with the same EXIF block in two chunks right after {@code IHDR}: an {@code eXIf}
+     * chunk and a {@code zTXt} "Raw profile type exif".
+     *
+     * <p>{@code eXIf} is the standard one (PNG 1.5), and exiv2, exiftool, Pillow and macOS read
+     * it - but plenty of tools do not. ImageMagick, and what is built on it, finds no EXIF there
+     * at all, which is how a desktop screenshot came to look as if it carried no coordinates
+     * (issue #21). Those tools read the older "Raw profile type exif" text chunk instead, the
+     * form ImageMagick itself writes; exiv2 reads both. So both go in, with identical content.
+     * (libexif, behind GNOME's image viewer and Shotwell, reads EXIF from JPEG only, so no PNG
+     * chunk reaches it; saving as JPEG does.)
+     */
     public static byte[] embedInPng(byte[] png, SnapshotInfo info) {
         if (png == null || png.length < 33 || (png[0] & 0xFF) != 0x89 || png[1] != 'P') {
             return png;
@@ -69,18 +80,69 @@ public final class ExifWriter {
         // signature (8) + IHDR chunk: length (4) + type (4) + 13 data + CRC (4)
         int insertAt = 8 + 4 + 4 + 13 + 4;
         byte[] tiff = tiff(info);
-        byte[] type = {'e', 'X', 'I', 'f'};
-        CRC32 crc = new CRC32();
-        crc.update(type);
-        crc.update(tiff);
-        ByteArrayOutputStream out = new ByteArrayOutputStream(png.length + tiff.length + 12);
+        byte[] rawProfile = rawProfileExif(tiff);
+        ByteArrayOutputStream out = new ByteArrayOutputStream(
+                png.length + tiff.length + rawProfile.length + 24);
         out.write(png, 0, insertAt);
-        writeInt(out, tiff.length);
-        out.write(type, 0, 4);
-        out.write(tiff, 0, tiff.length);
-        writeInt(out, (int) crc.getValue());
+        writeChunk(out, new byte[]{'e', 'X', 'I', 'f'}, tiff);
+        writeChunk(out, new byte[]{'z', 'T', 'X', 't'}, rawProfile);
         out.write(png, insertAt, png.length - insertAt);
         return out.toByteArray();
+    }
+
+    /** One PNG chunk: length, type, data, and the CRC over type and data. */
+    private static void writeChunk(ByteArrayOutputStream out, byte[] type, byte[] data) {
+        CRC32 crc = new CRC32();
+        crc.update(type);
+        crc.update(data);
+        writeInt(out, data.length);
+        out.write(type, 0, 4);
+        out.write(data, 0, data.length);
+        writeInt(out, (int) crc.getValue());
+    }
+
+    /**
+     * The body of a {@code zTXt} chunk holding {@code tiff} the way ImageMagick stores a raw
+     * profile: keyword "Raw profile type exif", a null, compression method 0 (deflate), then
+     * the deflated text {@code "\nexif\n<length>\n<hex, 72 digits a line>\n"} of the bytes
+     * "Exif\0\0" followed by the TIFF structure.
+     */
+    static byte[] rawProfileExif(byte[] tiff) {
+        byte[] payload = new byte[6 + tiff.length];
+        payload[0] = 'E';
+        payload[1] = 'x';
+        payload[2] = 'i';
+        payload[3] = 'f';
+        System.arraycopy(tiff, 0, payload, 6, tiff.length);
+
+        StringBuilder text = new StringBuilder(payload.length * 2 + payload.length / 36 + 32);
+        text.append("\nexif\n").append(String.format(Locale.ROOT, "%8d", payload.length)).append('\n');
+        final String hex = "0123456789abcdef";
+        for (int i = 0; i < payload.length; i++) {
+            int b = payload[i] & 0xFF;
+            text.append(hex.charAt(b >>> 4)).append(hex.charAt(b & 0x0F));
+            if ((i + 1) % 36 == 0) {
+                text.append('\n');
+            }
+        }
+        text.append('\n');
+
+        java.util.zip.Deflater deflater = new java.util.zip.Deflater(java.util.zip.Deflater.BEST_COMPRESSION);
+        byte[] plain = text.toString().getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+        deflater.setInput(plain);
+        deflater.finish();
+        ByteArrayOutputStream body = new ByteArrayOutputStream(plain.length / 2 + 32);
+        byte[] keyword = "Raw profile type exif".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+        body.write(keyword, 0, keyword.length);
+        body.write(0); // end of keyword
+        body.write(0); // compression method: deflate
+        byte[] buffer = new byte[4096];
+        while (!deflater.finished()) {
+            int n = deflater.deflate(buffer);
+            body.write(buffer, 0, n);
+        }
+        deflater.end();
+        return body.toByteArray();
     }
 
     /** The TIFF structure (big-endian) that both containers carry. */

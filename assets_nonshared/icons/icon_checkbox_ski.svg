@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Ski slopes": three runs down a slope, blue, red and black, as the viewer draws them. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+  </defs>
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <g clip-path="url(#disc)">
+    <path d="M0 196 L96 52 L136 104 L164 76 L240 176 L240 240 L0 240 Z" fill="#e3edf7"/>
+    <path d="M96 52 L136 104 L164 76 L240 176" fill="none" stroke="#9fb4c8" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M92 64 C 80 110, 104 140, 76 196" fill="none" stroke="#1f6bf2" stroke-width="16" stroke-linecap="round"/>
+    <path d="M128 110 C 140 140, 116 166, 136 208" fill="none" stroke="#e02a2a" stroke-width="16" stroke-linecap="round"/>
+    <path d="M166 90 C 196 124, 176 156, 204 196" fill="none" stroke="#10141a" stroke-width="16" stroke-linecap="round"/>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#10202b" stroke-width="3"/>
+</svg>

@@ -32,10 +32,53 @@ public class DrawLabel {
      */
     private GlyphLayout glyphLayoutSmall;
     private GlyphLayout glyphLayoutMedium;
-    private final String text;
+    /** The text the two layouts above were built from; render thread only. */
+    private String layoutText;
+    private volatile String text;
     private final Color textColor;
-    private final float textWidthSmall, textHeightSmall;
-    private final float textWidthMedium, textHeightMedium;
+    private volatile float textWidthSmall, textHeightSmall;
+    private volatile float textWidthMedium, textHeightMedium;
+
+    /**
+     * Bumped whenever something the label text is built from changes for every label at
+     * once - the unit system, which turns "2145 m" into "7037 ft". Each label remembers the
+     * value it measured its text at and rebuilds on the next use when it moved on; comparing
+     * one int per label per frame is the whole cost while nothing changes.
+     */
+    private static volatile int textGeneration = 0;
+    private volatile int builtTextGeneration = -1;
+
+    /** Every label re-reads its text before it is next measured or drawn. */
+    public static void invalidateAllTexts() {
+        textGeneration++;
+    }
+
+    /** The text this label shows now, e.g. "Monte Cengledino - 2145 m". */
+    public String getDisplayedText() {
+        refreshTextIfStale();
+        return text;
+    }
+
+    /**
+     * Re-reads and re-measures the text when it has gone stale. Safe from any thread: the
+     * measurements come from {@link LabelTextMeasure}, and the glyph layouts are left to the
+     * render thread, which rebuilds them when they no longer match {@link #text}.
+     */
+    private void refreshTextIfStale() {
+        int generation = textGeneration;
+        if (builtTextGeneration == generation) {
+            return;
+        }
+        String newText = getText();
+        BitmapFont bitmapFontMedium = getC().styleSingleton.getBitmapFontMedium();
+        BitmapFont bitmapFontSmall = getC().styleSingleton.getBitmapFontSmall();
+        textWidthMedium = LabelTextMeasure.width(bitmapFontMedium, newText);
+        textHeightMedium = LabelTextMeasure.height(bitmapFontMedium);
+        textWidthSmall = LabelTextMeasure.width(bitmapFontSmall, newText);
+        textHeightSmall = LabelTextMeasure.height(bitmapFontSmall);
+        text = newText;
+        builtTextGeneration = generation;
+    }
     public volatile float invRotUpperLeftGlyphX, invRotUpperLeftGlyphY;
     private volatile float screenPoiX, screenPoiY;
     // public final Vector3 position3D = new Vector3();
@@ -52,6 +95,14 @@ public class DrawLabel {
 
     /** Render thread only: builds the GlyphLayout on first use. */
     public void drawOnSpriteBatch(SpriteBatch spriteBatch) {
+        refreshTextIfStale();
+        String text = this.text;
+        if (!text.equals(layoutText)) {
+            // The text changed under the layouts (see textGeneration): lay both out afresh.
+            glyphLayoutSmall = null;
+            glyphLayoutMedium = null;
+            layoutText = text;
+        }
         BitmapFont bitmapFont = getDrawLabelFont();
         boolean large = P.getViewLargeFonts();
         GlyphLayout layout = large ? glyphLayoutMedium : glyphLayoutSmall;
@@ -68,10 +119,12 @@ public class DrawLabel {
     }
 
     private float getCurrentTextWidth() {
+        refreshTextIfStale();
         return P.getViewLargeFonts() ? textWidthMedium : textWidthSmall;
     }
 
     private float getCurrentTextHeight() {
+        refreshTextIfStale();
         return P.getViewLargeFonts() ? textHeightMedium : textHeightSmall;
     }
 
@@ -152,6 +205,8 @@ public class DrawLabel {
         BitmapFont bitmapFontSmall =  getC().styleSingleton.getBitmapFontSmall();
 
         this.text = text;
+        this.layoutText = text;
+        this.builtTextGeneration = textGeneration;
         this.textColor = color;
         // Measured rather than laid out: this constructor runs on the POI loading thread.
         this.textWidthMedium = LabelTextMeasure.width(bitmapFontMedium, text);

@@ -158,6 +158,17 @@
             </intent-filter>
 
         </activity>
+        <!-- Shares files the app writes to its cache, such as a GPX track made on the map:
+             only the cache's "shared" folder is exposed (res/xml/file_paths.xml). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

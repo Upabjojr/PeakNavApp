@@ -355,7 +355,8 @@ public class PeakNavUtils {
     }
 
     public static String s(String key) {
-        if (getC().i18n == null)
+        // No app (a unit test, or code running before it starts): the key itself, readable.
+        if (getC() == null || getC().i18n == null)
             return key.replace("_", " ");
         return getC().i18n.s(key);
     }

@@ -28,6 +28,7 @@ public class StyleSingleton {
     private BitmapFont bitmapFontSmall = null;
     private BitmapFont bitmapFontVerySmall = null;
     private BitmapFont bitmapFontSmallWhite = null;
+    private BitmapFont bitmapFontVerySmallWhite = null;
     private BitmapFont bitmapFontMedium = null;
     private volatile TextButton.TextButtonStyle textButtonStyle = null;
 
@@ -105,6 +106,10 @@ public class StyleSingleton {
         freeTypeFontParameter.color = Color.WHITE;
         bitmapFontSmallWhite = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.04f));
 
+        freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
+        freeTypeFontParameter.color = Color.WHITE;
+        bitmapFontVerySmallWhite = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.03f));
+
         freeTypeFontGenerator.dispose();
     }
 
@@ -126,6 +131,11 @@ public class StyleSingleton {
 
     public BitmapFont getBitmapFontSmallWhite() {
         return bitmapFontSmallWhite;
+    }
+
+    /** White, and smaller than the small font: for panes of figures that should not cover the map. */
+    public BitmapFont getBitmapFontVerySmallWhite() {
+        return bitmapFontVerySmallWhite;
     }
 
     public TextButton.TextButtonStyle getTextButtonStyle() {

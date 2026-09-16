@@ -550,6 +550,8 @@ public class WidgetGetter {
         public final Button buttonGoToDest;
         public final Button buttonOrbitDest;
         public final Button buttonOpenCoordinate;
+        /** Walks to the tapped point along the map's paths, as a GPX track. */
+        public final Button buttonRouteToDest;
         private final Button buttonCancelGoToDest;
         public final Table tableCancelGoToDest;
         /** Opacity of the rendered terrain over a photo; shown only while a photo is up. */
@@ -566,6 +568,8 @@ public class WidgetGetter {
         private Button shareButton;
         public final Button buttonGpxFly; // cinematic tour of the loaded GPX; shown only when one is loaded
         public final Button buttonGpxClear; // discards the loaded GPX; shown alongside buttonGpxFly
+        /** Saves (desktop) or shares (phone) a GPX that exists nowhere else: downloaded, or made on the map. */
+        public final Button buttonGpxShare;
         public final Label copyrightLabel;
         /** Scrub bar for the GPX tour: shown only while one is running, drag to jump along it. */
         public final Table gpxSeekTable;
@@ -596,14 +600,28 @@ public class WidgetGetter {
             Slider.SliderStyle gpxSeekStyle = new Slider.SliderStyle();
             gpxSeekStyle.knob = getC().widgetTextures.getTextureRegionDrawable(
                     "icons/icon_slider_alpha.png");
-            gpxSeekStyle.knob.setMinHeight(widgetUnitStep);
-            gpxSeekStyle.knob.setMinWidth(widgetUnitStep);
-            gpxSeekStyle.background = getC().widgetTextures.getNinePatchDrawable(
-                    "icons/slider_nine_patch.png");
+            gpxSeekStyle.knob.setMinHeight(0.55f * widgetUnitStep);
+            gpxSeekStyle.knob.setMinWidth(0.55f * widgetUnitStep);
+            // A thin track, sized from the widget unit: a slider draws its background at the
+            // background's own minimum height, and the nine-patch's 50 px made the bar a thick band
+            // whatever the cell said, larger still on a dense screen.
+            TextureRegionDrawable gpxSeekTrack = new TextureRegionDrawable(
+                    getC().widgetTextures.getUniformDrawable(new Color(0f, 0f, 0f, 0.55f)));
+            gpxSeekTrack.setMinHeight(0.16f * widgetUnitStep);
+            gpxSeekTrack.setMinWidth(widgetUnitStep);
+            gpxSeekStyle.background = gpxSeekTrack;
             gpxSeekSlider = new Slider(0f, 1f, 0.002f, false, gpxSeekStyle);
+            // Measured in stage units, like the rest of the interface, and from the table as laid
+            // out: the screen's width in pixels made the bar too wide wherever the two differ, and
+            // it did not follow the window when it was resized.
             gpxSeekTable.add(gpxSeekSlider)
-                    .width(Gdx.graphics.getWidth() - 6f * widgetUnitStep)
-                    .height(widgetUnitStep)
+                    .width(new com.badlogic.gdx.scenes.scene2d.ui.Value() {
+                        @Override
+                        public float get(com.badlogic.gdx.scenes.scene2d.Actor context) {
+                            return Math.max(2f * widgetUnitStep, gpxSeekTable.getWidth() - 6f * widgetUnitStep);
+                        }
+                    })
+                    .height(0.5f * widgetUnitStep)
                     .padBottom(2.2f * widgetUnitStep);
 
             progressBarTable = new Table();
@@ -773,8 +791,30 @@ public class WidgetGetter {
                     getNativeScreenCaller().openCoordinate(latitude, longitude);
                 }
             });
-            tableCancelGoToDest.add(buttonOpenCoordinate).width(widgetUnitStep)
-                    .height(widgetUnitStep).colspan(3).right()
+            // Also on the second row: a walk to the point along the paths of the map data, opened
+            // as a GPX track (see RouteToPoint). It starts from where the viewer stands.
+            buttonRouteToDest = getC().widgetTextures.getButtonWithIcon("icons/icon_route_to.png");
+            buttonRouteToDest.setName("route_to");   // for /widgets, which places the tutorial's markers
+            buttonRouteToDest.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    Vector3 impact = mapApp.mapViewerScreen.impact;
+                    if (impact == null) {
+                        return;
+                    }
+                    double latitude = impact.y;
+                    double longitude = com.peaknav.utils.Units.convertLatitsToLonits(
+                            impact.x, (float) getC().L.getTargetLatitude());
+                    com.peaknav.routing.RouteToPoint.start(getC().L.getCurrentLatitude(),
+                            getC().L.getCurrentLongitude(), latitude, longitude);
+                    mapApp.mapViewerScreen.removeImpact();
+                }
+            });
+            Table secondRow = new Table();
+            secondRow.add(buttonRouteToDest).width(widgetUnitStep).height(widgetUnitStep)
+                    .padRight(0.35f * widgetUnitStep);
+            secondRow.add(buttonOpenCoordinate).width(widgetUnitStep).height(widgetUnitStep);
+            tableCancelGoToDest.add(secondRow).colspan(3).right()
                     .padTop(0.55f * widgetUnitStep);
             table.add(tableCancelGoToDest).right().expandY()
                     .padRight(borderPad)
@@ -812,6 +852,24 @@ public class WidgetGetter {
             });
             buttonGpxClear.setVisible(false);
             table.add(buttonGpxClear).width(widgetUnitStep).height(widgetUnitStep).expandY()
+                    .right()
+                    .padRight(borderPad)
+                    .row();
+
+            // Save or share the track, when it exists nowhere else on the device. Hidden otherwise.
+            buttonGpxShare = getC().widgetTextures.getButtonWithIcon("icons/icon_gpx_share.png", null);
+            buttonGpxShare.setName("gpx_share");   // for /widgets, which places the tutorial's markers
+            buttonGpxShare.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    String xml = getC().gpxManager.getShareableXml();
+                    if (xml != null && getNativeScreenCaller() != null) {
+                        getNativeScreenCaller().shareGpx(getC().gpxManager.getShareableName(), xml);
+                    }
+                }
+            });
+            buttonGpxShare.setVisible(false);
+            table.add(buttonGpxShare).width(widgetUnitStep).height(widgetUnitStep).expandY()
                     .right()
                     .padRight(borderPad)
                     .row();

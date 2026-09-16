@@ -50,6 +50,21 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     zooms around while a photo is shown. Its accuracy is measured, not assumed: see the
     `skylineBenchmark` tool below, and keep the thresholds in `SkylineMatcher`
     tied to what the benchmark reports.
+  - `pistes/` — the ski slopes viewer, drawn from its own data layer `PBF_PISTES` (OpenSnowMap's
+    extract, zoom-10 tiles in zoom-8 archives on the HuggingFace dataset beside the highways,
+    queued with every download and served after the highways, before AREAS). `PisteRasterizer`
+    writes each nearby tile's `SKI_SLOPES` texture - flow phase down the nearest downhill run as
+    sine and cosine (oriented by the loaded terrain's heights at its ends, else by the way's
+    direction), blue/red/black difficulty, coverage - in `TileRendererRunnerPistes`, on the
+    roads' executor; the ski slopes block of `assets/fragment_shader.glsl` paints fat runs with a
+    band flowing downhill on `u_time`, and piste areas as a translucent fill. `LiftRasterizer`
+    writes the `SKI_LIFTS` texture from the same ways - travel phase uphill, the kind of lift, a
+    distance field across the line - and the lifts block draws each kind its own way: red cabins
+    for cable cars, orange for gondolas, white chairs, yellow handles on a dashed line for drag
+    lifts, blue stripes for magic carpets. Runs and lifts are labelled through `RoadLabelPlanner.
+    planPistes`/`planLifts` and `RoadNameRenderer`. Switched in the Roads "..." submenu: "Ski
+    pistes" (`P.isSkiSlopesVisible()`), and in its "..." piste names, lifts and lift names; independent of
+    `PISTES_IN_MAP_DATA`, which still gates the pistes the road textures would carry.
   - `roads/` — roads, tracks, trails and pistes, drawn by the GPU on every platform.
     `RoadClassifier` sorts the OSM ways of `PBF_HIGHWAYS` into classes (road rank, SAC trail
     difficulty, piste difficulty; tunnels, pavements and plazas dropped; relation tags from
@@ -356,6 +371,11 @@ that is not something the build can fix.
   (e.g. Lucene is pinned to **3.6.2**, the last Android-compatible release — do
   not bump it).
 - Prefer writing shared, testable logic in `core` over duplicating it per platform.
+- **Option menus: Back is the last button of every submenu, and in a two-column layout it
+  sits in the left column** - where the main menu has it. `OptionPane.addButtonsToTable`
+  handles this: filling left to right would put Back on the right whenever the button count
+  is even, so it swaps the last two buttons then. A layout built by hand with `addPair` must
+  pass Back as the *left* argument (the Roads and paths submenu once put it on the right).
 
 ## Internationalization
 

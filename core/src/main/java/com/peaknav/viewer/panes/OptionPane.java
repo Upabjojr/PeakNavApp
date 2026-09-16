@@ -4,7 +4,6 @@ import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
 import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.utils.PreferencesManager.P;
-import static com.peaknav.utils.PreferencesManager.PISTES_IN_MAP_DATA;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
@@ -62,6 +61,10 @@ public class OptionPane {
     /** The roads submenu, laid out in pairs for a wide screen and in one column for a tall one. */
     private final Table selectRoads;
     private final Table selectRoadsOneColumn;
+    /** Between the main menu and the roads' own submenu: roads and paths, and ski pistes. */
+    private final Table selectRoadsGroup;
+    /** The ski pistes' submenu: their names. */
+    private final Table selectPistes;
     /** Re-read the road style into the roads submenus' swatches and sliders when one opens. */
     private final List<Runnable> roadMenuRefreshers = new ArrayList<>();
     private final float buttonWidth;
@@ -124,6 +127,8 @@ public class OptionPane {
         selectCompass = createCompassMenu();
         selectRoads = createRoadsMenu(false);
         selectRoadsOneColumn = createRoadsMenu(true);
+        selectPistes = createPistesMenu();
+        selectRoadsGroup = createRoadsGroupMenu();
         // tableAppInfo = createTableAppInfo();
         table = getPreferencesTable(false);
         tableOneColumn = getPreferencesTable(true);
@@ -216,6 +221,14 @@ public class OptionPane {
 
     public Table getSelectRoadsOneColumn() {
         return selectRoadsOneColumn;
+    }
+
+    public Table getSelectRoadsGroup() {
+        return selectRoadsGroup;
+    }
+
+    public Table getSelectPistes() {
+        return selectPistes;
     }
 
     /* private Table createSatelliteSourceSelectBox2() {
@@ -653,8 +666,7 @@ public class OptionPane {
     /**
      * How the roads and trails look: a colour for each kind of way - tap one to step through the
      * palette - the length of the trail dashes and how fast they move, how often names and
-     * numbers are written along them and whether they are written at all, and the ski pistes on
-     * or off. Every change shows on the next frame, because the terrain shader reads the style every
+     * numbers are written along them and whether they are written at all. Every change shows on the next frame, because the terrain shader reads the style every
      * frame; nothing is redrawn, and each change is saved as it is made.
      *
      * <p>Built twice, like the main menu: in pairs for a screen held sideways - six rows, the
@@ -705,13 +717,6 @@ public class OptionPane {
                 });
         roadMenuRefreshers.add(() -> dashSpeed[0].setValue(P.getRoadStyle().dashSpeed()));
 
-        // Offered only once the map data carries the pistes (see PISTES_IN_MAP_DATA).
-        final ImageTextButtonOptionPane checkBoxPistes = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_roads.png", s("Ski_pistes"), true);
-        addCheckingStateProperty(checkBoxPistes, () -> P.getPisteVisible());
-        checkBoxPistes.addClickListener(() ->
-                changer.execute(() -> P.setPisteVisible(checkBoxPistes.isChecked())));
-        roadMenuRefreshers.add(() -> checkBoxPistes.setChecked(P.getPisteVisible()));
 
         // Road and trail names on or off: the same setting as in the Labels submenu.
         final ImageTextButtonOptionPane checkBoxNames = getC().widgetGetter.getImageTextButton(
@@ -752,7 +757,7 @@ public class OptionPane {
                 "icons/icon_back.png", s("Back"), false);
         back.addClickListener(() -> {
             table.setVisible(false);
-            show();
+            openRoadsGroup(); // one level up
         });
 
         if (oneColumn) {
@@ -761,30 +766,199 @@ public class OptionPane {
             rows.add(dashSpeedRow);
             rows.add(labelFrequencyRow);
             rows.add(checkBoxNames);
-            if (PISTES_IN_MAP_DATA) {
-                rows.add(checkBoxPistes);
-            }
             rows.add(buttonReset);
             rows.add(back);
             addButtonsToTable(table, rows, true, buttonWidth * 1.2f);
         } else {
             addPair(table, swatches.get(0), swatches.get(1));
             addPair(table, swatches.get(2), swatches.get(3));
-            if (PISTES_IN_MAP_DATA) {
-                addPair(table, swatches.get(4), checkBoxPistes);
-            } else {
-                addSingle(table, swatches.get(4));
-            }
+            addSingle(table, swatches.get(4));
             // Six rows, as tall as the main options menu: any taller and it runs under the
             // camera and compass buttons at the top of a phone held sideways.
             addPair(table, dashLengthRow, dashSpeedRow);
             addPair(table, labelFrequencyRow, checkBoxNames);
-            addPair(table, buttonReset, back);
+            // Back goes in the left column, as in every two-column menu (see addButtonsToTable).
+            addPair(table, back, buttonReset);
         }
 
         for (Runnable refresher : roadMenuRefreshers) {
             refresher.run();
         }
+        table.setVisible(false);
+        return table;
+    }
+
+    /** Roads and paths on or off: where there is no map data, offers to download it; and starts drawing. */
+    private void applyRoadsVisible(boolean checked) {
+        P.setViewerLayerVisibleBaseRoads(checked);
+        if (checked) {
+            boolean missingData = getC().checkMissingData.checkMissingDataForCoord(
+                    getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude());
+            if (missingData) {
+                getNativeScreenCaller().askForDownloadScreen(
+                        getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude()
+                );
+            }
+            getC().tileManager.startAerialAndDataRenderExecutors();
+        }
+    }
+
+    /** Opens the Roads "..." submenu from the main menu, as its "..." does; for scripts and tests. */
+    public void openRoadsSubmenu() {
+        table.setVisible(false);
+        tableOneColumn.setVisible(false);
+        openRoadsGroup();
+    }
+
+    /** Opens the ski pistes' own "..." submenu, as its "..." does; for scripts and tests. */
+    public void openPistesSubmenu() {
+        openRoadsSubmenu();
+        selectRoadsGroup.setVisible(false);
+        selectPistes.setVisible(true);
+    }
+
+    /** Opens the roads and paths' own "..." submenu (colours, dashes, names); for scripts and tests. */
+    public void openRoadsStyleSubmenu() {
+        openRoadsSubmenu();
+        selectRoadsGroup.setVisible(false);
+        boolean wide = Gdx.graphics.getWidth() > Gdx.graphics.getHeight();
+        selectRoads.setVisible(wide);
+        selectRoadsOneColumn.setVisible(!wide);
+    }
+
+    /** Shows the roads and pistes submenu, with its switches as they stand. */
+    private void openRoadsGroup() {
+        for (Runnable refresher : roadMenuRefreshers) {
+            refresher.run();
+        }
+        selectRoads.setVisible(false);
+        selectRoadsOneColumn.setVisible(false);
+        selectPistes.setVisible(false);
+        selectRoadsGroup.setVisible(true);
+    }
+
+    /** A switch with a "..." beside it, as the main menu's composite rows are laid out. */
+    private Table switchWithMore(Table switchButton, Runnable more) {
+        Table row = new Table();
+        row.add(switchButton).width(buttonWidth * 0.8f);
+        TextButton buttonMore = getC().widgetGetter.getTextButton("...", false);
+        buttonMore.addListener(new ChangeListener() {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                more.run();
+            }
+        });
+        row.add(buttonMore).width(buttonWidth * 0.2f).height(height);
+        return row;
+    }
+
+    /**
+     * The main menu's Roads "..." submenu: roads and paths on or off, with a "..." for their
+     * colours, dashes and names; the ski pistes on or off, with a "..." for their names; and Back
+     * to the main menu.
+     */
+    private Table createRoadsGroupMenu() {
+        final Table table = new Table();
+        table.center();
+        table.setFillParent(true);
+
+        final ImageTextButtonOptionPane checkBoxRoads = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_roads.png", s("Base_Roads"), true);
+        checkBoxRoads.addClickListener(() -> changer.execute(() -> applyRoadsVisible(checkBoxRoads.isChecked())));
+        checkBoxRoads.setProgrammaticChangeEvents(false);
+        roadMenuRefreshers.add(() -> checkBoxRoads.setChecked(P.isViewerLayerVisibleBaseRoads()));
+        Table roadsRow = switchWithMore(checkBoxRoads, () -> {
+            for (Runnable refresher : roadMenuRefreshers) {
+                refresher.run();
+            }
+            boolean wide = Gdx.graphics.getWidth() > Gdx.graphics.getHeight();
+            selectRoads.setVisible(wide);
+            selectRoadsOneColumn.setVisible(!wide);
+            table.setVisible(false);
+        });
+
+        // The ski slopes viewer: runs from the piste data, coloured by difficulty and flowing downhill.
+        final ImageTextButtonOptionPane checkBoxPistes = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_ski.png", s("Ski_pistes"), true);
+        checkBoxPistes.addClickListener(() -> changer.execute(() -> {
+            boolean checked = checkBoxPistes.isChecked();
+            P.setPisteVisible(checked);
+            if (checked) {
+                getC().tileManager.startAerialAndDataRenderExecutors();
+            }
+        }));
+        checkBoxPistes.setProgrammaticChangeEvents(false);
+        roadMenuRefreshers.add(() -> checkBoxPistes.setChecked(P.isSkiSlopesVisible()));
+        Table pistesRow = switchWithMore(checkBoxPistes, () -> {
+            for (Runnable refresher : roadMenuRefreshers) {
+                refresher.run();
+            }
+            selectPistes.setVisible(true);
+            table.setVisible(false);
+        });
+
+        ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
+                "icons/icon_back.png", s("Back"), false);
+        back.addClickListener(() -> {
+            table.setVisible(false);
+            show();
+        });
+
+        List<Table> rows = new ArrayList<>();
+        rows.add(roadsRow);
+        rows.add(pistesRow);
+        rows.add(back);
+        addButtonsToTable(table, rows, true);
+        table.setVisible(false);
+        return table;
+    }
+
+    /** The ski pistes' "..." submenu: the runs' names, the lifts and their names, and Back. */
+    private Table createPistesMenu() {
+        final Table table = new Table();
+        table.center();
+        table.setFillParent(true);
+
+        final ImageTextButtonOptionPane checkBoxNames = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_ski.png", s("Ski_piste_names"), true);
+        checkBoxNames.addClickListener(() -> changer.execute(
+                () -> P.setPisteLabelsVisible(checkBoxNames.isChecked())));
+        checkBoxNames.setProgrammaticChangeEvents(false);
+        roadMenuRefreshers.add(() -> checkBoxNames.setChecked(P.isPisteLabelsVisible()));
+
+        ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
+                "icons/icon_back.png", s("Back"), false);
+        back.addClickListener(() -> {
+            table.setVisible(false);
+            openRoadsGroup(); // one level up
+        });
+
+        // The lifts: cables with their cabins, chairs and handles moving uphill, and their names.
+        final ImageTextButtonOptionPane checkBoxLifts = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_lifts.png", s("Ski_lifts"), true);
+        checkBoxLifts.addClickListener(() -> changer.execute(() -> {
+            boolean checked = checkBoxLifts.isChecked();
+            P.setLiftsVisible(checked);
+            if (checked) {
+                getC().tileManager.startAerialAndDataRenderExecutors();
+            }
+        }));
+        checkBoxLifts.setProgrammaticChangeEvents(false);
+        roadMenuRefreshers.add(() -> checkBoxLifts.setChecked(P.isLiftsVisible()));
+
+        final ImageTextButtonOptionPane checkBoxLiftNames = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_lifts.png", s("Ski_lift_names"), true);
+        checkBoxLiftNames.addClickListener(() -> changer.execute(
+                () -> P.setLiftLabelsVisible(checkBoxLiftNames.isChecked())));
+        checkBoxLiftNames.setProgrammaticChangeEvents(false);
+        roadMenuRefreshers.add(() -> checkBoxLiftNames.setChecked(P.isLiftLabelsVisible()));
+
+        List<Table> rows = new ArrayList<>();
+        rows.add(checkBoxNames);
+        rows.add(checkBoxLifts);
+        rows.add(checkBoxLiftNames);
+        rows.add(back);
+        addButtonsToTable(table, rows, true);
         table.setVisible(false);
         return table;
     }
@@ -1198,6 +1372,18 @@ public class OptionPane {
                 });
     }
 
+    /**
+     * Switches the unit system for everything on screen at once. Peak labels carry their
+     * elevation in the unit they were built with, so without telling them they kept the
+     * old one until their POIs were next loaded (issue #22). Not persisted here: the
+     * buttons save the choice separately, and the headless renderer - which shares the
+     * desktop app's preferences - must not.
+     */
+    public static void applyUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem unitSystem) {
+        P.setUnitSystemNoPersist(unitSystem);
+        com.peaknav.viewer.labels.DrawLabel.invalidateAllTexts();
+    }
+
     private Table createSelectBoxUnitSystem() {
         Table table = new Table();
         table.center();
@@ -1217,7 +1403,7 @@ public class OptionPane {
         buttonUnitsMetric.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
-                P.setUnitSystemNoPersist(METRIC);
+                applyUnitSystem(METRIC);
                 changer.submit(() -> P.setUnitSystem(METRIC));
                 buttonUnitsMetric.setChecked(true);
                 buttonUnitsImperial.setChecked(false);
@@ -1228,7 +1414,7 @@ public class OptionPane {
         buttonUnitsImperial.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
-                P.setUnitSystemNoPersist(IMPERIAL);
+                applyUnitSystem(IMPERIAL);
                 changer.submit(() -> P.setUnitSystem(IMPERIAL));
                 buttonUnitsMetric.setChecked(false);
                 buttonUnitsImperial.setChecked(true);
@@ -1256,16 +1442,28 @@ public class OptionPane {
 
         List<Table> buttons = new ArrayList<>(16);
 
-        // Label visibility toggles live in their own submenu (peaks, places, alpine huts, plus the
-        // ranged labels: islands, cities, mountain ranges).
-        ImageTextButtonOptionPane buttonLabelsMenu = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_peak_names.png", s("Labels_menu"), false);
-        buttonLabelsMenu.addClickListener(() -> {
-            selectLabels.setVisible(true);
-            table.setVisible(false);
-            tableOneColumn.setVisible(false);
+        // Labels: every label on or off at once, plus a "..." submenu for each kind (peaks, places,
+        // alpine huts, and the ranged labels: islands, cities, mountain ranges) - the same
+        // composite scheme as the rows below. Only the "..." opens the submenu.
+        ImageTextButtonOptionPane checkBoxLabels = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_peak_names.png", s("Labels_menu"), true);
+        addCheckingStateProperty(checkBoxLabels, () -> P.isLabelsVisible());
+        checkBoxLabels.addClickListener(() -> changer.execute(
+                () -> P.setLabelsVisible(checkBoxLabels.isChecked())));
+        checkBoxLabels.setProgrammaticChangeEvents(false);
+        Table tableLabels = new Table();
+        tableLabels.add(checkBoxLabels).width(buttonWidth * 0.8f);
+        TextButton buttonLabelsOptions = getC().widgetGetter.getTextButton("...", false);
+        buttonLabelsOptions.addListener(new ChangeListener() {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                selectLabels.setVisible(true);
+                table.setVisible(false);
+                tableOneColumn.setVisible(false);
+            }
         });
-        buttons.add(buttonLabelsMenu);
+        tableLabels.add(buttonLabelsOptions).width(buttonWidth * 0.2f).height(height);
+        buttons.add(tableLabels);
 
         ImageTextButtonOptionPane checkBoxLargeFonts = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_large_fonts.png", s("Large_fonts"), true);
         addCheckingStateProperty(checkBoxLargeFonts, ()->P.getViewLargeFonts());
@@ -1329,38 +1527,20 @@ public class OptionPane {
 
         ImageTextButtonOptionPane checkBoxLayerVisibleBaseRoads = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_roads.png", s("Base_Roads"), true);
         addCheckingStateProperty(checkBoxLayerVisibleBaseRoads, () -> P.isViewerLayerVisibleBaseRoads());
-        checkBoxLayerVisibleBaseRoads.addClickListener(() -> changer.execute(() -> {
-            boolean checked = checkBoxLayerVisibleBaseRoads.isChecked();
-            P.setViewerLayerVisibleBaseRoads(checked);
-            if (checked) {
-                boolean missingData = getC().checkMissingData.checkMissingDataForCoord(
-                        getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude());
-                if (missingData) {
-                    getNativeScreenCaller().askForDownloadScreen(
-                            getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude()
-                    );
-                }
-            }
-            if (checked) {
-                getC().tileManager.startAerialAndDataRenderExecutors();
-            }
-        }));
+        checkBoxLayerVisibleBaseRoads.addClickListener(() -> changer.execute(
+                () -> applyRoadsVisible(checkBoxLayerVisibleBaseRoads.isChecked())));
         checkBoxLayerVisibleBaseRoads.setProgrammaticChangeEvents(false);
-        // Roads & paths: on/off plus a "..." submenu for their colours, dashes and pistes -
-        // the same composite scheme as the satellite and sky rows.
+        // Roads & paths: on/off plus a "..." submenu - roads and paths, and ski pistes, each with a
+        // "..." of its own - the same composite scheme as the satellite and sky rows.
         Table tableRoads = new Table();
         tableRoads.add(checkBoxLayerVisibleBaseRoads).width(buttonWidth * 0.8f);
         TextButton buttonRoadOptions = getC().widgetGetter.getTextButton("...", false);
         buttonRoadOptions.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
-                for (Runnable refresher : roadMenuRefreshers) {
-                    refresher.run();
-                }
-                boolean wide = Gdx.graphics.getWidth() > Gdx.graphics.getHeight();
-                selectRoads.setVisible(wide);
-                selectRoadsOneColumn.setVisible(!wide);
+                openRoadsGroup();
                 table.setVisible(false);
+                tableOneColumn.setVisible(false);
             }
         });
         tableRoads.add(buttonRoadOptions).width(buttonWidth * 0.2f).height(height);
@@ -1515,6 +1695,14 @@ public class OptionPane {
         addButtonsToTable(table, buttons, oneColumn, buttonWidth);
     }
 
+    /**
+     * Lays the buttons out one per row, or two per row filling left to right.
+     *
+     * <p>Back is always a menu's last button, and in two columns it must sit in the left column,
+     * where the eye starts and where the main menu has it. Filling in order would put it on the
+     * right whenever the count is even, so the last two buttons swap places then. A layout built
+     * by hand with {@link #addPair} has to follow the same rule: Back as the left argument.
+     */
     private void addButtonsToTable(Table table, List<Table> buttons, boolean oneColumn, float buttonWidth) {
 
         for (int j = 0; j < buttons.size(); j++) {
@@ -1558,6 +1746,8 @@ public class OptionPane {
         selectCompass.setVisible(false);
         selectRoads.setVisible(false);
         selectRoadsOneColumn.setVisible(false);
+        selectRoadsGroup.setVisible(false);
+        selectPistes.setVisible(false);
         // tableAppInfo.setVisible(false);
 
         optionsButton.setChecked(true);
@@ -1576,6 +1766,8 @@ public class OptionPane {
         selectCompass.setVisible(false);
         selectRoads.setVisible(false);
         selectRoadsOneColumn.setVisible(false);
+        selectRoadsGroup.setVisible(false);
+        selectPistes.setVisible(false);
         // tableAppInfo.setVisible(false);
         optionsButton.setChecked(false);
         changer.submit(() -> getC().widgetGetter.setCopyrightLabel(

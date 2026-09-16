@@ -15,6 +15,11 @@ public enum RoadClass {
     /** Ski pistes, coloured by difficulty the way every ski map is. */
     PISTE,
     /**
+     * Ski lifts: cable cars, gondolas, chairlifts, drag lifts and magic carpets. Labelled like the
+     * runs; drawn by the ski slopes viewer's own texture (see LiftRasterizer), not the roads'.
+     */
+    LIFT,
+    /**
      * Rivers, streams and canals. Classified so their names can be labelled, but not drawn:
      * the map-data extracts keep highways, and waterways are all but absent from them.
      */
@@ -22,6 +27,6 @@ public enum RoadClass {
 
     /** Whether this class has a channel in the distance texture. */
     public boolean isDrawn() {
-        return this != WATER;
+        return this != WATER && this != LIFT;
     }
 }

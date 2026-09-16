@@ -472,6 +472,14 @@ public class MapViewerScreen implements Screen {
 		if (raw.size() < 2) {
 			return;
 		}
+		// The track itself, for the tour's point: the camera flies a smoothed line, but the point
+		// has to sit on the path as it is painted, bends and all.
+		gpxTourTrack.clear();
+		gpxTourTrack.addAll(raw);
+		gpxTourTrackAlong = new float[raw.size()];
+		for (int i = 1; i < raw.size(); i++) {
+			gpxTourTrackAlong[i] = gpxTourTrackAlong[i - 1] + gpxHoriz(raw.get(i - 1), raw.get(i));
+		}
 
 		// De-noise, then space evenly, then polish — in that order, and it matters. Arc length
 		// along a raw GPS trace is dominated by the jitter rather than by forward progress, so
@@ -519,6 +527,7 @@ public class MapViewerScreen implements Screen {
 		camPath = gpxMovingAverage(camPath, window, GPX_SMOOTH_PASSES);
 
 		gpxTourFrames.clear();
+		gpxTourTrackFrames = m;
 		float stepSeconds = GPX_TOUR_SECONDS / Math.max(1, m - 1);
 		for (int i = 0; i < m; i++) {
 			Vector3 camPos = camPath.get(i);
@@ -567,19 +576,55 @@ public class MapViewerScreen implements Screen {
 	}
 
 	private final java.util.List<GpxTourFrame> gpxTourFrames = new java.util.ArrayList<>();
+	/** How many of the tour's frames follow the track; the rest circle its end. */
+	private int gpxTourTrackFrames = 0;
+	/** The track as recorded, in world space, and the horizontal distance along it at each point. */
+	private final java.util.List<Vector3> gpxTourTrack = new java.util.ArrayList<>();
+	private float[] gpxTourTrackAlong = new float[0];
+	/** The frame the queued moves start from: that first move goes straight onto it. */
+	private int gpxTourQueuedFrom = 0;
+
+	/** The GPX info pane (see GpxInfoPane); null until the stage is built. */
+	public com.peaknav.viewer.widgets.GpxInfoPane gpxInfoPane;
+
+	/**
+	 * How far along the track the tour is, 0..1 by distance (the frames are evenly spaced along
+	 * it), 1 while it circles the end; -1 when no tour is running or paused. It moves smoothly:
+	 * between the frame left and the frame being flown to, as far as that move has got - except on
+	 * the first move queued, which flies (or holds) straight onto its own frame.
+	 */
+	public float getGpxTourFraction() {
+		int total = gpxTourFrames.size();
+		if (!gpxTourActive || total == 0 || moveCameraAction.isComplete() || gpxTourTrackFrames < 2) {
+			return -1f;
+		}
+		int index = MathUtils.clamp(total - moveCameraAction.remainingSteps(), 0, total - 1);
+		float along = index <= gpxTourQueuedFrom ? index : index - 1 + moveCameraAction.currentStepProgress();
+		return MathUtils.clamp(along / (gpxTourTrackFrames - 1), 0f, 1f);
+	}
 
 	/** (Re)queues the tour from the given keyframe, replacing anything already queued. */
 	private void queueGpxTourFrom(int firstFrame) {
+		queueGpxTourFrom(firstFrame, true);
+	}
+
+	/**
+	 * @param easeIn whether the first frame is flown to from wherever the camera is; false when
+	 *               the camera has already been put on that frame, so nothing is spent easing
+	 *               from a pose to itself.
+	 */
+	private void queueGpxTourFrom(int firstFrame, boolean easeIn) {
 		if (gpxTourFrames.isEmpty()) {
 			return;
 		}
 		firstFrame = MathUtils.clamp(firstFrame, 0, gpxTourFrames.size() - 1);
+		gpxTourQueuedFrom = firstFrame;
 		moveCameraAction.clearSteps();
 		float total = 0f;
 		for (int i = firstFrame; i < gpxTourFrames.size(); i++) {
 			GpxTourFrame f = gpxTourFrames.get(i);
 			total += f.seconds;
-			if (i == firstFrame) {
+			if (i == firstFrame && easeIn) {
 				// Ease in from the current view rather than cutting to the new pose.
 				moveCameraAction.setCameraVectors(f.pos, f.dir, Vector3.Z,
 						true, Interpolation.smooth, false, 0f, 1f,
@@ -601,6 +646,92 @@ public class MapViewerScreen implements Screen {
 		gpxFrameLon = getC().L.getTargetLongitude();
 	}
 
+	/**
+	 * Where along the track the tour is, in world space, while one is playing or paused; null
+	 * otherwise. It is on the recorded track itself, at {@link #getGpxTourFraction} of its length,
+	 * so it glides along the path as painted with the camera - paused, it holds; after a seek, it
+	 * jumps with the view.
+	 *
+	 * <p>On the ground, where the track is painted (GpxTileRasterizer draws it into the terrain
+	 * tiles), not at the height the GPX recorded: those differ by tens of metres, and while the
+	 * camera circles the end a point floating above or sunk below the ground swung around the
+	 * track's end instead of staying on it. The recorded height is kept only where no terrain is loaded.
+	 */
+	public Vector3 getGpxTourPoint() {
+		int total = gpxTourFrames.size();
+		if (!gpxTourActive || total == 0 || moveCameraAction.isComplete()) {
+			return null;
+		}
+		Vector3 point = gpxTourPointOnTrack(Math.max(0f, getGpxTourFraction()));
+		float lat = point.y;
+		float lon = Units.convertLatitsToLonits(point.x, (float) getC().L.getTargetLatitude());
+		// The loaded terrain as road names read it: ElevationUtils' own lookup never finds a tile.
+		float groundMeters = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+		if (Float.isNaN(groundMeters)) {
+			return point;
+		}
+		return gpxTourPointOnGround.set(point.x, point.y, Units.convertMetersToLatits(groundMeters)
+				- com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+	}
+
+	private final Vector3 gpxTourPointOnGround = new Vector3();
+	private final Vector3 gpxTourTrackPoint = new Vector3();
+
+	/** The recorded track's point {@code fraction} of its length along: on the path, never across a bend. */
+	private Vector3 gpxTourPointOnTrack(float fraction) {
+		int n = gpxTourTrack.size();
+		float want = fraction * gpxTourTrackAlong[n - 1];
+		int lo = 1, hi = n - 1; // the first point at or beyond the distance wanted
+		while (lo < hi) {
+			int mid = (lo + hi) >>> 1;
+			if (gpxTourTrackAlong[mid] < want) lo = mid + 1; else hi = mid;
+		}
+		float segment = gpxTourTrackAlong[lo] - gpxTourTrackAlong[lo - 1];
+		float t = segment <= 0f ? 0f : MathUtils.clamp((want - gpxTourTrackAlong[lo - 1]) / segment, 0f, 1f);
+		return gpxTourTrackPoint.set(gpxTourTrack.get(lo - 1)).lerp(gpxTourTrack.get(lo), t);
+	}
+
+	/** For tests: the tour's point's horizontal distance from the recorded track, metres; NaN without a tour. */
+	public double getGpxTourPointOffTrackMetres() {
+		Vector3 p = getGpxTourPoint();
+		if (p == null) {
+			return Double.NaN;
+		}
+		double best = Double.MAX_VALUE;
+		for (int i = 1; i < gpxTourTrack.size(); i++) {
+			Vector3 a = gpxTourTrack.get(i - 1), b = gpxTourTrack.get(i);
+			double dx = b.x - a.x, dy = b.y - a.y, lengthSquared = dx * dx + dy * dy;
+			double t = lengthSquared == 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared));
+			double ex = a.x + t * dx - p.x, ey = a.y + t * dy - p.y;
+			best = Math.min(best, Math.sqrt(ex * ex + ey * ey));
+		}
+		return Units.convertLatitsToMeters((float) best);
+	}
+
+	private final Vector3 gpxTourPointOnScreen = new Vector3();
+
+	/**
+	 * The tour's current point on the screen, in y-up pixels, or null when there is no tour or
+	 * the point is behind the camera or off the frame.
+	 */
+	public Vector3 getGpxTourPointOnScreen() {
+		Vector3 point = getGpxTourPoint();
+		if (point == null) {
+			return null;
+		}
+		gpxTourPointOnScreen.set(point);
+		// In front of the camera only: project() folds points behind it onto the frame.
+		if (gpxTourPointOnScreen.cpy().sub(cam.position).dot(cam.direction) <= 0f) {
+			return null;
+		}
+		cam.project(gpxTourPointOnScreen);
+		if (gpxTourPointOnScreen.x < 0 || gpxTourPointOnScreen.x > Gdx.graphics.getWidth()
+				|| gpxTourPointOnScreen.y < 0 || gpxTourPointOnScreen.y > Gdx.graphics.getHeight()) {
+			return null;
+		}
+		return gpxTourPointOnScreen;
+	}
+
 	/** Progress through the tour, 0..1, for the scrub bar. */
 	public float getGpxTourProgress() {
 		int total = gpxTourFrames.size();
@@ -611,13 +742,30 @@ public class MapViewerScreen implements Screen {
 		return MathUtils.clamp((total - remaining) / (float) total, 0f, 1f);
 	}
 
-	/** Jumps the tour to a fraction of the way along and carries on from there. */
+	/**
+	 * Jumps the tour to a fraction of the way along and carries on from there - or, when the
+	 * tour is paused, stays paused but shows that point.
+	 *
+	 * <p>Paused, the camera action advances nothing, so the eased fly to the new frame that
+	 * the queue starts with never ran: the knob moved and the map did not, until the tour was
+	 * played again (issue #23). So a paused seek puts the camera on the frame itself, and
+	 * queues the rest from there without an ease-in - resuming then continues along the track
+	 * from exactly the view on screen.
+	 */
 	public void seekGpxTour(float fraction) {
 		if (gpxTourFrames.isEmpty()) {
 			return;
 		}
 		boolean wasPaused = moveCameraAction.isPaused();
-		queueGpxTourFrom(Math.round(MathUtils.clamp(fraction, 0f, 1f) * (gpxTourFrames.size() - 1)));
+		int frame = Math.round(MathUtils.clamp(fraction, 0f, 1f) * (gpxTourFrames.size() - 1));
+		if (wasPaused) {
+			GpxTourFrame f = gpxTourFrames.get(frame);
+			cam.position.set(f.pos);
+			cam.direction.set(f.dir);
+			cam.up.set(Vector3.Z);
+			cam.update();
+		}
+		queueGpxTourFrom(frame, !wasPaused);
 		moveCameraAction.setPaused(wasPaused);
 	}
 
@@ -704,6 +852,13 @@ public class MapViewerScreen implements Screen {
 		tableLocation.buttonGpxFly.setVisible(hasGpx);
 		if (tableLocation.buttonGpxClear != null) {
 			tableLocation.buttonGpxClear.setVisible(hasGpx);
+		}
+		if (gpxInfoPane != null) {
+			gpxInfoPane.update(getC().gpxManager.getVersion(), getC().gpxManager.getTracks(), getGpxTourFraction());
+		}
+		if (tableLocation.buttonGpxShare != null) {
+			// Only a track that exists nowhere else on the device: downloaded, or made on the map.
+			tableLocation.buttonGpxShare.setVisible(hasGpx && getC().gpxManager.hasShareable());
 		}
 		boolean showPause = isGpxTourPlaying();
 		if (showPause != gpxButtonShowingPause) {
@@ -1236,6 +1391,8 @@ public class MapViewerScreen implements Screen {
 
 		stage.addActor(tableLocation.progressBarTable);
 		stage.addActor(tableLocation.gpxSeekTable);
+		gpxInfoPane = new com.peaknav.viewer.widgets.GpxInfoPane(widgetUnitStep);
+		stage.addActor(gpxInfoPane.getTable());
 		tableLocation.gpxSeekSlider.addListener(new ChangeListener() {
 			@Override
 			public void changed(ChangeEvent event, Actor actor) {
@@ -1260,6 +1417,8 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(optionPane.getSelectCompass());
 		stage.addActor(optionPane.getSelectRoads());
 		stage.addActor(optionPane.getSelectRoadsOneColumn());
+		stage.addActor(optionPane.getSelectRoadsGroup());
+		stage.addActor(optionPane.getSelectPistes());
 		// stage.addActor(optionPane.getTableAppInfo());
 		optionPane.hide();
 
@@ -1711,6 +1870,11 @@ public class MapViewerScreen implements Screen {
 		}
 
 		labelRenderer.renderLevelingLine();
+		// Where the GPX tour is along the track, while it plays or is paused.
+		Vector3 tourPoint = getGpxTourPointOnScreen();
+		if (tourPoint != null) {
+			labelRenderer.renderGpxTourPoint(tourPoint.x, tourPoint.y);
+		}
 		boolean pinned = com.peaknav.gesture.PhotoPin.isActive() && backgroundPicManager.getBackgroundPixmap() != null;
 		if (pinned) {
 			labelRenderer.renderPhotoPin();

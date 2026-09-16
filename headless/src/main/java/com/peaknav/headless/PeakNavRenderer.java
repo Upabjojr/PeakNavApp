@@ -739,6 +739,11 @@ public final class PeakNavRenderer implements AutoCloseable {
                 o.addChild("kind", new JsonValue(
                         poi.drawLabelCategory.name().toLowerCase(Locale.ROOT)));
                 o.addChild("name", new JsonValue(poi.name));
+                if (label != null) {
+                    // What the label actually says, in the current unit system. Not "label":
+                    // that key is the drawn name's position, further down.
+                    o.addChild("text", new JsonValue(label.getDisplayedText()));
+                }
                 o.addChild("lat", new JsonValue(poi.lat));
                 o.addChild("lon", new JsonValue(poi.lon));
                 o.addChild("elevation_m", new JsonValue(poi.elevation));
@@ -871,6 +876,202 @@ public final class PeakNavRenderer implements AutoCloseable {
     }
 
     /** Where the camera is, in the app's world frame. */
+    /**
+     * Switches metric/imperial the way the options pane does - without saving it, since this
+     * renderer shares the desktop app's preferences.
+     */
+    public PeakNavRenderer setUnitSystem(final com.peaknav.utils.PreferencesManager.UnitSystem unitSystem) {
+        onRenderThread(() -> com.peaknav.viewer.panes.OptionPane.applyUnitSystem(unitSystem));
+        return this;
+    }
+
+    /** Starts the flythrough along the loaded GPX track, as its play button does. */
+    public PeakNavRenderer startGpxTour() {
+        onRenderThread(() -> mapApp.mapViewerScreen.startGpxFlythrough());
+        return this;
+    }
+
+    /** Pauses or resumes a running tour, as the play/pause button does. */
+    public PeakNavRenderer setGpxTourPaused(final boolean paused) {
+        onRenderThread(() -> {
+            com.peaknav.viewer.screens.MapViewerScreen screen = mapApp.mapViewerScreen;
+            if (paused ? screen.isGpxTourPlaying() : screen.isGpxTourPaused()) {
+                screen.toggleGpxFlythrough();
+            }
+        });
+        return this;
+    }
+
+    /** Moves the tour to a fraction of its length, as dragging the scrub bar does. */
+    public PeakNavRenderer seekGpxTour(final float fraction) {
+        onRenderThread(() -> mapApp.mapViewerScreen.seekGpxTour(fraction));
+        return this;
+    }
+
+    public boolean isGpxTourPaused() {
+        final boolean[] out = new boolean[1];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.isGpxTourPaused());
+        return out[0];
+    }
+
+    /** How far along the tour is, 0..1 - what the scrub bar shows. */
+    public float gpxTourProgress() {
+        final float[] out = new float[1];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.getGpxTourProgress());
+        return out[0];
+    }
+
+    /** Ends a tour and gives the camera back. */
+    public PeakNavRenderer stopGpxTour() {
+        onRenderThread(() -> mapApp.mapViewerScreen.stopGpxFlythrough());
+        return this;
+    }
+
+    /** "Route to here" from where the viewer stands to this point, as the map-tap button computes it. */
+    public com.peaknav.routing.RouteToPoint.Result routeTo(double toLatitude, double toLongitude) {
+        return com.peaknav.routing.RouteToPoint.compute(getC().mapDataManager.getMultiMapDataStore(),
+                getC().L.getCurrentLatitude(), getC().L.getCurrentLongitude(), toLatitude, toLongitude);
+    }
+
+    /** Opens a route as the button does: as a GPX track, with the map framing it. Returns the tracks added. */
+    public int openRoute(com.peaknav.routing.WalkingRouter.Route route, double toLatitude, double toLongitude) {
+        final String gpx = com.peaknav.routing.RouteToPoint.gpxFor(route, toLatitude, toLongitude);
+        final int[] added = new int[1];
+        // As the button does: a route's heights are the terrain's, and it can be saved or shared.
+        onRenderThread(() -> added[0] = getC().gpxManager.loadComputedXml(gpx, "PeakNav_route", true));
+        return added[0];
+    }
+
+    /** Removes every loaded GPX track, and ends a tour of one. */
+    public PeakNavRenderer clearGpx() {
+        onRenderThread(() -> {
+            mapApp.mapViewerScreen.stopGpxFlythrough();
+            getC().gpxManager.clear();
+        });
+        return this;
+    }
+
+    /** The GPX info pane's texts, the track's name first; null while the pane is hidden. */
+    public String[] gpxInfoTexts() {
+        final String[][] out = new String[1][];
+        onRenderThread(() -> {
+            com.peaknav.viewer.widgets.GpxInfoPane pane = mapApp.mapViewerScreen.gpxInfoPane;
+            out[0] = pane == null || !pane.getTable().isVisible() ? null : pane.getTexts();
+        });
+        return out[0];
+    }
+
+    /** Folds the GPX info pane open or shut, as its header does. */
+    public PeakNavRenderer setGpxInfoOpen(final boolean open) {
+        onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.setOpen(open));
+        return this;
+    }
+
+    /** The GPX info pane's x, y, width and height, then the stage's width and height, stage units. */
+    public float[] gpxInfoBounds() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.boundsOnStage());
+        return out[0];
+    }
+
+    /** Which graphs the GPX info pane shows: recorded and terrain heights side by side, and speed. */
+    public boolean[] gpxInfoGraphs() {
+        final boolean[][] out = new boolean[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.graphs());
+        return out[0];
+    }
+
+    /** The GPX info pane's profile and speed graph: width and height of each, stage units. */
+    public float[] gpxInfoGraphSizes() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.graphSizes());
+        return out[0];
+    }
+
+    /** The GPX info pane's axis labels: "y:" and a height, then "x:" and a time since the start. */
+    public String[] gpxInfoAxisLabels() {
+        final String[][] out = new String[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.axisLabels());
+        return out[0];
+    }
+
+    /** How far the GPX info pane's body can scroll, and how far it has, stage units. */
+    public float[] gpxInfoScroll() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.scrollState());
+        return out[0];
+    }
+
+    /** Scrolls the GPX info pane's body, 0 at the top and 1 at the bottom, as a drag would. */
+    public PeakNavRenderer scrollGpxInfo(final float fraction) {
+        onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.scrollTo(fraction));
+        return this;
+    }
+
+    /** Makes the GPX info pane large or small again, as its size button does. */
+    public PeakNavRenderer setGpxInfoMaximized(final boolean maximized) {
+        onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.setMaximized(maximized));
+        return this;
+    }
+
+    /** Stage position of the GPX info pane's first body label; null when folded or hidden. */
+    public float[] gpxInfoBodyPosition() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.bodyPositionOnStage());
+        return out[0];
+    }
+
+    /** How far the GPX tour's point is from the recorded track, horizontally, in metres; NaN without a tour. */
+    public double gpxTourPointOffTrackMetres() {
+        final double[] out = new double[1];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.getGpxTourPointOffTrackMetres());
+        return out[0];
+    }
+
+    /** The GPX scrub bar's x, y, width and height, then the stage's width and height, stage units. */
+    public float[] gpxSeekBarBounds() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> {
+            com.badlogic.gdx.scenes.scene2d.ui.Slider bar = mapApp.mapViewerScreen.tableLocation.gpxSeekSlider;
+            com.badlogic.gdx.math.Vector2 v = bar.localToStageCoordinates(new com.badlogic.gdx.math.Vector2());
+            out[0] = new float[]{v.x, v.y, bar.getWidth(), bar.getHeight(),
+                    bar.getStage().getWidth(), bar.getStage().getHeight()};
+        });
+        return out[0];
+    }
+
+    /** The GPX tour's current point in world space; null when there is none. */
+    public float[] gpxTourPointWorld() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> {
+            Vector3 point = mapApp.mapViewerScreen.getGpxTourPoint();
+            out[0] = point == null ? null : new float[]{point.x, point.y, point.z};
+        });
+        return out[0];
+    }
+
+    /** World z of the loaded terrain at a point, as the map draws it; null where none is loaded. */
+    public Float groundWorldZ(final double latitude, final double longitude) {
+        final Float[] out = new Float[1];
+        onRenderThread(() -> {
+            float metres = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(latitude, longitude);
+            out[0] = Float.isNaN(metres) ? null : com.peaknav.utils.Units.convertMetersToLatits(metres)
+                    - com.peaknav.elevation.ElevationUtils
+                    .getElevationCorrectionForRoundEarth((float) latitude, (float) longitude);
+        });
+        return out[0];
+    }
+
+    /** Where the GPX tour's current point is drawn, in y-up pixels; null when none is. */
+    public float[] gpxTourPointOnScreen() {
+        final float[][] out = new float[1][];
+        onRenderThread(() -> {
+            Vector3 point = mapApp.mapViewerScreen.getGpxTourPointOnScreen();
+            out[0] = point == null ? null : new float[]{point.x, point.y};
+        });
+        return out[0];
+    }
+
     public Vector3 cameraPosition() {
         final Vector3 out = new Vector3();
         onRenderThread(() -> out.set(mapApp.mapViewerScreen.cam.position));
@@ -982,6 +1183,32 @@ public final class PeakNavRenderer implements AutoCloseable {
         return out;
     }
 
+    /** How many live tiles have ski lifts drawn on them (a texture, not drawn empty). */
+    public int skiLiftTiles() {
+        final int[] out = new int[1];
+        onRenderThread(() -> {
+            for (com.peaknav.viewer.tiles.MapTile tile : getC().mapTileStorage.getMapTiles()) {
+                if (!tile.isDisposed() && tile.hasLayerTexture(com.peaknav.viewer.render_tiles.PixmapLayerName.SKI_LIFTS)) {
+                    out[0]++;
+                }
+            }
+        });
+        return out[0];
+    }
+
+    /** How many live tiles have ski slopes drawn on them (a texture, not drawn empty). */
+    public int skiSlopeTiles() {
+        final int[] out = new int[1];
+        onRenderThread(() -> {
+            for (com.peaknav.viewer.tiles.MapTile tile : getC().mapTileStorage.getMapTiles()) {
+                if (!tile.isDisposed() && tile.hasLayerTexture(com.peaknav.viewer.render_tiles.PixmapLayerName.SKI_SLOPES)) {
+                    out[0]++;
+                }
+            }
+        });
+        return out[0];
+    }
+
     /** The camera's current up vector. */
     public Vector3 cameraUp() {
         final Vector3 out = new Vector3();
@@ -1001,7 +1228,10 @@ public final class PeakNavRenderer implements AutoCloseable {
             states.put(Label.LAKES, P.isVisibleLakes());
             states.put(Label.ALPINE_HUTS, P.isVisibleAlpineHuts());
             states.put(Label.ROADS, P.isViewerLayerVisibleBaseRoads());
-            states.put(Label.PISTES, P.getPisteVisible());
+            states.put(Label.PISTES, P.isSkiSlopesVisible());
+            states.put(Label.PISTE_NAMES, P.isPisteLabelsVisible());
+            states.put(Label.LIFTS, P.isLiftsVisible());
+            states.put(Label.LIFT_NAMES, P.isLiftLabelsVisible());
             states.put(Label.NAVIGATION, P.getLayerVisibleNavigation());
             states.put(Label.ROAD_NAMES, P.getRoadStyle().isRoadNames());
         });
@@ -1012,6 +1242,10 @@ public final class PeakNavRenderer implements AutoCloseable {
     public enum Label {
         PEAKS, PLACE_NAMES, CITIES, MOUNTAIN_RANGES, ISLANDS, LAKES, ALPINE_HUTS,
         ROADS, PISTES, NAVIGATION,
+        /** Ski runs' names, drawn along them while the ski slopes are shown. */
+        PISTE_NAMES,
+        /** Ski lifts, their carriers moving uphill; and their names. */
+        LIFTS, LIFT_NAMES,
         /** Street, track and trail names, drawn along their ways. */
         ROAD_NAMES
     }
@@ -1029,11 +1263,20 @@ public final class PeakNavRenderer implements AutoCloseable {
                 case ALPINE_HUTS:     P.setVisibleAlpineHuts(visible); break;
                 case ROADS:           P.setViewerLayerVisibleBaseRoads(visible); break;
                 case PISTES:          P.setPisteVisible(visible); break;
+                case PISTE_NAMES:     P.setPisteLabelsVisible(visible); break;
+                case LIFTS:           P.setLiftsVisible(visible); break;
+                case LIFT_NAMES:      P.setLiftLabelsVisible(visible); break;
                 case NAVIGATION:      P.setLayerVisibleNavigation(visible); break;
                 case ROAD_NAMES:      P.getRoadStyle().setRoadNames(visible); break;
                 default: throw new IllegalArgumentException("unhandled label: " + label);
             }
         });
+        return this;
+    }
+
+    /** The main menu's Labels switch: every label on or off at once, each kind's own setting kept. */
+    public PeakNavRenderer setAllLabels(final boolean visible) {
+        onRenderThread(() -> P.setLabelsVisible(visible));
         return this;
     }
 
@@ -1463,6 +1706,22 @@ public final class PeakNavRenderer implements AutoCloseable {
                 mapApp.mapViewerScreen.optionPane.show();
             } else {
                 mapApp.mapViewerScreen.optionPane.hide();
+            }
+        });
+        return this;
+    }
+
+    /** The roads menus, as their "..." buttons open them: 1 roads and pistes, 2 the roads' style, 3 the pistes'. */
+    public PeakNavRenderer openRoadsMenu(final int level) {
+        onRenderThread(() -> {
+            com.peaknav.viewer.panes.OptionPane pane = mapApp.mapViewerScreen.optionPane;
+            pane.show();
+            if (level == 2) {
+                pane.openRoadsStyleSubmenu();
+            } else if (level == 3) {
+                pane.openPistesSubmenu();
+            } else {
+                pane.openRoadsSubmenu();
             }
         });
         return this;

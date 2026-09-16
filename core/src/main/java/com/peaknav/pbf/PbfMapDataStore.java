@@ -83,12 +83,17 @@ public class PbfMapDataStore {
      * drop a straight road whose nodes all lie beyond a small tile it runs across.
      */
     public MapReadResult readMapDataPadded(Tile tile, double padFraction) {
-        Tile tileWithData = findTileWithDataByZoomingOut(tile, PBF_HIGHWAYS);
+        return readMapDataPadded(tile, padFraction, PBF_HIGHWAYS);
+    }
+
+    /** As {@link #readMapDataPadded(Tile, double)}, from the ways of another layer. */
+    public MapReadResult readMapDataPadded(Tile tile, double padFraction, PbfLayer layer) {
+        Tile tileWithData = findTileWithDataByZoomingOut(tile, layer);
         MapReadResult out = new MapReadResult();
         if (tileWithData == null) {
             return out;
         }
-        MapReadResult data = cache.get(tileWithData, PBF_HIGHWAYS);
+        MapReadResult data = cache.get(tileWithData, layer);
         BoundingBox bb = tile.getBoundingBox();
         double padLat = (bb.maxLatitude - bb.minLatitude) * padFraction;
         double padLon = (bb.maxLongitude - bb.minLongitude) * padFraction;

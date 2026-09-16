@@ -91,6 +91,12 @@ public abstract class NativeScreenCaller {
      */
     public abstract void shareSnapshot(Pixmap pixmap, com.peaknav.utils.SnapshotInfo info);
 
+    /**
+     * Hands a GPX track to the user: a save dialog on the desktop, the system share sheet on a
+     * phone. For tracks that exist nowhere else on the device (see GpxManager.loadShareableXml).
+     */
+    public abstract void shareGpx(String fileName, String xml);
+
     public abstract void makeToast(String message);
 
     public abstract void ensureLocationPermissions();

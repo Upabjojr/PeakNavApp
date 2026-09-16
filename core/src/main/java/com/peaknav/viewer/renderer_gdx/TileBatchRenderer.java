@@ -229,6 +229,55 @@ public class TileBatchRenderer {
                             }
                         });
 
+                        // The ski slopes viewer: runs coloured by difficulty, flowing downhill
+                        // (see PisteRasterizer and the ski slopes block of the fragment shader).
+                        BaseShader.Uniform u_skiSlopesSet = new BaseShader.Uniform("u_skiSlopesSet");
+                        shader.register(u_skiSlopesSet, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                MapTile.RenderableUserData rud = (MapTile.RenderableUserData) renderable.userData;
+                                shader.program.setUniformi(u_skiSlopesSet.alias,
+                                        rud.texturePistes != null && P.isSkiSlopesVisible() ? 1 : 0);
+                            }
+                        });
+                        BaseShader.Uniform u_texturePistes = new BaseShader.Uniform("u_texturePistes");
+                        TextureDescriptor<Texture> textureDescriptorPistes = new TextureDescriptor<>();
+                        shader.register(u_texturePistes, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                Texture texture = ((MapTile.RenderableUserData) renderable.userData).texturePistes;
+                                if (texture == null)
+                                    return;
+                                textureDescriptorPistes.set(texture, null, null, null, null);
+                                final int unit = shader.context.textureBinder.bind(textureDescriptorPistes);
+                                shader.set(inputID, unit);
+                            }
+                        });
+
+                        // The ski lifts: cables with carriers moving uphill (see LiftRasterizer).
+                        BaseShader.Uniform u_liftsSet = new BaseShader.Uniform("u_liftsSet");
+                        shader.register(u_liftsSet, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                MapTile.RenderableUserData rud = (MapTile.RenderableUserData) renderable.userData;
+                                shader.program.setUniformi(u_liftsSet.alias,
+                                        rud.textureLifts != null && P.isLiftsVisible() ? 1 : 0);
+                            }
+                        });
+                        BaseShader.Uniform u_textureLifts = new BaseShader.Uniform("u_textureLifts");
+                        TextureDescriptor<Texture> textureDescriptorLifts = new TextureDescriptor<>();
+                        shader.register(u_textureLifts, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                Texture texture = ((MapTile.RenderableUserData) renderable.userData).textureLifts;
+                                if (texture == null)
+                                    return;
+                                textureDescriptorLifts.set(texture, null, null, null, null);
+                                final int unit = shader.context.textureBinder.bind(textureDescriptorLifts);
+                                shader.set(inputID, unit);
+                            }
+                        });
+
                         // The roads' second texture: trail dash phase and difficulties.
                         BaseShader.Uniform u_textureRoadsAux = new BaseShader.Uniform("u_textureRoadsAux");
                         TextureDescriptor<Texture> textureDescriptor4 = new TextureDescriptor<>();

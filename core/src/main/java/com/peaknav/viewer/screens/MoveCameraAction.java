@@ -131,6 +131,15 @@ public class MoveCameraAction extends TemporalAction {
         return steps.size();
     }
 
+    /** How far the move under way has got, 0..1; 0 when none is. */
+    public float currentStepProgress() {
+        MoveCameraActionStep step = steps.peekFirst();
+        if (step == null || step.getDuration() <= 0f) {
+            return 0f;
+        }
+        return Math.max(0f, Math.min(1f, step.getTime() / step.getDuration()));
+    }
+
     /*
     public synchronized void setCameraVectorsWithoutRestarting(Vector3 targetDirection, Vector3 targetUp) {
         movingPosition = false;

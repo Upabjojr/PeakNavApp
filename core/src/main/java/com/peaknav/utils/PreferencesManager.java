@@ -41,6 +41,10 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_MOUNTAIN_RANGE
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_LAKES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PEAKS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PISTES;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PISTE_LABELS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_LIFTS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_LIFT_LABELS;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ALL_LABELS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_PLACE_NAMES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_UNIT_SYSTEM;
 import static com.peaknav.viewer.render_tiles.PixmapLayerName.BASE_ROADS;
@@ -68,6 +72,10 @@ public class PreferencesManager {
     private final Preferences preferences;
 
     private boolean pisteVisible;
+    private boolean pisteLabelsVisible;
+    private boolean liftsVisible;
+    private boolean liftLabelsVisible;
+    private boolean labelsVisible;
     private boolean peakVisible;
     private boolean visiblePlaceNames;
     private boolean visibleAlpineHuts;
@@ -220,6 +228,10 @@ public class PreferencesManager {
         visibleMountainRanges = preferences.getBoolean(VIEWER_SHOW_MOUNTAIN_RANGES, true);
         visibleLakes = preferences.getBoolean(VIEWER_SHOW_LAKES, true);
         pisteVisible = preferences.getBoolean(VIEWER_SHOW_PISTES, true);
+        pisteLabelsVisible = preferences.getBoolean(VIEWER_SHOW_PISTE_LABELS, true);
+        liftsVisible = preferences.getBoolean(VIEWER_SHOW_LIFTS, true);
+        liftLabelsVisible = preferences.getBoolean(VIEWER_SHOW_LIFT_LABELS, true);
+        labelsVisible = preferences.getBoolean(VIEWER_SHOW_ALL_LABELS, true);
         layerVisibleUnderlayLayer = preferences.getBoolean(VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER, true);
         sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
         horizonCompass = preferences.getBoolean(VIEWER_HORIZON_COMPASS, true);
@@ -285,7 +297,8 @@ public class PreferencesManager {
     public boolean isPixmapLayerNameVisible(PixmapLayerName pixmapLayerName) {
         switch (pixmapLayerName) {
             case SKI_SLOPES:
-                return getPisteVisible();
+                // The runs and the lifts are rasterized together, for either.
+                return isSkiSlopesVisible() || isLiftsVisible();
             case BASE_ROADS:
                 return isViewerLayerVisibleBaseRoads();
             case UNDERLAY_LAYER:
@@ -319,6 +332,62 @@ public class PreferencesManager {
 
     public boolean getPisteVisible() {
         return PISTES_IN_MAP_DATA && pisteVisible;
+    }
+
+    /**
+     * Whether the ski slopes viewer is on. It draws from its own data layer, PBF_PISTES, so unlike
+     * {@link #getPisteVisible} it does not wait for the highway tiles to carry the pistes.
+     */
+    public boolean isSkiSlopesVisible() {
+        return pisteVisible;
+    }
+
+    /** Whether the ski slopes viewer writes the runs' names along them (while it is on). */
+    public boolean isPisteLabelsVisible() {
+        return pisteLabelsVisible;
+    }
+
+    public void setPisteLabelsVisible(boolean visible) {
+        pisteLabelsVisible = visible;
+        preferences.putBoolean(VIEWER_SHOW_PISTE_LABELS, visible);
+        preferences.flush();
+    }
+
+    /** Whether the ski lifts are drawn, with their carriers moving uphill; independent of the runs. */
+    public boolean isLiftsVisible() {
+        return liftsVisible;
+    }
+
+    public void setLiftsVisible(boolean visible) {
+        liftsVisible = visible;
+        preferences.putBoolean(VIEWER_SHOW_LIFTS, visible);
+        lastChange.put(SKI_SLOPES, System.currentTimeMillis());
+        preferences.flush();
+    }
+
+    /**
+     * The main menu's Labels switch: every label at once - peaks, places, huts, areas, road,
+     * piste and lift names - on or off, leaving each kind's own setting as it was.
+     */
+    public boolean isLabelsVisible() {
+        return labelsVisible;
+    }
+
+    public void setLabelsVisible(boolean visible) {
+        labelsVisible = visible;
+        preferences.putBoolean(VIEWER_SHOW_ALL_LABELS, visible);
+        preferences.flush();
+    }
+
+    /** Whether the ski lifts' names are written along them (while the lifts are shown). */
+    public boolean isLiftLabelsVisible() {
+        return liftLabelsVisible;
+    }
+
+    public void setLiftLabelsVisible(boolean visible) {
+        liftLabelsVisible = visible;
+        preferences.putBoolean(VIEWER_SHOW_LIFT_LABELS, visible);
+        preferences.flush();
     }
 
     public void setPisteVisible(boolean visible) {

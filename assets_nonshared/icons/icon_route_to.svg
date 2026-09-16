@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Route to here": a dashed trail winding from a start point to a destination pin. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+  </defs>
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <g clip-path="url(#disc)">
+    <!-- the trail: an outline for contrast, then the dashes -->
+    <path d="M62 178 C 98 176, 112 150, 96 128 C 80 106, 104 84, 140 92 C 160 96, 168 86, 166 74"
+          fill="none" stroke="#1f4d7d" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M62 178 C 98 176, 112 150, 96 128 C 80 106, 104 84, 140 92 C 160 96, 168 86, 166 74"
+          fill="none" stroke="#f2b632" stroke-width="7" stroke-linecap="round" stroke-dasharray="14 10"/>
+    <!-- start point -->
+    <circle cx="62" cy="178" r="13" fill="#5aa0e0" stroke="#1f4d7d" stroke-width="4"/>
+    <!-- destination pin -->
+    <path d="M184 62 c0 -24 -36 -24 -36 0 c0 18 18 32 18 32 c0 0 18 -14 18 -32 z"
+          fill="#d23b32" stroke="#7a1c17" stroke-width="3"/>
+    <circle cx="166" cy="62" r="8" fill="#ffffff"/>
+  </g>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#10202b" stroke-width="3"/>
+</svg>
