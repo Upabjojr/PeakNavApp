@@ -193,6 +193,13 @@ class PeakNavHeadless:
     def status(self):
         return self._request("GET", "/status")
 
+    def prompts(self, after=0):
+        """What the app tried to ask. The renderer never shows a dialog: yes/no prompts,
+        alerts, file and download choosers and browser launches are recorded instead, as
+        {"total", "last_seq", "prompts": [{seq, time_ms, kind, detail}]}. Pass the previous
+        call's last_seq as after to get only the new ones."""
+        return self._request("GET", "/prompts?after=%d" % int(after))
+
     def move_to(self, lat, lon, *, download_timeout_ms=None, await_tiles_ms=None):
         """Moves the viewpoint; optionally downloads the area and waits for quiet."""
         payload = {"lat": lat, "lon": lon}

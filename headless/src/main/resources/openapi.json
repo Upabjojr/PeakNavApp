@@ -32,11 +32,37 @@
                     },
                     "orbiting": {
                       "type": "boolean"
+                    },
+                    "suppressed_prompts": {
+                      "type": "integer",
+                      "description": "How many dialogs, choosers and browser launches were intercepted since start; see /prompts"
                     }
                   }
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/prompts": {
+      "get": {
+        "summary": "What the app tried to ask",
+        "description": "Headless never shows a dialog: every yes/no prompt, alert, file or download chooser, text-field prompt and browser launch is intercepted and recorded here instead, oldest first (the latest 200 are kept). Poll with ?after=<last_seq of the previous call> to see only new ones.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only prompts with a larger sequence number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{total, last_seq, prompts: [{seq, time_ms, kind, detail}]}"
           }
         }
       }

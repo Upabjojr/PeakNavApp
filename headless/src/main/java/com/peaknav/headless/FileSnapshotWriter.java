@@ -4,6 +4,8 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.peaknav.compatibility.NativeScreenCallerDesktop;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -28,12 +30,55 @@ final class FileSnapshotWriter extends NativeScreenCallerDesktop {
     private final AtomicReference<File> target = new AtomicReference<>();
     private final AtomicReference<CountDownLatch> pending = new AtomicReference<>();
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
-    /** Every UI request that was intercepted rather than shown, so tests can assert on it. */
-    private final java.util.concurrent.atomic.AtomicInteger suppressedPrompts =
-            new java.util.concurrent.atomic.AtomicInteger();
+    /**
+     * Every UI request that was intercepted rather than shown, in order: what a person would
+     * have been asked. Tests assert on the count; REST clients read the entries back
+     * ({@code GET /prompts}) to learn what the app wanted, since nothing appears on screen.
+     */
+    private final List<SuppressedPrompt> suppressedPrompts = new ArrayList<>();
+    private int suppressedPromptTotal;
 
-    int suppressedPromptCount() {
-        return suppressedPrompts.get();
+    /** Only the latest are kept; the sequence numbers keep counting past the dropped ones. */
+    private static final int KEPT_PROMPTS = 200;
+
+    /** One intercepted request: {@code kind} names the hook, {@code detail} its text. */
+    static final class SuppressedPrompt {
+        final int seq;
+        final long timeMillis;
+        final String kind;
+        final String detail;
+
+        SuppressedPrompt(int seq, long timeMillis, String kind, String detail) {
+            this.seq = seq;
+            this.timeMillis = timeMillis;
+            this.kind = kind;
+            this.detail = detail;
+        }
+    }
+
+    synchronized int suppressedPromptCount() {
+        return suppressedPromptTotal;
+    }
+
+    /** The kept prompts with a sequence number above {@code afterSeq} (0 for all of them). */
+    synchronized List<SuppressedPrompt> suppressedPromptsAfter(int afterSeq) {
+        List<SuppressedPrompt> out = new ArrayList<>();
+        for (SuppressedPrompt prompt : suppressedPrompts) {
+            if (prompt.seq > afterSeq) {
+                out.add(prompt);
+            }
+        }
+        return out;
+    }
+
+    private synchronized void suppress(String kind, String detail) {
+        suppressedPromptTotal++;
+        suppressedPrompts.add(new SuppressedPrompt(
+                suppressedPromptTotal, System.currentTimeMillis(), kind, detail));
+        if (suppressedPrompts.size() > KEPT_PROMPTS) {
+            suppressedPrompts.remove(0);
+        }
+        System.err.println("headless: suppressed " + kind + (detail.isEmpty() ? "" : ": " + detail));
     }
 
     /** Arms the writer for the next snapshot and returns a latch that fires once saved. */
@@ -71,62 +116,136 @@ final class FileSnapshotWriter extends NativeScreenCallerDesktop {
 
     @Override
     public void askForDownloadScreen(double lat, double lon) {
-        suppressedPrompts.incrementAndGet();
         // The prompt the user hit. Downloads are explicit here, via
         // PeakNavRenderer.downloadMissingData(); missing data otherwise just renders empty.
-        System.err.printf("headless: map data missing at %.4f, %.4f "
-                + "(ignored; use --download to fetch it)%n", lat, lon);
+        suppress("download_prompt", String.format(Locale.ROOT,
+                "map data missing at %.4f, %.4f (use download_timeout_ms to fetch it)", lat, lon));
     }
 
     @Override
     public void openMapDataDownloadChooser(double lat, double lon, boolean goToAfterDownload) {
-        suppressedPrompts.incrementAndGet();
-        System.err.println("headless: download chooser suppressed");
+        suppress("download_chooser", String.format(Locale.ROOT, "%.4f, %.4f", lat, lon));
     }
 
     @Override
     public void openMapDataDownloadChooserWizard() {
-        suppressedPrompts.incrementAndGet();
-        System.err.println("headless: download wizard suppressed");
+        suppress("download_wizard", "");
+    }
+
+    @Override
+    public void openScreenSearchLocation(com.peaknav.ui.ClickCallback callback) {
+        // A Swing search window; positions are given explicitly here.
+        suppress("search_location", "");
+    }
+
+    @Override
+    public void openCameraPictureView() {
+        suppress("camera", "");
+    }
+
+    @Override
+    public void openGalleryPick() {
+        // A file chooser; photographs come in through PeakNavRenderer's photo calls instead.
+        suppress("gallery_pick", "");
+    }
+
+    @Override
+    public void pickGpxFile() {
+        // A file chooser; tracks come in through PeakNavRenderer's GPX calls instead.
+        suppress("gpx_pick", "");
     }
 
     @Override
     public void promptGoToImageLocation(double lat, double lon) {
-        suppressedPrompts.incrementAndGet();
-        // no prompt in headless
+        suppress("go_to_image_location", String.format(Locale.ROOT, "%.4f, %.4f", lat, lon));
+    }
+
+    @Override
+    public void promptYesNo(String title, String message, Runnable onYes) {
+        // "Photo direction found - point the camera?" and the like: no one to answer, so no.
+        suppress("yes_no", title + " - " + message);
+    }
+
+    @Override
+    public void promptForTextFields(String title, String message, String[] labels,
+            String[] initialValues, com.peaknav.ui.TextFieldsCallback callback) {
+        suppress("text_fields", title);
+        callback.onCancelled();
+    }
+
+    @Override
+    public void chooseSkyTime() {
+        // the sky time is set explicitly here (PeakNavRenderer.setSkyTimeMillis)
+        suppress("sky_time", "");
+    }
+
+    @Override
+    public com.peaknav.ui.CurrentLocationListener getCurrentLocationListener() {
+        // The desktop listener asks for consent to locate by IP address in a dialog; headless
+        // positions are always given explicitly, so the request is simply left unanswered.
+        return callback -> suppress("current_location", "");
+    }
+
+    @Override
+    public void ensureLocationPermissions() {
     }
 
     @Override
     public void warnCannotReadImageLocation() {
-        suppressedPrompts.incrementAndGet();
-        // no dialog in headless
+        suppress("image_location_unreadable", "");
     }
 
     @Override
     public void alertMessage(String message) {
-        suppressedPrompts.incrementAndGet();
-        System.err.println("headless: " + message);
+        suppress("alert", String.valueOf(message));
     }
 
     @Override
     public void makeToast(String message) {
+        // Not a prompt: the desktop toast is a window of its own, so it only goes to the log.
         System.err.println("headless: " + message);
     }
 
     @Override
     public void comingSoon() {
-        suppressedPrompts.incrementAndGet();
-        // no dialog in headless
+        suppress("coming_soon", "");
     }
 
     @Override
     public void openAppInfoScreen() {
-        // would launch a browser
+        suppress("browser", "app info page");
     }
 
     @Override
     public void openAppTutorial() {
-        // would launch a browser
+        suppress("browser", "tutorial");
+    }
+
+    @Override
+    public void openCoordinate(double latitude, double longitude) {
+        suppress("browser", String.format(Locale.ROOT, "coordinate %.5f, %.5f", latitude, longitude));
+    }
+
+    /**
+     * Wraps the app's {@code Gdx.net} so that {@code openURI} - a hyperlink label tapped
+     * through {@code /tap}, say - is recorded instead of launching a browser. Everything
+     * else (HTTP requests, the downloads) goes straight through.
+     */
+    com.badlogic.gdx.Net withoutBrowser(final com.badlogic.gdx.Net net) {
+        return (com.badlogic.gdx.Net) java.lang.reflect.Proxy.newProxyInstance(
+                com.badlogic.gdx.Net.class.getClassLoader(),
+                new Class<?>[] {com.badlogic.gdx.Net.class},
+                (proxy, method, args) -> {
+                    if ("openURI".equals(method.getName())) {
+                        suppress("browser", String.valueOf(args[0]));
+                        return Boolean.FALSE;
+                    }
+                    try {
+                        return method.invoke(net, args);
+                    } catch (java.lang.reflect.InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
     }
 
     /**

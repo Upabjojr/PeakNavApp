@@ -71,7 +71,10 @@ final class RestServer {
         try {
             if ("GET".equals(method) && "/status".equals(path)) {
                 json(x, 200, "{\"ok\":true,\"orbiting\":" + renderer.isOrbiting()
+                        + ",\"suppressed_prompts\":" + renderer.suppressedPrompts()
                         + "," + renderer.labelDiagnostics() + "," + renderer.quietDiagnostics() + "}");
+            } else if ("GET".equals(method) && "/prompts".equals(path)) {
+                prompts(x);
             } else if ("GET".equals(method) && "/openapi.json".equals(path)) {
                 resource(x, "openapi.json", "application/json");
             } else if ("POST".equals(method) && "/position".equals(path)) {
@@ -130,6 +133,33 @@ final class RestServer {
         } catch (Exception failed) {
             json(x, 500, "{\"error\":" + quote(String.valueOf(failed)) + "}");
         }
+    }
+
+    /**
+     * What the app tried to ask: every dialog, chooser and browser launch the renderer
+     * intercepted, oldest first. {@code ?after=N} returns only those after sequence number N,
+     * so a client can poll with the {@code last_seq} of its previous call.
+     */
+    private void prompts(HttpExchange x) throws IOException {
+        String after = query(x).get("after");
+        int afterSeq;
+        try {
+            afterSeq = after == null ? 0 : Integer.parseInt(after);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("after wants a sequence number");
+        }
+        StringBuilder out = new StringBuilder("{\"total\":").append(renderer.suppressedPrompts())
+                .append(",\"prompts\":[");
+        String separator = "";
+        for (FileSnapshotWriter.SuppressedPrompt prompt : renderer.suppressedPromptsAfter(afterSeq)) {
+            out.append(separator).append("{\"seq\":").append(prompt.seq)
+                    .append(",\"time_ms\":").append(prompt.timeMillis)
+                    .append(",\"kind\":").append(quote(prompt.kind))
+                    .append(",\"detail\":").append(quote(prompt.detail)).append('}');
+            separator = ",";
+        }
+        json(x, 200, out.append("],\"last_seq\":").append(renderer.suppressedPrompts())
+                .append('}').toString());
     }
 
     /** Move the map; optionally download what is missing there and wait for quiet. */
@@ -498,6 +528,19 @@ final class RestServer {
     }
 
     private static String quote(String s) {
-        return "\"" + String.valueOf(s).replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        // Control characters escaped too: prompt texts carry line breaks.
+        StringBuilder out = new StringBuilder("\"");
+        for (char c : String.valueOf(s).toCharArray()) {
+            if (c == '"' || c == '\\') {
+                out.append('\\').append(c);
+            } else if (c == '\n') {
+                out.append("\\n");
+            } else if (c < 0x20) {
+                out.append(String.format("\\u%04x", (int) c));
+            } else {
+                out.append(c);
+            }
+        }
+        return out.append('"').toString();
     }
 }
