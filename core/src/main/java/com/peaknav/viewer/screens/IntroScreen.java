@@ -129,7 +129,7 @@ public class IntroScreen implements Screen {
 
         tableDownloadMap
                 .add(getLicensePrivacy(labelStyleSmall))
-                .width(Gdx.graphics.getWidth()*0.8f).row();
+                .width(licenseTextWidth()).row();
         tableDownloadMap.add(getLicensePrivacyLinks()).row();
 
         // tableDownloadMap.add(labelDM).row();
@@ -163,8 +163,16 @@ public class IntroScreen implements Screen {
     private Label getLicensePrivacy(Label.LabelStyle labelStyleSmall) {
         Label licensePrivacy = new Label(s("Accept_license_and_privacy"), labelStyleSmall);
         licensePrivacy.setWrap(true);
-        licensePrivacy.setWidth(Gdx.graphics.getWidth()*0.8f);
+        // Centred like everything else on this screen: wrapped text is left-aligned by default,
+        // which put the sentence off to one side of the links and the button below it.
+        licensePrivacy.setAlignment(com.badlogic.gdx.utils.Align.center);
+        licensePrivacy.setWidth(licenseTextWidth());
         return licensePrivacy;
+    }
+
+    /** Most of the screen's width, but not a line across a whole tablet: ten button widths at most. */
+    private float licenseTextWidth() {
+        return Math.min(Gdx.graphics.getWidth() * 0.8f, 10 * widgetUnitStep);
     }
 
     private void computeRadii() {
