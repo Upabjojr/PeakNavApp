@@ -129,7 +129,7 @@ public class IntroScreen implements Screen {
 
         tableDownloadMap
                 .add(getLicensePrivacy(labelStyleSmall))
-                .width(Gdx.graphics.getWidth()*0.8f).row();
+                .width(licenseTextWidth()).row();
         tableDownloadMap.add(getLicensePrivacyLinks()).row();
 
         // tableDownloadMap.add(labelDM).row();
@@ -163,8 +163,16 @@ public class IntroScreen implements Screen {
     private Label getLicensePrivacy(Label.LabelStyle labelStyleSmall) {
         Label licensePrivacy = new Label(s("Accept_license_and_privacy"), labelStyleSmall);
         licensePrivacy.setWrap(true);
-        licensePrivacy.setWidth(Gdx.graphics.getWidth()*0.8f);
+        // Centred like everything else on this screen: wrapped text is left-aligned by default,
+        // which put the sentence off to one side of the links and the button below it.
+        licensePrivacy.setAlignment(com.badlogic.gdx.utils.Align.center);
+        licensePrivacy.setWidth(licenseTextWidth());
         return licensePrivacy;
+    }
+
+    /** Most of the screen's width, but not a line across a whole tablet: ten button widths at most. */
+    private float licenseTextWidth() {
+        return Math.min(Gdx.graphics.getWidth() * 0.8f, 10 * widgetUnitStep);
     }
 
     private void computeRadii() {
@@ -289,6 +297,11 @@ public class IntroScreen implements Screen {
 
     @Override
     public void resize(int width, int height) {
+        if (!Units.isProportionalInterface() && stage.getViewport() instanceof ExtendViewport) {
+            // One stage unit per pixel, as on the map screen: no growing with the window.
+            ((ExtendViewport) stage.getViewport()).setMinWorldWidth(width);
+            ((ExtendViewport) stage.getViewport()).setMinWorldHeight(height);
+        }
         stage.getViewport().update(width, height, true);
         spriteBatch.getProjectionMatrix().setToOrtho2D(0, 0, width, height);
         shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());

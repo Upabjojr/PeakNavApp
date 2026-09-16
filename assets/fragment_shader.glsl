@@ -375,31 +375,31 @@ void main() {
             float across = 1.0 - lf.a;                  // 0 on the line, 1 at the edge of its reach
             // Per kind: carriers per 160 m, how big they are on the ground (metres from their centre),
             // how fast they climb (turns of their own spacing a second), their colour, and the
-            // cable's width (a fraction of the field's reach). Cabins are square, chairs and drag
+            // cable's width (a fraction of the field's reach, 16 m: a cable 1.2 m wide is 0.075). Cabins are square, chairs and drag
             // handles round points; a magic carpet is a belt of stripes.
-            float density = 8.0, radius = 3.2, speed = 0.5, cableWidth = 0.12;
+            float density = 8.0, radius = 4.8, speed = 0.5, cableWidth = 0.075;
             float square = 0.0;
             vec3 carrier = vec3(0.97, 0.97, 0.95);
             if (kind < 0.5) {            // cable car
-                density = 1.0; radius = 7.0; speed = 0.12; square = 1.0;
+                density = 1.0; radius = 10.5; speed = 0.12; square = 1.0;
                 carrier = vec3(0.86, 0.14, 0.12);
             } else if (kind < 1.5) {     // gondola
-                density = 4.0; radius = 4.6; speed = 0.35; square = 1.0;
+                density = 4.0; radius = 6.9; speed = 0.35; square = 1.0;
                 carrier = vec3(1.0, 0.62, 0.08);
             } else if (kind < 2.5) {     // chairlift
-                density = 8.0; radius = 3.2; speed = 0.5;
+                density = 8.0; radius = 4.8; speed = 0.5;
             } else if (kind < 3.5) {     // drag lift
-                density = 10.0; radius = 2.6; speed = 0.6; cableWidth = 0.1;
+                density = 10.0; radius = 3.9; speed = 0.6; cableWidth = 0.0625;
                 carrier = vec3(1.0, 0.86, 0.12);
             } else {                     // magic carpet
-                density = 32.0; radius = 2.0; speed = 1.2; cableWidth = 0.34;
+                density = 32.0; radius = 3.0; speed = 1.2; cableWidth = 0.2125;
                 carrier = vec3(0.20, 0.55, 0.96);
             }
             float cycles = turn * density;
             float m = fract(cycles - u_time * speed);
             float period = 160.0 / density;              // metres between carriers
             float alongM = (m - 0.5) * period;           // from the nearest carrier's centre
-            float acrossM = across * 10.0;               // LiftRasterizer.REACH_METRES
+            float acrossM = across * 16.0;               // LiftRasterizer.REACH_METRES
 #ifdef ROADS_DERIVATIVES
             float fwA = max(fwidth(lf.a), 1e-3);
             float cpp = min(fwidth(cycles), fwidth(fract(cycles + 0.5)));
@@ -425,13 +425,13 @@ void main() {
             if (kind > 3.5) {
                 cableCol = mix(carrier, vec3(0.9), 0.5);   // the belt itself, pale
                 float stripe = clamp((0.25 - abs(m - 0.5)) / max(cpp, 1e-4) + 0.5, 0.0, 1.0) * resolved;
-                bodyCov = stripe * clamp((0.3 - across) / fwA + 0.5, 0.0, 1.0);
+                bodyCov = stripe * clamp((0.1875 - across) / fwA + 0.5, 0.0, 1.0);
                 rimCov = 0.0;
             } else {
                 // A point or a cabin: round, or square for the cabins, a dark rim around it.
                 float d = mix(length(vec2(alongM, acrossM)), max(abs(alongM), abs(acrossM)), square);
                 bodyCov = clamp((radius - d) / fwM + 0.5, 0.0, 1.0) * resolved;
-                rimCov = clamp((radius + 1.2 - d) / fwM + 0.5, 0.0, 1.0) * resolved;
+                rimCov = clamp((radius + 1.8 - d) / fwM + 0.5, 0.0, 1.0) * resolved;
             }
             vec3 col = gl_FragColor.rgb;
             col = mix(col, cableCol * lineLightLift, cableCov * 0.95);

@@ -43,6 +43,12 @@ public final class CoordinateLinks {
             query = rest.substring(mark + 1);
         }
 
+        // RFC 5870 parameters after the point: geo:46.0207,7.7491;u=35 (uncertainty in metres).
+        int parameters = path.indexOf(';');
+        if (parameters >= 0) {
+            path = path.substring(0, parameters);
+        }
+
         // q= wins when it holds a coordinate: the marker form leaves the path at 0,0.
         if (query != null) {
             for (String part : query.split("&")) {

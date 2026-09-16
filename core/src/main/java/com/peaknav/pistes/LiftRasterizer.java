@@ -38,7 +38,7 @@ public final class LiftRasterizer {
     /** One travel turn along a lift, in metres; the shader counts carriers in whole fractions of it. */
     static final float PATTERN_METRES = 160f;
     /** How far from the line the distance field reaches, in metres: room for the widest cabin. */
-    static final float REACH_METRES = 10f;
+    static final float REACH_METRES = 16f;
     /** At least this many texels, so a lift stays drawable on a tile far away. */
     static final float MIN_REACH_TEXELS = 2.5f;
     /** A lift whose top end is lower than its bottom end by more than this is drawn the other way. */

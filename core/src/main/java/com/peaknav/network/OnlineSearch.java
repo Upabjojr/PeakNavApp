@@ -6,35 +6,29 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Net;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
+import com.peaknav.utils.CoordinateSearch;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class OnlineSearch {
-    private final Pattern textPattern = Pattern.compile("\\s*(-?\\d+\\.?\\d*)\\s*,\\s*(-?\\d+\\.?\\d*)\\s*");
-
     public interface NominatimResponseListener {
         void applySearchResults(ArrayList<NominatimResponse> retVal);
     }
 
     public void parseDestinationText(String text, final NominatimResponseListener callback) {
 
-        Matcher matcher = textPattern.matcher(text);
-        if (matcher.matches()) {
-            // matcher.group(1);
-            String[] data = text.split(",");
-            float longitude = Float.parseFloat(data[1].trim());
-            float latitude = Float.parseFloat(data[0].trim());
-
-            getC().L.setCurrentTargetCoords(latitude, longitude);
+        // Coordinates in any of the common printed forms go straight there; anything else is a
+        // name, searched for without the formatting it was pasted with.
+        double[] coordinates = CoordinateSearch.parseCoordinates(text);
+        if (coordinates != null) {
+            getC().L.setCurrentTargetCoords(coordinates[0], coordinates[1]);
         } else {
 
             try {
-                findWithNominatim(text, callback);
+                findWithNominatim(CoordinateSearch.cleanQuery(text), callback);
             } catch (UnsupportedEncodingException e) {
                 throw new RuntimeException(e);
             }

@@ -147,6 +147,10 @@ public final class PeakNavRenderer implements AutoCloseable {
         // wherever the last shot was taken. Map data is unaffected; only settings are isolated.
         PreferencesManager.setEphemeral(true);
 
+        // The renderer's pictures stand for a phone's screen, at whatever size they are drawn:
+        // buttons and text keep to fractions of it rather than the desktop's fixed pixel sizes.
+        com.peaknav.utils.Units.setProportionalInterface(true);
+
         MapViewerDesktopSingleton.initializeDesktopLoadFactory();
         // What this renders is the phones' interface - the tutorial's screenshots and their
         // markers come from here - so it keeps the camera and gyroscope buttons the desktop
@@ -197,9 +201,12 @@ public final class PeakNavRenderer implements AutoCloseable {
         PeakNavRenderer renderer = new PeakNavRenderer(width, height, thread, app);
         // MapApp opens on the intro screen, which is a menu, not the map.
         renderer.onRenderThread(() -> {
-            app.setScreen(app.mapViewerScreen);
-            // Redirects finished snapshots to a file instead of the desktop save dialog.
+            // Redirects finished snapshots to a file instead of the desktop save dialog, and
+            // every prompt, chooser and browser launch into a log instead of onto the screen.
+            // Installed before the map screen opens, so nothing it does can get past.
             app.nativeScreenCaller = renderer.snapshotWriter;
+            com.badlogic.gdx.Gdx.net = renderer.snapshotWriter.withoutBrowser(com.badlogic.gdx.Gdx.net);
+            app.setScreen(app.mapViewerScreen);
             renderer.renderIntoOffscreenBuffer();
         });
         return renderer;
@@ -1165,6 +1172,14 @@ public final class PeakNavRenderer implements AutoCloseable {
      */
     public int suppressedPrompts() {
         return snapshotWriter.suppressedPromptCount();
+    }
+
+    /**
+     * The intercepted prompts with a sequence number above {@code afterSeq}, oldest first:
+     * what the app would have asked a person, and so what a client should know it did not.
+     */
+    List<FileSnapshotWriter.SuppressedPrompt> suppressedPromptsAfter(int afterSeq) {
+        return snapshotWriter.suppressedPromptsAfter(afterSeq);
     }
 
     /**

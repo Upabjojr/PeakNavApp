@@ -84,7 +84,7 @@ public class MapViewerScreen implements Screen {
 	private Window window = null;
 	public Vector3 impact = null;
 
-	private Viewport stageViewport;
+	private ExtendViewport stageViewport;
 	private Viewport stageNavigationViewport;
 	private final float sidebarProp = 0.2f;
 
@@ -1561,10 +1561,16 @@ public class MapViewerScreen implements Screen {
 		int insetRight = Gdx.graphics.getSafeInsetRight();
 		int insetTop = Gdx.graphics.getSafeInsetTop();
 		int insetBottom = Gdx.graphics.getSafeInsetBottom();
-		stageViewport.update(
-				Math.max(1, width - insetLeft - insetRight),
-				Math.max(1, height - insetTop - insetBottom),
-				true);
+		int stageWidth = Math.max(1, width - insetLeft - insetRight);
+		int stageHeight = Math.max(1, height - insetTop - insetBottom);
+		if (!Units.isProportionalInterface()) {
+			// One stage unit per pixel, whatever the window's size: the widgets were sized once,
+			// in pixels, and an ExtendViewport over the first size scaled them all up with every
+			// larger window - buttons twice as big in a maximised desktop window.
+			stageViewport.setMinWorldWidth(stageWidth);
+			stageViewport.setMinWorldHeight(stageHeight);
+		}
+		stageViewport.update(stageWidth, stageHeight, true);
 		stageViewport.setScreenPosition(insetLeft, insetBottom);
 	}
 

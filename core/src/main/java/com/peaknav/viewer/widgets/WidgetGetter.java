@@ -320,7 +320,7 @@ public class WidgetGetter {
             tableCameraControl.setFillParent(true);
             tableCameraControl.bottom();
             Slider.SliderStyle sliderStyleCA = new Slider.SliderStyle();
-            float w = Gdx.graphics.getHeight()*0.05f;
+            float w = Gdx.graphics.getHeight() * 0.05f * com.peaknav.utils.Units.getUiScale();
             sliderStyleCA.knob = getC().widgetTextures.getTextureRegionDrawable("icons/icon_slider_alpha.png");
             sliderStyleCA.knob.setMinHeight(w);
             sliderStyleCA.knob.setMinWidth(w);
@@ -881,7 +881,7 @@ public class WidgetGetter {
             // Same knob as the outline-visibility bar at the bottom (the round alpha knob),
             // not the elevation bar's.
             Slider.SliderStyle terrainStyle = new Slider.SliderStyle();
-            float knob = Gdx.graphics.getHeight() * 0.05f;
+            float knob = Gdx.graphics.getHeight() * 0.05f * com.peaknav.utils.Units.getUiScale();
             terrainStyle.knob = getC().widgetTextures.getTextureRegionDrawable("icons/icon_slider_alpha.png");
             terrainStyle.knob.setMinHeight(knob);
             terrainStyle.knob.setMinWidth(knob);

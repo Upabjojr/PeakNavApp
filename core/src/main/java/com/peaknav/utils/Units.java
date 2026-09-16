@@ -121,7 +121,74 @@ public class Units {
     }
 
     public static float getWidgetUnitStep() {
-        return Math.min(Gdx.graphics.getHeight(), Gdx.graphics.getWidth())/10f;
+        return getUiShortSide() / 10f;
+    }
+
+    /**
+     * The widest a screen's short side counts as when sizing buttons and text, in
+     * density-independent pixels (1/160 inch): a little more than a large phone's 410-430.
+     * Buttons are a tenth of it, 48 dp, the size a fingertip presses comfortably.
+     */
+    static final float MAX_UI_SHORT_SIDE_DP = 480f;
+
+    /**
+     * Sizes as fractions of the whole window, whatever its size: the headless renderer's,
+     * whose pictures stand for a phone's screen however large they are rendered.
+     */
+    private static volatile boolean proportionalInterface = false;
+
+    /** Called by the headless renderer, before the app starts; see {@link #getUiShortSide()}. */
+    public static void setProportionalInterface(boolean proportional) {
+        proportionalInterface = proportional;
+    }
+
+    public static boolean isProportionalInterface() {
+        return proportionalInterface;
+    }
+
+    /**
+     * The screen's short side as far as sizing buttons and text goes, in the stage's pixels.
+     * Buttons are a tenth of it, fonts other fractions.
+     *
+     * <ul>
+     * <li>Phones: the real short side, as it always was - about 40 dp buttons.
+     * <li>Tablets and unfolded foldables (Android, iOS): capped at {@link #MAX_UI_SHORT_SIDE_DP},
+     * so the controls stay finger-sized instead of growing with the screen. On iOS the app
+     * works in pixels and the backend's density is its ppi / 160.
+     * <li>Desktop: a fixed 480 window pixels, 48 px buttons, however large or small the window
+     * is and however it is resized. The monitor's reported density is not used: it is often a
+     * guess, and a mouse pointer does not need fingertip-sized targets anyway.
+     * <li>The headless renderer: the real short side (see {@link #setProportionalInterface}).
+     * </ul>
+     */
+    public static float getUiShortSide() {
+        float shortSide = Math.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        if (proportionalInterface) {
+            return shortSide;
+        }
+        com.badlogic.gdx.Application.ApplicationType type = Gdx.app.getType();
+        if (type == com.badlogic.gdx.Application.ApplicationType.Android
+                || type == com.badlogic.gdx.Application.ApplicationType.iOS) {
+            return shortSide * uiScale(shortSide, Gdx.graphics.getDensity());
+        }
+        return MAX_UI_SHORT_SIDE_DP;
+    }
+
+    /** {@link #getUiShortSide()} as a fraction of the screen's real short side. */
+    public static float getUiScale() {
+        float shortSide = Math.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        return shortSide > 0 ? getUiShortSide() / shortSide : 1f;
+    }
+
+    /**
+     * {@link #getUiScale()} for a short side in pixels and a density in pixels per dp (on iOS,
+     * where the app works in pixels, the backend's ppi / 160).
+     */
+    static float uiScale(float shortSidePixels, float density) {
+        if (!(density > 0f) || !(shortSidePixels > 0f)) {
+            return 1f;
+        }
+        return Math.min(1f, MAX_UI_SHORT_SIDE_DP * density / shortSidePixels);
     }
 
     /**

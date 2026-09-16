@@ -215,7 +215,18 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
             searchButton.addActionListener(actionEvent -> {
                 final int generation = ++searchGeneration;
-                String searchText = textField.getText();
+                // Coordinates, in any of the common printed forms, need no results to choose from.
+                double[] coordinates = com.peaknav.utils.CoordinateSearch.parseCoordinates(textField.getText());
+                if (coordinates != null) {
+                    Gdx.app.postRunnable(() -> getC().L.setCurrentTargetCoords(coordinates[0], coordinates[1]));
+                    searchFrame.dispose();
+                    MapViewerSingleton.getAppInstance().resume();
+                    return;
+                }
+                String searchText = com.peaknav.utils.CoordinateSearch.cleanQuery(textField.getText());
+                if (searchText.isEmpty()) {
+                    return;
+                }
                 List<LuceneGeonameSearch.GeonameResult> geonameResults = getC().luceneGeonameSearch.searchGeoName(searchText);
                 model.clear();
                 for (LuceneGeonameSearch.GeonameResult gr : geonameResults) {

@@ -393,6 +393,10 @@ public class PeakNavDownloadManager {
                 ex.printStackTrace();
             }
         }
+        // Finished, whatever the queue held. With nothing left to fetch - every tile already
+        // downloaded - no worker ever reported progress, so the bar the download showed stayed
+        // on screen at 0 for good, and anything waiting for it to fill waited forever.
+        getAppState().setMapDataDownloadProgressRatio(1f);
 
         NotificationManagerPeakNav notificationManager = getC().getMapViewerScreen().mapApp.loadFactory.getPeakNavNotificationManager();
         if (notificationManager != null) {
