@@ -121,7 +121,44 @@ public class Units {
     }
 
     public static float getWidgetUnitStep() {
-        return Math.min(Gdx.graphics.getHeight(), Gdx.graphics.getWidth())/10f;
+        return Math.min(Gdx.graphics.getHeight(), Gdx.graphics.getWidth()) * getUiScale() / 10f;
+    }
+
+    /**
+     * The widest a screen's short side counts as when sizing buttons and text, in
+     * density-independent pixels (1/160 inch): a little more than a large phone's 410-430.
+     */
+    static final float MAX_UI_SHORT_SIDE_DP = 480f;
+
+    /**
+     * How much to shrink the interface on a large touch screen, 1 everywhere else.
+     *
+     * <p>Buttons and fonts are fractions of the screen's short side, which on a phone gives
+     * buttons of about 40 dp. A tablet's short side is 600-1000 dp, and the same fractions
+     * made everything twice as large to the eye and the finger. So on Android and iOS the
+     * short side is capped at {@link #MAX_UI_SHORT_SIDE_DP}: phones are unchanged, tablets
+     * and unfolded foldables get phone-sized controls. The desktop keeps its sizing, its
+     * window being a different matter (and its reported density a monitor's guess).
+     */
+    public static float getUiScale() {
+        com.badlogic.gdx.Application.ApplicationType type = Gdx.app.getType();
+        if (type != com.badlogic.gdx.Application.ApplicationType.Android
+                && type != com.badlogic.gdx.Application.ApplicationType.iOS) {
+            return 1f;
+        }
+        return uiScale(Math.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight()),
+                Gdx.graphics.getDensity());
+    }
+
+    /**
+     * {@link #getUiScale()} for a short side in pixels and a density in pixels per dp (on iOS,
+     * where the app works in pixels, the backend's ppi / 160).
+     */
+    static float uiScale(float shortSidePixels, float density) {
+        if (!(density > 0f) || !(shortSidePixels > 0f)) {
+            return 1f;
+        }
+        return Math.min(1f, MAX_UI_SHORT_SIDE_DP * density / shortSidePixels);
     }
 
     /**
