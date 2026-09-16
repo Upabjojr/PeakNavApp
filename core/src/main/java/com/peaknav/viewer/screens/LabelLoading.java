@@ -22,12 +22,12 @@ public class LabelLoading {
                 break;
             case LOADING_UPDATING:
             case LOADING:
-                labelNoDataInThisArea.setText(s("Loading"));
+                labelNoDataInThisArea.setText(downloadingOr(s("Loading")));
                 tableCenterNoData.setVisible(true);
                 getAppState().setLoadingMapData(true);
                 break;
             case NO_DATA:
-                labelNoDataInThisArea.setText(s("No_downloaded_data_for_this_area"));
+                labelNoDataInThisArea.setText(downloadingOr(s("No_downloaded_data_for_this_area")));
                 tableCenterNoData.setVisible(true);
                 getAppState().setLoadingMapData(false);
                 break;
@@ -35,6 +35,8 @@ public class LabelLoading {
     }
 
     private State state;
+    /** How far a running map data download has got, 0-100, or -1 when none is running. */
+    private int downloadPercent = -1;
     private final Table tableCenterNoData;
     private final Label labelNoDataInThisArea;
 
@@ -56,6 +58,26 @@ public class LabelLoading {
         // labelNoDataInThisArea.setFontScale(3f);
         tableCenterNoData.add(labelNoDataInThisArea).height(height).row();
 
+    }
+
+    /**
+     * While map data downloads, the centre of the screen says so and how far it has got - "Download
+     * in progress... 42%" - in place of "Loading..." or "No data for this area", which is what the
+     * download is about to change. -1 when the download has finished: the state's own text again.
+     * Render thread only.
+     */
+    public void setDownloadPercent(int percent) {
+        if (percent == downloadPercent) {
+            return;
+        }
+        downloadPercent = percent;
+        if (state != State.LOADED) {
+            setState(state);
+        }
+    }
+
+    private String downloadingOr(String text) {
+        return downloadPercent < 0 ? text : s("Download_in_progress") + " " + downloadPercent + "%";
     }
 
     public Table getTableCenterNoData() {

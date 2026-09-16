@@ -587,7 +587,16 @@ public class WidgetGetter {
         public void setDownloadProgress(final float ratio) {
             progressBar.setValue(ratio);
             final int percent = Math.max(0, Math.min(100, (int) Math.floor(ratio * 100f)));
-            Gdx.app.postRunnable(() -> progressPercentLabel.setText(percent + "%"));
+            // The bar hides once the ratio passes 0.999 (PeakNavAppState), and so does the
+            // percentage in the middle of the screen.
+            final boolean finished = ratio > 0.999f;
+            Gdx.app.postRunnable(() -> {
+                progressPercentLabel.setText(percent + "%");
+                com.peaknav.viewer.screens.LabelLoading labelLoading = mapApp.mapViewerScreen.labelLoading;
+                if (labelLoading != null) {
+                    labelLoading.setDownloadPercent(finished ? -1 : percent);
+                }
+            });
         }
 
         public void setButtonHereFromGps() {
