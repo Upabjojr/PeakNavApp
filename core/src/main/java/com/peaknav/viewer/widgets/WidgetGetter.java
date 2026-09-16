@@ -312,13 +312,20 @@ public class WidgetGetter {
                     // .padLeft(borderPad).padBottom(borderPad);
                     //.row();
 
-            // The photo bar, exactly as before with the match button added at its left,
-            // centred on the screen: the outline bar in the middle, a button either side,
-            // on the line of the gyro, "?" and here buttons (its own table, so the gyro
-            // button's column does not push it off centre).
+            // The photo bar: the match button, the outline bar and the close button, on the
+            // line of the gyro, "?" and here buttons (its own table, so the gyro button's
+            // column does not push it about).
+            //
+            // Centred in the gap between the gyro button and "?", not on the screen. Both are
+            // anchored to the screen's edges - the gyro ends 1.3 buttons in from the left, "?"
+            // starts 2.8 in from the right - so that gap is centred 0.75 of a button left of
+            // the screen's middle, whatever its width. Centred on the screen instead, the bar
+            // (5.6 buttons wide, with a 3-button outline bar) put its close button over "?"
+            // on every phone in portrait, where the screen is 10 buttons across. With a
+            // 2.5-button outline bar it is 5.1 wide, 0.4 of a button clear of both.
             tableCameraControl = new Table();
             tableCameraControl.setFillParent(true);
-            tableCameraControl.bottom();
+            tableCameraControl.bottom().padRight(1.5f * widgetUnitStep);
             Slider.SliderStyle sliderStyleCA = new Slider.SliderStyle();
             float w = Gdx.graphics.getHeight() * 0.05f * com.peaknav.utils.Units.getUiScale();
             sliderStyleCA.knob = getC().widgetTextures.getTextureRegionDrawable("icons/icon_slider_alpha.png");
@@ -348,7 +355,7 @@ public class WidgetGetter {
                     MapViewerSingleton.getViewerInstance().labelRenderer.setBackgroundAlpha(alpha);
                 }
             });
-            tableCameraControl.add(sliderCameraAlpha).width(3*widgetUnitStep).height(widgetUnitStep)
+            tableCameraControl.add(sliderCameraAlpha).width(2.5f*widgetUnitStep).height(widgetUnitStep)
                     .padBottom(borderPad);
 
             Button buttonCameraCancel = getC().widgetTextures.getButtonWithIcon(
