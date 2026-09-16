@@ -75,7 +75,7 @@ recipe only looks at tags of that form, so the ordinary `X.Y.Z` release tags on 
    ([contributing guide](https://gitlab.com/fdroid/fdroiddata/-/blob/master/CONTRIBUTING.md)).
 
 After the first release, `AutoUpdateMode: Version` with `UpdateCheckMode: Tags` makes F-Droid pick
-up each new `X.Y.Z` tag by itself. Each release then needs only the version bump, the tag and a
-changelog file - and an Android build kept free of anything F-Droid cannot build: no Play
+up each new `fdroid-X.Y.Z` tag by itself. Each release then needs only `main` merged into this
+branch, the version, a changelog file and the tag - and an Android build kept free of anything F-Droid cannot build: no Play
 services or other proprietary libraries, no prebuilt binaries, Maven repositories only from
 the allowed hosts.
