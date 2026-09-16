@@ -32,17 +32,30 @@ public class I18NWrapper {
 
     public I18NWrapper() {
         I18NBundle i18NBundle;
-        Locale locale = localeOverride;
+        Locale locale = localeOverride != null ? localeOverride : translationLocale(Locale.getDefault());
         try {
-            i18NBundle = locale == null
-                    ? I18NBundle.createBundle(Gdx.files.internal("i18n/strings"))
-                    : I18NBundle.createBundle(Gdx.files.internal("i18n/strings"), locale);
+            i18NBundle = I18NBundle.createBundle(Gdx.files.internal("i18n/strings"), locale);
         } catch (MissingResourceException missingResourceException) {
             // No translation for that language: English rather than nothing.
             i18NBundle = I18NBundle.createBundle(Gdx.files.internal("i18n/strings"), Locale.UK);
         }
         this.i18NBundle = i18NBundle;
         I18NBundle.setExceptionOnMissingKey(false);
+    }
+
+    /**
+     * The locale whose strings file holds the translation for {@code locale}.
+     *
+     * <p>Norwegian reaches the app as "nb" (Bokmal) or "nn" (Nynorsk) - on iOS, and on Android
+     * since 7 - but its translation is strings_no. There is no base strings file for a lookup
+     * to end in, so asking for "nb" found nothing and the app fell back to English.
+     */
+    static Locale translationLocale(Locale locale) {
+        String language = locale.getLanguage();
+        if ("nb".equals(language) || "nn".equals(language)) {
+            return new Locale("no", locale.getCountry());
+        }
+        return locale;
     }
 
     public String s(String key) {

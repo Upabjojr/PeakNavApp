@@ -4,6 +4,21 @@
 <dict>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
+    <!-- The languages the app is translated into (assets/i18n/strings_*.properties). iOS runs
+         an app in the first of the user's languages that the app declares, and without this
+         list it declares English alone, so every device got English whatever it was set to.
+         The translations are not .lproj folders, which is why they are listed by hand.
+         Norwegian is "nb", the code iOS uses; the app reads strings_no for it. -->
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>de</string>
+        <string>es</string>
+        <string>fr</string>
+        <string>it</string>
+        <string>nb</string>
+        <string>pt</string>
+    </array>
     <key>CFBundleDisplayName</key>
     <string>${app.name}</string>
     <key>CFBundleExecutable</key>
