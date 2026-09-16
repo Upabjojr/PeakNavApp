@@ -1525,7 +1525,9 @@ public class OptionPane {
         });
         buttons.add(buttonGpxMenu);
 
-        ImageTextButtonOptionPane checkBoxLayerVisibleBaseRoads = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_roads.png", s("Base_Roads"), true);
+        // Named for everything under it - roads and paths, ski pistes, lifts - not after the
+        // first of its submenu rows, which keeps the name "Roads and paths".
+        ImageTextButtonOptionPane checkBoxLayerVisibleBaseRoads = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_roads.png", s("Routes_group"), true);
         addCheckingStateProperty(checkBoxLayerVisibleBaseRoads, () -> P.isViewerLayerVisibleBaseRoads());
         checkBoxLayerVisibleBaseRoads.addClickListener(() -> changer.execute(
                 () -> applyRoadsVisible(checkBoxLayerVisibleBaseRoads.isChecked())));
