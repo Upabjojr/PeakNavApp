@@ -62,7 +62,6 @@ import org.robovm.apple.webkit.WKWebView;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Pattern;
 
 /**
  * The iOS side of everything the app asks the platform for: alerts, sharing, the browser,
@@ -719,15 +718,6 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
 
     // ------------------------------------------------------------------ search
 
-    /**
-     * "lat, lon" typed into the search box. Mirrors the pattern in {@code OnlineSearch}, which
-     * navigates on a match and never calls the results listener - so this has to recognise the
-     * same input, or the results dialogue below would sit waiting for a callback that is never
-     * coming.
-     */
-    private static final Pattern COORDINATE_TEXT =
-            Pattern.compile("\\s*(-?\\d+\\.?\\d*)\\s*,\\s*(-?\\d+\\.?\\d*)\\s*");
-
     /** Enough results to choose from; an alert with forty actions is not a list. */
     private static final int MAX_SEARCH_RESULTS = 10;
 
@@ -754,7 +744,7 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                     @Override
                     public void onEntered(String[] values) {
                         if (values.length > 0 && values[0] != null && !values[0].trim().isEmpty()) {
-                            runSearch(values[0].trim());
+                            runSearch(com.peaknav.utils.CoordinateSearch.cleanQuery(values[0]));
                         }
                     }
 
@@ -765,12 +755,10 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     }
 
     private void runSearch(final String query) {
-        if (COORDINATE_TEXT.matcher(query).matches()) {
-            // OnlineSearch navigates for this itself, on the render thread where target
-            // mutation belongs. Nothing to choose from, so no results dialogue - but the
-            // listener is a no-op rather than null: if this pattern and OnlineSearch's ever
-            // drift apart, the text falls through to Nominatim, and null would be an NPE on
-            // the network thread instead of simply finding nothing.
+        if (com.peaknav.utils.CoordinateSearch.parseCoordinates(query) != null) {
+            // Coordinates. OnlineSearch recognises them with the same CoordinateSearch and
+            // navigates, on the render thread where target mutation belongs, without calling
+            // the results listener - so there is no results dialogue to wait for.
             Gdx.app.postRunnable(() -> getC().onlineSearch.parseDestinationText(
                     query, (ArrayList<NominatimResponse> ignored) -> { }));
             return;

@@ -27,6 +27,7 @@ import com.peaknav.R;
 import com.peaknav.compatibility.NativeScreenCallerAndroid;
 import com.peaknav.database.LuceneGeonameSearch;
 import com.peaknav.network.NominatimResponse;
+import com.peaknav.utils.CoordinateSearch;
 
 import org.osmdroid.api.IMapController;
 import org.osmdroid.config.Configuration;
@@ -42,6 +43,7 @@ import org.osmdroid.views.overlay.Marker;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 
 public class SearchMenu extends Fragment {
 
@@ -78,12 +80,7 @@ public class SearchMenu extends Fragment {
             destinationChosen(nominatimResponse);
              */
 
-            InputMethodManager imm = (InputMethodManager) getSystemService(getContext(), InputMethodManager.class);
-            if (imm != null) {
-                imm.hideSoftInputFromWindow(searchMenuText.getWindowToken(), 0);
-            }
-            searchMenuText.clearFocus();
-
+            hideKeyboard();
         });
 
         searchMenuText = view.findViewById(R.id.search_menu_text);
@@ -108,6 +105,13 @@ public class SearchMenu extends Fragment {
         });
 
         doSearch.setOnClickListener(view -> {
+            // Coordinates need no list: pressing Search marks them on the map, ready for Go To.
+            double[] coordinates = CoordinateSearch.parseCoordinates(searchMenuText.getText().toString());
+            if (coordinates != null) {
+                destinationChosen(new GeoPoint(coordinates[0], coordinates[1]));
+                hideKeyboard();
+                return;
+            }
             doSearchResults();
         });
 
@@ -115,8 +119,30 @@ public class SearchMenu extends Fragment {
         return view;
     }
 
+    private void hideKeyboard() {
+        InputMethodManager imm = (InputMethodManager) getSystemService(getContext(), InputMethodManager.class);
+        if (imm != null) {
+            imm.hideSoftInputFromWindow(searchMenuText.getWindowToken(), 0);
+        }
+        searchMenuText.clearFocus();
+    }
+
     private void doSearchResults() {
-        String searchText = searchMenuText.getText().toString().strip();
+        String typed = searchMenuText.getText().toString();
+        String searchText = CoordinateSearch.cleanQuery(typed);
+
+        // Coordinates, in any of the common printed forms, are offered as the one result while
+        // typing - not jumped to on every keystroke, since "46.02, 7" on the way to "46.02, 7.74"
+        // already reads as coordinates.
+        double[] coordinates = CoordinateSearch.parseCoordinates(typed);
+        if (coordinates != null) {
+            String label = String.format(Locale.ROOT, "%.5f, %.5f", coordinates[0], coordinates[1]);
+            List<LuceneGeonameSearch.GeonameResult> point = new ArrayList<>();
+            point.add(new LuceneGeonameSearch.GeonameResult(
+                    label, label, (float) coordinates[0], (float) coordinates[1], -1));
+            addGeoNameResponses(point);
+            return;
+        }
 
         if (searchText.isEmpty()) {
             // clear previous results
