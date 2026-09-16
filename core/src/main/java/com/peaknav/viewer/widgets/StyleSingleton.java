@@ -36,9 +36,8 @@ public class StyleSingleton {
     private float minSize;
 
     public void updateMinSize() {
-        // The short side as far as sizes go: smaller than the screen's on a tablet.
-        minSize = Math.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight())
-                * com.peaknav.utils.Units.getUiScale();
+        // The short side as far as sizes go: capped on a tablet, fixed on the desktop.
+        minSize = com.peaknav.utils.Units.getUiShortSide();
     }
 
     /**

@@ -147,6 +147,10 @@ public final class PeakNavRenderer implements AutoCloseable {
         // wherever the last shot was taken. Map data is unaffected; only settings are isolated.
         PreferencesManager.setEphemeral(true);
 
+        // The renderer's pictures stand for a phone's screen, at whatever size they are drawn:
+        // buttons and text keep to fractions of it rather than the desktop's fixed pixel sizes.
+        com.peaknav.utils.Units.setProportionalInterface(true);
+
         MapViewerDesktopSingleton.initializeDesktopLoadFactory();
         // What this renders is the phones' interface - the tutorial's screenshots and their
         // markers come from here - so it keeps the camera and gyroscope buttons the desktop

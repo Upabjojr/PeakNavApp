@@ -297,6 +297,11 @@ public class IntroScreen implements Screen {
 
     @Override
     public void resize(int width, int height) {
+        if (!Units.isProportionalInterface() && stage.getViewport() instanceof ExtendViewport) {
+            // One stage unit per pixel, as on the map screen: no growing with the window.
+            ((ExtendViewport) stage.getViewport()).setMinWorldWidth(width);
+            ((ExtendViewport) stage.getViewport()).setMinWorldHeight(height);
+        }
         stage.getViewport().update(width, height, true);
         spriteBatch.getProjectionMatrix().setToOrtho2D(0, 0, width, height);
         shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());
