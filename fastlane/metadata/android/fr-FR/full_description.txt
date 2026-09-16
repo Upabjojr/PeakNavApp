@@ -1,0 +1,25 @@
+PeakNav dessine les montagnes du monde entier en 3D : le relief autour de n'importe quel point de la Terre, avec les noms des sommets proches, les sentiers et les routes projetés sur les versants, les refuges, les lacs, les îles et les massifs.
+
+<b>Ce que fait l'application</b>
+<ul>
+<li>Montre les montagnes autour de vous, ou autour de tout lieu recherché, depuis le sol ou depuis les airs ; volez jusqu'à un sommet, ou tournez autour.</li>
+<li>Nomme les sommets, refuges, villes, lacs, îles et massifs en vue, et dessine sentiers et routes sur le relief, colorés selon la difficulté, avec leurs noms et numéros.</li>
+<li>Pistes de ski bleues, rouges et noires qui s'écoulent vers la vallée, et les remontées - téléphériques, télécabines, télésièges, téléskis - avec leurs cabines et sièges qui montent, chacune nommée.</li>
+<li>Utilise le GPS et le gyroscope pour montrer ce que vous regardez : levez le téléphone et la vue tourne avec lui.</li>
+<li>Charge une trace GPX et la survole, avec un panneau indiquant la distance, le temps de marche, le dénivelé et le profil altimétrique avec les horaires du parcours ; « itinéraire jusqu'ici » trouve un chemin à pied sur les sentiers cartographiés jusqu'au point touché.</li>
+<li>Place une photo derrière le relief et en compare la ligne d'horizon aux montagnes, pour savoir où visait l'appareil et nommer les sommets de l'image.</li>
+<li>Dessine le ciel tel qu'il est : soleil, lune et étoiles à leur vraie position pour votre lieu et votre heure, constellations, phase de la lune.</li>
+<li>Images satellite et ombrage solaire en calques optionnels ; unités métriques ou impériales.</li>
+<li>Fonctionne hors ligne une fois une zone téléchargée : les données d'altitude et de carte sont téléchargées par zone et restent sur l'appareil.</li>
+</ul>
+
+<b>Données</b>
+Relief issu de l'ASTER GDEM (METI/NASA) ; sentiers, routes, pistes, remontées, refuges et noms d'OpenStreetMap (données de ski via OpenSnowMap) ; toponymes de GeoNames et Wikidata ; images de NASA GIBS et de l'USGS. Les jeux de données sont publiés librement sur Hugging Face, et d'autres sources d'images peuvent être ajoutées dans les options.
+
+<b>Vie privée</b>
+L'application ne collecte aucune donnée personnelle. Position, recherches et photos restent sur l'appareil ; le seul trafic réseau est le téléchargement des données et images des fournisseurs ci-dessus et, lors d'une recherche de lieu, une requête à Nominatim d'OpenStreetMap.
+
+<b>À propos de cette version</b>
+Dans cette version, la recherche de lieux fonctionne uniquement en ligne : l'index des toponymes des autres versions est généré à partir des données GeoNames et ne fait pas partie de la version F-Droid.
+
+Logiciel libre sous licence GPL v3. Code source et versions de bureau (Windows, macOS, Linux) sur https://github.com/Upabjojr/PeakNavApp

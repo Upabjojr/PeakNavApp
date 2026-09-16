@@ -1,0 +1,25 @@
+PeakNav disegna le montagne di tutto il mondo in 3D: il terreno intorno a qualsiasi punto della Terra, con i nomi delle cime vicine, i sentieri e le strade proiettati sui versanti, i rifugi, i laghi, le isole e le catene montuose.
+
+<b>Cosa fa</b>
+<ul>
+<li>Mostra le montagne intorno a te, o intorno a qualsiasi luogo cercato, da terra o dall'alto; vola su una cima, o girale intorno.</li>
+<li>Nomina cime, rifugi, paesi, laghi, isole e catene in vista, e disegna sentieri e strade sul terreno, colorati per difficoltà e con nomi e numeri.</li>
+<li>Piste da sci blu, rosse e nere che scorrono verso valle, e gli impianti - funivie, cabinovie, seggiovie, skilift - con cabine e seggiolini che salgono, ciascuno col suo nome.</li>
+<li>Usa il GPS e il giroscopio per mostrare ciò che stai guardando: alza il telefono e la vista ruota con lui.</li>
+<li>Carica una traccia GPX e la percorre in volo, con un pannello che mostra distanza, tempo di cammino, dislivello e il profilo altimetrico con i tempi lungo il percorso; "portami qui" trova un percorso a piedi sui sentieri mappati fino al punto che tocchi.</li>
+<li>Mette una fotografia dietro il terreno e ne confronta la linea dell'orizzonte con le montagne, per capire dove puntava la macchina fotografica e dare un nome alle cime nella foto.</li>
+<li>Disegna il cielo com'è davvero: sole, luna e stelle nelle loro posizioni reali per il tuo luogo e la tua ora, le costellazioni, la fase lunare.</li>
+<li>Immagini satellitari e ombreggiatura solare come livelli opzionali; unità metriche o imperiali.</li>
+<li>Funziona senza connessione una volta scaricata un'area: altimetria e dati cartografici si scaricano per area e restano sul dispositivo.</li>
+</ul>
+
+<b>Dati</b>
+Terreno dall'ASTER GDEM (METI/NASA); sentieri, strade, piste, impianti, rifugi e nomi da OpenStreetMap (dati sciistici tramite OpenSnowMap); toponimi da GeoNames e Wikidata; immagini da NASA GIBS e USGS. I dataset sono pubblicati apertamente su Hugging Face, e altre sorgenti di immagini si possono aggiungere dalle opzioni.
+
+<b>Privacy</b>
+L'app non raccoglie dati personali. Posizione, ricerche e fotografie restano sul dispositivo; l'unico traffico di rete è lo scaricamento di dati e immagini dai fornitori qui sopra e, quando cerchi un luogo, una richiesta al Nominatim di OpenStreetMap.
+
+<b>Su questa versione</b>
+In questa versione la ricerca dei luoghi funziona solo online: l'indice dei toponimi delle altre versioni è generato dai dump di GeoNames e non fa parte della versione per F-Droid.
+
+Software libero sotto licenza GPL v3. Codice sorgente e versioni desktop (Windows, macOS, Linux) su https://github.com/Upabjojr/PeakNavApp

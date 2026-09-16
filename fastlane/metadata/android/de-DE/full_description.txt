@@ -1,0 +1,25 @@
+PeakNav zeigt die Berge der ganzen Welt in 3D: das Gelände um jeden Punkt der Erde, mit den Namen der Gipfel in der Nähe, Wegen und Straßen auf den Hängen, Hütten, Seen, Inseln und Gebirgszügen.
+
+<b>Was die App kann</b>
+<ul>
+<li>Zeigt die Berge um dich oder um jeden gesuchten Ort, vom Boden oder aus der Luft; flieg zu einem Gipfel oder umkreise ihn.</li>
+<li>Benennt Gipfel, Hütten, Orte, Seen, Inseln und Gebirge im Blick und zeichnet Wege und Straßen auf das Gelände, nach Schwierigkeit eingefärbt und mit Namen und Nummern.</li>
+<li>Skipisten in Blau, Rot und Schwarz, die talwärts fließen, und die Lifte - Seilbahnen, Gondeln, Sessellifte, Schlepplifte - mit Kabinen und Sesseln, die bergauf fahren, jeweils mit Namen.</li>
+<li>Nutzt GPS und Gyroskop, um zu zeigen, wohin du schaust: halte das Telefon hoch, und die Ansicht dreht sich mit.</li>
+<li>Lädt einen GPX-Track und fliegt ihn ab, mit einer Anzeige von Strecke, Gehzeit, Aufstieg und Höhenprofil mit den Zeiten unterwegs; "Route hierher" findet einen Fußweg auf den kartierten Wegen zu jedem angetippten Punkt.</li>
+<li>Legt ein Foto hinter das Gelände und gleicht dessen Horizontlinie mit den Bergen ab, um die Blickrichtung zu bestimmen und die Gipfel im Bild zu benennen.</li>
+<li>Zeigt den Himmel, wie er wirklich ist: Sonne, Mond und Sterne an ihren wahren Positionen für Ort und Zeit, Sternbilder, die Mondphase.</li>
+<li>Satellitenbilder und Sonnenschattierung als optionale Ebenen; metrische oder imperiale Einheiten.</li>
+<li>Funktioniert offline, sobald ein Gebiet heruntergeladen ist: Höhen- und Kartendaten werden pro Gebiet geladen und bleiben auf dem Gerät.</li>
+</ul>
+
+<b>Daten</b>
+Gelände aus dem ASTER GDEM (METI/NASA); Wege, Straßen, Pisten, Lifte, Hütten und Namen aus OpenStreetMap (Skidaten über OpenSnowMap); Ortsnamen aus GeoNames und Wikidata; Bilder von NASA GIBS und USGS. Die Datensätze sind offen auf Hugging Face veröffentlicht; weitere Bildquellen lassen sich in den Optionen hinzufügen.
+
+<b>Datenschutz</b>
+Die App sammelt keine persönlichen Daten. Position, Suchen und Fotos bleiben auf dem Gerät; der einzige Netzwerkverkehr ist der Download von Karten- und Bilddaten der oben genannten Anbieter und, bei einer Ortssuche, eine Anfrage an Nominatim von OpenStreetMap.
+
+<b>Zu dieser Version</b>
+Die Ortssuche funktioniert in dieser Version nur online: Der Ortsnamen-Index der anderen Versionen wird aus den GeoNames-Daten erzeugt und ist nicht Teil der F-Droid-Version.
+
+Freie Software unter der GPL v3. Quellcode und Desktop-Versionen (Windows, macOS, Linux) unter https://github.com/Upabjojr/PeakNavApp

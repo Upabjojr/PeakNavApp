@@ -1,0 +1,25 @@
+PeakNav tegner fjellene i hele verden i 3D: terrenget rundt ethvert punkt på jorden, med navnene på toppene i nærheten, stier og veier lagt på fjellsidene, hytter, innsjøer, øyer og fjellkjeder.
+
+<b>Hva appen gjør</b>
+<ul>
+<li>Viser fjellene rundt deg, eller rundt ethvert sted du søker etter, fra bakken eller fra luften; fly til en topp, eller sirkle rundt den.</li>
+<li>Navngir topper, hytter, steder, innsjøer, øyer og fjellkjeder i synsfeltet, og tegner stier og veier på terrenget, farget etter vanskelighetsgrad og med navn og nummer.</li>
+<li>Skiløyper i blått, rødt og svart som flyter nedover, og heisene - taubaner, gondoler, stolheiser, skitrekk - med kabiner og stoler som går oppover, hver med sitt navn.</li>
+<li>Bruker GPS og gyroskop til å vise hva du ser på: hold telefonen opp, og visningen snur seg med den.</li>
+<li>Laster inn et GPX-spor og flyr langs det, med et panel som viser distanse, gåtid, stigning og høydeprofil med tidene underveis; "rute hit" finner en gangrute langs kartlagte stier til et punkt du trykker på.</li>
+<li>Legger et fotografi bak terrenget og sammenligner horisontlinjen med fjellene, for å finne hvor kameraet pekte og navngi toppene i bildet.</li>
+<li>Tegner himmelen slik den er: sol, måne og stjerner på sine virkelige posisjoner for ditt sted og tidspunkt, stjernebilder, månefasen.</li>
+<li>Satellittbilder og solskyggelegging som valgfrie lag; metriske eller imperiale enheter.</li>
+<li>Fungerer uten nett når et område er lastet ned: høyde- og kartdata lastes ned per område og blir på enheten.</li>
+</ul>
+
+<b>Data</b>
+Terreng fra ASTER GDEM (METI/NASA); stier, veier, løyper, heiser, hytter og navn fra OpenStreetMap (skidata via OpenSnowMap); stedsnavn fra GeoNames og Wikidata; bilder fra NASA GIBS og USGS. Datasettene er åpent publisert på Hugging Face, og andre bildekilder kan legges til i innstillingene.
+
+<b>Personvern</b>
+Appen samler ingen personopplysninger. Posisjonen, søkene og bildene dine blir på enheten; den eneste nettverkstrafikken er nedlasting av kart- og bildedata fra leverandørene over og, når du søker etter et sted, en forespørsel til OpenStreetMaps Nominatim.
+
+<b>Om denne versjonen</b>
+Stedssøk fungerer bare på nett i denne versjonen: stedsnavnindeksen i de andre versjonene lages fra GeoNames-dataene og er ikke med i F-Droid-versjonen.
+
+Fri programvare under GPL v3. Kildekode og skrivebordsversjoner (Windows, macOS, Linux) på https://github.com/Upabjojr/PeakNavApp
