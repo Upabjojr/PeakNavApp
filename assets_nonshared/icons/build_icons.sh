@@ -89,6 +89,12 @@ done
 # The in-app launcher emblem (IntroScreen) is not drawn from an SVG here: it is the
 # PeakNav logo itself, the same artwork peaknav.com serves, kept as a PNG master with
 # its transparency so it sits on the intro screen's own background.
-sips -z 192 192 "$SRC/peaknav_logo.png" --out "$OUT/ic_launcher.png" >/dev/null
+# sips on macOS, ImageMagick elsewhere: without a fallback a Linux checkout kept whatever
+# ic_launcher.png it had, which was the old placeholder mountain scene.
+if command -v sips >/dev/null; then
+  sips -z 192 192 "$SRC/peaknav_logo.png" --out "$OUT/ic_launcher.png" >/dev/null
+else
+  convert "$SRC/peaknav_logo.png" -resize 192x192 "$OUT/ic_launcher.png"
+fi
 echo "  ic_launcher.png 192x192"
 echo "done."
