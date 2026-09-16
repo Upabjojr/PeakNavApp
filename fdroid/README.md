@@ -52,12 +52,15 @@ lists under `scanignore`.
 
 ## Releasing
 
-1. Merge this branch, bump `versionCode`/`versionName` in `android/build.gradle` (and
-   `projectVersion` in `gradle.properties`), add
+This branch is not merged into `main`: F-Droid builds from a tag on it, `fdroid-X.Y.Z`, and the
+recipe only looks at tags of that form, so the ordinary `X.Y.Z` release tags on `main` are ignored.
+
+1. Bring the branch up to date with the release on `main` (`git merge main` on `fdroid`, or rebase
+   it), bump `versionCode`/`versionName` in `android/build.gradle` if `main` has not, add
    `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` (500 characters at most), and
-   tag the commit `X.Y.Z` as before. Tags before this branch cannot be built: they still needed
-   hand-made icons and the font.
-2. Put that version, code and tag into the placeholders of `com.peaknav.fdroid.yml`.
+   tag the commit `fdroid-X.Y.Z`. Push the branch and the tag to GitHub.
+2. Put that version and code into the placeholders of `com.peaknav.fdroid.yml` (the commit is
+   `fdroid-X.Y.Z`).
 3. Try it (optional; it is what the reviewers run):
 
    ```bash

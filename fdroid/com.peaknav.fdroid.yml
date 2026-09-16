@@ -29,11 +29,12 @@ RepoType: git
 Repo: https://github.com/Upabjojr/PeakNavApp.git
 
 Builds:
-  # Replace the placeholders with the first release tag that contains the F-Droid build changes;
-  # android/build.gradle at that tag must carry exactly this versionCode and versionName.
+  # The F-Droid build is made from the fdroid branch, which is kept apart from main and brought
+  # up to date with it for each release, and tagged fdroid-X.Y.Z. Replace the placeholders with
+  # that tag; android/build.gradle at the tag must carry exactly this versionCode and versionName.
   - versionName: X.Y.Z
     versionCode: NNN
-    commit: X.Y.Z
+    commit: fdroid-X.Y.Z
     subdir: android
     gradle:
       - yes
@@ -57,6 +58,7 @@ Builds:
       - core/src/main/resources/com/peaknav/skyline/sky_model.bin
 
 AutoUpdateMode: Version
-UpdateCheckMode: Tags ^[0-9]+\.[0-9]+\.[0-9]+$
+# Only the fdroid-X.Y.Z tags: the plain X.Y.Z release tags are on main, which does not build here.
+UpdateCheckMode: Tags ^fdroid-[0-9]+\.[0-9]+\.[0-9]+$
 CurrentVersion: X.Y.Z
 CurrentVersionCode: NNN
