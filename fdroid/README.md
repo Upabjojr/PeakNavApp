@@ -25,8 +25,10 @@ bare clone with no manual steps, and a packaging recipe merged into
   dumps and is not something F-Droid's server can rebuild, so this build ships without it; the
   app then searches online only (Nominatim), as the listing says.
 * **The store listing** in [`fastlane/metadata/android/`](../fastlane/metadata/android/): title,
-  summary, description in the app's seven languages, the icon and eight screenshots.
-* **The recipe**, drafted in [`com.peaknav.yml`](./com.peaknav.yml).
+  summary, description in the app's seven languages, the icon and eight portrait store
+  screenshots; the credit for the photo in the picture-overlay one is in the descriptions and in
+  [`SCREENSHOT_PHOTO_CREDITS.md`](./SCREENSHOT_PHOTO_CREDITS.md).
+* **The recipe**, drafted in [`com.peaknav.fdroid.yml`](./com.peaknav.fdroid.yml).
 
 Verified on this branch: `:android:assembleRelease` from a bare clone with the other modules
 removed builds the APK (icons, launcher icon and font inside), `fdroid scanner` finds no
@@ -39,9 +41,10 @@ lists under `scanignore`.
    F-Droid lists the app with the *NonFreeAssets* anti-feature, which the recipe declares.
    Releasing the icon artwork under a free licence while keeping *PeakNav* as a trademark would
    remove the flag; trademark, not copyright, is what stops a fork calling itself PeakNav.
-2. **Signing.** F-Droid signs with its own key, so its APK and the Play/GitHub ones cannot update
-   each other (same `com.peaknav` id, different signatures: users switching reinstall; downloaded
-   maps in external storage are kept). The alternative is a *reproducible build*: F-Droid builds,
+2. **Signing.** F-Droid signs with its own key. The F-Droid build therefore has its own package
+   id, `com.peaknav.fdroid` (passed as a Gradle property by the recipe), so it installs beside the
+   Play/GitHub `com.peaknav` rather than clashing with it; the two keep separate settings and
+   downloaded maps. The alternative is a *reproducible build*: F-Droid builds,
    checks the result is bit-identical to an APK you sign and attach to the GitHub release, and
    ships yours. That lets users move between GitHub and F-Droid freely, but needs the release
    build to be byte-for-byte reproducible and the recipe to carry `Binaries:` and
@@ -54,18 +57,18 @@ lists under `scanignore`.
    `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` (500 characters at most), and
    tag the commit `X.Y.Z` as before. Tags before this branch cannot be built: they still needed
    hand-made icons and the font.
-2. Put that version, code and tag into the placeholders of `com.peaknav.yml`.
+2. Put that version, code and tag into the placeholders of `com.peaknav.fdroid.yml`.
 3. Try it (optional; it is what the reviewers run):
 
    ```bash
    pip install fdroidserver
    git clone https://gitlab.com/fdroid/fdroiddata && cd fdroiddata
-   cp /path/to/PeakNavApp/fdroid/com.peaknav.yml metadata/
-   fdroid readmeta && fdroid lint com.peaknav
-   fdroid build -v -l com.peaknav
+   cp /path/to/PeakNavApp/fdroid/com.peaknav.fdroid.yml metadata/
+   fdroid readmeta && fdroid lint com.peaknav.fdroid
+   fdroid build -v -l com.peaknav.fdroid
    ```
 
-4. Open a merge request on fdroiddata adding `metadata/com.peaknav.yml`
+4. Open a merge request on fdroiddata adding `metadata/com.peaknav.fdroid.yml`
    ([contributing guide](https://gitlab.com/fdroid/fdroiddata/-/blob/master/CONTRIBUTING.md)).
 
 After the first release, `AutoUpdateMode: Version` with `UpdateCheckMode: Tags` makes F-Droid pick

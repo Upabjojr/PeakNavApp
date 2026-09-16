@@ -36,7 +36,11 @@ android {
         buildConfig true
     }
     defaultConfig {
-        applicationId 'com.peaknav'
+        // com.peaknav for Google Play and the GitHub releases. The F-Droid build passes
+        // -PpeaknavApplicationId=com.peaknav.fdroid (see fdroid/com.peaknav.fdroid.yml): F-Droid
+        // signs with its own key, so a distinct id lets it sit beside the Play install instead of
+        // clashing with it.
+        applicationId project.findProperty('peaknavApplicationId') ?: 'com.peaknav'
         minSdkVersion 21
         // Google Play requires the target to stay within a year of the newest Android release:
         // from 31 Aug 2026 an app targeting below 36 (Android 16) can no longer be updated.

@@ -23,3 +23,5 @@ Appen samler ingen personopplysninger. Posisjonen, søkene og bildene dine blir 
 Stedssøk fungerer bare på nett i denne versjonen: stedsnavnindeksen i de andre versjonene lages fra GeoNames-dataene og er ikke med i F-Droid-versjonen.
 
 Fri programvare under GPL v3. Kildekode og skrivebordsversjoner (Windows, macOS, Linux) på https://github.com/Upabjojr/PeakNavApp
+
+Photo in the picture-overlay screenshot: "GGB 3051 Gornergrat Bahnhof 1 2021-08-21" by Herbert Ortner (CC BY 4.0), on Wikimedia Commons.

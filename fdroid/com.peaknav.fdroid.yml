@@ -1,5 +1,5 @@
 # Draft of the F-Droid packaging recipe for PeakNav, in the format of the fdroiddata repository
-# (https://gitlab.com/fdroid/fdroiddata, file metadata/com.peaknav.yml). Kept here so it can be
+# (https://gitlab.com/fdroid/fdroiddata, file metadata/com.peaknav.fdroid.yml). Kept here so it can be
 # tried with fdroidserver before being submitted; the copy that counts is the one merged into
 # fdroiddata. See README.md in this folder for the steps and the placeholders.
 #
@@ -37,6 +37,10 @@ Builds:
     subdir: android
     gradle:
       - yes
+    # A package id of its own, com.peaknav.fdroid: F-Droid signs with its own key, and the id
+    # lets its build be installed beside the Google Play one (android/build.gradle reads it).
+    gradleprops:
+      - peaknavApplicationId=com.peaknav.fdroid
     # Only the Android app is built. settings.gradle includes a module only when its directory
     # exists, so the other targets (construo, RoboVM, the headless renderer) are simply removed.
     rm:

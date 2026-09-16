@@ -23,3 +23,5 @@ L'app non raccoglie dati personali. Posizione, ricerche e fotografie restano sul
 In questa versione la ricerca dei luoghi funziona solo online: l'indice dei toponimi delle altre versioni è generato dai dump di GeoNames e non fa parte della versione per F-Droid.
 
 Software libero sotto licenza GPL v3. Codice sorgente e versioni desktop (Windows, macOS, Linux) su https://github.com/Upabjojr/PeakNavApp
+
+Photo in the picture-overlay screenshot: "GGB 3051 Gornergrat Bahnhof 1 2021-08-21" by Herbert Ortner (CC BY 4.0), on Wikimedia Commons.

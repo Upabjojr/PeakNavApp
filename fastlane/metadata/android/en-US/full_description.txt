@@ -23,3 +23,5 @@ The app collects no personal data. Your position, searches and photos stay on th
 Place search in this build is online only: the offline place-name index of the other builds is generated from the GeoNames dumps and is not part of the F-Droid build.
 
 Free software under the GPL v3. Source code and desktop versions (Windows, macOS, Linux) at https://github.com/Upabjojr/PeakNavApp
+
+Photo in the picture-overlay screenshot: "GGB 3051 Gornergrat Bahnhof 1 2021-08-21" by Herbert Ortner (CC BY 4.0), on Wikimedia Commons.

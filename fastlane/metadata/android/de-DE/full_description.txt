@@ -23,3 +23,5 @@ Die App sammelt keine persönlichen Daten. Position, Suchen und Fotos bleiben au
 Die Ortssuche funktioniert in dieser Version nur online: Der Ortsnamen-Index der anderen Versionen wird aus den GeoNames-Daten erzeugt und ist nicht Teil der F-Droid-Version.
 
 Freie Software unter der GPL v3. Quellcode und Desktop-Versionen (Windows, macOS, Linux) unter https://github.com/Upabjojr/PeakNavApp
+
+Photo in the picture-overlay screenshot: "GGB 3051 Gornergrat Bahnhof 1 2021-08-21" by Herbert Ortner (CC BY 4.0), on Wikimedia Commons.
