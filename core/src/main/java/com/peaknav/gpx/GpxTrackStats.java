@@ -17,6 +17,13 @@ import java.util.Locale;
  * <p>Ascent and descent ignore changes smaller than {@link #CLIMB_THRESHOLD_METRES} before they turn,
  * so a recorded track's noise - GPS altitude wanders by metres - is not counted as climbing.
  *
+ * <p>Heights taken from the terrain - a GPX with none, or a route the app made - are smoothed along
+ * the track over {@link #TERRAIN_SMOOTHING_METRES} before the climbing and the walking time are
+ * worked out, and counted in steps of {@link #TERRAIN_CLIMB_THRESHOLD_METRES}. The elevation grid is
+ * tens of metres across: a path on switchbacks or along the foot of a cliff reads the heights of
+ * the slope beside it, and summed point by point that noise tripled the climb of the Tre Cime loop
+ * (1300 m against the 400-600 m walkers know) and doubled the Bright Angel Trail's descent.
+ *
  * <p>A track that recorded its heights also gets the terrain's under it, to set beside them; one
  * that recorded times gets its speed along the way.
  *
@@ -30,6 +37,9 @@ public final class GpxTrackStats {
     }
 
     static final double CLIMB_THRESHOLD_METRES = 5.0;
+    /** Width of the window terrain heights are averaged over, along the track. */
+    static final double TERRAIN_SMOOTHING_METRES = 300.0;
+    static final double TERRAIN_CLIMB_THRESHOLD_METRES = 10.0;
     /** Points in {@link #profileMetres}. */
     public static final int PROFILE_SAMPLES = 160;
 
@@ -181,19 +191,23 @@ public final class GpxTrackStats {
 
         double ascent = 0, descent = 0, highest = Double.NaN, lowest = Double.NaN;
         float[] profile = null;
+        double[] climbHeights = heights;
         if (anyHeight) {
             fillGaps(heights);
-            double anchor = heights[0];
+            boolean fromTerrain = !anyRecorded || track.hasComputedHeights();
+            climbHeights = fromTerrain ? smoothAlong(along, heights, TERRAIN_SMOOTHING_METRES) : heights;
+            double threshold = fromTerrain ? TERRAIN_CLIMB_THRESHOLD_METRES : CLIMB_THRESHOLD_METRES;
+            double anchor = climbHeights[0];
             highest = lowest = heights[0];
             for (int i = 1; i < n; i++) {
-                double h = heights[i];
-                highest = Math.max(highest, h);
-                lowest = Math.min(lowest, h);
+                highest = Math.max(highest, heights[i]);
+                lowest = Math.min(lowest, heights[i]);
+                double h = climbHeights[i];
                 // Counted once the height has moved beyond the threshold from the last turn.
-                if (h - anchor >= CLIMB_THRESHOLD_METRES) {
+                if (h - anchor >= threshold) {
                     ascent += h - anchor;
                     anchor = h;
-                } else if (anchor - h >= CLIMB_THRESHOLD_METRES) {
+                } else if (anchor - h >= threshold) {
                     descent += anchor - h;
                     anchor = h;
                 }
@@ -213,7 +227,7 @@ public final class GpxTrackStats {
         for (int s = 0; s < PROFILE_SAMPLES; s++) {
             samplesAt[s] = along[n - 1] * s / (PROFILE_SAMPLES - 1);
         }
-        double[] walkedAt = walkingMinutesAt(along, anyHeight ? heights : null, samplesAt);
+        double[] walkedAt = walkingMinutesAt(along, anyHeight ? climbHeights : null, samplesAt);
         double walking = walkedAt[PROFILE_SAMPLES - 1];
         Speed speed = speed(points, along);
         float[] elapsed;
@@ -230,6 +244,42 @@ public final class GpxTrackStats {
         return new GpxTrackStats(track.getName(), first.lat, first.lon, last.lat, last.lon,
                 along[n - 1], ascent, descent, highest, lowest, profile, recordedProfile, terrainProfile,
                 speed, walking, elapsed);
+    }
+
+    /**
+     * Each height averaged with the points within {@code window}/2 of it along the track - a
+     * symmetric window, narrowed near either end so the first and last heights stay as they are
+     * and a steady climb keeps its full height.
+     */
+    static double[] smoothAlong(double[] along, double[] heights, double window) {
+        int n = heights.length;
+        double[] prefix = new double[n + 1];
+        for (int i = 0; i < n; i++) {
+            prefix[i + 1] = prefix[i] + heights[i];
+        }
+        double total = along[n - 1];
+        double[] out = new double[n];
+        for (int i = 0; i < n; i++) {
+            double half = Math.min(window / 2, Math.min(along[i], total - along[i]));
+            int from = firstAtLeast(along, along[i] - half);
+            int to = firstAtLeast(along, along[i] + half + 1e-9) - 1;
+            out[i] = (prefix[to + 1] - prefix[from]) / (to - from + 1);
+        }
+        return out;
+    }
+
+    /** The first index whose distance is at least {@code value}; along is non-decreasing. */
+    private static int firstAtLeast(double[] along, double value) {
+        int lo = 0, hi = along.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (along[mid] < value) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
     }
 
     private static final class Speed {
