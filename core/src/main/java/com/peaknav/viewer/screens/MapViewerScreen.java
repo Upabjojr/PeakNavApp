@@ -755,6 +755,15 @@ public class MapViewerScreen implements Screen {
 	 * from exactly the view on screen.
 	 */
 	public void seekGpxTour(float fraction) {
+		if (!gpxTourActive || moveCameraAction.isComplete()) {
+			// The bar is there before the tour has been started, or after it has played out:
+			// dragging it sets the tour up, paused, at that point - play then carries on from it.
+			startGpxFlythrough();
+			if (!gpxTourActive) {
+				return; // no track long enough to fly
+			}
+			moveCameraAction.setPaused(true);
+		}
 		if (gpxTourFrames.isEmpty()) {
 			return;
 		}
@@ -869,19 +878,27 @@ public class MapViewerScreen implements Screen {
 					showPause ? "icons/icon_gpx_pause.png" : "icons/icon_gpx_play.png");
 		}
 
-		// Scrub bar: visible for as long as a tour is loaded (playing or paused), tracking
-		// progress except while the user has hold of the knob.
+		// Scrub bar: visible as soon as a track is on the map - loaded or made - not only once the
+		// tour has been started, so it can be dragged to any point before pressing play (see
+		// seekGpxTour). It tracks the tour's progress except while the user has hold of the knob,
+		// and goes back to the start whenever the tracks change.
 		boolean tourLive = gpxTourActive && !moveCameraAction.isComplete();
-		tableLocation.gpxSeekTable.setVisible(tourLive);
-		if (tourLive && !tableLocation.gpxSeekSlider.isDragging()) {
+		tableLocation.gpxSeekTable.setVisible(hasGpx || tourLive);
+		int gpxVersion = getC().gpxManager.getVersion();
+		if (!tableLocation.gpxSeekSlider.isDragging()
+				&& (tourLive || gpxVersion != gpxSeekSliderVersion)) {
+			gpxSeekSliderVersion = gpxVersion;
 			gpxSeekSliderUpdating = true;
 			try {
-				tableLocation.gpxSeekSlider.setValue(getGpxTourProgress());
+				tableLocation.gpxSeekSlider.setValue(tourLive ? getGpxTourProgress() : 0f);
 			} finally {
 				gpxSeekSliderUpdating = false;
 			}
 		}
 	}
+
+	/** The GPX tracks' version the scrub bar was last reset for; see updateGpxButtons. */
+	private int gpxSeekSliderVersion = -1;
 
 	/** Guards the scrub bar's change listener while the code (not the user) moves the knob. */
 	private boolean gpxSeekSliderUpdating = false;
