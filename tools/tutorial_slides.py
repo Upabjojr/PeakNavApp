@@ -49,7 +49,8 @@ SLIDES = [
     ("Tutorial_route_result",   "route",         None),
     ("Tutorial_gpx",            "gpx",           "gpx_play"),
     ("Tutorial_gpx_stats",      "gpx",           "gpx_info_size"),
-    ("Tutorial_gpx_share",      "gpx",           "gpx_share"),
+    # the share button is on the route view: while a tour runs the bar shows the tour's own buttons
+    ("Tutorial_gpx_share",      "route",         "gpx_share"),
     ("Tutorial_gallery",        "base",          "gallery"),
     ("Tutorial_camera",         "base",          "camera"),
     ("Tutorial_photo_match",    "photo",         "photo_match"),

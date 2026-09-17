@@ -255,166 +255,251 @@ function get_string(k) {
 
 // OVERLOAD::get_string
 
-// SLIDES-BEGIN (written by tools/tutorial_screenshots.py)
+// SLIDES-BEGIN (written by tools/tutorial_slides.py)
 const SLIDES = [
   {
-    "image": "imageBase.jpg",
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_welcome",
+    "marker": null
+  },
+  {
+    "image": "tutorial_base.jpg",
     "key": "Tutorial_gyroscope",
     "marker": {
-      "cx": 0.0375,
-      "cy": 0.9206,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.0795,
+      "cy": 0.9278,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imageBase.jpg",
+    "image": "tutorial_base.jpg",
     "key": "Tutorial_elevation",
     "marker": {
-      "cx": 0.0375,
-      "cy": 0.5,
-      "rw": 0.0404,
-      "rh": 0.3603
+      "cx": 0.0795,
+      "cy": 0.5146,
+      "rw": 0.085,
+      "rh": 0.1657
     }
   },
   {
-    "image": "imageBase.jpg",
-    "key": "Tutorial_gallery",
-    "marker": {
-      "cx": 0.0375,
-      "cy": 0.0807,
-      "rw": 0.0404,
-      "rh": 0.0854
-    }
-  },
-  {
-    "image": "imageBase.jpg",
-    "key": "Tutorial_camera",
-    "marker": {
-      "cx": 0.1794,
-      "cy": 0.0807,
-      "rw": 0.0404,
-      "rh": 0.0854
-    }
-  },
-  {
-    "image": "imageBase.jpg",
+    "image": "tutorial_base.jpg",
     "key": "Tutorial_search",
     "marker": {
-      "cx": 0.9619,
-      "cy": 0.0807,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.9197,
+      "cy": 0.1018,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imageBase.jpg",
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_here",
+    "marker": {
+      "cx": 0.9197,
+      "cy": 0.9278,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_share",
+    "marker": {
+      "cx": 0.9197,
+      "cy": 0.8459,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_base.jpg",
     "key": "Tutorial_options",
     "marker": {
-      "cx": 0.9619,
-      "cy": 0.1892,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.9197,
+      "cy": 0.1838,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imageOptions.jpg",
+    "image": "tutorial_options.jpg",
     "key": "Tutorial_options_pane",
     "marker": null
   },
   {
-    "image": "imageBaseSat.jpg",
+    "image": "tutorial_satellite.jpg",
     "key": "Tutorial_satellite",
     "marker": null
   },
   {
-    "image": "imageBase.jpg",
-    "key": "Tutorial_share",
-    "marker": {
-      "cx": 0.9619,
-      "cy": 0.8122,
-      "rw": 0.0404,
-      "rh": 0.0854
-    }
+    "image": "tutorial_trails.jpg",
+    "key": "Tutorial_trails",
+    "marker": null
   },
   {
-    "image": "imageBase.jpg",
-    "key": "Tutorial_here",
-    "marker": {
-      "cx": 0.9619,
-      "cy": 0.9206,
-      "rw": 0.0404,
-      "rh": 0.0854
-    }
+    "image": "tutorial_pistes.jpg",
+    "key": "Tutorial_pistes",
+    "marker": null
   },
   {
-    "image": "imageTap.jpg",
+    "image": "tutorial_sky.jpg",
+    "key": "Tutorial_sky",
+    "marker": null
+  },
+  {
+    "image": "tutorial_tap.jpg",
     "key": "Tutorial_tap",
     "marker": {
-      "cx": 0.8975,
-      "cy": 0.3069,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.7848,
+      "cy": 0.3023,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imageGpx.jpg",
+    "image": "tutorial_tap.jpg",
+    "key": "Tutorial_orbit",
+    "marker": {
+      "cx": 0.9197,
+      "cy": 0.3023,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_tap.jpg",
+    "key": "Tutorial_open_maps",
+    "marker": {
+      "cx": 0.9197,
+      "cy": 0.3734,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_tap.jpg",
+    "key": "Tutorial_route",
+    "marker": {
+      "cx": 0.7848,
+      "cy": 0.3734,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_route.jpg",
+    "key": "Tutorial_route_result",
+    "marker": null
+  },
+  {
+    "image": "tutorial_gpx.jpg",
     "key": "Tutorial_gpx",
     "marker": {
-      "cx": 0.9619,
-      "cy": 0.578,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.9197,
+      "cy": 0.4916,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imagePhoto.jpg",
+    "image": "tutorial_gpx.jpg",
+    "key": "Tutorial_gpx_stats",
+    "marker": {
+      "cx": 0.8034,
+      "cy": 0.1421,
+      "rw": 0.08,
+      "rh": 0.0368
+    }
+  },
+  {
+    "image": "tutorial_route.jpg",
+    "key": "Tutorial_gpx_share",
+    "marker": {
+      "cx": 0.9197,
+      "cy": 0.7277,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_gallery",
+    "marker": {
+      "cx": 0.0795,
+      "cy": 0.1018,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_camera",
+    "marker": {
+      "cx": 0.3795,
+      "cy": 0.1018,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_photo.jpg",
     "key": "Tutorial_photo_match",
     "marker": {
-      "cx": 0.3912,
-      "cy": 0.9206,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.2197,
+      "cy": 0.9278,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imagePhoto.jpg",
+    "image": "tutorial_photo.jpg",
     "key": "Tutorial_photo_outlines",
     "marker": {
-      "cx": 0.4997,
-      "cy": 0.9206,
-      "rw": 0.0851,
-      "rh": 0.0854
+      "cx": 0.425,
+      "cy": 0.9278,
+      "rw": 0.15,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imagePhotoTerrain.jpg",
+    "image": "tutorial_photo_terrain.jpg",
     "key": "Tutorial_photo_terrain",
     "marker": {
-      "cx": 0.9619,
-      "cy": 0.5817,
-      "rw": 0.0404,
-      "rh": 0.1802
+      "cx": 0.9197,
+      "cy": 0.74,
+      "rw": 0.085,
+      "rh": 0.0828
     }
   },
   {
-    "image": "imagePhotoPin.jpg",
+    "image": "tutorial_photo_pin.jpg",
     "key": "Tutorial_photo_pin",
     "marker": {
-      "cx": 0.0375,
-      "cy": 0.1197,
-      "rw": 0.0402,
-      "rh": 0.085
+      "cx": 0.0795,
+      "cy": 0.3397,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imagePhoto.jpg",
+    "image": "tutorial_photo.jpg",
     "key": "Tutorial_photo_close",
     "marker": {
-      "cx": 0.6088,
-      "cy": 0.9206,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.6295,
+      "cy": 0.9278,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_help",
+    "marker": {
+      "cx": 0.7697,
+      "cy": 0.9278,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   }
 ];
