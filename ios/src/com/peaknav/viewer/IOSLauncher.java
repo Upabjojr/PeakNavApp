@@ -125,8 +125,8 @@ public class IOSLauncher extends IOSApplication.Delegate {
         // 60 frames a second at most. libGDX's default is the screen's maximum, 120 on a
         // ProMotion iPhone: twice the drawing, and the battery that goes with it.
         config.preferredFramesPerSecond = 60;
-        // And 20 while nothing on the map is happening; see IdleFrameRate. Only here: the
-        // desktop and Android keep drawing every frame.
+        // And 20 while nothing on the map is happening; see IdleFrameRate. The desktop keeps
+        // drawing every frame.
         com.peaknav.viewer.screens.IdleFrameRate.setEnabled(true);
         // Through MapViewerIOSSingleton, not `new MapApp(...)`: shared code looks the running
         // app up via MapViewerSingleton.getAppInstance(), and an instance built around the

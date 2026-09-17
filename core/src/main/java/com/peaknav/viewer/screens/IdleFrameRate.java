@@ -19,8 +19,12 @@ import com.badlogic.gdx.scenes.scene2d.Group;
  *
  * <p>Camera movement covers everything that moves the view without a touch: flights, orbits,
  * the GPX tour and the gyroscope. The road and trail dashes keep flowing while idle, at the
- * lower rate. Off unless a launcher enables it: only iOS does, so the desktop, Android and the
+ * lower rate. Off unless a launcher enables it: iOS and Android do, so the desktop and the
  * headless renderer draw every frame as before.
+ *
+ * <p>How the rate is applied differs per platform: iOS honours
+ * {@code Gdx.graphics.setForegroundFPS}, while libGDX's Android backend ignores it, so the
+ * Android launcher installs its own {@link Pacer}.
  */
 public final class IdleFrameRate {
 
@@ -32,10 +36,22 @@ public final class IdleFrameRate {
     private static final float CAMERA_EPSILON = 1e-6f;
 
     private static volatile boolean enabled = false;
+    private static volatile Pacer pacer = null;
+
+    /** Applies a frame rate where {@code Gdx.graphics.setForegroundFPS} does not. */
+    public interface Pacer {
+        /** Called on the render thread, only when the rate changes. */
+        void setFps(int fps);
+    }
 
     /** Turns the saving on for this process; call before the app starts. */
     public static void setEnabled(boolean on) {
         enabled = on;
+    }
+
+    /** Replaces {@code Gdx.graphics.setForegroundFPS}; call before the app starts. */
+    public static void setPacer(Pacer p) {
+        pacer = p;
     }
 
     public static boolean isEnabled() {
@@ -128,7 +144,12 @@ public final class IdleFrameRate {
             return;
         }
         appliedFps = fps;
-        Gdx.graphics.setForegroundFPS(fps);
+        Pacer p = pacer;
+        if (p != null) {
+            p.setFps(fps);
+        } else {
+            Gdx.graphics.setForegroundFPS(fps);
+        }
         if (Gdx.app != null) {
             Gdx.app.debug("IdleFrameRate", fps + " fps");
         }

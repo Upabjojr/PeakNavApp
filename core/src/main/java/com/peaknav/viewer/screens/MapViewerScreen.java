@@ -2046,7 +2046,8 @@ public class MapViewerScreen implements Screen {
 
 	@Override
 	public void hide() {
-
+		// Other screens do not track activity, so they get the full frame rate.
+		idleFrameRate.wake();
 	}
 
 	/**

@@ -130,6 +130,11 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 
 		super.onCreate(savedInstanceState);
 
+		// 20 frames a second while nothing on the map is happening, to save battery; see
+		// IdleFrameRate. libGDX ignores setForegroundFPS on Android, hence the pacer.
+		com.peaknav.viewer.screens.IdleFrameRate.setPacer(new AndroidIdlePacer(this));
+		com.peaknav.viewer.screens.IdleFrameRate.setEnabled(true);
+
 		setContentView(R.layout.activity_main);
 
 		// The previous handler silently System.exit(1)'d on ANY uncaught exception on ANY thread,
