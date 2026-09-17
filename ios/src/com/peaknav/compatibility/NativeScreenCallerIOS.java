@@ -888,10 +888,8 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         onMainThread(() -> {
             String html = Gdx.files.internal("info/app_tutorial.html").readString();
             StringBuilder getImage = new StringBuilder("function get_image(k) {\n");
-            // The tutorial's screenshots, as tools/tutorial_screenshots.py writes them.
-            String[] imgFiles = {
-                    "imageBase.jpg", "imageOptions.jpg", "imageBaseSat.jpg", "imagePhoto.jpg", "imagePhotoTerrain.jpg", "imagePhotoPin.jpg", "imageGpx.jpg", "imageTap.jpg"};
-            for (String imgFile : imgFiles) {
+            // The pictures the page's own slides name, so this list cannot go stale.
+            for (String imgFile : com.peaknav.viewer.TutorialImages.namesIn(html)) {
                 byte[] imgBytes = Gdx.files.internal("info/" + imgFile).readBytes();
                 getImage.append("if (k == '").append(imgFile)
                         .append("') data = 'data:image/jpeg;base64,")

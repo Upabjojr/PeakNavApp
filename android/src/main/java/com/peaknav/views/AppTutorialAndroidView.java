@@ -40,10 +40,9 @@ public class AppTutorialAndroidView extends Fragment {
         String htmlString = Gdx.files.internal("info/app_tutorial.html").readString();
 
         String get_image = "function get_image(k) {\n";
-        // The tutorial's screenshots, as tools/tutorial_screenshots.py writes them; the
-        // page names them through get_image(), which this overload answers with data URLs.
-        String[] imgFiles = {"imageBase.jpg", "imageOptions.jpg", "imageBaseSat.jpg", "imagePhoto.jpg", "imagePhotoTerrain.jpg", "imagePhotoPin.jpg", "imageGpx.jpg", "imageTap.jpg"};
-        for (String imgFile : imgFiles) {
+        // The page names its pictures through get_image(), which this overload answers with
+        // data URLs; the list comes from the page's own slides, so it cannot go stale.
+        for (String imgFile : com.peaknav.viewer.TutorialImages.namesIn(htmlString)) {
             byte[] imgBytes = Gdx.files.internal("info/" + imgFile).readBytes();
             String base64Img = Base64.encodeToString(imgBytes, Base64.DEFAULT);
             base64Img = base64Img.replace("\n", "");

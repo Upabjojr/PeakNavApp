@@ -392,12 +392,12 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         // in core when an unbound key is pressed). Desktop has no WebView, so — like
         // openAppInfoScreen — the tutorial is handed to the system browser.
         //
-        // The screenshots have to be named explicitly: the page references them with
-        // relative URLs, and a FileHandle inside a jar cannot list its own directory,
-        // so there is no way to discover them at runtime.
-        // The tutorial's screenshots, as tools/tutorial_screenshots.py writes them.
-        openBundledHtml("info/app_tutorial.html",
-                "imageBase.jpg", "imageOptions.jpg", "imageBaseSat.jpg", "imagePhoto.jpg", "imagePhotoTerrain.jpg", "imagePhotoPin.jpg", "imageGpx.jpg", "imageTap.jpg");
+        // The pictures have to be named: the page references them with relative URLs, and a
+        // FileHandle inside a jar cannot list its own directory. The names come from the page's
+        // own slides, so this cannot fall behind the tutorial.
+        java.util.List<String> pictures = com.peaknav.viewer.TutorialImages.namesIn(
+                Gdx.files.internal("info/app_tutorial.html").readString());
+        openBundledHtml("info/app_tutorial.html", pictures.toArray(new String[0]));
     }
 
     /**
