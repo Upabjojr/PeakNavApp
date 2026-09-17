@@ -4,6 +4,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Quaternion;
 import com.badlogic.gdx.math.Vector3;
+import com.peaknav.utils.HeadingAlignment;
 import com.peaknav.utils.PeakNavUtils;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.screens.MapViewerScreen;
@@ -37,6 +38,12 @@ import org.robovm.apple.foundation.NSOperationQueue;
  *       matching what Android's rotation vector delivers - and true north would quietly
  *       start CoreLocation on its own to learn the declination.</li>
  * </ul>
+ *
+ * <p>Magnetic north needs a magnetometer, and an iPod touch has none: asked for that frame,
+ * CoreMotion delivered nothing and the gyroscope button did nothing at all. Without one the
+ * attitude is taken against an arbitrary horizontal direction instead, turned so the view
+ * starts where the camera already faces ({@link HeadingAlignment}); the compass calibration
+ * warning, which reads the magnetometer, is then left out.
  */
 public class OrientationPointerControllerIOS {
 
@@ -68,6 +75,9 @@ public class OrientationPointerControllerIOS {
     private MapViewerScreen mapViewerScreen;
     private long startMs = 0L;
     private long lastWarnMs = 0L;
+    /** Whether the attitude is referenced to magnetic north; without a magnetometer it is not. */
+    private boolean compass = true;
+    private final HeadingAlignment alignment = new HeadingAlignment();
 
     public void start() {
         if (!motionManager.isDeviceMotionAvailable()) {
@@ -80,8 +90,20 @@ public class OrientationPointerControllerIOS {
         startMs = System.currentTimeMillis();
         lastWarnMs = 0L;
         motionManager.setDeviceMotionUpdateInterval(UPDATE_INTERVAL_S);
+        CMAttitudeReferenceFrame available = CMMotionManager.getAvailableAttitudeReferenceFrames();
+        compass = available.contains(CMAttitudeReferenceFrame.XMagneticNorthZVertical);
+        CMAttitudeReferenceFrame frame = compass
+                ? CMAttitudeReferenceFrame.XMagneticNorthZVertical
+                : available.contains(CMAttitudeReferenceFrame.XArbitraryCorrectedZVertical)
+                        ? CMAttitudeReferenceFrame.XArbitraryCorrectedZVertical
+                        : CMAttitudeReferenceFrame.XArbitraryZVertical;
+        alignment.reset();
+        if (!compass) {
+            // The view will follow the device, but cannot know where north is: say so, once.
+            mapViewerScreen.toast(PeakNavUtils.s("Gyroscope_no_compass"));
+        }
         motionManager.startDeviceMotionUpdates(
-                CMAttitudeReferenceFrame.XMagneticNorthZVertical,
+                frame,
                 NSOperationQueue.getMainQueue(),
                 (motion, error) -> {
                     if (motion != null) {
@@ -95,7 +117,9 @@ public class OrientationPointerControllerIOS {
     }
 
     private void onDeviceMotion(CMDeviceMotion motion) {
-        maybeWarnCalibration(motion);
+        if (compass) {
+            maybeWarnCalibration(motion);
+        }
 
         CMQuaternion q = motion.getAttitude().getQuaternion();
         measured.set((float) q.getX(), (float) q.getY(), (float) q.getZ(), (float) q.getW());
@@ -127,11 +151,28 @@ public class OrientationPointerControllerIOS {
         axisZ.set(0f, 0f, 1f);
         smoothed.transform(axisZ);
 
+        float dirX = axisZ.y, dirY = -axisZ.x, dirZ = -axisZ.z;
+        float upX = -axisX.y, upY = axisX.x, upZ = axisX.z;
+        if (!compass) {
+            // No north to point by: turn the arbitrary frame so the view starts where the
+            // camera faces. While the device points too steeply to have a heading, wait.
+            if (!alignment.isAligned() && !alignment.align(dirX, dirY,
+                    mapViewerScreen.cam.direction.x, mapViewerScreen.cam.direction.y)) {
+                return;
+            }
+            float x = alignment.rotatedX(dirX, dirY);
+            dirY = alignment.rotatedY(dirX, dirY);
+            dirX = x;
+            x = alignment.rotatedX(upX, upY);
+            upY = alignment.rotatedY(upX, upY);
+            upX = x;
+        }
+
         boolean landscape = isOrientationLandscape();
         boolean upsideDown = isOrientationUpsideDown();
         mapViewerScreen.pointCameraForGyroscope(
-                axisZ.y, -axisZ.x, -axisZ.z,
-                -axisX.y, axisX.x, axisX.z,
+                dirX, dirY, dirZ,
+                upX, upY, upZ,
                 landscape, upsideDown);
     }
 
