@@ -78,6 +78,8 @@ public class MapViewerScreen implements Screen {
 	private final float baseFieldOfView;
 	public volatile boolean needToBeShown = true;
 	private InputMultiplexer multiplexer;
+	/** Fewer frames while nothing happens, on iOS; see IdleFrameRate. */
+	private final IdleFrameRate idleFrameRate = new IdleFrameRate();
 	public Label labelElevationChange;
 	public Table tableCenter;
 	public long lastElevationChange = 0;
@@ -1531,6 +1533,8 @@ public class MapViewerScreen implements Screen {
 
 	private void resetMultiplexerOnce() {
 		multiplexer = new InputMultiplexer();
+		// First, so it sees every touch before the widgets or the map take it.
+		multiplexer.addProcessor(idleFrameRate.inputWatcher);
 		multiplexer.addProcessor(stage);
 		multiplexer.addProcessor(stageNavigationOverview);
 		multiplexer.addProcessor(controller);
@@ -1693,6 +1697,9 @@ public class MapViewerScreen implements Screen {
 		if (paused) {
 			return;
 		}
+
+		idleFrameRate.update(deltaTime, cam, stage != null ? stage.getRoot() : null,
+				labelLoading != null && labelLoading.getTableCenterNoData().isVisible());
 
 		advanceOrbit(deltaTime);
 
@@ -2029,6 +2036,7 @@ public class MapViewerScreen implements Screen {
 	@Override
 	public void resume() {
 		paused = false;
+		idleFrameRate.wake();
 		if (tileBatchRenderer != null) {
 			// Android drops the contents of every frame buffer when the GL context goes
 			// away, so the cached pseudodistances cannot be reused across a resume.

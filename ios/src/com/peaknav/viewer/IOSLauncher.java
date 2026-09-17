@@ -122,6 +122,12 @@ public class IOSLauncher extends IOSApplication.Delegate {
         // whole launch down with a SIGABRT. A launch crash is an App Store rejection;
         // turning the subsystem off removes the entire failure mode at no cost.
         config.useAudio = false;
+        // 60 frames a second at most. libGDX's default is the screen's maximum, 120 on a
+        // ProMotion iPhone: twice the drawing, and the battery that goes with it.
+        config.preferredFramesPerSecond = 60;
+        // And 20 while nothing on the map is happening; see IdleFrameRate. Only here: the
+        // desktop and Android keep drawing every frame.
+        com.peaknav.viewer.screens.IdleFrameRate.setEnabled(true);
         // Through MapViewerIOSSingleton, not `new MapApp(...)`: shared code looks the running
         // app up via MapViewerSingleton.getAppInstance(), and an instance built around the
         // singleton leaves that null - which made getAppInstance() build a second, broken one.
