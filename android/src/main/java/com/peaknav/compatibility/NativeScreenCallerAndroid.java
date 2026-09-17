@@ -558,15 +558,24 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     public void onStatusChanged(String provider, int status, Bundle extras) {
                     }
                 };
-                Location lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                if (lastKnownLocation == null) {
+                // Only ask providers the device has: asking a missing one (no "network" provider on
+                // devices without Google services, or on the emulator) throws and crashes the app.
+                List<String> providers = locationManager.getAllProviders();
+                boolean hasGps = providers.contains(LocationManager.GPS_PROVIDER);
+                boolean hasNetwork = providers.contains(LocationManager.NETWORK_PROVIDER);
+                Location lastKnownLocation = hasGps ? locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) : null;
+                if (lastKnownLocation == null && hasNetwork) {
                     lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
                 }
                 if (lastKnownLocation != null) {
                     locationListener.onLocationChanged(lastKnownLocation);
                 }
-                locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, locationListener, null);
-                locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, locationListener, null);
+                if (hasNetwork) {
+                    locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, locationListener, null);
+                }
+                if (hasGps) {
+                    locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, locationListener, null);
+                }
             }
 
         };
