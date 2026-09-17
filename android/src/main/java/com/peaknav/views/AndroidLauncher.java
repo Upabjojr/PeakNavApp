@@ -67,6 +67,12 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 					!ActivityCompat.shouldShowRequestPermissionRationale(
 							this, Manifest.permission.CAMERA)) {
 					showCameraSettingsDialog(this);
+				} else {
+					// A plain "Deny": the next tap on the camera asks again, but say why nothing
+					// opened this time rather than leaving the tap without an answer.
+					android.widget.Toast.makeText(this,
+							com.peaknav.utils.PeakNavUtils.s("Camera_permission_needed_to_take_pictures"),
+							android.widget.Toast.LENGTH_LONG).show();
 				}
 			}
 		} else if (requestCode == LOCATION_REQUEST_CODE) {

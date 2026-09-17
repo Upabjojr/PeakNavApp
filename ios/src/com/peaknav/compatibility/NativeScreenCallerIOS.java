@@ -46,6 +46,9 @@ import org.robovm.apple.uikit.UIDocumentPickerDelegateAdapter;
 import org.robovm.apple.uikit.UIDocumentPickerMode;
 import org.robovm.apple.uikit.UIDocumentPickerViewController;
 import org.robovm.apple.uikit.UIImage;
+import org.robovm.apple.avfoundation.AVAuthorizationStatus;
+import org.robovm.apple.avfoundation.AVCaptureDevice;
+import org.robovm.apple.avfoundation.AVMediaType;
 import org.robovm.apple.uikit.UIImagePickerController;
 import org.robovm.apple.uikit.UIImagePickerControllerDelegateAdapter;
 import org.robovm.apple.uikit.UIImagePickerControllerEditingInfo;
@@ -518,18 +521,19 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
             if (controller.isDenied()) {
                 // The user said no earlier; only the Settings app can change that answer
                 // now, so point there rather than silently doing nothing forever.
-                askOpenSettings();
+                askOpenSettings("Location_permission_missing",
+                        "Location_permissions_in_device_settings_are_advised_to_use_app");
                 return;
             }
             controller.ensureAuthorization();
         });
     }
 
-    /** The "location is off for this app" dialog: explain, and offer the Settings page. */
-    private void askOpenSettings() {
+    /** The "this permission is off for the app" dialog: explain, and offer the Settings page. */
+    private void askOpenSettings(String titleKey, String messageKey) {
         UIAlertController controller = new UIAlertController(
-                s("Location_permission_missing"),
-                s("Location_permissions_in_device_settings_are_advised_to_use_app"),
+                s(titleKey),
+                s(messageKey),
                 UIAlertControllerStyle.Alert);
         controller.addAction(new UIAlertAction(s("Cancel"), UIAlertActionStyle.Cancel,
                 (UIAlertAction action) -> { }));
@@ -834,7 +838,26 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                 // The simulator, in practice. Every real target device has a camera.
                 return;
             }
-            presentImagePicker(UIImagePickerControllerSourceType.Camera);
+            // The camera picker opens whether or not the app may use the camera, and with
+            // access denied it shows a black viewfinder and hands back a black photo, which
+            // was then loaded behind the terrain as if it were a picture. So the permission is
+            // settled first: asked for the first time, and after a "no" - now or earlier -
+            // explained, with the Settings page offered, since only Settings can change it.
+            AVAuthorizationStatus status = AVCaptureDevice.getAuthorizationStatusForMediaType(AVMediaType.Video);
+            if (status == AVAuthorizationStatus.Authorized) {
+                presentImagePicker(UIImagePickerControllerSourceType.Camera);
+            } else if (status == AVAuthorizationStatus.NotDetermined) {
+                AVCaptureDevice.requestAccessForMediaType(AVMediaType.Video, (boolean granted) -> onMainThread(() -> {
+                    if (granted) {
+                        presentImagePicker(UIImagePickerControllerSourceType.Camera);
+                    } else {
+                        askOpenSettings("Camera_permission_missing", "Camera_permission_needed_to_take_pictures");
+                    }
+                }));
+            } else {
+                // Denied, or Restricted by parental controls or device management.
+                askOpenSettings("Camera_permission_missing", "Camera_permission_needed_to_take_pictures");
+            }
         });
     }
 
