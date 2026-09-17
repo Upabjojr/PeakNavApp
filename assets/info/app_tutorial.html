@@ -100,6 +100,10 @@ body {
 }
 
 .nav:hover:not(:disabled) { background: rgba(12, 16, 20, 0.85); }
+/* A tap leaves the arrow focused, and a WebView draws a box around it; a keyboard's focus
+   still shows (browsers without :focus-visible simply keep their own ring). */
+.nav:focus { outline: none; }
+.nav:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .nav:disabled { opacity: 0.25; cursor: default; }
 .prev { left: 12px; }
 .next { right: 12px; }
