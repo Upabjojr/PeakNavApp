@@ -134,6 +134,30 @@ public class TestWalkingRouter {
         assertNull(WalkingRouter.route(new ArrayList<Way>(), S, W, S, E, 50));
     }
 
+    /** A grid of paths, {@code size} by {@code size} junctions, 0.001 degrees apart. */
+    private static List<Way> grid(int size) {
+        List<Way> ways = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j + 1 < size; j++) {
+                // the same expression for the same junction: ways meet only on identical coordinates
+                ways.add(way(t("highway", "path"), S + i * 0.001, W + j * 0.001, S + i * 0.001, W + (j + 1) * 0.001));
+                ways.add(way(t("highway", "path"), S + j * 0.001, W + i * 0.001, S + (j + 1) * 0.001, W + i * 0.001));
+            }
+        }
+        return ways;
+    }
+
+    @Test
+    void aSearchPastItsDeadlineGivesUp() {
+        List<Way> ways = grid(40);
+        double far = 39 * 0.001;
+        assertNotNull(WalkingRouter.route(ways, S, W, S + far, W + far, 50, null, WalkingRouter.NO_DEADLINE),
+                "without a deadline the grid has a route");
+        long alreadyPassed = System.nanoTime() - 1;
+        org.junit.jupiter.api.Assertions.assertThrows(WalkingRouter.TimedOut.class,
+                () -> WalkingRouter.route(ways, S, W, S + far, W + far, 50, null, alreadyPassed));
+    }
+
     @Test
     void theRouteOpensAsAGpxTrack() {
         List<Way> ways = Arrays.asList(

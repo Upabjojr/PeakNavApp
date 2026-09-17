@@ -30,6 +30,16 @@ import java.util.PriorityQueue;
  */
 public final class WalkingRouter {
 
+    /** Thrown when a search runs past its deadline; see {@link #route(List, double, double, double, double, double, Elevation, long)}. */
+    public static final class TimedOut extends RuntimeException {
+        TimedOut() {
+            super("route search timed out");
+        }
+    }
+
+    /** No deadline. */
+    public static final long NO_DEADLINE = Long.MAX_VALUE;
+
     /** The terrain's height at a point, in metres; NaN where it is not known. */
     public interface Elevation {
         float metres(double lat, double lon);
@@ -103,8 +113,24 @@ public final class WalkingRouter {
      */
     public static Route route(List<Way> ways, double fromLat, double fromLon, double toLat, double toLon,
                               double maxSnapMetres, Elevation elevation) {
+        return route(ways, fromLat, fromLon, toLat, toLon, maxSnapMetres, elevation, NO_DEADLINE);
+    }
+
+    /**
+     * As {@link #route(List, double, double, double, double, double, Elevation)}, giving up with
+     * {@link TimedOut} once {@link System#nanoTime()} passes {@code deadlineNanos}: over a large
+     * area of dense paths the search can take long enough on a phone that the user would otherwise
+     * be left waiting for a route that is not coming.
+     */
+    public static Route route(List<Way> ways, double fromLat, double fromLon, double toLat, double toLon,
+                              double maxSnapMetres, Elevation elevation, long deadlineNanos) {
         Graph graph = new Graph(elevation);
+        graph.deadlineNanos = deadlineNanos;
+        int built = 0;
         for (Way way : ways) {
+            if ((++built & 255) == 0) {
+                checkDeadline(deadlineNanos);
+            }
             if (way == null || way.latLongs == null || !walkable(way.tags)) {
                 continue;
             }
@@ -241,7 +267,14 @@ public final class WalkingRouter {
         }
     }
 
+    static void checkDeadline(long deadlineNanos) {
+        if (deadlineNanos != NO_DEADLINE && System.nanoTime() - deadlineNanos > 0) {
+            throw new TimedOut();
+        }
+    }
+
     private static final class Graph {
+        long deadlineNanos = NO_DEADLINE;
         private final Map<Long, Integer> index = new HashMap<>();
         private final List<double[]> coordinates = new ArrayList<>();
         private final List<int[]> segments = new ArrayList<>();
@@ -361,7 +394,11 @@ public final class WalkingRouter {
             cost[s] = 0;
             final double fastest = WalkingSpeed.maxKmh() / 3.6; // metres a second
             open.add(new double[]{metres(lat(s), lon(s), targetLat, targetLon) / fastest, s});
+            int polled = 0;
             while (!open.isEmpty()) {
+                if ((++polled & 1023) == 0) {
+                    checkDeadline(deadlineNanos);
+                }
                 int current = (int) open.poll()[1];
                 if (done[current]) {
                     continue;
