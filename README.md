@@ -149,6 +149,22 @@ To build the project, follow these steps:
     A third argument sets a minimum elevation; peaks with a Wikipedia article are kept
     regardless of it. Search results show peaks with their elevation — "Matterhorn (4478 m)" —
     and rank them below any city sharing their name.
+
+  * The extracts only cover the countries whose `.osm.pbf` files were downloaded, so the
+    world's best-known mountains are missing unless every country was. Wikidata fills them
+    in — every mountain, volcano, massif and range with at least ten Wikipedia articles,
+    about 7,000 of them, with their names in the app's languages:
+
+    ```bash
+    python3 tools/fetch_wikidata_peaks.py peaks_wikidata.tsv
+    ./gradlew :core:addPeaksToIndex --args="peaks_wikidata.tsv assets/geonames_index.362"
+    ```
+
+    A second argument to the script sets how many Wikipedia articles count as well known.
+    Peaks the index already holds under the same name, within 3 km, are skipped, so the two
+    sources can be appended in either order and re-run at will. The number of articles ranks
+    the result: "K2" finds the 8611 m one in the Karakoram, not the 3253 m namesake in the
+    Alps, and "Cervino", "Fuji-san" and "Sagarmatha" find their mountains.
 * Build the project with Gradle — this process is straightforward when using Android Studio, and supports both Android and Desktop builds.
 * The iOS build (RoboVM) only runs on a Mac with full Xcode installed; `./gradlew :ios:build`
   compiles its Java on any OS. See the "iOS" notes in [AGENTS.md](./AGENTS.md) for the
