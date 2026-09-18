@@ -237,10 +237,13 @@ public class TutorialOverlay implements Disposable {
         // a tap anywhere on it moves too, but the arrows say so.
         Table arrows = new Table();
         arrows.setFillParent(true);
-        float arrowWidth = Math.max(widgetUnitStep * 1.2f, stageWidth * 0.11f);
-        arrows.add(edgeArrow(false, arrowWidth, stageHeight)).left().expandX().fillY();
-        arrows.add(edgeArrow(true, arrowWidth, stageHeight)).right().expandX().fillY();
+        // A thumb's width, whatever the screen: a sixth of the short side, and never less than two
+        // widget units, so it is as easy to hit on a tablet as on a phone.
+        float arrowWidth = Math.max(widgetUnitStep * 2f, shortSide * 0.17f);
+        arrows.add(edgeArrow(false, arrowWidth, stageHeight)).left().width(arrowWidth).expandX().fillY();
+        arrows.add(edgeArrow(true, arrowWidth, stageHeight)).right().width(arrowWidth).expandX().fillY();
         root.addActor(arrows);
+        arrows.toFront();   // over the picture and the caption, or they cannot be tapped
 
         // The close button, over the corner of everything else.
         Table closeRow = new Table();
@@ -255,17 +258,18 @@ public class TutorialOverlay implements Disposable {
                 hide();
             }
         });
-        closeRow.add(close).size(widgetUnitStep).pad(widgetUnitStep * 0.35f);
+        closeRow.add(close).size(Math.max(widgetUnitStep, shortSide * 0.09f)).pad(widgetUnitStep * 0.35f);
         root.addActor(closeRow);
+        closeRow.toFront();   // and the close button over the arrows
         showSlide();
     }
 
     /** One edge arrow: a tall half-transparent strip with a chevron, tapped to move a slide. */
     private Table edgeArrow(final boolean forward, float width, float height) {
         Label chevron = new Label(forward ? ">" : "<", new Label.LabelStyle(font, Color.WHITE));
-        chevron.setFontScale(Math.min(width, height) / 3f / font.getLineHeight() * font.getScaleY());
+        chevron.setFontScale(width / 1.6f / font.getLineHeight() * font.getScaleY());
         Table arrow = new Table();
-        arrow.setBackground(getC().widgetTextures.getUniformDrawable(new Color(1f, 1f, 1f, 0.12f)));
+        arrow.setBackground(getC().widgetTextures.getUniformDrawable(new Color(1f, 1f, 1f, 0.16f)));
         arrow.add(chevron);
         arrow.setTouchable(Touchable.enabled);
         arrow.addListener(new ClickListener() {
@@ -330,17 +334,30 @@ public class TutorialOverlay implements Disposable {
         }
     }
 
-    /** A ring, drawn once: a circle a few pixels thick that the slides stretch over a widget. */
+    /**
+     * A ring, drawn once: a thick bright circle the slides stretch over a widget. Thick and
+     * white-cored on purpose - a thin line was lost against a photograph of rock and snow.
+     */
     private TextureRegion ring() {
         if (ringTexture == null) {
-            int size = 128;
+            int size = 256;
+            int centre = size / 2;
             Pixmap pixmap = new Pixmap(size, size, Pixmap.Format.RGBA8888);
             pixmap.setBlending(Pixmap.Blending.None);
             pixmap.setColor(0, 0, 0, 0);
             pixmap.fill();
-            pixmap.setColor(0.18f, 0.8f, 0.44f, 1f);
-            for (int r = size / 2 - 5; r < size / 2 - 1; r++) {
-                pixmap.drawCircle(size / 2, size / 2, r);
+            // A dark edge either side, so the ring shows on snow as well as on rock.
+            pixmap.setColor(0f, 0f, 0f, 0.55f);
+            for (int r = centre - 22; r < centre - 2; r++) {
+                pixmap.drawCircle(centre, centre, r);
+            }
+            pixmap.setColor(0.24f, 1f, 0.55f, 1f);
+            for (int r = centre - 19; r < centre - 5; r++) {
+                pixmap.drawCircle(centre, centre, r);
+            }
+            pixmap.setColor(1f, 1f, 1f, 0.95f);
+            for (int r = centre - 14; r < centre - 10; r++) {
+                pixmap.drawCircle(centre, centre, r);
             }
             ringTexture = new Texture(pixmap);
             ringTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
@@ -410,15 +427,21 @@ public class TutorialOverlay implements Disposable {
 
         private final Image picture = new Image();
         private final Image ring = new Image();
+        /** A second ring that swells and fades out of it, so the eye is caught by movement. */
+        private final Image ripple = new Image();
         private float[] marker;
 
         SlideView() {
             picture.setScaling(Scaling.fit);
             ring.setDrawable(new TextureRegionDrawable(ring()));
+            ripple.setDrawable(new TextureRegionDrawable(ring()));
             ring.setVisible(false);
+            ripple.setVisible(false);
             ring.setTouchable(Touchable.disabled);
+            ripple.setTouchable(Touchable.disabled);
             picture.setTouchable(Touchable.disabled);
             addActor(picture);
+            addActor(ripple);
             addActor(ring);
         }
 
@@ -426,11 +449,21 @@ public class TutorialOverlay implements Disposable {
             this.marker = marker;
             picture.setDrawable(region == null ? null : new TextureRegionDrawable(region));
             ring.setVisible(marker != null);
+            ripple.setVisible(marker != null);
             ring.clearActions();
+            ripple.clearActions();
             if (marker != null) {
-                // A gentle pulse, as the page's ring had.
-                ring.addAction(Actions.forever(Actions.sequence(
-                        Actions.scaleTo(0.86f, 0.86f, 0.6f), Actions.scaleTo(1f, 1f, 0.6f))));
+                // The ring itself breathes and brightens...
+                ring.getColor().a = 1f;
+                ring.addAction(Actions.forever(Actions.parallel(
+                        Actions.sequence(Actions.scaleTo(0.88f, 0.88f, 0.5f),
+                                Actions.scaleTo(1.06f, 1.06f, 0.5f)),
+                        Actions.sequence(Actions.alpha(0.55f, 0.5f), Actions.alpha(1f, 0.5f)))));
+                // ...while a second ring swells out of it and fades, twice a second-and-a-half.
+                ripple.addAction(Actions.forever(Actions.sequence(
+                        Actions.parallel(Actions.scaleTo(1f, 1f), Actions.alpha(0.85f)),
+                        Actions.parallel(Actions.scaleTo(1.9f, 1.9f, 1.2f), Actions.alpha(0f, 1.2f)),
+                        Actions.delay(0.3f))));
             }
             invalidate();
         }
@@ -456,6 +489,8 @@ public class TutorialOverlay implements Disposable {
             float height = 2 * marker[3] * drawnHeight;
             ring.setBounds(centreX - width / 2, centreY - height / 2, width, height);
             ring.setOrigin(Align.center);
+            ripple.setBounds(ring.getX(), ring.getY(), width, height);
+            ripple.setOrigin(Align.center);
         }
 
         @Override
