@@ -71,7 +71,71 @@ public class IntroScreen implements Screen {
         if (labelDownloadState != null) {
             labelDownloadState.setText(s("Download_in_progress"));
         }
+        if (tableDownloadMap != null) {
+            // The terms and the button have done their work; the screen is the slideshow's now.
+            tableDownloadMap.setVisible(false);
+        }
         downloadStarted = true;
+    }
+
+    // ---- The slideshow shown while the first map data downloads -----------------------------
+    //
+    // A first download takes minutes, and the screen used to be a logo and a progress ring with
+    // nothing to look at. These are pictures of what the app does, one every few seconds, fading
+    // into each other, with a line saying what each shows (Intro_slide_1..N, translated).
+
+    /** How many pictures there are in assets/intro_slides. */
+    private static final int SLIDE_COUNT = 6;
+    /** Seconds each picture stays, the last of them spent fading into the next. */
+    private static final float SLIDE_SECONDS = 5f;
+    private static final float SLIDE_FADE_SECONDS = 0.8f;
+
+    private Table tableSlides;
+    private Image slideImage;
+    private Label slideCaption;
+    private Texture slideTexture;
+    /** Which picture is on screen, 0-based; -1 before the first one is loaded. */
+    private int slideIndex = -1;
+    private float slideElapsed = 0f;
+
+    /**
+     * Advances the slideshow: the next picture after {@link #SLIDE_SECONDS}, fading in over the
+     * first moment of its turn. One texture is held at a time - the previous is disposed as the
+     * next is loaded - so the whole set never sits in graphics memory at once.
+     */
+    private void updateSlideshow(float delta) {
+        boolean show = downloadStarted;
+        tableSlides.setVisible(show);
+        if (!show) {
+            return;
+        }
+        slideElapsed += delta;
+        if (slideIndex < 0 || slideElapsed >= SLIDE_SECONDS) {
+            slideElapsed = 0f;
+            showSlide((slideIndex + 1) % SLIDE_COUNT);
+        }
+        float alpha = Math.min(1f, slideElapsed / SLIDE_FADE_SECONDS);
+        slideImage.getColor().a = alpha;
+        slideCaption.getColor().a = alpha;
+    }
+
+    private void showSlide(int index) {
+        slideIndex = index;
+        try {
+            Texture next = new Texture(Gdx.files.internal("intro_slides/slide_" + (index + 1) + ".jpg"));
+            next.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            if (slideTexture != null) {
+                slideTexture.dispose();
+            }
+            slideTexture = next;
+            slideImage.setDrawable(new com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable(
+                    new com.badlogic.gdx.graphics.g2d.TextureRegion(next)));
+            slideCaption.setText(s("Intro_slide_" + (index + 1)));
+        } catch (RuntimeException missing) {
+            // A picture that will not load is not worth a blank screen, let alone a crash:
+            // the slideshow simply stops where it is.
+            tableSlides.setVisible(false);
+        }
     }
 
     @Override
@@ -105,7 +169,47 @@ public class IntroScreen implements Screen {
         computeRadii();
 
         labelDownloadState = new Label("", labelStyleSmall);
+        labelDownloadState.setAlignment(com.badlogic.gdx.utils.Align.center);
         tableCentral.add(labelDownloadState).row();
+
+        // The slideshow, under the download's state: hidden until the download starts, since
+        // before that there is nothing to wait for.
+        slideImage = new Image();
+        slideImage.setScaling(com.badlogic.gdx.utils.Scaling.fit);
+        slideCaption = new Label("", labelStyleSmall);
+        slideCaption.setAlignment(com.badlogic.gdx.utils.Align.center);
+        slideCaption.setWrap(true);
+        tableSlides = new Table();
+        // Sized from the screen, not from a fixed number of button widths: the pictures are the
+        // point of this screen while it waits, and on a tablet a button-sized picture is lost in
+        // the middle of it. They are 9:16, and never taller than the room between the logo and
+        // the terms at the bottom.
+        com.badlogic.gdx.scenes.scene2d.ui.Value slideHeight = new com.badlogic.gdx.scenes.scene2d.ui.Value() {
+            @Override
+            public float get(Actor context) {
+                // Whatever is left under the title, the logo and the download's state, less a
+                // margin - never so tall that the caption runs off the bottom of the screen.
+                float free = stage.getHeight() - 7.5f * widgetUnitStep;
+                return Math.max(3f * widgetUnitStep, Math.min(free, 9f * widgetUnitStep));
+            }
+        };
+        com.badlogic.gdx.scenes.scene2d.ui.Value slideWidth = new com.badlogic.gdx.scenes.scene2d.ui.Value() {
+            @Override
+            public float get(Actor context) {
+                return slideHeight.get(context) * 0.5625f;   // the pictures' own 9:16
+            }
+        };
+        tableSlides.add(slideImage).width(slideWidth).height(slideHeight)
+                .padTop(0.4f * widgetUnitStep).row();
+        tableSlides.add(slideCaption).width(new com.badlogic.gdx.scenes.scene2d.ui.Value() {
+            @Override
+            public float get(Actor context) {
+                return Math.min(0.8f * stage.getWidth(), 10f * widgetUnitStep);
+            }
+        }).padTop(0.3f * widgetUnitStep).row();
+        tableSlides.setVisible(false);
+        tableCentral.add(tableSlides).row();
+
         stage.addActor(tableCentral);
 
         tableDownloadMap = new Table();
@@ -260,6 +364,8 @@ public class IntroScreen implements Screen {
     public void render(float delta) {
 
         setDownloadButtonIcon(delta);
+        updateSlideshow(delta);
+        updateDownloadPercent();
 
         Gdx.gl.glClearColor(peakNavGrey, peakNavGrey, peakNavGrey, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
@@ -354,6 +460,22 @@ public class IntroScreen implements Screen {
         shapeRenderer.circle(tipX, y, stroke / 2f, 12);
     }
 
+    /** The percentage last written into the state label, so its text is only rebuilt on a change. */
+    private int downloadPercentShown = -1;
+
+    /** "Download in progress..." with how far it has got underneath, as the map screen shows it. */
+    private void updateDownloadPercent() {
+        if (!downloadStarted || labelDownloadState == null) {
+            return;
+        }
+        int percent = Math.max(0, Math.min(100,
+                (int) Math.floor(getAppState().getMapDataDownloadProgressRatio() * 100f)));
+        if (percent != downloadPercentShown) {
+            downloadPercentShown = percent;
+            labelDownloadState.setText(s("Download_in_progress") + "\n" + percent + "%");
+        }
+    }
+
     private float cumDelta = 0f;
     private int downloadButtonIconIndex = 0;
     private void setDownloadButtonIcon(float delta) {
@@ -417,6 +539,11 @@ public class IntroScreen implements Screen {
         if (ic_launcher_texture != null) {
             ic_launcher_texture.dispose();
             ic_launcher_texture = null;
+        }
+        if (slideTexture != null) {
+            slideTexture.dispose();
+            slideTexture = null;
+            slideIndex = -1;
         }
         if (shapeRenderer != null)
             shapeRenderer.dispose();
