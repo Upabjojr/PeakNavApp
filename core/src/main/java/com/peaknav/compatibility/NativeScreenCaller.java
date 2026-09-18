@@ -61,8 +61,6 @@ public abstract class NativeScreenCaller {
 
     public abstract void openAppInfoScreen();
 
-    public abstract void openAppTutorial();
-
     public abstract OrientationPointerListener getOrientationPointerListener();
 
     /**

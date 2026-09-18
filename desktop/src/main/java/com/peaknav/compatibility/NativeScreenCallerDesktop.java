@@ -386,19 +386,6 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         openBundledHtml("info/app_info.html");
     }
 
-    @Override
-    public void openAppTutorial() {
-        // Just the tutorial slideshow; the keyboard-controls overlay is separate (raised
-        // in core when an unbound key is pressed). Desktop has no WebView, so — like
-        // openAppInfoScreen — the tutorial is handed to the system browser.
-        //
-        // The pictures have to be named: the page references them with relative URLs, and a
-        // FileHandle inside a jar cannot list its own directory. The names come from the page's
-        // own slides, so this cannot fall behind the tutorial.
-        java.util.List<String> pictures = com.peaknav.viewer.TutorialImages.namesIn(
-                Gdx.files.internal("info/app_tutorial.html").readString());
-        openBundledHtml("info/app_tutorial.html", pictures.toArray(new String[0]));
-    }
 
     /**
      * Opens a bundled HTML page in the system browser, together with any files it references
@@ -427,14 +414,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
             java.io.File page = new java.io.File(dir, pageName);
             page.deleteOnExit();
-            // Copied through a string rather than byte for byte, so the tutorial's captions
-            // can be filled in from the app's own translations on the way - the desktop has
-            // no web view to inject them into, as the phones do. A page without the marker
-            // (the licence and privacy page) comes through unchanged.
-            String html = Gdx.files.internal(internalPath).readString("UTF-8")
-                    .replace("// OVERLOAD::get_string",
-                            com.peaknav.viewer.TutorialStrings.asJavaScript());
-            new com.badlogic.gdx.files.FileHandle(page).writeString(html, false, "UTF-8");
+            Gdx.files.internal(internalPath).copyTo(new com.badlogic.gdx.files.FileHandle(page));
 
             for (String related : relatedFiles) {
                 java.io.File target = new java.io.File(dir, related);
