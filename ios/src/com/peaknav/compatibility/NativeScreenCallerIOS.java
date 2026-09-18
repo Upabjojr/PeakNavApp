@@ -29,6 +29,7 @@ import org.robovm.apple.foundation.NSData;
 import org.robovm.apple.foundation.NSObject;
 import org.robovm.apple.foundation.NSProcessInfo;
 import org.robovm.apple.foundation.NSString;
+import org.robovm.apple.foundation.Foundation;
 import org.robovm.apple.foundation.NSURL;
 import org.robovm.apple.photos.PHAsset;
 import org.robovm.apple.photos.PHAuthorizationStatus;
@@ -60,7 +61,10 @@ import org.robovm.apple.uikit.UIScreen;
 import org.robovm.apple.uikit.UITextField;
 import org.robovm.apple.uikit.UIViewController;
 import org.robovm.apple.uikit.UIWindow;
+import org.robovm.apple.webkit.WKPreferences;
 import org.robovm.apple.webkit.WKWebView;
+import org.robovm.apple.webkit.WKWebViewConfiguration;
+import org.robovm.apple.webkit.WKWebpagePreferences;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -455,10 +459,35 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     /** A bundled HTML page, full screen, with a Back button to come home on. */
     private void presentHtml(final String html) {
         onMainThread(() -> {
-            WKWebView webView = new WKWebView(UIScreen.getMainScreen().getBounds());
-            webView.loadHTMLString(html, null);
-            presentWebView(webView);
+            presentWebView(newWebView(), html);
         });
+    }
+
+    /**
+     * A web view whose page may run its own scripts.
+     *
+     * <p>Not what a plain {@code new WKWebView(bounds)} gives: the tutorial came up with its
+     * styling and nothing else - no picture, no caption, no buttons - because its script never
+     * ran, while the same page in Safari was complete. The preferences are built here and handed
+     * over, rather than set on what the configuration returns, which is a copy.
+     */
+    private WKWebView newWebView() {
+        WKWebViewConfiguration configuration = new WKWebViewConfiguration();
+        WKPreferences preferences = new WKPreferences();
+        preferences.setJavaScriptEnabled(true);
+        configuration.setPreferences(preferences);
+        if (Foundation.getMajorSystemVersion() >= 14) {
+            WKWebpagePreferences pagePreferences = new WKWebpagePreferences();
+            pagePreferences.setAllowsContentJavaScript(true);
+            configuration.setDefaultWebpagePreferences(pagePreferences);
+        }
+        return new WKWebView(UIScreen.getMainScreen().getBounds(), configuration);
+    }
+
+    /** Loads the page into the view and shows it. */
+    private void presentWebView(final WKWebView webView, final String html) {
+        webView.loadHTMLString(html, null);
+        presentWebView(webView);
     }
 
     /** A full-screen web view, with a Back button to come home on. */
@@ -886,55 +915,33 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     }
 
     /**
-     * The slideshow tutorial - the same bundled page as Android, with the same trick: the
-     * screenshots are substituted into the page as base64 data URLs, because a page loaded
-     * from a string has no base directory to resolve relative image paths against.
+     * The slideshow tutorial - the same bundled page as Android and the desktop, its pictures
+     * substituted in as base64 data URLs: a page loaded from a string has no base directory to
+     * resolve relative image paths against, and this web view would not show one loaded from a
+     * file at all. Android points the page at its assets instead.
      */
     @Override
     public void openAppTutorial() {
         onMainThread(() -> {
-            String html = Gdx.files.internal("info/app_tutorial.html").readString()
-                    // The captions, in the device's language, from the app's own catalogue.
-                    .replace("// OVERLOAD::get_string", com.peaknav.viewer.TutorialStrings.asJavaScript());
-            // The page is written next to copies of its pictures and opened as a file, so its own
-            // <img src="tutorial_base.jpg"> finds them. They used to be built into the page as
-            // base64 data URLs - every picture then sat in memory twice over, which on a phone
-            // with a slideshow this long is a launch the system kills.
-            java.io.File page = writeTutorialFiles(html);
-            if (page == null) {
-                presentHtml(html);   // nowhere to write: the page without its pictures
-                return;
-            }
-            WKWebView webView = new WKWebView(UIScreen.getMainScreen().getBounds());
-            webView.loadFileURL(new NSURL(page), new NSURL(page.getParentFile()));
-            presentWebView(webView);
-        });
-    }
-
-    /**
-     * The tutorial's page and its pictures in one directory of the app's cache, and the page's
-     * URL. WKWebView reads a page's neighbours only from a file URL it was given access to, so
-     * both have to sit together outside the bundle, whose HTML is not the one shown (the captions
-     * are filled in first). The pictures are copied once and kept.
-     */
-    private java.io.File writeTutorialFiles(String html) {
-        try {
-            com.badlogic.gdx.files.FileHandle dir = Gdx.files.external("tutorial");
-            dir.mkdirs();
+            String html = Gdx.files.internal("info/app_tutorial.html").readString();
+            // The pictures travel inside the page here. WKWebView reads a page's neighbouring
+            // files only from a file URL, and a page written out to be opened that way came up
+            // blank; the twelve JPEGs are a megabyte and a half between them, which this web view
+            // holds happily. Android, where that cost the app a kill for memory, reads them from
+            // its own assets instead.
+            StringBuilder getImage = new StringBuilder("function get_image(k) {\n");
             for (String picture : com.peaknav.viewer.TutorialImages.namesIn(html)) {
-                com.badlogic.gdx.files.FileHandle source = Gdx.files.internal("info/" + picture);
-                com.badlogic.gdx.files.FileHandle target = dir.child(picture);
-                if (source.exists() && (!target.exists() || target.length() != source.length())) {
-                    source.copyTo(target);
-                }
+                byte[] bytes = Gdx.files.internal("info/" + picture).readBytes();
+                getImage.append("if (k == '").append(picture)
+                        .append("') data = 'data:image/jpeg;base64,")
+                        .append(new String(Base64Coder.encode(bytes)))
+                        .append("';\n");
             }
-            com.badlogic.gdx.files.FileHandle page = dir.child("app_tutorial.html");
-            page.writeString(html, false, "UTF-8");
-            return page.file();
-        } catch (Throwable cannotWrite) {
-            Gdx.app.error("PeakNav", "tutorial files: " + cannotWrite);
-            return null;
-        }
+            getImage.append("\nvar img = new Image();\nimg.src = data;\nreturn img;\n}\n");
+            presentHtml(html.replace("// OVERLOAD::get_image", getImage.toString())
+                    // The captions, in the device's language, from the app's own catalogue.
+                    .replace("// OVERLOAD::get_string", com.peaknav.viewer.TutorialStrings.asJavaScript()));
+        });
     }
 
     // ------------------------------------------------------------------ GPX
