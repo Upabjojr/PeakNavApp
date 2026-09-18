@@ -271,10 +271,10 @@ public class TutorialOverlay implements Disposable {
         Label chevron = new Label(forward ? ">" : "<", new Label.LabelStyle(font, Color.WHITE));
         chevron.setFontScale(width / 1.6f / font.getLineHeight() * font.getScaleY());
         Table arrow = new Table();
-        arrow.setBackground(getC().widgetTextures.getUniformDrawable(new Color(1f, 1f, 1f, 0.16f)));
-        // Above the middle: the caption sits at the foot of the screen (or beside it), and a
-        // chevron level with the picture is where the thumb goes.
-        arrow.add(chevron).padBottom(height * 0.22f);
+        arrow.setBackground(getC().widgetTextures.getUniformDrawable(new Color(1f, 1f, 1f, 0.3f)));
+        // A little above the middle: the caption sits at the foot of the screen (or beside it),
+        // and just over halfway up is where the thumb goes.
+        arrow.add(chevron).padBottom(height * 0.09f);
         arrow.setTouchable(Touchable.enabled);
         arrow.addListener(new ClickListener() {
             @Override
