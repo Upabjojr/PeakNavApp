@@ -1907,8 +1907,18 @@ public class MapViewerScreen implements Screen {
 			 */
 			Pixmap snapshot = getSnapshotForSharing();
 			final com.peaknav.utils.SnapshotInfo info = snapshotInfo(snapshot.getWidth(), snapshot.getHeight());
+			// Encoding the picture and handing it to the system takes a moment on a large
+			// screen, with nothing on screen to say so. The wait is announced the way a photo
+			// being decoded is - but only now, with the picture already read from this frame:
+			// raised any earlier, the busy ring is drawn into the picture being shared.
+			setPhotoLoading(true);
 			getC().submitExecutorGeneric(() -> {
-				mapApp.nativeScreenCaller.shareSnapshot(snapshot, info);
+				try {
+					mapApp.nativeScreenCaller.shareSnapshot(snapshot, info);
+				} finally {
+					// Whatever happened - shared, saved, refused, thrown - the wait is over.
+					setPhotoLoading(false);
+				}
 			});
 		}
 
