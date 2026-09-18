@@ -233,6 +233,15 @@ public class TutorialOverlay implements Disposable {
         root.clearChildren();
         root.add(content).grow();
 
+        // Big arrows down either edge, over everything else: the picture is the slideshow, and
+        // a tap anywhere on it moves too, but the arrows say so.
+        Table arrows = new Table();
+        arrows.setFillParent(true);
+        float arrowWidth = Math.max(widgetUnitStep * 1.2f, stageWidth * 0.11f);
+        arrows.add(edgeArrow(false, arrowWidth, stageHeight)).left().expandX().fillY();
+        arrows.add(edgeArrow(true, arrowWidth, stageHeight)).right().expandX().fillY();
+        root.addActor(arrows);
+
         // The close button, over the corner of everything else.
         Table closeRow = new Table();
         closeRow.setFillParent(true);
@@ -249,6 +258,24 @@ public class TutorialOverlay implements Disposable {
         closeRow.add(close).size(widgetUnitStep).pad(widgetUnitStep * 0.35f);
         root.addActor(closeRow);
         showSlide();
+    }
+
+    /** One edge arrow: a tall half-transparent strip with a chevron, tapped to move a slide. */
+    private Table edgeArrow(final boolean forward, float width, float height) {
+        Label chevron = new Label(forward ? ">" : "<", new Label.LabelStyle(font, Color.WHITE));
+        chevron.setFontScale(Math.min(width, height) / 3f / font.getLineHeight() * font.getScaleY());
+        Table arrow = new Table();
+        arrow.setBackground(getC().widgetTextures.getUniformDrawable(new Color(1f, 1f, 1f, 0.12f)));
+        arrow.add(chevron);
+        arrow.setTouchable(Touchable.enabled);
+        arrow.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                event.stop();   // the root's own tap would move as well, and twice is once too many
+                goTo(index + (forward ? 1 : -1));
+            }
+        });
+        return arrow;
     }
 
     private void showSlide() {
