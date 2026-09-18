@@ -57,28 +57,30 @@ public final class SlideShow {
 
         // Sized from the screen, not from a fixed number of button widths: the pictures are the
         // point of a screen that is waiting, and on a tablet a button-sized picture is lost in
-        // the middle of it. They are 9:16, and never taller than the room around them.
-        Value height = new Value() {
-            @Override
-            public float get(Actor context) {
-                float screen = context != null && context.getStage() != null
-                        ? context.getStage().getHeight() : 10f * widgetUnitStep;
-                float free = screen - 7.5f * widgetUnitStep;
-                return Math.max(3f * widgetUnitStep, Math.min(free, 9f * widgetUnitStep));
-            }
-        };
+        // the middle of it. They are 16:9, as wide as the screen allows and never so tall that
+        // the caption under them runs off it.
         Value width = new Value() {
             @Override
             public float get(Actor context) {
-                return height.get(context) * 0.5625f;   // the pictures' own 9:16
+                float screenWidth = context != null && context.getStage() != null
+                        ? context.getStage().getWidth() : 10f * widgetUnitStep;
+                float screenHeight = context != null && context.getStage() != null
+                        ? context.getStage().getHeight() : 10f * widgetUnitStep;
+                float byWidth = 0.86f * screenWidth;
+                float byHeight = (screenHeight - 7.5f * widgetUnitStep) / 0.5625f;
+                return Math.max(4f * widgetUnitStep, Math.min(byWidth, byHeight));
+            }
+        };
+        Value height = new Value() {
+            @Override
+            public float get(Actor context) {
+                return width.get(context) * 0.5625f;    // the pictures' own 16:9
             }
         };
         Value captionWidth = new Value() {
             @Override
             public float get(Actor context) {
-                float screen = context != null && context.getStage() != null
-                        ? context.getStage().getWidth() : 10f * widgetUnitStep;
-                return Math.min(0.8f * screen, 10f * widgetUnitStep);
+                return width.get(context);
             }
         };
         table.add(image).width(width).height(height).padTop(0.4f * widgetUnitStep).row();
