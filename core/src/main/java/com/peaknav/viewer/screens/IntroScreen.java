@@ -130,8 +130,9 @@ public class IntroScreen implements Screen {
         labelDownloadState.setAlignment(com.badlogic.gdx.utils.Align.center);
         tableCentral.add(labelDownloadState).row();
 
-        // The slideshow, under the download's state: hidden until the download starts, since
-        // before that there is nothing to wait for.
+        // The slideshow, under the download's state. Running from the moment the screen opens,
+        // not only once a download does: the pictures are what says what the app is for, to
+        // someone deciding whether to press the button.
         slideShow = new com.peaknav.viewer.widgets.SlideShow(widgetUnitStep, labelStyleSmall);
         tableCentral.add(slideShow.getTable()).row();
 
@@ -307,7 +308,7 @@ public class IntroScreen implements Screen {
 
         setDownloadButtonIcon(delta);
         if (slideShow != null) {
-            slideShow.update(delta, downloadStarted);
+            slideShow.update(delta, true);
         }
         updateDownloadPercent();
 

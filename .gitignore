@@ -150,3 +150,8 @@ Thumbs.db
 /ios/IOSLauncher.app
 /ios/IOSLauncher.app.dSYM
 __pycache__/
+
+# The welcome/waiting slideshow: pictures chosen per build from the renders in
+# peaknav-videos, and the list that names them. Kept out of git like the other generated
+# assets (icons, the search index); the slideshow simply does not show without them.
+/assets/intro_slides/
