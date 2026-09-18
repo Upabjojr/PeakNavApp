@@ -4,8 +4,8 @@
     python3 tools/fetch_wikidata_peaks.py peaks_wikidata.tsv [min_sitelinks]
 
 Needs nothing but the standard library and a network connection. The TSV feeds
-:core:addPeaksToIndex, in the same shape tools/extract_osm_peaks.py writes, plus a last
-column with the number of Wikipedia articles about the peak, which the appender ranks by.
+:core:addPeaksToIndex, in the same shape tools/extract_osm_peaks.py writes, plus two columns:
+the number of Wikipedia articles about the peak, which the appender ranks by, and its country.
 
 Why this exists next to the OSM extraction: that one reads .osm.pbf extracts, so the index
 only holds the peaks of whichever countries were downloaded - the Alps, in practice. Everest,
@@ -17,7 +17,8 @@ by default. Mountains, volcanoes, massifs, summits and hills are all included, b
 the subclasses of those Wikidata classes - Kilimanjaro, for instance, is a "massif" and a
 "dormant volcano" rather than a "mountain".
 
-Columns: lat, lon, ele, wikidata(always 1), name, alternates ('|'-separated), sitelinks.
+Columns: lat, lon, ele, wikidata(always 1), name, alternates ('|'-separated), sitelinks,
+country (ISO 3166-1 alpha-2, '/'-joined for a summit on a border: "Mont Blanc (FR/IT)").
 The name is the English label, or the language-neutral one where there is no English; every
 other language's label and the English aliases become search aliases, so "Cervino",
 "Fuji-san" and "Sagarmatha" all find their mountain.
@@ -116,6 +117,26 @@ def labels(item_ids):
     return out
 
 
+def countries(item_ids):
+    """Each item's country codes, in order, as one '/'-joined string."""
+    out = {}
+    for i in range(0, len(item_ids), 400):
+        values = " ".join("wd:" + q for q in item_ids[i:i + 400])
+        rows = query("""SELECT ?item ?iso WHERE {
+  VALUES ?item { %s }
+  ?item wdt:P17 ?country .
+  ?country wdt:P297 ?iso .
+}""" % values)
+        for row in rows:
+            item = row["item"].rsplit("/", 1)[1]
+            code = row["iso"].strip().upper()
+            if code and code not in out.setdefault(item, []):
+                out[item].append(code)
+        print("  countries %d/%d" % (min(i + 400, len(item_ids)), len(item_ids)))
+        time.sleep(1)
+    return {item: "/".join(sorted(codes)) for item, codes in out.items()}
+
+
 def has_letters(text):
     return any(unicodedata.category(c)[0] in "LN" for c in text)
 
@@ -146,6 +167,8 @@ def main():
     found = mountains(class_ids, min_links)
     print("names")
     named = labels(sorted(found))
+    print("countries")
+    in_country = countries(sorted(found))
 
     written = skipped = 0
     rows = []
@@ -170,14 +193,15 @@ def main():
         for name in names[1:] + aliases:
             if name != display and name not in extra:
                 extra.append(name)
-        rows.append((int(row["l"]), position[0], position[1], ele, display, extra))
+        rows.append((int(row["l"]), position[0], position[1], ele, display, extra,
+                     in_country.get(item, "")))
         written += 1
 
     rows.sort(key=lambda r: -r[0])      # best known first, so a truncated run still has them
     with open(out_path, "w", encoding="utf-8", newline="\n") as out:
-        for links, lat, lon, ele, display, extra in rows:
-            out.write("%.5f\t%.5f\t%s\t1\t%s\t%s\t%d\n"
-                      % (lat, lon, ele or "", display, "|".join(extra), links))
+        for links, lat, lon, ele, display, extra, country in rows:
+            out.write("%.5f\t%.5f\t%s\t1\t%s\t%s\t%d\t%s\n"
+                      % (lat, lon, ele or "", display, "|".join(extra), links, country))
     print("wrote %d peaks to %s (skipped %d without a name or a position)" % (written, out_path, skipped))
 
 

@@ -165,6 +165,10 @@ To build the project, follow these steps:
     sources can be appended in either order and re-run at will. The number of articles ranks
     the result: "K2" finds the 8611 m one in the Karakoram, not the 3253 m namesake in the
     Alps, and "Cervino", "Fuji-san" and "Sagarmatha" find their mountains.
+
+  * These peaks also carry their country, shown beside the name as a city's is — "Mount
+    Everest (CN/NP) (8850 m)", both codes where a summit sits on a border. Peaks from the
+    OSM extracts have no country: the extraction does not work one out.
 * Build the project with Gradle — this process is straightforward when using Android Studio, and supports both Android and Desktop builds.
 * The iOS build (RoboVM) only runs on a Mac with full Xcode installed; `./gradlew :ios:build`
   compiles its Java on any OS. See the "iOS" notes in [AGENTS.md](./AGENTS.md) for the

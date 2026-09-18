@@ -40,9 +40,11 @@ import java.util.Map;
  * with the same analyzer and the same similarity, so peak documents and city documents
  * score by the same rules.
  *
- * <p>The input is one peak per line: {@code lat, lon, ele, wikidata, name, alternates[, fame]}
- * (tab-separated, alternates '|'-separated) - the output of the OSM extraction script, or of
- * the Wikidata one, which fills the last column in.
+ * <p>The input is one peak per line:
+ * {@code lat, lon, ele, wikidata, name, alternates[, fame][, country]} (tab-separated,
+ * alternates '|'-separated) - the output of the OSM extraction script, or of the Wikidata
+ * one, which fills the last two columns in: how many Wikipedia articles the peak has, and
+ * its ISO country code ("FR/IT" for a summit on a border).
  *
  * <p>Peaks are ranked the way cities are: a boost riding on the field norms, logarithmic
  * in elevation where a city's is logarithmic in population. The scales are deliberately
@@ -108,6 +110,7 @@ public final class PeakIndexAppender {
                     int ele = f[2].isEmpty() ? 0 : Integer.parseInt(f[2]);
                     boolean wiki = "1".equals(f[3]);
                     int fame = f.length > 6 && !f[6].isEmpty() ? Integer.parseInt(f[6].trim()) : 0;
+                    String country = f.length > 7 ? f[7].trim() : "";
                     // The budget knob. A minimum elevation only ever excludes peaks that
                     // are BOTH low and obscure: anything with a Wikipedia article stays,
                     // whatever its height - Vesuvius is 1281 m and better known than most
@@ -122,7 +125,7 @@ public final class PeakIndexAppender {
                         continue;
                     }
                     writer.addDocument(peakDocument(
-                            f[4], alternates, f[0], f[1], ele, wiki, fame));
+                            f[4], alternates, f[0], f[1], ele, wiki, fame, country));
                     added++;
                 }
             }
@@ -235,12 +238,18 @@ public final class PeakIndexAppender {
     /** A peak as a search document, shaped exactly like the builder's city documents. */
     public static Document peakDocument(String name, String[] alternates,
                                         String lat, String lon, int ele, boolean wiki) {
-        return peakDocument(name, alternates, lat, lon, ele, wiki, 0);
+        return peakDocument(name, alternates, lat, lon, ele, wiki, 0, "");
     }
 
-    /** @param fame Wikipedia articles about the peak, 0 when unknown; see {@link #elevationBoost}. */
+    /**
+     * @param fame    Wikipedia articles about the peak, 0 when unknown; see {@link #elevationBoost}
+     * @param country ISO 3166-1 alpha-2 code, or "" when unknown; shown beside the name in the
+     *                results, exactly as a city's is, so the "Table Mountain" one means is
+     *                recognisable among the several the world has
+     */
     public static Document peakDocument(String name, String[] alternates,
-                                        String lat, String lon, int ele, boolean wiki, int fame) {
+                                        String lat, String lon, int ele, boolean wiki, int fame,
+                                        String country) {
         Document doc = new Document();
         doc.setBoost(elevationBoost(ele, wiki, fame));
 
@@ -286,6 +295,9 @@ public final class PeakIndexAppender {
         doc.add(new Field("lon_store", lon, Field.Store.YES, Field.Index.NO));
         // Zero, not absent: the search side parses this field unconditionally.
         doc.add(new Field("population_store", "0", Field.Store.YES, Field.Index.NO));
+        if (country != null && !country.isEmpty()) {
+            doc.add(new Field("country_store", country, Field.Store.YES, Field.Index.NO));
+        }
         doc.add(new Field("type_store", "peak", Field.Store.YES, Field.Index.NO));
         doc.add(new Field("ele_store", String.valueOf(ele), Field.Store.YES, Field.Index.NO));
         return doc;
