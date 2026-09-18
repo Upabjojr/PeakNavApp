@@ -81,6 +81,21 @@ public class IntroScreen implements Screen {
     /** Pictures of the app while the first download runs; see SlideShow. */
     private com.peaknav.viewer.widgets.SlideShow slideShow;
 
+    /**
+     * True when this screen was opened to be looked at rather than waited on: the debug build's
+     * button (see WidgetGetter). The screen normally hands over to the map as soon as the data
+     * is loaded, which with data already downloaded means at once; in preview it stays until it
+     * is tapped. What it shows is a first run's own screen - the terms, the button and the
+     * pointers at it; the slideshow belongs to a download actually running.
+     */
+    private boolean preview = false;
+
+    /** Opens the welcome screen as it looks on a first run, to be closed by a tap. Debug builds. */
+    public void showAsPreview() {
+        preview = true;
+        mapApp.setScreen(this);
+    }
+
     @Override
     public void show() {
         int minSize = Math.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
@@ -156,6 +171,23 @@ public class IntroScreen implements Screen {
 
         shapeRenderer = new ShapeRenderer();
         shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());
+
+        if (preview) {
+            // Nothing here is worth a button of its own in a build nobody ships: a tap anywhere
+            // outside the download button gives the map back.
+            stage.addListener(new com.badlogic.gdx.scenes.scene2d.InputListener() {
+                @Override
+                public boolean touchDown(com.badlogic.gdx.scenes.scene2d.InputEvent event,
+                                         float x, float y, int pointer, int button) {
+                    if (event.getTarget() == stage.getRoot() || event.getTarget() == tableCentral) {
+                        preview = false;
+                        mapApp.setScreen(mapApp.mapViewerScreen);
+                        return true;
+                    }
+                    return false;
+                }
+            });
+        }
 
         multiplexer = new InputMultiplexer();
         multiplexer.addProcessor(stage);
@@ -283,7 +315,7 @@ public class IntroScreen implements Screen {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
 
-        if (labelLoading.getState() == LabelLoading.State.LOADED) {
+        if (!preview && labelLoading.getState() == LabelLoading.State.LOADED) {
             // TODO: labelLoading.getState() may never be LOADED if no location permission was granted to the app
             mapApp.setScreen(mapApp.mapViewerScreen);
         }

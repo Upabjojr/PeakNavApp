@@ -989,6 +989,22 @@ public class WidgetGetter {
                 }
             });
             tableBottomRight.add(helpButton).width(widgetUnitStep).height(widgetUnitStep).padRight(0.5f*widgetUnitStep);
+            if (com.peaknav.utils.PeakNavUtils.getLoadFactory() != null
+                    && com.peaknav.utils.PeakNavUtils.getLoadFactory().isDebugBuild()) {
+                // Debug builds: the welcome screen as a first run shows it - the slideshow, the
+                // pointers at the download button - which is otherwise reachable only by clearing
+                // the app's data. A tap on its background gives the map back.
+                Button buttonWelcome = getC().widgetTextures.getButtonWithIcon("icons/icon_info.png");
+                buttonWelcome.setName("welcome_preview");
+                buttonWelcome.addListener(new ChangeListener() {
+                    @Override
+                    public void changed(ChangeEvent event, Actor actor) {
+                        mapApp.introScreen.showAsPreview();
+                    }
+                });
+                tableBottomRight.add(buttonWelcome).width(widgetUnitStep).height(widgetUnitStep)
+                        .padRight(0.5f * widgetUnitStep);
+            }
             hereButton = getC().widgetTextures.getButtonWithIcon("icons/icon_here.png");
             hereButton.setName("here");   // for /widgets, which places the tutorial's markers
             icon_here = getC().widgetTextures
