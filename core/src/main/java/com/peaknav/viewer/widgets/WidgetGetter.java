@@ -984,7 +984,8 @@ public class WidgetGetter {
                 public void changed(ChangeEvent event, Actor actor) {
                     // The "?" button is the tutorial only. Keyboard controls are a
                     // separate overlay, shown when an unbound key is pressed.
-                    getNativeScreenCaller().openAppTutorial();
+                    // Drawn by the app, not handed to a platform web view: see TutorialOverlay.
+                    mapApp.mapViewerScreen.tutorialOverlay.show();
                 }
             });
             tableBottomRight.add(helpButton).width(widgetUnitStep).height(widgetUnitStep).padRight(0.5f*widgetUnitStep);

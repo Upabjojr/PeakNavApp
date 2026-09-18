@@ -4,8 +4,9 @@
 The pictures are screenshots of the app on a phone, each with the places of the named widgets
 as the app itself reports them (MapViewerScreen.widgetBoundsJson, written next to the picture
 as <name>.widgets.json). This script scales them into assets/info/ and writes the SLIDES block
-of assets/info/app_tutorial.html, so every ring lands on its widget wherever that widget has
-moved to, and the tutorial cannot drift from the app.
+of assets/info/tutorial_slides.json, which the app's tutorial screen reads, so every ring lands
+on its widget wherever that widget has moved to and the tutorial cannot drift from the app. The
+old HTML page is written too, for as long as it is still there.
 
     python3 tools/tutorial_slides.py <captures dir> [--width 620]
 
@@ -129,6 +130,12 @@ def main():
             else:
                 marker = marker_for(bounds, widget, name)
         slides.append({"image": name, "key": key, "marker": marker})
+
+    slides_file = os.path.join(INFO, "tutorial_slides.json")
+    with open(slides_file, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(slides, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    print("wrote", len(slides), "slides into", slides_file)
 
     page = open(PAGE, encoding="utf-8").read()
     block = ("// SLIDES-BEGIN (written by tools/tutorial_slides.py)\nconst SLIDES = "

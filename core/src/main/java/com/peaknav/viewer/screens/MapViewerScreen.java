@@ -73,6 +73,8 @@ public class MapViewerScreen implements Screen {
 	public Table tableWatermark;
 	public WidgetGetter.TableTool tableTool;
 	private KeyboardHelpOverlay keyboardHelpOverlay;
+	/** The "?" slideshow, drawn by the app itself; see TutorialOverlay. */
+	public com.peaknav.viewer.widgets.TutorialOverlay tutorialOverlay;
 
 	public MountainInputController controller;
 	private final float baseFieldOfView;
@@ -1486,6 +1488,8 @@ public class MapViewerScreen implements Screen {
 		// Added last so its scrim draws on top of every other widget when shown.
 		keyboardHelpOverlay = new KeyboardHelpOverlay(widgetUnitStep);
 		stage.addActor(keyboardHelpOverlay.getRoot());
+		tutorialOverlay = new com.peaknav.viewer.widgets.TutorialOverlay(widgetUnitStep);
+		stage.addActor(tutorialOverlay.getRoot());
 
 		labelRenderer = new LabelRenderer(
 				spriteBatch, shapeRenderer, new Texture(Gdx.files.internal("icons/icon_compass.png")),
@@ -1614,6 +1618,10 @@ public class MapViewerScreen implements Screen {
 			cam.resizeGeographicCameras(width, height);
 
 			updateStageViewportInsideSafeArea(width, height);
+			if (tutorialOverlay != null && tutorialOverlay.isVisible()) {
+				// Upright or on its side, the slideshow is laid out differently.
+				tutorialOverlay.layout();
+			}
 			stageNavigationViewport.update(width, height, true);
 
 			labelRenderer.resize(width, height);
