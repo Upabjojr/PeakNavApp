@@ -5,8 +5,7 @@ The pictures are screenshots of the app on a phone, each with the places of the 
 as the app itself reports them (MapViewerScreen.widgetBoundsJson, written next to the picture
 as <name>.widgets.json). This script scales them into assets/info/ and writes the SLIDES block
 of assets/info/tutorial_slides.json, which the app's tutorial screen reads, so every ring lands
-on its widget wherever that widget has moved to and the tutorial cannot drift from the app. The
-old HTML page is written too, for as long as it is still there.
+on its widget wherever that widget has moved to and the tutorial cannot drift from the app.
 
     python3 tools/tutorial_slides.py <captures dir> [--width 620]
 
@@ -18,7 +17,6 @@ which picture and which widget it points at.
 import argparse
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -26,7 +24,6 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 INFO = os.path.join(ROOT, "assets", "info")
-PAGE = os.path.join(INFO, "app_tutorial.html")
 
 # caption key, the view it is shown on, the named widget the ring points at (None for none).
 # The order is the order of the slides, and must match TutorialStrings.KEYS.
@@ -137,14 +134,6 @@ def main():
         fh.write("\n")
     print("wrote", len(slides), "slides into", slides_file)
 
-    page = open(PAGE, encoding="utf-8").read()
-    block = ("// SLIDES-BEGIN (written by tools/tutorial_slides.py)\nconst SLIDES = "
-             + json.dumps(slides, indent=2, ensure_ascii=False) + ";\n// SLIDES-END")
-    page, n = re.subn(r"// SLIDES-BEGIN.*?// SLIDES-END", block, page, flags=re.S)
-    if n != 1:
-        raise SystemExit("no SLIDES markers in " + PAGE)
-    open(PAGE, "w", encoding="utf-8", newline="\n").write(page)
-    print("wrote %d slides over %d pictures into %s" % (len(slides), len(have), PAGE))
     missing = [k for k, v, _ in SLIDES if v not in have]
     if missing:
         print("slides left out:", ", ".join(missing), file=sys.stderr)

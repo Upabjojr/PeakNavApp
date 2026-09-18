@@ -69,7 +69,7 @@ public class TutorialOverlay implements Disposable {
     }
 
     private final List<Slide> slides = new ArrayList<>();
-    private final Map<String, Texture> pictures = new LinkedHashMap<>();
+    private final Map<String, TextureRegion> pictures = new LinkedHashMap<>();
     private final Table root;
     private final Table captionBox;
     private final SlideView slideView;
@@ -181,10 +181,7 @@ public class TutorialOverlay implements Disposable {
             root.getStage().setKeyboardFocus(null);
         }
         // The pictures are worth a few megabytes each: keep none once the tutorial is shut.
-        for (Texture texture : pictures.values()) {
-            texture.dispose();
-        }
-        pictures.clear();
+        disposePictures();
     }
 
     private void goTo(int wanted) {
@@ -267,19 +264,27 @@ public class TutorialOverlay implements Disposable {
         forgetDistantPictures();
     }
 
-    /** The picture, decoded on first use. */
-    private Texture picture(String name) {
-        Texture texture = pictures.get(name);
-        if (texture == null) {
+    /**
+     * The picture, decoded on first use.
+     *
+     * <p>No mipmaps: a screenshot's sides are not powers of two, and GL ES 2 does not sample such
+     * a texture with them. Clamped and linear, which it does.
+     */
+    private TextureRegion picture(String name) {
+        TextureRegion region = pictures.get(name);
+        if (region == null) {
             FileHandle file = Gdx.files.internal("info/" + name);
             if (!file.exists()) {
+                Gdx.app.error("PeakNav", "no tutorial picture " + name);
                 return null;
             }
-            texture = new Texture(file, true);
-            texture.setFilter(Texture.TextureFilter.MipMapLinearLinear, Texture.TextureFilter.Linear);
-            pictures.put(name, texture);
+            Texture texture = new Texture(file);
+            texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            texture.setWrap(Texture.TextureWrap.ClampToEdge, Texture.TextureWrap.ClampToEdge);
+            region = new TextureRegion(texture);
+            pictures.put(name, region);
         }
-        return texture;
+        return region;
     }
 
     /** Keeps only the pictures around the slide on screen: each is several megabytes decoded. */
@@ -293,7 +298,7 @@ public class TutorialOverlay implements Disposable {
         }
         for (String name : new ArrayList<>(pictures.keySet())) {
             if (!wanted.contains(name)) {
-                pictures.remove(name).dispose();
+                pictures.remove(name).getTexture().dispose();
             }
         }
     }
@@ -317,12 +322,16 @@ public class TutorialOverlay implements Disposable {
         return new TextureRegion(ringTexture);
     }
 
-    @Override
-    public void dispose() {
-        for (Texture texture : pictures.values()) {
-            texture.dispose();
+    private void disposePictures() {
+        for (TextureRegion region : pictures.values()) {
+            region.getTexture().dispose();
         }
         pictures.clear();
+    }
+
+    @Override
+    public void dispose() {
+        disposePictures();
         if (ringTexture != null) {
             ringTexture.dispose();
             ringTexture = null;
@@ -386,9 +395,9 @@ public class TutorialOverlay implements Disposable {
             addActor(ring);
         }
 
-        void set(Texture texture, float[] marker) {
+        void set(TextureRegion region, float[] marker) {
             this.marker = marker;
-            picture.setDrawable(texture == null ? null : new TextureRegionDrawable(new TextureRegion(texture)));
+            picture.setDrawable(region == null ? null : new TextureRegionDrawable(region));
             ring.setVisible(marker != null);
             ring.clearActions();
             if (marker != null) {

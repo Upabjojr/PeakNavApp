@@ -7,7 +7,6 @@ import static com.peaknav.utils.PreferencesManager.P;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Pixmap;
-import com.badlogic.gdx.utils.Base64Coder;
 
 import com.peaknav.controller.LocationControllerIOS;
 import com.peaknav.controller.OrientationPointerControllerIOS;
@@ -452,34 +451,13 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         });
     }
 
-    /** A bundled HTML page, full screen, with a Back button to come home on. */
+    /** A bundled HTML page, full screen, with a Back button to come home on: the licence page. */
     private void presentHtml(final String html) {
         onMainThread(() -> {
-            // A plain web view, deliberately: one built with a WKWebViewConfiguration of our own
-            // showed nothing at all here, not even a page's own background colour.
-            final WKWebView webView = new WKWebView(UIScreen.getMainScreen().getBounds());
-            presentWebView(webView);
-            // The page is loaded only once the view is on screen. WebKit holds back the scripts
-            // of a web view that is in no window, and loading first left the tutorial as a bare
-            // background: its styling applied, and not one picture, caption or button, because
-            // the whole slideshow is built by its script. The licence page, which has no script,
-            // looked right either way - which is why this went unnoticed.
-            loadWhenOnScreen(webView, html, 0);
-        });
-    }
-
-    /** Loads the page once the view has a window, giving up after a few tries and loading anyway. */
-    private void loadWhenOnScreen(final WKWebView webView, final String html, final int attempt) {
-        if (webView.getWindow() != null || attempt >= PRESENT_RETRY_MAX) {
+            WKWebView webView = new WKWebView(UIScreen.getMainScreen().getBounds());
             webView.loadHTMLString(html, null);
-            return;
-        }
-        DISMISS_TIMER.schedule(new java.util.TimerTask() {
-            @Override
-            public void run() {
-                onMainThread(() -> loadWhenOnScreen(webView, html, attempt + 1));
-            }
-        }, PRESENT_RETRY_MS);
+            presentWebView(webView);
+        });
     }
 
     /** A full-screen web view, with a Back button to come home on. */
@@ -903,36 +881,6 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                 return;
             }
             presentImagePicker(UIImagePickerControllerSourceType.PhotoLibrary);
-        });
-    }
-
-    /**
-     * The slideshow tutorial - the same bundled page as Android and the desktop, its pictures
-     * substituted in as base64 data URLs: a page loaded from a string has no base directory to
-     * resolve relative image paths against, and this web view would not show one loaded from a
-     * file at all. Android points the page at its assets instead.
-     */
-    @Override
-    public void openAppTutorial() {
-        onMainThread(() -> {
-            String html = Gdx.files.internal("info/app_tutorial.html").readString();
-            // The pictures travel inside the page here. WKWebView reads a page's neighbouring
-            // files only from a file URL, and a page written out to be opened that way came up
-            // blank; the twelve JPEGs are a megabyte and a half between them, which this web view
-            // holds happily. Android, where that cost the app a kill for memory, reads them from
-            // its own assets instead.
-            StringBuilder getImage = new StringBuilder("function get_image(k) {\n");
-            for (String picture : com.peaknav.viewer.TutorialImages.namesIn(html)) {
-                byte[] bytes = Gdx.files.internal("info/" + picture).readBytes();
-                getImage.append("if (k == '").append(picture)
-                        .append("') data = 'data:image/jpeg;base64,")
-                        .append(new String(Base64Coder.encode(bytes)))
-                        .append("';\n");
-            }
-            getImage.append("\nvar img = new Image();\nimg.src = data;\nreturn img;\n}\n");
-            presentHtml(html.replace("// OVERLOAD::get_image", getImage.toString())
-                    // The captions, in the device's language, from the app's own catalogue.
-                    .replace("// OVERLOAD::get_string", com.peaknav.viewer.TutorialStrings.asJavaScript()));
         });
     }
 

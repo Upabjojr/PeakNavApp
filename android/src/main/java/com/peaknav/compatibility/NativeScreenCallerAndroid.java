@@ -52,7 +52,6 @@ import com.peaknav.viewer.GoToDownloadDialog;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.views.AndroidLauncher;
 import com.peaknav.views.AppInfoAndroidView;
-import com.peaknav.views.AppTutorialAndroidView;
 import com.peaknav.views.CameraPictureView;
 import com.peaknav.views.MapDataDownloadChooser;
 import com.peaknav.views.SearchMenu;
@@ -393,15 +392,6 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             openFragmentWithTransaction(fragment, "app_info");
         });
     }
-
-    @Override
-    public void openAppTutorial() {
-        runOnUiThread(() -> {
-            AppTutorialAndroidView fragment = new AppTutorialAndroidView();
-            openFragmentWithTransaction(fragment, "app_tutorial");
-        });
-    }
-
     private OrientationPointerController orientationPointerController;
     private OrientationPointerListener orientationPointerListener;
 

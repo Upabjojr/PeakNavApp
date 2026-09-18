@@ -386,19 +386,6 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         openBundledHtml("info/app_info.html");
     }
 
-    @Override
-    public void openAppTutorial() {
-        // Just the tutorial slideshow; the keyboard-controls overlay is separate (raised
-        // in core when an unbound key is pressed). Desktop has no WebView, so — like
-        // openAppInfoScreen — the tutorial is handed to the system browser.
-        //
-        // The pictures have to be named: the page references them with relative URLs, and a
-        // FileHandle inside a jar cannot list its own directory. The names come from the page's
-        // own slides, so this cannot fall behind the tutorial.
-        java.util.List<String> pictures = com.peaknav.viewer.TutorialImages.namesIn(
-                Gdx.files.internal("info/app_tutorial.html").readString());
-        openBundledHtml("info/app_tutorial.html", pictures.toArray(new String[0]));
-    }
 
     /**
      * Opens a bundled HTML page in the system browser, together with any files it references
