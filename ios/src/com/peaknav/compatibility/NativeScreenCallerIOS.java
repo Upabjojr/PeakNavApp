@@ -29,7 +29,6 @@ import org.robovm.apple.foundation.NSData;
 import org.robovm.apple.foundation.NSObject;
 import org.robovm.apple.foundation.NSProcessInfo;
 import org.robovm.apple.foundation.NSString;
-import org.robovm.apple.foundation.Foundation;
 import org.robovm.apple.foundation.NSURL;
 import org.robovm.apple.photos.PHAsset;
 import org.robovm.apple.photos.PHAuthorizationStatus;
@@ -61,10 +60,7 @@ import org.robovm.apple.uikit.UIScreen;
 import org.robovm.apple.uikit.UITextField;
 import org.robovm.apple.uikit.UIViewController;
 import org.robovm.apple.uikit.UIWindow;
-import org.robovm.apple.webkit.WKPreferences;
 import org.robovm.apple.webkit.WKWebView;
-import org.robovm.apple.webkit.WKWebViewConfiguration;
-import org.robovm.apple.webkit.WKWebpagePreferences;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -459,35 +455,31 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     /** A bundled HTML page, full screen, with a Back button to come home on. */
     private void presentHtml(final String html) {
         onMainThread(() -> {
-            presentWebView(newWebView(), html);
+            // A plain web view, deliberately: one built with a WKWebViewConfiguration of our own
+            // showed nothing at all here, not even a page's own background colour.
+            final WKWebView webView = new WKWebView(UIScreen.getMainScreen().getBounds());
+            presentWebView(webView);
+            // The page is loaded only once the view is on screen. WebKit holds back the scripts
+            // of a web view that is in no window, and loading first left the tutorial as a bare
+            // background: its styling applied, and not one picture, caption or button, because
+            // the whole slideshow is built by its script. The licence page, which has no script,
+            // looked right either way - which is why this went unnoticed.
+            loadWhenOnScreen(webView, html, 0);
         });
     }
 
-    /**
-     * A web view whose page may run its own scripts.
-     *
-     * <p>Not what a plain {@code new WKWebView(bounds)} gives: the tutorial came up with its
-     * styling and nothing else - no picture, no caption, no buttons - because its script never
-     * ran, while the same page in Safari was complete. The preferences are built here and handed
-     * over, rather than set on what the configuration returns, which is a copy.
-     */
-    private WKWebView newWebView() {
-        WKWebViewConfiguration configuration = new WKWebViewConfiguration();
-        WKPreferences preferences = new WKPreferences();
-        preferences.setJavaScriptEnabled(true);
-        configuration.setPreferences(preferences);
-        if (Foundation.getMajorSystemVersion() >= 14) {
-            WKWebpagePreferences pagePreferences = new WKWebpagePreferences();
-            pagePreferences.setAllowsContentJavaScript(true);
-            configuration.setDefaultWebpagePreferences(pagePreferences);
+    /** Loads the page once the view has a window, giving up after a few tries and loading anyway. */
+    private void loadWhenOnScreen(final WKWebView webView, final String html, final int attempt) {
+        if (webView.getWindow() != null || attempt >= PRESENT_RETRY_MAX) {
+            webView.loadHTMLString(html, null);
+            return;
         }
-        return new WKWebView(UIScreen.getMainScreen().getBounds(), configuration);
-    }
-
-    /** Loads the page into the view and shows it. */
-    private void presentWebView(final WKWebView webView, final String html) {
-        webView.loadHTMLString(html, null);
-        presentWebView(webView);
+        DISMISS_TIMER.schedule(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                onMainThread(() -> loadWhenOnScreen(webView, html, attempt + 1));
+            }
+        }, PRESENT_RETRY_MS);
     }
 
     /** A full-screen web view, with a Back button to come home on. */
