@@ -641,7 +641,7 @@ public class OptionPane {
                              final SliderChange onChange) {
         Table cell = new Table();
         cell.setBackground(getC().widgetTextures.getUniformDrawable(Color.WHITE));
-        Label label = new Label(text, new Label.LabelStyle(getC().styleSingleton.getBitmapFontVerySmall(), Color.BLACK));
+        Label label = new Label(text, new Label.LabelStyle(getC().styleSingleton.getBitmapFontVerySmallDark(), Color.BLACK));
         final Slider slider = new Slider(min, max, step, false, menuSliderStyle(0.5f * height));
         slider.addListener(new ChangeListener() {
             @Override

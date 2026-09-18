@@ -217,11 +217,6 @@ final class FileSnapshotWriter extends NativeScreenCallerDesktop {
     }
 
     @Override
-    public void openAppTutorial() {
-        suppress("browser", "tutorial");
-    }
-
-    @Override
     public void openCoordinate(double latitude, double longitude) {
         suppress("browser", String.format(Locale.ROOT, "coordinate %.5f, %.5f", latitude, longitude));
     }

@@ -27,6 +27,7 @@ public class StyleSingleton {
     private BitmapFont bitmapFont = null;
     private BitmapFont bitmapFontSmall = null;
     private BitmapFont bitmapFontVerySmall = null;
+    private BitmapFont bitmapFontVerySmallDark = null;
     private BitmapFont bitmapFontSmallWhite = null;
     private BitmapFont bitmapFontVerySmallWhite = null;
     private BitmapFont bitmapFontMedium = null;
@@ -69,10 +70,13 @@ public class StyleSingleton {
         parameter.size = Math.round(displaySize * FONT_SUPERSAMPLE);
         parameter.minFilter = Texture.TextureFilter.Linear;
         parameter.magFilter = Texture.TextureFilter.Linear;
-        // Border width, if any, is specified in target pixels, so scale it up to match the atlas.
+        // Border width and shadow offset, if any, are specified in target pixels, so scale them
+        // up to match the atlas - a shadow left at 1 would be half a pixel once drawn.
         if (parameter.borderWidth > 0f) {
             parameter.borderWidth *= FONT_SUPERSAMPLE;
         }
+        parameter.shadowOffsetX = Math.round(parameter.shadowOffsetX * FONT_SUPERSAMPLE);
+        parameter.shadowOffsetY = Math.round(parameter.shadowOffsetY * FONT_SUPERSAMPLE);
         BitmapFont font = generator.generateFont(parameter);
         // Draw glyphs at their intended display size: metrics stay identical to the old 1x fonts,
         // only the underlying atlas is higher resolution.
@@ -97,11 +101,26 @@ public class StyleSingleton {
         freeTypeFontParameter.color = Color.BLACK;
         bitmapFontSmall = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.04f));
 
+        // The small text that sits on the map itself - the copyright line, the download's
+        // progress and its percentage - is read against snow, forest, rock and sky in turn.
+        // White on a dark outline, not black on a white one: a dark outline is the one thing
+        // that never disappears into the map, white glyphs carry at this size where black ones
+        // fill in, and the pair reads the same way road and peak labels do. A soft shadow under
+        // it pulls the letters off pale ground without thickening them.
         freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        freeTypeFontParameter.borderColor = Color.WHITE;
-        freeTypeFontParameter.color = Color.BLACK;
+        freeTypeFontParameter.color = Color.WHITE;
+        freeTypeFontParameter.borderColor = new Color(0f, 0f, 0f, 0.9f);
         freeTypeFontParameter.borderWidth = 2f;
+        freeTypeFontParameter.shadowColor = new Color(0f, 0f, 0f, 0.45f);
+        freeTypeFontParameter.shadowOffsetX = 1;
+        freeTypeFontParameter.shadowOffsetY = 1;
         bitmapFontVerySmall = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.025f));
+
+        // The same size in plain black, for the captions inside the menus, which have a white
+        // panel behind them: an outlined font tinted dark would come out as a black smudge.
+        freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
+        freeTypeFontParameter.color = Color.BLACK;
+        bitmapFontVerySmallDark = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.025f));
 
         freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
         freeTypeFontParameter.color = Color.WHITE;
@@ -124,6 +143,11 @@ public class StyleSingleton {
 
     public BitmapFont getBitmapFontSmall() {
         return bitmapFontSmall;
+    }
+
+    /** The small dark font for text on the menus' own white panels; see generateAllFonts. */
+    public BitmapFont getBitmapFontVerySmallDark() {
+        return bitmapFontVerySmallDark;
     }
 
     public BitmapFont getBitmapFontVerySmall() {
