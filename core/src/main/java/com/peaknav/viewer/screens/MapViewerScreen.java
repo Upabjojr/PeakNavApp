@@ -1728,6 +1728,10 @@ public class MapViewerScreen implements Screen {
 
 		advanceOrbit(deltaTime);
 
+		if (labelLoading != null) {
+			labelLoading.update(deltaTime);
+		}
+
 		updateGpxButtons();
 
 		float targetLat = getC().L.getTargetLatitude();
@@ -2125,6 +2129,8 @@ public class MapViewerScreen implements Screen {
 		// texture) was freed and all other GL/native resources leaked per screen lifecycle.
 		if (labelRenderer != null)
 			labelRenderer.dispose();
+		if (labelLoading != null)
+			labelLoading.dispose();
 		if (skyRenderer != null)
 			skyRenderer.dispose();
 		if (tileBatchRenderer != null)

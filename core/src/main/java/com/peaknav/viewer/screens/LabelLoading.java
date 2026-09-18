@@ -6,6 +6,7 @@ import static com.peaknav.utils.PeakNavUtils.s;
 
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
+import com.peaknav.viewer.widgets.SlideShow;
 
 public class LabelLoading {
 
@@ -47,6 +48,22 @@ public class LabelLoading {
         LOADED;
     }
 
+    /** Pictures of the app, shown under the message while a first download runs. */
+    private final SlideShow slideShow;
+
+    /**
+     * Advances the pictures and shows them while a download is running with nothing on the map
+     * yet - the same wait the welcome screen fills, met again by anyone who starts a download
+     * for an area before any of its data has arrived. Render thread, every frame.
+     */
+    public void update(float delta) {
+        slideShow.update(delta, downloadPercent >= 0 && state != State.LOADED);
+    }
+
+    public void dispose() {
+        slideShow.dispose();
+    }
+
     public LabelLoading(float height) {
         state = State.LOADING;
 
@@ -60,6 +77,10 @@ public class LabelLoading {
         labelNoDataInThisArea.setAlignment(com.badlogic.gdx.utils.Align.center);
         tableCenterNoData.add(labelNoDataInThisArea).minHeight(height).row();
 
+        Label.LabelStyle captionStyle = new Label.LabelStyle();
+        captionStyle.font = getC().styleSingleton.getBitmapFontSmallWhite();
+        slideShow = new SlideShow(height, captionStyle);
+        tableCenterNoData.add(slideShow.getTable()).row();
     }
 
     /**
