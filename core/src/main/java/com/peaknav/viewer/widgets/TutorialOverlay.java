@@ -240,8 +240,10 @@ public class TutorialOverlay implements Disposable {
         // A thumb's width, whatever the screen: a sixth of the short side, and never less than two
         // widget units, so it is as easy to hit on a tablet as on a phone.
         float arrowWidth = Math.max(widgetUnitStep * 2f, shortSide * 0.17f);
-        arrows.add(edgeArrow(false, arrowWidth, stageHeight)).left().width(arrowWidth).expandX().fillY();
-        arrows.add(edgeArrow(true, arrowWidth, stageHeight)).right().width(arrowWidth).expandX().fillY();
+        // expand in both directions: stretched sideways only, each arrow was as tall as its
+        // chevron and read as a band across the middle.
+        arrows.add(edgeArrow(false, arrowWidth, stageHeight)).left().width(arrowWidth).expand().fill();
+        arrows.add(edgeArrow(true, arrowWidth, stageHeight)).right().width(arrowWidth).expand().fill();
         root.addActor(arrows);
         arrows.toFront();   // over the picture and the caption, or they cannot be tapped
 
@@ -270,7 +272,9 @@ public class TutorialOverlay implements Disposable {
         chevron.setFontScale(width / 1.6f / font.getLineHeight() * font.getScaleY());
         Table arrow = new Table();
         arrow.setBackground(getC().widgetTextures.getUniformDrawable(new Color(1f, 1f, 1f, 0.16f)));
-        arrow.add(chevron);
+        // Above the middle: the caption sits at the foot of the screen (or beside it), and a
+        // chevron level with the picture is where the thumb goes.
+        arrow.add(chevron).padBottom(height * 0.22f);
         arrow.setTouchable(Touchable.enabled);
         arrow.addListener(new ClickListener() {
             @Override
