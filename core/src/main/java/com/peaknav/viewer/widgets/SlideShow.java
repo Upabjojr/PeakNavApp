@@ -26,8 +26,13 @@ import com.badlogic.gdx.utils.Scaling;
  * {@code assets/intro_slides/slides.txt}: one line per picture, its file name and the caption it
  * carries ({@code slide_07.jpg<TAB>gpx} -> {@code Intro_slide_gpx}). A list rather than a count,
  * so the pictures can be chosen and reordered without touching this class, and so sixty of them
- * need six translated lines rather than sixty. The order is shuffled at start-up: the list groups
- * pictures of a kind together, and nobody waiting wants four Aconcaguas in a row.
+ * need six translated lines rather than sixty.
+ *
+ * <p>The order is drawn afresh each time round, and never shows the same caption twice running:
+ * the captions are few and the pictures many - half of them are route flights - so a plain
+ * shuffle read "Find the paths to the summit" over and over. Each turn takes a picture from
+ * whichever caption has the most left, except the one just shown, which spreads the commonest
+ * captions evenly and still varies the pictures within them (see {@link #planOrder}).
  *
  * <p>One texture at a time: the previous is disposed as the next is loaded, so the whole set
  * never sits in graphics memory. {@link #update} drives it and must be called on the render
@@ -47,8 +52,11 @@ public final class SlideShow {
     private final float widgetUnitStep;
 
     private Texture texture;
-    /** The pictures to show, in the order they will be shown: file name and caption key. */
-    private final java.util.List<String[]> slides = new java.util.ArrayList<>();
+    /** The pictures, grouped by the caption they carry; each group shuffled as it is drawn from. */
+    private final java.util.Map<String, java.util.List<String>> byCaption =
+            new java.util.LinkedHashMap<>();
+    /** This round's order: file name and caption key, no two neighbours sharing a caption. */
+    private final java.util.List<String[]> order = new java.util.ArrayList<>();
     /** Which picture is on screen, 0-based; -1 before the first one is loaded. */
     private int index = -1;
     private float elapsed = 0f;
@@ -102,7 +110,7 @@ public final class SlideShow {
         readSlideList();
     }
 
-    /** The pictures listed in {@link #SLIDE_LIST}, shuffled; empty when there are none. */
+    /** The pictures listed in {@link #SLIDE_LIST}, by caption; empty when there are none. */
     private void readSlideList() {
         try {
             com.badlogic.gdx.files.FileHandle list = Gdx.files.internal(SLIDE_LIST);
@@ -112,12 +120,86 @@ public final class SlideShow {
             for (String line : list.readString("UTF-8").split("\n")) {
                 String[] parts = line.trim().split("\t");
                 if (parts.length == 2 && !parts[0].isEmpty()) {
-                    slides.add(new String[] {parts[0], parts[1]});
+                    java.util.List<String> group = byCaption.get(parts[1]);
+                    if (group == null) {
+                        byCaption.put(parts[1], group = new java.util.ArrayList<>());
+                    }
+                    group.add(parts[0]);
                 }
             }
-            java.util.Collections.shuffle(slides);
         } catch (RuntimeException unreadable) {
-            slides.clear();
+            byCaption.clear();
+        }
+        planOrder(null);
+    }
+
+    /**
+     * Draws the order for one pass through every picture: at each turn the caption with the most
+     * pictures still to place, other than the one just placed. That is the classic way to spread
+     * repeats as far apart as they can go, and it leaves two of the same caption side by side
+     * only if one caption holds more than half of all the pictures - with six captions and sixty
+     * pictures it does not.
+     *
+     * @param after the caption the previous pass ended on, so the passes join cleanly; null at start
+     */
+    private void planOrder(String after) {
+        order.clear();
+        order.addAll(plan(byCaption, after));
+    }
+
+    /**
+     * One pass through every picture, no two neighbours sharing a caption where that is possible.
+     * Static and free of any graphics, so it can be tested on its own (TestSlideShowOrder).
+     *
+     * @param byCaption the pictures of each caption
+     * @param after     the caption the previous pass ended on, so passes join cleanly; null at start
+     */
+    static java.util.List<String[]> plan(java.util.Map<String, java.util.List<String>> byCaption,
+                                         String after) {
+        java.util.List<String[]> order = new java.util.ArrayList<>();
+        java.util.Map<String, java.util.List<String>> left = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, java.util.List<String>> group : byCaption.entrySet()) {
+            java.util.List<String> pictures = new java.util.ArrayList<>(group.getValue());
+            java.util.Collections.shuffle(pictures);   // the pictures within a caption vary too
+            left.put(group.getKey(), pictures);
+        }
+        String previous = after;
+        java.util.List<String> tied = new java.util.ArrayList<>();
+        while (true) {
+            // The caption with the most pictures left, the one just shown excepted; ties are
+            // drawn for, so the run of captions differs from one pass to the next.
+            int most = 0;
+            tied.clear();
+            for (java.util.Map.Entry<String, java.util.List<String>> group : left.entrySet()) {
+                if (group.getValue().isEmpty() || group.getKey().equals(previous)) {
+                    continue;
+                }
+                if (group.getValue().size() > most) {
+                    most = group.getValue().size();
+                    tied.clear();
+                }
+                if (group.getValue().size() == most) {
+                    tied.add(group.getKey());
+                }
+            }
+            String chosen = tied.isEmpty() ? null
+                    : tied.get(com.badlogic.gdx.math.MathUtils.random(tied.size() - 1));
+            if (chosen == null) {
+                // Only the caption just shown is left: its last pictures follow one another, and
+                // nothing can be done about that but show them.
+                for (java.util.Map.Entry<String, java.util.List<String>> group : left.entrySet()) {
+                    if (!group.getValue().isEmpty()) {
+                        chosen = group.getKey();
+                        break;
+                    }
+                }
+                if (chosen == null) {
+                    return order;     // every picture placed
+                }
+            }
+            java.util.List<String> pictures = left.get(chosen);
+            order.add(new String[] {pictures.remove(pictures.size() - 1), chosen});
+            previous = chosen;
         }
     }
 
@@ -130,14 +212,18 @@ public final class SlideShow {
      * {@link #SLIDE_SECONDS}, fading in over the first moment of its turn. Render thread.
      */
     public void update(float delta, boolean show) {
-        table.setVisible(show && !slides.isEmpty());
-        if (!show || slides.isEmpty()) {
+        table.setVisible(show && !order.isEmpty());
+        if (!show || order.isEmpty()) {
             return;
         }
         elapsed += delta;
         if (index < 0 || elapsed >= SLIDE_SECONDS) {
             elapsed = 0f;
-            showSlide((index + 1) % slides.size());
+            if (index + 1 >= order.size()) {
+                planOrder(order.get(order.size() - 1)[1]);   // a new pass, different pictures
+                index = -1;
+            }
+            showSlide(index + 1);
         }
         float alpha = Math.min(1f, elapsed / SLIDE_FADE_SECONDS);
         image.getColor().a = alpha;
@@ -146,7 +232,7 @@ public final class SlideShow {
 
     private void showSlide(int next) {
         index = next;
-        String[] slide = slides.get(next);
+        String[] slide = order.get(next);
         try {
             Texture loaded = new Texture(Gdx.files.internal("intro_slides/" + slide[0]));
             loaded.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
