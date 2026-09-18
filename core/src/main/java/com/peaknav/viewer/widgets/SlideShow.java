@@ -34,9 +34,10 @@ import com.badlogic.gdx.utils.Scaling;
  * whichever caption has the most left, except the one just shown, which spreads the commonest
  * captions evenly and still varies the pictures within them (see {@link #planOrder}).
  *
- * <p>One texture at a time: the previous is disposed as the next is loaded, so the whole set
- * never sits in graphics memory. {@link #update} drives it and must be called on the render
- * thread, {@link #dispose} frees the one texture in hand.
+ * <p>One picture crosses into the next: the arriving one fades up as the leaving one fades
+ * away, its caption with it, so nothing ever cuts. Two textures are held over the moment they
+ * overlap and no more - the rest of the set never sits in graphics memory. {@link #update}
+ * drives it and must be called on the render thread, {@link #dispose} frees what is in hand.
  */
 public final class SlideShow {
 
@@ -47,11 +48,15 @@ public final class SlideShow {
     private static final float SLIDE_FADE_SECONDS = 0.8f;
 
     private final Table table = new Table();
+    /** The arriving picture and the leaving one, one over the other; likewise their captions. */
     private final Image image = new Image();
+    private final Image imageLeaving = new Image();
     private final Label caption;
+    private final Label captionLeaving;
     private final float widgetUnitStep;
 
     private Texture texture;
+    private Texture textureLeaving;
     /** The pictures, grouped by the caption they carry; each group shuffled as it is drawn from. */
     private final java.util.Map<String, java.util.List<String>> byCaption =
             new java.util.LinkedHashMap<>();
@@ -68,9 +73,13 @@ public final class SlideShow {
     public SlideShow(float widgetUnitStep, Label.LabelStyle captionStyle) {
         this.widgetUnitStep = widgetUnitStep;
         image.setScaling(Scaling.fit);
+        imageLeaving.setScaling(Scaling.fit);
         caption = new Label("", captionStyle);
         caption.setAlignment(Align.center);
         caption.setWrap(true);
+        captionLeaving = new Label("", captionStyle);
+        captionLeaving.setAlignment(Align.center);
+        captionLeaving.setWrap(true);
 
         // Sized from the screen, not from a fixed number of button widths: the pictures are the
         // point of a screen that is waiting, and on a tablet a button-sized picture is lost in
@@ -103,8 +112,15 @@ public final class SlideShow {
                 return width.get(context);
             }
         };
-        table.add(image).width(width).height(height).padTop(0.4f * widgetUnitStep).row();
-        table.add(caption).width(captionWidth).padTop(0.3f * widgetUnitStep).row();
+        // Stacked, not swapped: during the crossing both are drawn, the new one over the old.
+        com.badlogic.gdx.scenes.scene2d.ui.Stack pictures = new com.badlogic.gdx.scenes.scene2d.ui.Stack();
+        pictures.add(imageLeaving);
+        pictures.add(image);
+        com.badlogic.gdx.scenes.scene2d.ui.Stack captions = new com.badlogic.gdx.scenes.scene2d.ui.Stack();
+        captions.add(captionLeaving);
+        captions.add(caption);
+        table.add(pictures).width(width).height(height).padTop(0.4f * widgetUnitStep).row();
+        table.add(captions).width(captionWidth).padTop(0.3f * widgetUnitStep).row();
         table.setVisible(false);
 
         readSlideList();
@@ -225,9 +241,23 @@ public final class SlideShow {
             }
             showSlide(index + 1);
         }
+        // The two overlap for SLIDE_FADE_SECONDS: one comes up as the other goes down, so the
+        // brightness of the pair stays even and neither picture ever blinks out.
         float alpha = Math.min(1f, elapsed / SLIDE_FADE_SECONDS);
         image.getColor().a = alpha;
-        caption.getColor().a = alpha;
+        imageLeaving.getColor().a = 1f - alpha;
+        // The captions hand over rather than overlap: two sentences at half strength on top of
+        // each other are unreadable, where the pictures blend happily. The old line is gone by
+        // the middle of the crossing, the new one arrives after it.
+        caption.getColor().a = Math.max(0f, 2f * alpha - 1f);
+        captionLeaving.getColor().a = Math.max(0f, 1f - 2f * alpha);
+        if (alpha >= 1f && textureLeaving != null) {
+            // Fully covered: the picture that left can go.
+            textureLeaving.dispose();
+            textureLeaving = null;
+            imageLeaving.setDrawable(null);
+            captionLeaving.setText("");
+        }
     }
 
     private void showSlide(int next) {
@@ -236,9 +266,14 @@ public final class SlideShow {
         try {
             Texture loaded = new Texture(Gdx.files.internal("intro_slides/" + slide[0]));
             loaded.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-            if (texture != null) {
-                texture.dispose();
+            // What was on screen steps back to be faded out; whatever was already leaving has
+            // had its turn and is freed now.
+            if (textureLeaving != null) {
+                textureLeaving.dispose();
             }
+            textureLeaving = texture;
+            imageLeaving.setDrawable(image.getDrawable());
+            captionLeaving.setText(caption.getText());
             texture = loaded;
             image.setDrawable(new TextureRegionDrawable(new TextureRegion(loaded)));
             caption.setText(s("Intro_slide_" + slide[1]));
@@ -254,6 +289,10 @@ public final class SlideShow {
             texture.dispose();
             texture = null;
             index = -1;
+        }
+        if (textureLeaving != null) {
+            textureLeaving.dispose();
+            textureLeaving = null;
         }
     }
 }
