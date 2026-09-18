@@ -20,23 +20,34 @@ public final class TutorialStrings {
 
     /** Every caption key the tutorial can ask for, in slide order. */
     public static final String[] KEYS = {
+            "Tutorial_welcome",
             "Tutorial_gyroscope",
             "Tutorial_elevation",
-            "Tutorial_gallery",
-            "Tutorial_camera",
             "Tutorial_search",
+            "Tutorial_here",
+            "Tutorial_share",
             "Tutorial_options",
             "Tutorial_options_pane",
             "Tutorial_satellite",
-            "Tutorial_share",
-            "Tutorial_here",
+            "Tutorial_trails",
+            "Tutorial_pistes",
+            "Tutorial_sky",
             "Tutorial_tap",
+            "Tutorial_orbit",
+            "Tutorial_open_maps",
+            "Tutorial_route",
+            "Tutorial_route_result",
             "Tutorial_gpx",
+            "Tutorial_gpx_stats",
+            "Tutorial_gpx_share",
+            "Tutorial_gallery",
+            "Tutorial_camera",
             "Tutorial_photo_match",
             "Tutorial_photo_outlines",
             "Tutorial_photo_terrain",
             "Tutorial_photo_pin",
             "Tutorial_photo_close",
+            "Tutorial_help",
     };
 
     private TutorialStrings() {

@@ -7,14 +7,20 @@
 <!--
   The "?" tutorial: a slideshow of screenshots of the app with a ring on the widget each
   slide is about. The screenshots and the SLIDES block below are produced by
-  tools/tutorial_screenshots.py from the running app, so the pictures and the rings
-  follow the app; the captions live in that script.
+  tools/tutorial_slides.py from pictures of the running app and the widget places it
+  reports, so the pictures and the rings follow the app; the captions are the app's own
+  translations (TutorialStrings.KEYS).
 
   Shown in a WebView on Android and iOS and in the system browser on the desktop. The
   three platforms hand the screenshots in through get_image() (base64 on the phones, a
-  temp directory on the desktop), so this page must reference them only by file name
-  through that function. Plain ES5-era JavaScript and CSS with wide support: WebViews
-  on older phones are part of the audience.
+  temp directory on the desktop) and find their names in the SLIDES block itself
+  (TutorialImages.namesIn), so this page must reference them only by file name through
+  that function. Plain ES5-era JavaScript and CSS with wide support: WebViews on older
+  phones are part of the audience.
+
+  The pictures are phone screenshots, taller than they are wide. A narrow window (a phone
+  held upright) puts the caption under the picture; a wide one (a tablet, a desktop
+  browser, a phone on its side) puts it beside, so the picture keeps the full height.
 -->
 <style>
 :root {
@@ -94,6 +100,10 @@ body {
 }
 
 .nav:hover:not(:disabled) { background: rgba(12, 16, 20, 0.85); }
+/* A tap leaves the arrow focused, and a WebView draws a box around it; a keyboard's focus
+   still shows (browsers without :focus-visible simply keep their own ring). */
+.nav:focus { outline: none; }
+.nav:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .nav:disabled { opacity: 0.25; cursor: default; }
 .prev { left: 12px; }
 .next { right: 12px; }
@@ -141,33 +151,71 @@ body {
     max-width: 60ch;
 }
 
-.dots {
+/* Progress: a bar and "n / N". With this many slides a dot each is a smudge, and on a
+   narrow phone they would wrap into several rows. */
+.progress {
     display: flex;
-    gap: 7px;
-    line-height: 0;
-    margin-top: 4px;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 320px;
+    margin-top: 2px;
 }
 
-.dot {
-    width: 8px;
-    height: 8px;
-    padding: 0;
-    border: none;
-    border-radius: 50%;
-    background: #4a5563;
-    cursor: pointer;
-    transition: background 0.2s ease, transform 0.2s ease;
+.progress-track {
+    flex: 1 1 auto;
+    height: 4px;
+    border-radius: 2px;
+    background: #39424f;
+    overflow: hidden;
 }
 
-.dot:hover { background: #6f7d8f; }
-.dot.active { background: var(--ink); transform: scale(1.35); }
+#progressFill {
+    height: 100%;
+    width: 0;
+    border-radius: 2px;
+    background: var(--ring);
+    transition: width 0.2s ease;
+}
+
+#counter {
+    flex: 0 0 auto;
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
 
 @media (max-width: 620px) {
     :root { --caption-height: 104px; --page-padding: 8px; }
     #captionText { font-size: 17px; }
     #detailText { font-size: 12px; }
     .nav { width: 38px; height: 38px; font-size: 17px; }
-    .dot { width: 6px; height: 6px; }
+}
+
+/* Wide window - a tablet, a desktop browser, a phone on its side: the caption moves beside
+   the picture, which then has the whole height of the window. */
+@media (min-aspect-ratio: 1/1) {
+    body { flex-direction: row; align-items: center; }
+
+    .stage { flex: 1 1 auto; height: 100%; }
+
+    .frame img {
+        max-width: calc(60vw - (2 * var(--page-padding)));
+        max-height: calc(100vh - (2 * var(--page-padding)));
+    }
+
+    .caption-bar {
+        flex: 0 0 auto;
+        width: min(38vw, 420px);
+        height: auto;
+        align-items: flex-start;
+        text-align: left;
+        padding: 0 24px 0 4px;
+        gap: 10px;
+    }
+
+    #detailText { font-size: 15px; }
+    .progress { max-width: 100%; }
 }
 </style>
 </head>
@@ -186,7 +234,10 @@ body {
 <div class="caption-bar">
     <div id="captionText"></div>
     <div id="detailText"></div>
-    <div class="dots" id="dots"></div>
+    <div class="progress">
+        <div class="progress-track"><div id="progressFill"></div></div>
+        <div id="counter"></div>
+    </div>
 </div>
 
 <script>
@@ -208,166 +259,251 @@ function get_string(k) {
 
 // OVERLOAD::get_string
 
-// SLIDES-BEGIN (written by tools/tutorial_screenshots.py)
+// SLIDES-BEGIN (written by tools/tutorial_slides.py)
 const SLIDES = [
   {
-    "image": "imageBase.jpg",
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_welcome",
+    "marker": null
+  },
+  {
+    "image": "tutorial_base.jpg",
     "key": "Tutorial_gyroscope",
     "marker": {
-      "cx": 0.0375,
-      "cy": 0.9206,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.0795,
+      "cy": 0.9278,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imageBase.jpg",
+    "image": "tutorial_base.jpg",
     "key": "Tutorial_elevation",
     "marker": {
-      "cx": 0.0375,
-      "cy": 0.5,
-      "rw": 0.0404,
-      "rh": 0.3603
+      "cx": 0.0795,
+      "cy": 0.5146,
+      "rw": 0.085,
+      "rh": 0.1657
     }
   },
   {
-    "image": "imageBase.jpg",
-    "key": "Tutorial_gallery",
-    "marker": {
-      "cx": 0.0375,
-      "cy": 0.0807,
-      "rw": 0.0404,
-      "rh": 0.0854
-    }
-  },
-  {
-    "image": "imageBase.jpg",
-    "key": "Tutorial_camera",
-    "marker": {
-      "cx": 0.1794,
-      "cy": 0.0807,
-      "rw": 0.0404,
-      "rh": 0.0854
-    }
-  },
-  {
-    "image": "imageBase.jpg",
+    "image": "tutorial_base.jpg",
     "key": "Tutorial_search",
     "marker": {
-      "cx": 0.9619,
-      "cy": 0.0807,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.9197,
+      "cy": 0.1018,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imageBase.jpg",
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_here",
+    "marker": {
+      "cx": 0.9197,
+      "cy": 0.9278,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_share",
+    "marker": {
+      "cx": 0.9197,
+      "cy": 0.8459,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_base.jpg",
     "key": "Tutorial_options",
     "marker": {
-      "cx": 0.9619,
-      "cy": 0.1892,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.9197,
+      "cy": 0.1838,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imageOptions.jpg",
+    "image": "tutorial_options.jpg",
     "key": "Tutorial_options_pane",
     "marker": null
   },
   {
-    "image": "imageBaseSat.jpg",
+    "image": "tutorial_satellite.jpg",
     "key": "Tutorial_satellite",
     "marker": null
   },
   {
-    "image": "imageBase.jpg",
-    "key": "Tutorial_share",
-    "marker": {
-      "cx": 0.9619,
-      "cy": 0.8122,
-      "rw": 0.0404,
-      "rh": 0.0854
-    }
+    "image": "tutorial_trails.jpg",
+    "key": "Tutorial_trails",
+    "marker": null
   },
   {
-    "image": "imageBase.jpg",
-    "key": "Tutorial_here",
-    "marker": {
-      "cx": 0.9619,
-      "cy": 0.9206,
-      "rw": 0.0404,
-      "rh": 0.0854
-    }
+    "image": "tutorial_pistes.jpg",
+    "key": "Tutorial_pistes",
+    "marker": null
   },
   {
-    "image": "imageTap.jpg",
+    "image": "tutorial_sky.jpg",
+    "key": "Tutorial_sky",
+    "marker": null
+  },
+  {
+    "image": "tutorial_tap.jpg",
     "key": "Tutorial_tap",
     "marker": {
-      "cx": 0.8975,
-      "cy": 0.3069,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.7848,
+      "cy": 0.3023,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imageGpx.jpg",
+    "image": "tutorial_tap.jpg",
+    "key": "Tutorial_orbit",
+    "marker": {
+      "cx": 0.9197,
+      "cy": 0.3023,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_tap.jpg",
+    "key": "Tutorial_open_maps",
+    "marker": {
+      "cx": 0.9197,
+      "cy": 0.3734,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_tap.jpg",
+    "key": "Tutorial_route",
+    "marker": {
+      "cx": 0.7848,
+      "cy": 0.3734,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_route.jpg",
+    "key": "Tutorial_route_result",
+    "marker": null
+  },
+  {
+    "image": "tutorial_gpx.jpg",
     "key": "Tutorial_gpx",
     "marker": {
-      "cx": 0.9619,
-      "cy": 0.578,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.9197,
+      "cy": 0.4916,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imagePhoto.jpg",
+    "image": "tutorial_gpx.jpg",
+    "key": "Tutorial_gpx_stats",
+    "marker": {
+      "cx": 0.8034,
+      "cy": 0.1421,
+      "rw": 0.08,
+      "rh": 0.0368
+    }
+  },
+  {
+    "image": "tutorial_route.jpg",
+    "key": "Tutorial_gpx_share",
+    "marker": {
+      "cx": 0.9197,
+      "cy": 0.7277,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_gallery",
+    "marker": {
+      "cx": 0.0795,
+      "cy": 0.1018,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_camera",
+    "marker": {
+      "cx": 0.3795,
+      "cy": 0.1018,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_photo.jpg",
     "key": "Tutorial_photo_match",
     "marker": {
-      "cx": 0.3912,
-      "cy": 0.9206,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.2197,
+      "cy": 0.9278,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imagePhoto.jpg",
+    "image": "tutorial_photo.jpg",
     "key": "Tutorial_photo_outlines",
     "marker": {
-      "cx": 0.4997,
-      "cy": 0.9206,
-      "rw": 0.0851,
-      "rh": 0.0854
+      "cx": 0.425,
+      "cy": 0.9278,
+      "rw": 0.15,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imagePhotoTerrain.jpg",
+    "image": "tutorial_photo_terrain.jpg",
     "key": "Tutorial_photo_terrain",
     "marker": {
-      "cx": 0.9619,
-      "cy": 0.5817,
-      "rw": 0.0404,
-      "rh": 0.1802
+      "cx": 0.9197,
+      "cy": 0.74,
+      "rw": 0.085,
+      "rh": 0.0828
     }
   },
   {
-    "image": "imagePhotoPin.jpg",
+    "image": "tutorial_photo_pin.jpg",
     "key": "Tutorial_photo_pin",
     "marker": {
-      "cx": 0.0375,
-      "cy": 0.1197,
-      "rw": 0.0402,
-      "rh": 0.085
+      "cx": 0.0795,
+      "cy": 0.3397,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   },
   {
-    "image": "imagePhoto.jpg",
+    "image": "tutorial_photo.jpg",
     "key": "Tutorial_photo_close",
     "marker": {
-      "cx": 0.6088,
-      "cy": 0.9206,
-      "rw": 0.0404,
-      "rh": 0.0854
+      "cx": 0.6295,
+      "cy": 0.9278,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_base.jpg",
+    "key": "Tutorial_help",
+    "marker": {
+      "cx": 0.7697,
+      "cy": 0.9278,
+      "rw": 0.085,
+      "rh": 0.0391
     }
   }
 ];
@@ -382,18 +518,6 @@ for (var i = 0; i < SLIDES.length; i++) {
 }
 
 var slideIndex = 0;
-
-function buildDots() {
-    var dots = document.getElementById("dots");
-    dots.innerHTML = "";
-    for (var i = 0; i < SLIDES.length; i++) {
-        var dot = document.createElement("button");
-        dot.className = "dot";
-        dot.setAttribute("aria-label", "Slide " + (i + 1));
-        dot.onclick = (function (n) { return function () { goToSlide(n); }; })(i);
-        dots.appendChild(dot);
-    }
-}
 
 function showSlide() {
     var slide = SLIDES[slideIndex];
@@ -418,10 +542,9 @@ function showSlide() {
 
     document.getElementById("prevButton").disabled = (slideIndex === 0);
     document.getElementById("nextButton").disabled = (slideIndex === SLIDES.length - 1);
-    var dots = document.querySelectorAll(".dot");
-    for (var i = 0; i < dots.length; i++) {
-        dots[i].classList.toggle("active", i === slideIndex);
-    }
+    document.getElementById("counter").textContent = (slideIndex + 1) + " / " + SLIDES.length;
+    document.getElementById("progressFill").style.width =
+        (100 * (slideIndex + 1) / SLIDES.length) + "%";
 }
 
 function goToSlide(n) {
@@ -473,7 +596,6 @@ if (SLIDES.length > 0) {
     if (!isNaN(start) && start >= 1 && start <= SLIDES.length) {
         slideIndex = start - 1;
     }
-    buildDots();
     showSlide();
 }
 </script>

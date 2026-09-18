@@ -4,7 +4,6 @@ import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
 import static com.peaknav.utils.PeakNavUtils.s;
 
 import android.os.Bundle;
-import android.util.Base64;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -32,33 +31,23 @@ public class AppTutorialAndroidView extends Fragment {
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
 
-        view = inflater.inflate(R.layout.fragment_app_info_android_view, container, false);
+        view = inflater.inflate(R.layout.fragment_app_tutorial_android_view, container, false);
 
-        WebView webView = view.findViewById(R.id.app_info_android_web_view);
+        WebView webView = view.findViewById(R.id.app_tutorial_android_web_view);
         webView.getSettings().setJavaScriptEnabled(true);
 
         String htmlString = Gdx.files.internal("info/app_tutorial.html").readString();
-
-        String get_image = "function get_image(k) {\n";
-        // The tutorial's screenshots, as tools/tutorial_screenshots.py writes them; the
-        // page names them through get_image(), which this overload answers with data URLs.
-        String[] imgFiles = {"imageBase.jpg", "imageOptions.jpg", "imageBaseSat.jpg", "imagePhoto.jpg", "imagePhotoTerrain.jpg", "imagePhotoPin.jpg", "imageGpx.jpg", "imageTap.jpg"};
-        for (String imgFile : imgFiles) {
-            byte[] imgBytes = Gdx.files.internal("info/" + imgFile).readBytes();
-            String base64Img = Base64.encodeToString(imgBytes, Base64.DEFAULT);
-            base64Img = base64Img.replace("\n", "");
-            get_image += "if (k == '" + imgFile + "') data = 'data:image/jpeg;base64,"+base64Img+"';\n";
-        }
-        get_image += "\nlet img = new Image();\nimg.src = data;\nreturn img;\nconsole.log(k);\n}\n";
-
-        htmlString = htmlString.replace("// OVERLOAD::get_image", get_image);
         // The captions, in the device's language, from the app's own catalogue.
         htmlString = htmlString.replace("// OVERLOAD::get_string",
                 com.peaknav.viewer.TutorialStrings.asJavaScript());
 
-        webView.loadDataWithBaseURL(null, htmlString, "text/html", "UTF-8", null);
+        // The pictures are read from the assets the app already ships, through the base URL, so
+        // the page's own <img src="tutorial_base.jpg"> finds them: they used to be built into the
+        // page as base64 data URLs, which meant holding every picture in memory twice over and
+        // cost the app a kill for memory once the tutorial had more than a handful of slides.
+        webView.loadDataWithBaseURL("file:///android_asset/info/", htmlString, "text/html", "UTF-8", null);
 
-        Button buttonAppInfoBack = view.findViewById(R.id.button_app_info_back);
+        Button buttonAppInfoBack = view.findViewById(R.id.button_app_tutorial_back);
         buttonAppInfoBack.setText(s("Back"));
         buttonAppInfoBack.setOnClickListener(view -> ((NativeScreenCallerAndroid) getNativeScreenCaller()).popStack());
 

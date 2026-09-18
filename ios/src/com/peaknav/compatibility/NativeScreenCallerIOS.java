@@ -457,6 +457,13 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         onMainThread(() -> {
             WKWebView webView = new WKWebView(UIScreen.getMainScreen().getBounds());
             webView.loadHTMLString(html, null);
+            presentWebView(webView);
+        });
+    }
+
+    /** A full-screen web view, with a Back button to come home on. */
+    private void presentWebView(final WKWebView webView) {
+        onMainThread(() -> {
             UIViewController content = new UIViewController();
             content.setView(webView);
             final UINavigationController nav = new UINavigationController(content);
@@ -886,23 +893,48 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     @Override
     public void openAppTutorial() {
         onMainThread(() -> {
-            String html = Gdx.files.internal("info/app_tutorial.html").readString();
-            StringBuilder getImage = new StringBuilder("function get_image(k) {\n");
-            // The tutorial's screenshots, as tools/tutorial_screenshots.py writes them.
-            String[] imgFiles = {
-                    "imageBase.jpg", "imageOptions.jpg", "imageBaseSat.jpg", "imagePhoto.jpg", "imagePhotoTerrain.jpg", "imagePhotoPin.jpg", "imageGpx.jpg", "imageTap.jpg"};
-            for (String imgFile : imgFiles) {
-                byte[] imgBytes = Gdx.files.internal("info/" + imgFile).readBytes();
-                getImage.append("if (k == '").append(imgFile)
-                        .append("') data = 'data:image/jpeg;base64,")
-                        .append(new String(Base64Coder.encode(imgBytes)))
-                        .append("';\n");
+            String html = Gdx.files.internal("info/app_tutorial.html").readString()
+                    // The captions, in the device's language, from the app's own catalogue.
+                    .replace("// OVERLOAD::get_string", com.peaknav.viewer.TutorialStrings.asJavaScript());
+            // The page is written next to copies of its pictures and opened as a file, so its own
+            // <img src="tutorial_base.jpg"> finds them. They used to be built into the page as
+            // base64 data URLs - every picture then sat in memory twice over, which on a phone
+            // with a slideshow this long is a launch the system kills.
+            java.io.File page = writeTutorialFiles(html);
+            if (page == null) {
+                presentHtml(html);   // nowhere to write: the page without its pictures
+                return;
             }
-            getImage.append("\nlet img = new Image();\nimg.src = data;\nreturn img;\n}\n");
-            // The captions, in the device's language, from the app's own catalogue.
-            presentHtml(html.replace("// OVERLOAD::get_image", getImage.toString())
-                    .replace("// OVERLOAD::get_string", com.peaknav.viewer.TutorialStrings.asJavaScript()));
+            WKWebView webView = new WKWebView(UIScreen.getMainScreen().getBounds());
+            webView.loadFileURL(new NSURL(page), new NSURL(page.getParentFile()));
+            presentWebView(webView);
         });
+    }
+
+    /**
+     * The tutorial's page and its pictures in one directory of the app's cache, and the page's
+     * URL. WKWebView reads a page's neighbours only from a file URL it was given access to, so
+     * both have to sit together outside the bundle, whose HTML is not the one shown (the captions
+     * are filled in first). The pictures are copied once and kept.
+     */
+    private java.io.File writeTutorialFiles(String html) {
+        try {
+            com.badlogic.gdx.files.FileHandle dir = Gdx.files.external("tutorial");
+            dir.mkdirs();
+            for (String picture : com.peaknav.viewer.TutorialImages.namesIn(html)) {
+                com.badlogic.gdx.files.FileHandle source = Gdx.files.internal("info/" + picture);
+                com.badlogic.gdx.files.FileHandle target = dir.child(picture);
+                if (source.exists() && (!target.exists() || target.length() != source.length())) {
+                    source.copyTo(target);
+                }
+            }
+            com.badlogic.gdx.files.FileHandle page = dir.child("app_tutorial.html");
+            page.writeString(html, false, "UTF-8");
+            return page.file();
+        } catch (Throwable cannotWrite) {
+            Gdx.app.error("PeakNav", "tutorial files: " + cannotWrite);
+            return null;
+        }
     }
 
     // ------------------------------------------------------------------ GPX
