@@ -1627,6 +1627,12 @@ public class MapViewerScreen implements Screen {
 			cam.resizeGeographicCameras(width, height);
 
 			updateStageViewportInsideSafeArea(width, height);
+			if (labelLoading != null) {
+				labelLoading.resize();
+			}
+			if (slideShowOverlay != null) {
+				slideShowOverlay.resize();
+			}
 			if (tutorialOverlay != null && tutorialOverlay.isVisible()) {
 				// Upright or on its side, the slideshow is laid out differently.
 				tutorialOverlay.layout();

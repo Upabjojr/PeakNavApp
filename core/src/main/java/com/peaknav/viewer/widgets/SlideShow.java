@@ -48,6 +48,12 @@ public final class SlideShow {
     private static final float SLIDE_FADE_SECONDS = 0.8f;
 
     private final Table table = new Table();
+    /** The two pictures and the two captions, each pair drawn one over the other while crossing. */
+    private final com.badlogic.gdx.scenes.scene2d.ui.Stack pictures =
+            new com.badlogic.gdx.scenes.scene2d.ui.Stack();
+    private final com.badlogic.gdx.scenes.scene2d.ui.Stack captions =
+            new com.badlogic.gdx.scenes.scene2d.ui.Stack();
+    private Value pictureWidth, pictureHeight;
     /** The arriving picture and the leaving one, one over the other; likewise their captions. */
     private final Image image = new Image();
     private final Image imageLeaving = new Image();
@@ -122,12 +128,12 @@ public final class SlideShow {
             }
         };
         // Stacked, not swapped: during the crossing both are drawn, the new one over the old.
-        com.badlogic.gdx.scenes.scene2d.ui.Stack pictures = new com.badlogic.gdx.scenes.scene2d.ui.Stack();
         pictures.add(imageLeaving);
         pictures.add(image);
-        com.badlogic.gdx.scenes.scene2d.ui.Stack captions = new com.badlogic.gdx.scenes.scene2d.ui.Stack();
         captions.add(captionLeaving);
         captions.add(caption);
+        this.pictureWidth = width;
+        this.pictureHeight = height;
         table.add(pictures).width(width).height(height).padTop(0.4f * widgetUnitStep).row();
         table.add(captions).width(captionWidth).padTop(0.3f * widgetUnitStep).row();
         table.setVisible(false);
@@ -144,7 +150,11 @@ public final class SlideShow {
             }
             for (String line : list.readString("UTF-8").split("\n")) {
                 String[] parts = line.trim().split("\t");
-                if (parts.length == 2 && !parts[0].isEmpty()) {
+                // A picture can be taken out of the folder without the list being rewritten -
+                // one whose skyline did not line up, say - and a name with no file behind it
+                // must not cost the slideshow its turn, let alone stop it.
+                if (parts.length == 2 && !parts[0].isEmpty()
+                        && Gdx.files.internal("intro_slides/" + parts[0]).exists()) {
                     java.util.List<String> group = byCaption.get(parts[1]);
                     if (group == null) {
                         byCaption.put(parts[1], group = new java.util.ArrayList<>());
@@ -258,6 +268,79 @@ public final class SlideShow {
     }
 
     /**
+     * The pictures alone, for a screen that places them itself - behind everything else, say,
+     * on a screen too wide for a picture with a line of text under it.
+     */
+    public com.badlogic.gdx.scenes.scene2d.ui.Stack getPictures() {
+        return pictures;
+    }
+
+    /** The captions alone; see {@link #getPictures()}. */
+    public com.badlogic.gdx.scenes.scene2d.ui.Stack getCaptions() {
+        return captions;
+    }
+
+    /** How a picture fills the space given to it: fit inside it, or fill it and be cropped. */
+    public void setScaling(Scaling scaling) {
+        image.setScaling(scaling);
+        imageLeaving.setScaling(scaling);
+    }
+
+    /** The width and height a picture is given in the column layout; see {@link #getTable()}. */
+    public Value getPictureWidth() {
+        return pictureWidth;
+    }
+
+    public Value getPictureHeight() {
+        return pictureHeight;
+    }
+
+    /**
+     * Lays the pictures out again, after the screen has turned. The sizes are worked out from
+     * the stage's own width and height, and scene2d only asks for them again when something
+     * invalidates the layout - which, without this, was the arrival of the next picture: the
+     * one on screen when the phone turned kept its old shape until then.
+     */
+    public void invalidate() {
+        table.invalidateHierarchy();
+        pictures.invalidateHierarchy();
+        captions.invalidateHierarchy();
+    }
+
+    /**
+     * Starts the round afresh: a new order, from the first picture. Called whenever the
+     * slideshow is opened, so that two visits do not show the same pictures in the same order -
+     * it is a wait to be filled, and the second time round should not feel like the first.
+     */
+    public void restart() {
+        planOrder(null);
+        index = -1;
+        elapsed = 0f;
+    }
+
+    /** The next picture now, as the viewer's arrows ask; the wait for it starts again. */
+    public void next() {
+        if (order.isEmpty()) {
+            return;
+        }
+        elapsed = 0f;
+        if (index + 1 >= order.size()) {
+            planOrder(order.get(order.size() - 1)[1]);
+            index = -1;
+        }
+        showSlide(index + 1);
+    }
+
+    /** The picture before this one; from the first it wraps round to the last of the pass. */
+    public void previous() {
+        if (order.isEmpty()) {
+            return;
+        }
+        elapsed = 0f;
+        showSlide(index <= 0 ? order.size() - 1 : index - 1);
+    }
+
+    /**
      * Shows or hides the slideshow and advances it: the next picture after
      * {@link #SLIDE_SECONDS}, fading in over the first moment of its turn. Render thread.
      */
@@ -312,9 +395,21 @@ public final class SlideShow {
             image.setDrawable(new TextureRegionDrawable(new TextureRegion(loaded)));
             caption.setText(s("Intro_slide_" + slide[1]));
         } catch (RuntimeException missing) {
-            // A picture that will not load is not worth a blank space, let alone a crash:
-            // the slideshow simply stops where it is.
-            table.setVisible(false);
+            // Unreadable: drop it from the round and carry on with the next one, rather than
+            // leave the screen blank until the wait is over.
+            order.remove(next);
+            java.util.List<String> group = byCaption.get(slide[1]);
+            if (group != null) {
+                group.remove(slide[0]);
+                if (group.isEmpty()) {
+                    byCaption.remove(slide[1]);
+                }
+            }
+            if (!order.isEmpty()) {
+                showSlide(next % order.size());
+            } else {
+                table.setVisible(false);
+            }
         }
     }
 

@@ -64,12 +64,14 @@ public class IntroScreen implements Screen {
         mapApp.setScreen(mapApp.mapViewerScreen);
         if (labelDownloadState != null) {
             labelDownloadState.setText("Download complete!");
+            refreshStatePlate();
         }
     }
 
     public void triggerMapDataDownloadStarted() {
         if (labelDownloadState != null) {
             labelDownloadState.setText(s("Download_in_progress"));
+            refreshStatePlate();
         }
         if (tableDownloadMap != null) {
             // The terms and the button have done their work; the screen is the slideshow's now.
@@ -80,6 +82,28 @@ public class IntroScreen implements Screen {
 
     /** Pictures of the app while the first download runs; see SlideShow. */
     private com.peaknav.viewer.widgets.SlideShow slideShow;
+    /** The cell the pictures sit in when the screen is taller than it is wide. */
+    private com.badlogic.gdx.scenes.scene2d.ui.Cell<Table> slideCell;
+    /** Where the pictures go when it is wider than it is tall: behind everything, filling it. */
+    private Table backgroundPicture;
+    private Table landscapeCaption, captionPlate;
+    private Label labelWelcome;
+    private Table welcomePlate;
+    /** The box behind "downloading", which stands on the picture when the screen is on its side. */
+    private Table statePlate;
+    /** The medallion the download's ring and its running beads are drawn around. */
+    private Image logoImage;
+    private final com.badlogic.gdx.math.Vector2 logoCentre = new com.badlogic.gdx.math.Vector2();
+    /** The terms and links, on their own plate; tableDownloadMap fills the screen and cannot carry one. */
+    private Table termsPlate;
+    /** The cell over the terms where the caption sits on a tall screen. */
+    private com.badlogic.gdx.scenes.scene2d.ui.Cell<Table> captionRow;
+    /** The title's and the logo's cells, so they can sit lower on a tall screen. */
+    private com.badlogic.gdx.scenes.scene2d.ui.Cell<Table> welcomeCell;
+    private com.badlogic.gdx.scenes.scene2d.ui.Cell<Table> stateCell;
+    private com.badlogic.gdx.scenes.scene2d.ui.Cell<Image> logoCell;
+    /** Which way the screen was last laid out, so the change is noticed once and acted on once. */
+    private boolean laidOutWide = false;
 
     /**
      * True when this screen was opened to be looked at rather than waited on: the debug build's
@@ -89,6 +113,119 @@ public class IntroScreen implements Screen {
      * pointers at it; the slideshow belongs to a download actually running.
      */
     private boolean preview = false;
+
+    /**
+     * Arranges the screen for its shape. The picture fills it either way up - it is what this
+     * screen is for, and a picture boxed in the middle of a column said less than the words
+     * around it - so everything written over it carries a dark plate, the only way a line is
+     * readable over whatever the picture happens to show. What changes with the shape is where
+     * the caption sits: beside the button at the foot of a tall screen, in the corner of a wide
+     * one, where a line across the middle would cut the picture in half.
+     *
+     * <p>Called when the screen opens and on every resize, and it does its work only when the
+     * shape has changed - or turning the phone would rebuild the layout on every frame.
+     *
+     * @param force lay out even if the shape has not changed, as when the screen opens
+     */
+    private void applyOrientation(boolean force) {
+        boolean wide = stage.getWidth() > stage.getHeight();
+        if (!force && wide == laidOutWide) {
+            return;
+        }
+        laidOutWide = wide;
+        com.badlogic.gdx.scenes.scene2d.ui.Stack pictures = slideShow.getPictures();
+        com.badlogic.gdx.scenes.scene2d.ui.Stack captions = slideShow.getCaptions();
+        pictures.remove();
+        captions.remove();
+        captionPlate.remove();
+        backgroundPicture.clearChildren();
+        captionPlate.clearChildren();
+        landscapeCaption.clearChildren();
+        captionRow.setActor(null).size(0f, 0f);
+
+        com.badlogic.gdx.scenes.scene2d.utils.Drawable plate =
+                getC().widgetTextures.getUniformDrawable(new com.badlogic.gdx.graphics.Color(0f, 0f, 0f, 0.45f));
+        // The picture keeps its own shape and takes most of the width: nine tenths of a tall
+        // screen, where it is the whole point of the screen, three quarters of a wide one, where
+        // the title above it and the terms below it need the height more.
+        final float widthShare = wide ? 0.75f : 0.90f;
+        // How much height the words keep for themselves on a tall screen, where they stand above
+        // and below the picture. On a wide one they do not take a share of the height: the
+        // picture is three quarters of the width and three quarters of the height, whichever of
+        // the two comes out smaller, and the words live in the margins that leaves.
+        final float reservedUnits = 9.5f;
+        final boolean fromBothSides = wide;
+        slideShow.setScaling(com.badlogic.gdx.utils.Scaling.fit);
+        final com.badlogic.gdx.scenes.scene2d.ui.Value pictureWidth =
+                new com.badlogic.gdx.scenes.scene2d.ui.Value() {
+            @Override
+            public float get(com.badlogic.gdx.scenes.scene2d.Actor context) {
+                float byWidth = widthShare * stage.getWidth();
+                float byHeight = fromBothSides
+                        ? 0.75f * stage.getHeight() / 0.5625f
+                        : (stage.getHeight() - reservedUnits * widgetUnitStep) / 0.5625f;
+                return Math.max(4f * widgetUnitStep, Math.min(byWidth, byHeight));
+            }
+        };
+        com.badlogic.gdx.scenes.scene2d.ui.Value pictureHeight =
+                new com.badlogic.gdx.scenes.scene2d.ui.Value() {
+            @Override
+            public float get(com.badlogic.gdx.scenes.scene2d.Actor context) {
+                return pictureWidth.get(context) * 0.5625f;   // the pictures' own 16:9
+            }
+        };
+        backgroundPicture.center();
+        backgroundPicture.add(pictures).width(pictureWidth).height(pictureHeight).row();
+        backgroundPicture.setVisible(true);
+        captionPlate.add(captions).growX().pad(0.2f * widgetUnitStep);
+
+        if (wide) {
+            // The words that stand on the picture carry a plate: a line of text is not readable
+            // over whatever the picture happens to show. The title is not one of them - it sits
+            // above the picture, on the screen's own background, and a plate there is a box
+            // around a word that needed none.
+            welcomePlate.setBackground((com.badlogic.gdx.scenes.scene2d.utils.Drawable) null);
+            termsPlate.setBackground(plate);
+            // The caption stands beside the picture, not on it: in the margin the three-quarter
+            // width leaves free, down in the corner, where nothing is behind it to hide it and
+            // so nothing has to be laid over the picture to make it readable.
+            captionPlate.setBackground((com.badlogic.gdx.scenes.scene2d.utils.Drawable) null);
+            landscapeCaption.setVisible(true);
+            landscapeCaption.bottom().left();
+            landscapeCaption.add(captionPlate).padLeft(0.3f * widgetUnitStep)
+                    .padBottom(0.6f * widgetUnitStep)
+                    .width(new com.badlogic.gdx.scenes.scene2d.ui.Value() {
+                        @Override
+                        public float get(com.badlogic.gdx.scenes.scene2d.Actor context) {
+                            float margin = 0.5f * (stage.getWidth() - pictureWidth.get(context));
+                            return Math.max(3.5f * widgetUnitStep, margin - 0.8f * widgetUnitStep);
+                        }
+                    });
+            welcomeCell.padTop(0.15f * widgetUnitStep);
+            logoCell.padTop(0.5f * widgetUnitStep);
+            stateCell.padTop(0.9f * widgetUnitStep);   // clear of the ring drawn around the logo
+        } else {
+            // Nothing sits on the picture here, so nothing needs a plate behind it; the caption
+            // belongs under the picture it describes, a finger's width below it.
+            welcomePlate.setBackground((com.badlogic.gdx.scenes.scene2d.utils.Drawable) null);
+            termsPlate.setBackground((com.badlogic.gdx.scenes.scene2d.utils.Drawable) null);
+            captionPlate.setBackground((com.badlogic.gdx.scenes.scene2d.utils.Drawable) null);
+            landscapeCaption.setVisible(false);
+            backgroundPicture.add(captionPlate).width(pictureWidth)
+                    .padTop(0.25f * widgetUnitStep).row();
+            welcomeCell.padTop(1.4f * widgetUnitStep);
+            logoCell.padTop(0.6f * widgetUnitStep);
+            stateCell.padTop(0.9f * widgetUnitStep);
+        }
+        slideCell.setActor(null).size(0f, 0f);
+        refreshStatePlate();
+
+        slideShow.invalidate();
+        tableCentral.invalidateHierarchy();
+        tableDownloadMap.invalidateHierarchy();
+        backgroundPicture.invalidateHierarchy();
+        landscapeCaption.invalidateHierarchy();
+    }
 
     /** Opens the welcome screen as it looks on a first run, to be closed by a tap. Debug builds. */
     public void showAsPreview() {
@@ -113,28 +250,60 @@ public class IntroScreen implements Screen {
         tableCentral.center().top();
         Label.LabelStyle labelStyle = new Label.LabelStyle();
         labelStyle.font = getC().styleSingleton.getBitmapFont();
-        Label label = new Label(s("Welcome"), labelStyle);
-        tableCentral.add(label).padTop(2*widgetUnitStep).height(0.5f*widgetUnitStep).row();
+        labelWelcome = new Label(s("Welcome"), labelStyle);
+        labelWelcome.setAlignment(com.badlogic.gdx.utils.Align.center);
+        welcomePlate = new Table();
+        welcomePlate.add(labelWelcome).pad(0.15f * widgetUnitStep, 0.6f * widgetUnitStep,
+                0.15f * widgetUnitStep, 0.6f * widgetUnitStep);
+        // No fixed height: the plate is as tall as the word inside it, or the text rides above it.
+        welcomeCell = tableCentral.add(welcomePlate).padTop(0.4f*widgetUnitStep);
+        welcomeCell.row();
         if (ic_launcher_texture == null) {
             ic_launcher_texture = new Texture(Gdx.files.internal("icons/ic_launcher.png"));
             // Drawn into a fixed cell well below the texture's own size, so without filtering
             // the medallion's ring and tick marks alias into a jagged mess.
             ic_launcher_texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
         }
-        Image image = new Image(ic_launcher_texture);
-        tableCentral.add(image).width(3*widgetUnitStep).height(3*widgetUnitStep).padTop(0.5f*widgetUnitStep).row();
+        logoImage = new Image(ic_launcher_texture);
+        logoCell = tableCentral.add(logoImage).width(2.76f*widgetUnitStep).height(2.76f*widgetUnitStep)
+                .padTop(0.3f*widgetUnitStep);
+        logoCell.row();
 
         computeRadii();
 
         labelDownloadState = new Label("", labelStyleSmall);
         labelDownloadState.setAlignment(com.badlogic.gdx.utils.Align.center);
-        tableCentral.add(labelDownloadState).row();
+        statePlate = new Table();
+        statePlate.add(labelDownloadState).pad(0.1f * widgetUnitStep, 0.4f * widgetUnitStep,
+                0.1f * widgetUnitStep, 0.4f * widgetUnitStep);
+        stateCell = tableCentral.add(statePlate);
+        stateCell.row();
 
         // The slideshow, under the download's state. Running from the moment the screen opens,
         // not only once a download does: the pictures are what says what the app is for, to
         // someone deciding whether to press the button.
         slideShow = new com.peaknav.viewer.widgets.SlideShow(widgetUnitStep, labelStyleSmall);
-        tableCentral.add(slideShow.getTable()).row();
+        slideCell = tableCentral.add(slideShow.getTable());
+        slideCell.row();
+
+        // Turned on its side there is no room for a column of title, logo, picture, caption and
+        // terms: they ran over each other. The picture takes the whole screen instead, with the
+        // words over it - and everything written over a picture gets a dark plate behind it,
+        // which is the only way a line of text is readable over whatever the picture happens
+        // to show.
+        backgroundPicture = new Table();
+        backgroundPicture.setFillParent(true);
+        backgroundPicture.setVisible(false);
+        stage.addActor(backgroundPicture);
+
+        captionPlate = new Table();
+        landscapeCaption = new Table();
+        landscapeCaption.setFillParent(true);
+        landscapeCaption.bottom().right();
+        landscapeCaption.add(captionPlate).padRight(0.8f * widgetUnitStep)
+                .padBottom(3.2f * widgetUnitStep).width(8f * widgetUnitStep);
+        landscapeCaption.setVisible(false);
+        stage.addActor(landscapeCaption);
 
         stage.addActor(tableCentral);
 
@@ -157,10 +326,16 @@ public class IntroScreen implements Screen {
         downloadButtonIcons[0] = buttonDM.getStyle().up;
         downloadButtonIcons[1] = getC().widgetTextures.getTextureRegionDrawable("icons/icon_checkbox_download_data2.png");
 
-        tableDownloadMap
-                .add(getLicensePrivacy(labelStyleSmall))
-                .width(licenseTextWidth()).row();
-        tableDownloadMap.add(getLicensePrivacyLinks()).row();
+        // The terms and the links inside a plate of their own, not on tableDownloadMap itself:
+        // that one fills the screen, and a background on it would tint the whole picture.
+        termsPlate = new Table();
+        termsPlate.add(getLicensePrivacy(labelStyleSmall)).width(licenseTextWidth())
+                .pad(0.15f * widgetUnitStep).row();
+        termsPlate.add(getLicensePrivacyLinks()).padBottom(0.15f * widgetUnitStep).row();
+        // The caption goes here when the screen is tall; when it is wide it sits in the corner.
+        captionRow = tableDownloadMap.add();
+        captionRow.row();
+        tableDownloadMap.add(termsPlate).row();
 
         // tableDownloadMap.add(labelDM).row();
         tableDownloadMap.add(buttonDM).width(2*widgetUnitStep).height(2*widgetUnitStep).padBottom(0.5f*widgetUnitStep).row();
@@ -189,6 +364,9 @@ public class IntroScreen implements Screen {
                 }
             });
         }
+
+        applyOrientation(true);
+        slideShow.restart();   // a different run of pictures each time the screen opens
 
         multiplexer = new InputMultiplexer();
         multiplexer.addProcessor(stage);
@@ -219,7 +397,11 @@ public class IntroScreen implements Screen {
 
     /** Most of the screen's width, but not a line across a whole tablet: ten button widths at most. */
     private float licenseTextWidth() {
-        return Math.min(Gdx.graphics.getWidth() * 0.8f, 10 * widgetUnitStep);
+        // Most of a tall screen's width, but only the middle of a wide one: the caption has the
+        // corner there, and a box across the whole foot of the screen sat on top of it.
+        float share = stage != null && stage.getWidth() > stage.getHeight() ? 0.45f : 0.8f;
+        return Math.min(stage != null ? stage.getWidth() * share : Gdx.graphics.getWidth() * share,
+                10 * widgetUnitStep);
     }
 
     private void computeRadii() {
@@ -272,12 +454,19 @@ public class IntroScreen implements Screen {
 
     }
 
+    /**
+     * The ring of progress and the beads running round it, drawn around the logo wherever the
+     * layout has put it - the screen turned on its side moves the medallion, and a ring at a
+     * fixed distance from the top of the screen was left behind it.
+     */
     private void drawCompletionDisk(float delta) {
-        float width = Gdx.graphics.getWidth();
-        float height = Gdx.graphics.getHeight();
-
-        float x = width/2;
-        float y = height - 4.5f*widgetUnitStep;
+        if (logoImage == null || logoImage.getWidth() <= 0f) {
+            return;
+        }
+        logoImage.localToStageCoordinates(
+                logoCentre.set(logoImage.getWidth() / 2f, logoImage.getHeight() / 2f));
+        float x = logoCentre.x;
+        float y = logoCentre.y;
 
         float smallRadius = 0.15f*radius;
         float bigRadius = radius;
@@ -321,12 +510,6 @@ public class IntroScreen implements Screen {
             mapApp.setScreen(mapApp.mapViewerScreen);
         }
 
-        if (downloadStarted) {
-            shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-            drawCompletionDisk(delta);
-            shapeRenderer.end();
-        }
-
         spriteBatch.begin();
         spriteBatch.end();
 
@@ -339,6 +522,19 @@ public class IntroScreen implements Screen {
         stage.draw();
         if (pointAtButton) {
             drawDownloadButtonPointers(true);
+        }
+        if (downloadStarted) {
+            // After the stage, not before it: drawn first, the ring and its beads went behind
+            // the slideshow's picture, which on a wide screen reaches up to the logo.
+            Gdx.gl.glEnable(GL20.GL_BLEND);
+            Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+            Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+            shapeRenderer.setProjectionMatrix(stage.getCamera().combined);
+            shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+            drawCompletionDisk(delta);
+            shapeRenderer.end();
+            shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());
+            Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
         }
     }
 
@@ -405,6 +601,22 @@ public class IntroScreen implements Screen {
         shapeRenderer.circle(tipX, y, stroke / 2f, 12);
     }
 
+    /**
+     * The plate behind "downloading", which is there on a wide screen and only while there is
+     * something to read: the words stand on the picture there, and an empty box would be a dark
+     * smudge in the middle of it.
+     */
+    private void refreshStatePlate() {
+        if (statePlate == null || stage == null) {
+            return;
+        }
+        boolean needed = laidOutWide && labelDownloadState.getText().length() > 0;
+        statePlate.setBackground(needed
+                ? getC().widgetTextures.getUniformDrawable(
+                        new com.badlogic.gdx.graphics.Color(0f, 0f, 0f, 0.45f))
+                : null);
+    }
+
     /** The percentage last written into the state label, so its text is only rebuilt on a change. */
     private int downloadPercentShown = -1;
 
@@ -418,6 +630,7 @@ public class IntroScreen implements Screen {
         if (percent != downloadPercentShown) {
             downloadPercentShown = percent;
             labelDownloadState.setText(s("Download_in_progress") + "\n" + percent + "%");
+            refreshStatePlate();
         }
     }
 
@@ -441,6 +654,11 @@ public class IntroScreen implements Screen {
             ((ExtendViewport) stage.getViewport()).setMinWorldHeight(height);
         }
         stage.getViewport().update(width, height, true);
+        applyOrientation(false);
+        // The picture's size is worked out from the stage, and scene2d only asks for it again
+        // when the layout is invalidated: without this the picture on screen when the phone
+        // turned kept its old shape until the next one arrived.
+        slideShow.invalidate();
         spriteBatch.getProjectionMatrix().setToOrtho2D(0, 0, width, height);
         shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());
 

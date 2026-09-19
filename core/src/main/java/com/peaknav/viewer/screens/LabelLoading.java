@@ -57,11 +57,24 @@ public class LabelLoading {
      * for an area before any of its data has arrived. Render thread, every frame.
      */
     public void update(float delta) {
-        slideShow.update(delta, downloadPercent >= 0 && state != State.LOADED);
+        boolean show = downloadPercent >= 0 && state != State.LOADED;
+        if (show && !slideShowRunning) {
+            slideShow.restart();   // each wait gets its own run of pictures
+        }
+        slideShowRunning = show;
+        slideShow.update(delta, show);
     }
+
+    /** Whether the pictures were showing on the last frame; see {@link #update}. */
+    private boolean slideShowRunning = false;
 
     public void dispose() {
         slideShow.dispose();
+    }
+
+    /** The screen has turned: the picture's size comes from the stage, so it is laid out again. */
+    public void resize() {
+        slideShow.invalidate();
     }
 
     public LabelLoading(float height) {
