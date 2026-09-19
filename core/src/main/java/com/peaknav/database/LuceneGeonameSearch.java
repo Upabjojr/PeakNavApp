@@ -1,5 +1,9 @@
 package com.peaknav.database;
 
+import static com.peaknav.utils.PreferencesManager.P;
+
+import com.peaknav.utils.PreferencesManager;
+
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.queryParser.QueryParser;
@@ -71,15 +75,27 @@ public class LuceneGeonameSearch {
                 stringBuilder.append(')');
             }
             // A peak is told apart from a namesake village by its height - "Matterhorn
-            // (4478 m)" - the way places are told apart by their country code. Digits and
-            // "m", deliberately: this string has no access to translations, and the SI
-            // abbreviation reads the same in every interface language the app has.
+            // (4478 m)" - the way places are told apart by their country code. In the height
+            // the reader chose: the index keeps metres, but someone who set miles and feet is
+            // reading feet everywhere else, the peak labels on the map among them. The unit
+            // is written as digits and an abbreviation, deliberately: this string has no
+            // access to translations, and "m" and "ft" read the same in every language the
+            // app speaks.
             if (this.peak && this.elevation > 0) {
-                stringBuilder.append(" (");
-                stringBuilder.append(this.elevation);
-                stringBuilder.append(" m)");
+                stringBuilder.append(" (")
+                        .append(formatElevation(this.elevation,
+                                P == null ? PreferencesManager.UnitSystem.METRIC : P.getUnitSystem()))
+                        .append(')');
             }
             return stringBuilder.toString();
+        }
+
+        /** A peak's height in the reader's units: the index keeps metres, feet are rounded. */
+        public static String formatElevation(int elevationMeters, PreferencesManager.UnitSystem units) {
+            if (units == PreferencesManager.UnitSystem.IMPERIAL) {
+                return Math.round(3.280839895f * elevationMeters) + " ft";
+            }
+            return elevationMeters + " m";
         }
     }
 

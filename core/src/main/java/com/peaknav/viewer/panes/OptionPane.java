@@ -803,6 +803,18 @@ public class OptionPane {
         }
     }
 
+    /**
+     * The main menu's "Trails & pistes" switch: everything its submenu holds at once - roads and
+     * paths, the ski runs and the lifts. The row is named for the group, so switching it off has
+     * to leave nothing of the group drawn; it used to turn off the roads alone and leave the
+     * pistes and the lifts on the map.
+     */
+    private void applyRoutesGroupVisible(boolean checked) {
+        P.setPisteVisible(checked);
+        P.setLiftsVisible(checked);
+        applyRoadsVisible(checked);   // last: it is the one that offers the download and redraws
+    }
+
     /** Opens the Roads "..." submenu from the main menu, as its "..." does; for scripts and tests. */
     public void openRoadsSubmenu() {
         table.setVisible(false);
@@ -1543,9 +1555,10 @@ public class OptionPane {
         // Named for everything under it - roads and paths, ski pistes, lifts - not after the
         // first of its submenu rows, which keeps the name "Roads and paths".
         ImageTextButtonOptionPane checkBoxLayerVisibleBaseRoads = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_roads.png", s("Routes_group"), true);
-        addCheckingStateProperty(checkBoxLayerVisibleBaseRoads, () -> P.isViewerLayerVisibleBaseRoads());
+        addCheckingStateProperty(checkBoxLayerVisibleBaseRoads, () -> P.isViewerLayerVisibleBaseRoads()
+                || P.isSkiSlopesVisible() || P.isLiftsVisible());
         checkBoxLayerVisibleBaseRoads.addClickListener(() -> changer.execute(
-                () -> applyRoadsVisible(checkBoxLayerVisibleBaseRoads.isChecked())));
+                () -> applyRoutesGroupVisible(checkBoxLayerVisibleBaseRoads.isChecked())));
         checkBoxLayerVisibleBaseRoads.setProgrammaticChangeEvents(false);
         // Roads & paths: on/off plus a "..." submenu - roads and paths, and ski pistes, each with a
         // "..." of its own - the same composite scheme as the satellite and sky rows.
