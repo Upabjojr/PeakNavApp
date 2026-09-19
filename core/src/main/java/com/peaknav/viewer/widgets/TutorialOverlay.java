@@ -233,17 +233,21 @@ public class TutorialOverlay implements Disposable {
         root.clearChildren();
         root.add(content).grow();
 
-        // Big arrows down either edge, over everything else: the picture is the slideshow, and
-        // a tap anywhere on it moves too, but the arrows say so.
+        // A square button at either edge, over everything else: the picture is the slideshow, and
+        // a tap anywhere on it moves too, but the buttons say so.
         Table arrows = new Table();
         arrows.setFillParent(true);
         // A thumb's width, whatever the screen: a sixth of the short side, and never less than two
         // widget units, so it is as easy to hit on a tablet as on a phone.
         float arrowWidth = Math.max(widgetUnitStep * 2f, shortSide * 0.17f);
-        // expand in both directions: stretched sideways only, each arrow was as tall as its
-        // chevron and read as a band across the middle.
-        arrows.add(edgeArrow(false, arrowWidth, stageHeight)).left().width(arrowWidth).expand().fill();
-        arrows.add(edgeArrow(true, arrowWidth, stageHeight)).right().width(arrowWidth).expand().fill();
+        // Square, and a third of the way up the screen: under the thumb whether the picture is
+        // tall or wide, and clear of the caption at the foot.
+        float arrowBottom = stageHeight / 3f - arrowWidth / 2f;
+        arrows.bottom();
+        arrows.add(edgeArrow(false, arrowWidth)).left().size(arrowWidth)
+                .padBottom(arrowBottom).expandX().left();
+        arrows.add(edgeArrow(true, arrowWidth)).right().size(arrowWidth)
+                .padBottom(arrowBottom).expandX().right();
         root.addActor(arrows);
         arrows.toFront();   // over the picture and the caption, or they cannot be tapped
 
@@ -266,15 +270,13 @@ public class TutorialOverlay implements Disposable {
         showSlide();
     }
 
-    /** One edge arrow: a tall half-transparent strip with a chevron, tapped to move a slide. */
-    private Table edgeArrow(final boolean forward, float width, float height) {
+    /** One edge arrow: a square half-transparent button with a chevron, tapped to move a slide. */
+    private Table edgeArrow(final boolean forward, float width) {
         Label chevron = new Label(forward ? ">" : "<", new Label.LabelStyle(font, Color.WHITE));
         chevron.setFontScale(width / 1.6f / font.getLineHeight() * font.getScaleY());
         Table arrow = new Table();
         arrow.setBackground(getC().widgetTextures.getUniformDrawable(new Color(1f, 1f, 1f, 0.3f)));
-        // A little above the middle: the caption sits at the foot of the screen (or beside it),
-        // and just over halfway up is where the thumb goes.
-        arrow.add(chevron).padBottom(height * 0.09f);
+        arrow.add(chevron);   // the button is square, so the chevron sits in the middle of it
         arrow.setTouchable(Touchable.enabled);
         arrow.addListener(new ClickListener() {
             @Override
