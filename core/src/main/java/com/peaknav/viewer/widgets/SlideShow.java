@@ -71,6 +71,15 @@ public final class SlideShow {
      * @param captionStyle   the style of the line under the picture
      */
     public SlideShow(float widgetUnitStep, Label.LabelStyle captionStyle) {
+        this(widgetUnitStep, captionStyle, 14f);
+    }
+
+    /**
+     * @param reservedUnits how much height, in button widths, the screen's other furniture needs:
+     *                      a title, a logo, the terms and a caption on the welcome screen, next
+     *                      to nothing in the viewer opened from the menu
+     */
+    public SlideShow(float widgetUnitStep, Label.LabelStyle captionStyle, final float reservedUnits) {
         this.widgetUnitStep = widgetUnitStep;
         image.setScaling(Scaling.fit);
         imageLeaving.setScaling(Scaling.fit);
@@ -96,7 +105,7 @@ public final class SlideShow {
                 // What is left once the screen's own furniture has its room: the title and the
                 // logo above, the caption under the picture, and - on the welcome screen - the
                 // terms and the download button along the bottom.
-                float byHeight = (screenHeight - 14f * widgetUnitStep) / 0.5625f;
+                float byHeight = (screenHeight - reservedUnits * widgetUnitStep) / 0.5625f;
                 return Math.max(4f * widgetUnitStep, Math.min(byWidth, byHeight));
             }
         };

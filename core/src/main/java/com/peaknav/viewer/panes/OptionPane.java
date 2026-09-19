@@ -996,6 +996,21 @@ public class OptionPane {
         });
         buttons.add(buttonAppInfo);
 
+        // The pictures of what the app does, the ones a first download is spent watching.
+        ImageTextButtonOptionPane buttonSlideshow = getC().widgetGetter.getImageTextButton(
+                "icons/icon_gallery.png", s("Slideshow"), false);
+        buttonSlideshow.addListener(new ChangeListener() {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                com.peaknav.viewer.screens.MapViewerScreen screen = getC().getMapViewerScreen();
+                if (screen != null && screen.slideShowOverlay != null) {
+                    screen.slideShowOverlay.show();
+                }
+                hide();
+            }
+        });
+        buttons.add(buttonSlideshow);
+
         WidgetGetter.ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton("icons/icon_back.png", s("Back"), false);
         back.addClickListener(() -> {
             table.setVisible(false);

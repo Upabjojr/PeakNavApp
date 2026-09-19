@@ -132,6 +132,8 @@ public class MapViewerScreen implements Screen {
 	public final MoveCameraAction moveCameraAction = new MoveCameraAction();
 	public volatile ImpactPixmap impactPixmap;
 	public LabelLoading labelLoading;
+	/** The pictures of the app, shown on their own when the menu asks for them. */
+	public com.peaknav.viewer.widgets.SlideShowOverlay slideShowOverlay;
 	public OptionPane optionPane;
 	public final BackgroundPicManager backgroundPicManager = new BackgroundPicManager();
 	private volatile boolean flagTakeSnapshot = false;
@@ -1485,6 +1487,13 @@ public class MapViewerScreen implements Screen {
 		labelLoading = new LabelLoading(widgetUnitStep);
 		stage.addActor(labelLoading.getTableCenterNoData());
 
+		// The slideshow on its own, opened from the menu's Info submenu (OptionPane).
+		Label.LabelStyle slideCaptionStyle = new Label.LabelStyle();
+		slideCaptionStyle.font = getC().styleSingleton.getBitmapFontSmallWhite();
+		slideShowOverlay = new com.peaknav.viewer.widgets.SlideShowOverlay(
+				widgetUnitStep, slideCaptionStyle);
+		stage.addActor(slideShowOverlay.getTable());
+
 		// Added last so its scrim draws on top of every other widget when shown.
 		keyboardHelpOverlay = new KeyboardHelpOverlay(widgetUnitStep);
 		stage.addActor(keyboardHelpOverlay.getRoot());
@@ -1730,6 +1739,9 @@ public class MapViewerScreen implements Screen {
 
 		if (labelLoading != null) {
 			labelLoading.update(deltaTime);
+		}
+		if (slideShowOverlay != null) {
+			slideShowOverlay.update(deltaTime);
 		}
 
 		updateGpxButtons();
@@ -2131,6 +2143,8 @@ public class MapViewerScreen implements Screen {
 			labelRenderer.dispose();
 		if (labelLoading != null)
 			labelLoading.dispose();
+		if (slideShowOverlay != null)
+			slideShowOverlay.dispose();
 		if (skyRenderer != null)
 			skyRenderer.dispose();
 		if (tileBatchRenderer != null)
