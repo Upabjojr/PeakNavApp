@@ -275,7 +275,9 @@ public class TutorialOverlay implements Disposable {
         Label chevron = new Label(forward ? ">" : "<", new Label.LabelStyle(font, Color.WHITE));
         chevron.setFontScale(width / 1.6f / font.getLineHeight() * font.getScaleY());
         Table arrow = new Table();
-        arrow.setBackground(getC().widgetTextures.getUniformDrawable(new Color(1f, 1f, 1f, 0.3f)));
+        // Dark, not white: a white panel at any alpha the picture can be read through
+        // disappears into a sunlit photograph, which is most of these pictures.
+        arrow.setBackground(getC().widgetTextures.getUniformDrawable(new Color(0.05f, 0.07f, 0.09f, 0.55f)));
         arrow.add(chevron);   // the button is square, so the chevron sits in the middle of it
         arrow.setTouchable(Touchable.enabled);
         arrow.addListener(new ClickListener() {
