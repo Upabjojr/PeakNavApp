@@ -80,6 +80,8 @@ public class TutorialOverlay implements Disposable {
     private final BitmapFont font;
     private final float widgetUnitStep;
     private Texture ringTexture;
+    /** The two edge buttons, kept so the one with nowhere to go can be hidden. */
+    private Table backButton, forwardButton;
     private int index;
     private boolean landscapeLayout;
 
@@ -244,9 +246,11 @@ public class TutorialOverlay implements Disposable {
         // tall or wide, and clear of the caption at the foot.
         float arrowBottom = stageHeight / 3f - arrowWidth / 2f;
         arrows.bottom();
-        arrows.add(edgeArrow(false, arrowWidth)).left().size(arrowWidth)
+        backButton = edgeArrow(false, arrowWidth);
+        forwardButton = edgeArrow(true, arrowWidth);
+        arrows.add(backButton).left().size(arrowWidth)
                 .padBottom(arrowBottom).expandX().left();
-        arrows.add(edgeArrow(true, arrowWidth)).right().size(arrowWidth)
+        arrows.add(forwardButton).right().size(arrowWidth)
                 .padBottom(arrowBottom).expandX().right();
         root.addActor(arrows);
         arrows.toFront();   // over the picture and the caption, or they cannot be tapped
@@ -300,6 +304,14 @@ public class TutorialOverlay implements Disposable {
         detail.setText(s(slide.key + "_detail"));
         counter.setText((index + 1) + " / " + slides.size());
         progress.setFraction((index + 1) / (float) slides.size());
+        // Nothing before the first slide and nothing after the last: hide the button
+        // rather than leave one that does nothing when it is pressed.
+        if (backButton != null) {
+            backButton.setVisible(index > 0);
+        }
+        if (forwardButton != null) {
+            forwardButton.setVisible(index < slides.size() - 1);
+        }
         forgetDistantPictures();
     }
 
