@@ -182,24 +182,49 @@ public final class SlideShow {
         String previous = after;
         java.util.List<String> tied = new java.util.ArrayList<>();
         while (true) {
-            // The caption with the most pictures left, the one just shown excepted; ties are
-            // drawn for, so the run of captions differs from one pass to the next.
-            int most = 0;
-            tied.clear();
+            // A caption at random, the one just shown excepted, each weighted by how many of
+            // its pictures are left: the commonest come round oftener, as they must to fit, but
+            // the run never settles into the same few taking turns. (Drawing strictly the
+            // largest each time was tidy and utterly predictable: photo, summit, photo, summit.)
+            //
+            // Except when one caption holds more than half of everything left. From there on it
+            // has to be placed every other turn or it cannot be spread at all, so the choice is
+            // forced - the price of the free ones taken earlier, and paid before it is too late.
+            int remaining = 0;
+            int biggest = 0;
+            String biggestKey = null;
             for (java.util.Map.Entry<String, java.util.List<String>> group : left.entrySet()) {
-                if (group.getValue().isEmpty() || group.getKey().equals(previous)) {
-                    continue;
-                }
-                if (group.getValue().size() > most) {
-                    most = group.getValue().size();
-                    tied.clear();
-                }
-                if (group.getValue().size() == most) {
-                    tied.add(group.getKey());
+                int size = group.getValue().size();
+                remaining += size;
+                if (size > biggest) {
+                    biggest = size;
+                    biggestKey = group.getKey();
                 }
             }
-            String chosen = tied.isEmpty() ? null
-                    : tied.get(com.badlogic.gdx.math.MathUtils.random(tied.size() - 1));
+            String chosen = null;
+            if (biggest * 2 > remaining && !biggestKey.equals(previous)) {
+                chosen = biggestKey;
+            } else {
+                int total = 0;
+                tied.clear();
+                for (java.util.Map.Entry<String, java.util.List<String>> group : left.entrySet()) {
+                    if (group.getValue().isEmpty() || group.getKey().equals(previous)) {
+                        continue;
+                    }
+                    tied.add(group.getKey());
+                    total += group.getValue().size();
+                }
+                if (total > 0) {
+                    int ticket = com.badlogic.gdx.math.MathUtils.random(total - 1);
+                    for (String key : tied) {
+                        ticket -= left.get(key).size();
+                        if (ticket < 0) {
+                            chosen = key;
+                            break;
+                        }
+                    }
+                }
+            }
             if (chosen == null) {
                 // Only the caption just shown is left: its last pictures follow one another, and
                 // nothing can be done about that but show them.
