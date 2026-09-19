@@ -72,15 +72,13 @@ public class MapDataDownloadChooser extends Fragment {
     private final CurrentLocationCallback callback = new CurrentLocationCallback() {
         @Override
         public void setCurrentLocation(float longitude, float latitude) {
+            if (screenIsGone()) {
+                return;
+            }
             geoPoint.setLatitude(latitude);
             geoPoint.setLongitude(longitude);
             iMapController.animateTo(geoPoint);
             progressDialog.dismiss();
-            /*
-            if (isDestroyed()) {
-                return;
-            }
-             */
             if (geoPoint.getLatitude() != 0 && geoPoint.getLongitude() != 0
                     && wizard && firstTimeLocation) {
                 setDownloadRefPoint(geoPoint, ZOOM_LEVEL_CLOSE);
@@ -238,6 +236,9 @@ public class MapDataDownloadChooser extends Fragment {
                     .getCurrentLocationListener(getActivity())
                     .getCurrentLocation(
                             (longitude, latitude) -> {
+                                if (screenIsGone()) {
+                                    return;
+                                }
                                 GeoPoint p = new GeoPoint(latitude, longitude);
                                 iMapController.setCenter(p);
                                 if (p.getLatitude() != 0 && p.getLongitude() != 0 && wizard && firstTimeLocation) {
@@ -316,6 +317,21 @@ public class MapDataDownloadChooser extends Fragment {
                 .getCurrentLocation(callback);
     }
 
+    /**
+     * Whether this screen has been taken apart, and a caller arriving late should let go.
+     *
+     * <p>A location fix can arrive long after the reader has left. One is asked of the network
+     * and of GPS both, and a GPS lock takes tens of seconds - time enough to start the download,
+     * or to give up on the wizard and walk away. Nothing cancels the request, so it comes back
+     * to a fragment whose map the framework has already detached: osmdroid empties its overlays
+     * when the view leaves the window, and the polygon, still a perfectly good reference, no
+     * longer has an outline to move. Answering at all is what crashed the app, on the main
+     * thread, where a location fix is delivered. There is nothing left to point at.
+     */
+    private boolean screenIsGone() {
+        return !isAdded() || map == null;
+    }
+
     private void setDownloadRefPoint(GeoPoint p, Double zoomLevel) {
         if (mapMarker == null || polygon == null || map == null ||
                 buttonDownloadSelectedArea == null || missingDataDownloader == null) {
@@ -350,13 +366,38 @@ public class MapDataDownloadChooser extends Fragment {
 
     }
 
+    /**
+     * Lets go of everything belonging to the map, which the framework has just detached.
+     *
+     * <p>An overlay that has been detached keeps its reference and loses its contents, so a
+     * caller arriving late - a location fix, most of all - cannot tell a live polygon from a
+     * dead one by asking whether it is null. Dropping them here is what makes the checks in
+     * {@link #setDownloadRefPoint} mean what they say.
+     */
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        map = null;
+        polygon = null;
+        mapMarker = null;
+        iMapController = null;
+        buttonDownloadSelectedArea = null;
+        view = null;
+    }
+
     public void onResume() {
         super.onResume();
+        if (map == null) {
+            return;
+        }
         map.onResume();
     }
 
     public void onPause() {
         super.onPause();
+        if (map == null) {
+            return;
+        }
         map.onPause();
     }
 
