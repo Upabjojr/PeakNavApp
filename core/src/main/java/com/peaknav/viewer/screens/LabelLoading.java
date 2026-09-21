@@ -4,8 +4,10 @@ import static com.peaknav.compatibility.PeakNavAppState.getAppState;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.s;
 
+import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
+import com.badlogic.gdx.scenes.scene2d.ui.Value;
 import com.peaknav.viewer.widgets.SlideShow;
 
 public class LabelLoading {
@@ -88,12 +90,33 @@ public class LabelLoading {
         // labelNoDataInThisArea.setFontScale(3f);
         // Centred line by line: the download's percentage goes on a line of its own below.
         labelNoDataInThisArea.setAlignment(com.badlogic.gdx.utils.Align.center);
-        tableCenterNoData.add(labelNoDataInThisArea).minHeight(height).row();
+        // A sentence, not a word: "No downloaded data for this area" - and the longer German
+        // and French translations of it - ran off both edges of a phone, because a Label draws
+        // one unbroken line unless told otherwise. Given a width, it breaks the message into as
+        // many lines as it needs, centred one above the other.
+        labelNoDataInThisArea.setWrap(true);
+        tableCenterNoData.add(labelNoDataInThisArea).minHeight(height).width(messageWidth(height)).row();
 
         Label.LabelStyle captionStyle = new Label.LabelStyle();
         captionStyle.font = getC().styleSingleton.getBitmapFontSmallWhite();
         slideShow = new SlideShow(height, captionStyle);
         tableCenterNoData.add(slideShow.getTable()).row();
+    }
+
+    /**
+     * How much width the message may use: nearly all of the screen, with a margin so the text
+     * never touches the edges. Taken from the stage rather than fixed, so the same message is
+     * one line on a tablet and three on a phone, and is re-read when the screen turns.
+     */
+    private static Value messageWidth(final float widgetUnitStep) {
+        return new Value() {
+            @Override
+            public float get(Actor context) {
+                float screenWidth = context != null && context.getStage() != null
+                        ? context.getStage().getWidth() : 10f * widgetUnitStep;
+                return 0.86f * screenWidth;
+            }
+        };
     }
 
     /**
