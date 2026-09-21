@@ -89,7 +89,7 @@ public class IntroScreen implements Screen {
     private Table landscapeCaption, captionPlate;
     private Label labelWelcome;
     private Table welcomePlate;
-    /** The box behind "downloading", which stands on the picture when the screen is on its side. */
+    /** The box behind "downloading" and its percentage, whichever way up the screen is held. */
     private Table statePlate;
     /** The medallion the download's ring and its running beads are drawn around. */
     private Image logoImage;
@@ -602,15 +602,19 @@ public class IntroScreen implements Screen {
     }
 
     /**
-     * The plate behind "downloading", which is there on a wide screen and only while there is
-     * something to read: the words stand on the picture there, and an empty box would be a dark
-     * smudge in the middle of it.
+     * The plate behind "downloading" and its percentage, there only while there is something to
+     * read - an empty box would be a dark smudge in the middle of the screen.
+     *
+     * <p>Both ways up, unlike the terms' plate, which a tall screen leaves off: the terms sit in a
+     * column of their own below the picture, where the plain background is plate enough, but the
+     * download's state is the one thing on the screen that changes while the reader waits, and
+     * the shading marks it out as the status it is rather than one more line of the page.
      */
     private void refreshStatePlate() {
         if (statePlate == null || stage == null) {
             return;
         }
-        boolean needed = laidOutWide && labelDownloadState.getText().length() > 0;
+        boolean needed = labelDownloadState.getText().length() > 0;
         statePlate.setBackground(needed
                 ? getC().widgetTextures.getUniformDrawable(
                         new com.badlogic.gdx.graphics.Color(0f, 0f, 0f, 0.45f))
