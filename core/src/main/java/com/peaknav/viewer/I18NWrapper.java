@@ -30,9 +30,13 @@ public class I18NWrapper {
 
     private final I18NBundle i18NBundle;
 
+    /** The language the interface ended up speaking; see {@link #getLanguage()}. */
+    private final String language;
+
     public I18NWrapper() {
         I18NBundle i18NBundle;
         Locale locale = localeOverride != null ? localeOverride : translationLocale(Locale.getDefault());
+        this.language = locale.getLanguage();
         try {
             i18NBundle = I18NBundle.createBundle(Gdx.files.internal("i18n/strings"), locale);
         } catch (MissingResourceException missingResourceException) {
@@ -56,6 +60,19 @@ public class I18NWrapper {
             return new Locale("no", locale.getCountry());
         }
         return locale;
+    }
+
+    /**
+     * The two-letter language the app is speaking, for asking a service outside the app for
+     * names in it - the place search does, so that a search made in Italian comes back in
+     * Italian rather than in whatever the place's own country writes.
+     *
+     * <p>The language asked for, not the translation that was found: a Danish device with no
+     * Danish strings reads the app in English, but still deserves Danish place names where
+     * they exist.
+     */
+    public String getLanguage() {
+        return language;
     }
 
     public String s(String key) {
