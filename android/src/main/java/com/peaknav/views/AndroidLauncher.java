@@ -128,7 +128,21 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 			}
 		});
 
-		super.onCreate(savedInstanceState);
+		// Nothing is restored, deliberately: a relaunch after the process was killed starts
+		// from the map, as a first launch does.
+		//
+		// Given the saved state, FragmentActivity rebuilds every fragment that was open by
+		// calling its no-argument constructor - and the download chooser and the "go to
+		// download" dialog have none, since they are made with the area they are about. So
+		// an app killed in the background with one of them open (the first-run wizard, left
+		// for Settings to allow location, is exactly where Android does that) threw
+		// Fragment.InstantiationException on every relaunch, reported from the field on
+		// 1.3.1. A constructor alone would not have helped: whatever came back would be empty,
+		// and so would the rest - this method builds MapApp and its main fragment afresh on
+		// every call and replaces whatever sits in the map container, and the other screens
+		// lean on that state. Passing null drops the saved fragments before anything reads
+		// them.
+		super.onCreate(null);
 
 		// 20 frames a second while nothing on the map is happening, to save battery; see
 		// IdleFrameRate. libGDX ignores setForegroundFPS on Android, hence the pacer.
