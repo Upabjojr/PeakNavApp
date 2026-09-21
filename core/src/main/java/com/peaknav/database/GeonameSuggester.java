@@ -1,5 +1,7 @@
 package com.peaknav.database;
 
+import com.badlogic.gdx.Gdx;
+
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -363,7 +365,13 @@ public final class GeonameSuggester {
             }
             stream.end();
         } catch (Throwable useWhatWasRead) {
-            // Nothing typed into a search box may crash the app.
+            // Nothing typed into a search box may crash the app - but it must not disappear
+            // either. Swallowing this in silence is how a missing analyzer class went three
+            // TestFlight builds looking like "the offline search finds nothing": no words
+            // means no places, and nothing said why. Logged once per failure, then carry on
+            // with whatever was read.
+            Gdx.app.error("PeakNav", "search: cannot split \"" + text + "\" into words: "
+                    + useWhatWasRead);
         } finally {
             if (stream != null) {
                 try {

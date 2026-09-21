@@ -18,6 +18,21 @@
     </resource>
   </resources>
   <forceLinkClasses>
+    <!--
+      Lucene asks for a token attribute by its interface and loads the implementation by name:
+      DefaultAttributeFactory appends "Impl" to the interface and calls Class.forName. Nothing
+      ever names OffsetAttributeImpl and its siblings statically, so the tree shaker dropped
+      every one of them, and building a StandardAnalyzer threw
+
+        IllegalArgumentException: Could not find implementing class for
+          org.apache.lucene.analysis.tokenattributes.OffsetAttribute
+
+      on the first keystroke of a search. GeonameSuggester.analyze caught it and returned no
+      words, and a search with no words returns no places - so the offline place search simply
+      found nothing on iOS, on a healthy index, with nothing in the log. Every other platform
+      keeps the classes because it loads them at runtime.
+    -->
+    <pattern>org.apache.lucene.analysis.tokenattributes.**</pattern>
     <pattern>com.badlogic.gdx.scenes.scene2d.ui.*</pattern>
     <pattern>com.badlogic.gdx.graphics.g3d.particles.**</pattern>
     <pattern>com.android.okhttp.HttpHandler</pattern>

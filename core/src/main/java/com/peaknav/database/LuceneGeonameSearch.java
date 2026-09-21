@@ -2,6 +2,7 @@ package com.peaknav.database;
 
 import static com.peaknav.utils.PreferencesManager.P;
 
+import com.badlogic.gdx.Gdx;
 import com.peaknav.utils.PreferencesManager;
 
 import org.apache.lucene.document.Document;
@@ -93,9 +94,17 @@ public class LuceneGeonameSearch {
 
     public LuceneGeonameSearch() {
         LuceneAssetLoader luceneAssetLoader = new LuceneAssetLoader();
-        new Thread(
-                () -> this.indexSearcher = luceneAssetLoader.getIndexSearcher()
-        ).start();
+        // Unpacking and opening the index takes a moment, so it happens off the drawing thread.
+        // If it throws, the thread would die with nothing but a default stack trace and the
+        // searcher would stay null for the life of the app - every later search silently empty.
+        new Thread(() -> {
+            try {
+                this.indexSearcher = luceneAssetLoader.getIndexSearcher();
+            } catch (Throwable indexUnavailable) {
+                Gdx.app.error("PeakNav", "search: the place index did not open: "
+                        + indexUnavailable);
+            }
+        }).start();
     }
 
     /**
@@ -133,7 +142,12 @@ public class LuceneGeonameSearch {
                     // Skip index documents missing the stored coordinate fields.
                 }
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable searchFailed) {
+            // The search box must survive anything typed into it, so this stays a catch-all -
+            // but a silent one hid a missing analyzer class for three releases, during which
+            // the offline search returned an empty list on a perfectly good index and said
+            // nothing. Whatever goes wrong now says so.
+            Gdx.app.error("PeakNav", "search: \"" + queryName + "\" failed: " + searchFailed);
         }
 
         return geonameResults;
