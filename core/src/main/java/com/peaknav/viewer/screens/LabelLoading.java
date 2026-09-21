@@ -4,9 +4,12 @@ import static com.peaknav.compatibility.PeakNavAppState.getAppState;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.s;
 
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.peaknav.viewer.widgets.SlideShow;
+import com.peaknav.viewer.widgets.TextLines;
 
 public class LabelLoading {
 
@@ -23,12 +26,12 @@ public class LabelLoading {
                 break;
             case LOADING_UPDATING:
             case LOADING:
-                labelNoDataInThisArea.setText(downloadingOr(s("Loading")));
+                setMessage(downloadingOr(s("Loading")));
                 tableCenterNoData.setVisible(true);
                 getAppState().setLoadingMapData(true);
                 break;
             case NO_DATA:
-                labelNoDataInThisArea.setText(downloadingOr(s("No_downloaded_data_for_this_area")));
+                setMessage(downloadingOr(s("No_downloaded_data_for_this_area")));
                 tableCenterNoData.setVisible(true);
                 getAppState().setLoadingMapData(false);
                 break;
@@ -57,6 +60,7 @@ public class LabelLoading {
      * for an area before any of its data has arrived. Render thread, every frame.
      */
     public void update(float delta) {
+        renderThread = Thread.currentThread();
         boolean show = downloadPercent >= 0 && state != State.LOADED;
         if (show && !slideShowRunning) {
             slideShow.restart();   // each wait gets its own run of pictures
@@ -75,10 +79,50 @@ public class LabelLoading {
     /** The screen has turned: the picture's size comes from the stage, so it is laid out again. */
     public void resize() {
         slideShow.invalidate();
+        // A turn from landscape to portrait takes away most of the width the lines were broken for.
+        setMessage(message);
     }
+
+    /** The message as written, before it was broken into lines; see {@link #setMessage}. */
+    private String message = "";
+
+    /** The most lines the message is broken into before its font is made smaller. */
+    private static final int MAX_MESSAGE_LINES = 3;
+
+    /** How much of the screen's width a line of the message may take. */
+    private static final float MESSAGE_WIDTH_FRACTION = 0.9f;
+
+    /**
+     * Shows a message in the centre of the screen, in as many lines as it needs to fit across it -
+     * up to three, and only then smaller. The large font is 8% of the screen's short side high,
+     * and "No downloaded data for this area" is wider than a phone held upright in every one of
+     * the app's languages - the German, "Keine heruntergeladenen Daten für diesen Bereich", nearly
+     * twice as wide: on one line it ran off both edges. See {@link TextLines}.
+     */
+    private void setMessage(String text) {
+        message = text;
+        // Measured on the render thread only. The state is also set from the tile threads, and
+        // measuring there reads the font's scale, which a label laying itself out on the render
+        // thread changes and puts back - the lines would now and then be broken for the wrong size.
+        if (Thread.currentThread() == renderThread) {
+            fitMessage();
+        } else {
+            Gdx.app.postRunnable(this::fitMessage);
+        }
+    }
+
+    private void fitMessage() {
+        Stage stage = tableCenterNoData.getStage();
+        float screenWidth = stage != null ? stage.getWidth() : Gdx.graphics.getWidth();
+        TextLines.fit(labelNoDataInThisArea, message, MESSAGE_WIDTH_FRACTION * screenWidth, MAX_MESSAGE_LINES);
+    }
+
+    /** The thread that draws, noted by the constructor and every frame's {@link #update}. */
+    private volatile Thread renderThread;
 
     public LabelLoading(float height) {
         state = State.LOADING;
+        renderThread = Thread.currentThread();   // built by MapViewerScreen, on the render thread
 
         tableCenterNoData = new Table();
         tableCenterNoData.setFillParent(true);
@@ -88,6 +132,7 @@ public class LabelLoading {
         // labelNoDataInThisArea.setFontScale(3f);
         // Centred line by line: the download's percentage goes on a line of its own below.
         labelNoDataInThisArea.setAlignment(com.badlogic.gdx.utils.Align.center);
+        setMessage(s("Loading"));
         tableCenterNoData.add(labelNoDataInThisArea).minHeight(height).row();
 
         Label.LabelStyle captionStyle = new Label.LabelStyle();
@@ -126,7 +171,7 @@ public class LabelLoading {
      */
     public void setPhotoLoading(boolean loading) {
         if (loading) {
-            labelNoDataInThisArea.setText(s("Loading"));
+            setMessage(s("Loading"));
             tableCenterNoData.setVisible(true);
         } else {
             setState(state);
