@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
@@ -119,7 +120,46 @@ public class SearchMenu extends Fragment {
         return view;
     }
 
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+        // The screen exists to be typed into, so it opens with the cursor in the box and the
+        // keyboard up. Nothing asked for either before: the map took the eye and the reader had
+        // to tap the box first. Once, here, rather than in onResume, so coming back to a list of
+        // results the reader has already scrolled does not throw the keyboard up over it again.
+        // Posted: the keyboard only answers a view that is attached and focused, which it is not
+        // until the transaction that adds this fragment has run.
+        searchMenuText.requestFocus();
+        searchMenuText.post(this::showKeyboard);
+        // And back up whenever the box is touched again, after a tap on the map or a result put
+        // the keyboard away. Android raises it by itself on a touch that gives the box focus, but
+        // not reliably on one that finds it already focused with the keyboard dismissed (the back
+        // key hides the keyboard and leaves the focus). Posted, so the touch has given the focus
+        // by then; not consumed, so the cursor still goes where the finger is.
+        searchMenuText.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                v.post(this::showKeyboard);
+            }
+            return false;
+        });
+    }
+
+    private void showKeyboard() {
+        if (!isAdded() || searchMenuText == null || !searchMenuText.hasFocus()) {
+            return;
+        }
+        InputMethodManager imm = (InputMethodManager) getSystemService(getContext(), InputMethodManager.class);
+        if (imm != null) {
+            imm.showSoftInput(searchMenuText, InputMethodManager.SHOW_IMPLICIT);
+        }
+    }
+
     private void hideKeyboard() {
+        // Now also reached from a location fix (the locate button goes through handleSingleTap),
+        // which can arrive after the reader has left; with no context there is no keyboard to hide.
+        if (getContext() == null || searchMenuText == null) {
+            return;
+        }
         InputMethodManager imm = (InputMethodManager) getSystemService(getContext(), InputMethodManager.class);
         if (imm != null) {
             imm.hideSoftInputFromWindow(searchMenuText.getWindowToken(), 0);
@@ -332,6 +372,9 @@ public class SearchMenu extends Fragment {
     }
 
     private void handleSingleTap(GeoPoint p) {
+        // A point picked on the map is an answer, as a result picked from the list is: the
+        // keyboard has nothing more to do, and it covers half the map the point is on.
+        hideKeyboard();
         GeoPoint point = new GeoPoint(p.getLatitude(), p.getLongitude());
 
         endMarker.setPosition(point);
