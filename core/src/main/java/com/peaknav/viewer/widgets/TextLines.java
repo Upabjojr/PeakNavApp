@@ -71,14 +71,33 @@ public final class TextLines {
             List<String> lines = balanced(font, layout, paragraphs, width, maxLines);
             if (lines != null) {
                 label.setFontScale(ownScaleX * scale, ownScaleY * scale);
-                label.setText(String.join("\n", lines));
+                label.setText(joinLines(lines));
                 return;
             }
         }
         // Too long even at the smallest scale: the fewest lines it can take there, which is still
         // better than one line off both edges of the screen.
         label.setFontScale(ownScaleX * MIN_SCALE, ownScaleY * MIN_SCALE);
-        label.setText(String.join("\n", greedy(font, layout, paragraphs, maxWidth / MIN_SCALE)));
+        label.setText(joinLines(greedy(font, layout, paragraphs, maxWidth / MIN_SCALE)));
+    }
+
+    /**
+     * The lines as one string, one per row.
+     *
+     * <p>Joined by hand rather than with String.join: that is a Java 8 method, and RoboVM's
+     * runtime is Android's, which does not have it - the iOS build would compile and then die
+     * with NoSuchMethodError the first time a message was fitted, which on iOS is while the
+     * first screen is still being built.
+     */
+    private static String joinLines(List<String> lines) {
+        StringBuilder joined = new StringBuilder();
+        for (int i = 0; i < lines.size(); i++) {
+            if (i > 0) {
+                joined.append('\n');
+            }
+            joined.append(lines.get(i));
+        }
+        return joined.toString();
     }
 
     /**
