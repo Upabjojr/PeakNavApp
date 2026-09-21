@@ -48,7 +48,7 @@ class JarNotFound(RuntimeError):
 #: ``peaknav-<version>.jar``, the desktop application, which has no renderer inside it.
 #: Raise this in step with each release being published, and pin its digest in
 #: :data:`KNOWN_SHA256` at the same time.
-JAR_VERSION = "1.3.0"
+JAR_VERSION = "1.3.2"
 
 #: Where a released renderer lives. The asset name is canonical - ``peaknav-<version>.jar``
 #: is the DESKTOP jar and does not contain the renderer at all.
@@ -61,6 +61,8 @@ RELEASE_URL_TEMPLATE = ("https://github.com/Upabjojr/PeakNavApp/releases/downloa
 KNOWN_SHA256 = {
     "1.2.0": "495dbf480f449b1a6e054122239131316c8e7346ee3038d465465c5792edc727",
     "1.3.0": "27072f87a8d585f6fd52b77ab0b2fc39e64be5f3c335aa4eccdd210ea121c43a",
+    "1.3.1": "7073e5b5edae9ac9a4d970a0d1596bb33ef81beb8c4a13c9074b59bcf977abc2",
+    "1.3.2": "e9a2cdb2402146332309b0fb7739d6f6470ee777ee544e443d33592d64a32fec",
 }
 
 #: The entry point every renderer jar has. Its presence is what tells a renderer jar from
