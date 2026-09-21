@@ -128,11 +128,8 @@ public class CurrentLocation {
         targetLatitude = (float) lat;
         targetLongitude = (float) lon;
 
-        if (checkMissing && shouldAskToDownloadMissingData(lat, lon)) {
-            // Remember that this area has been asked about before showing the dialog, so a moving
-            // GPS fix (which re-targets on every update) cannot raise it again and again.
-            getC().checkMissingData.dismiss(lat, lon);
-            getNativeScreenCaller().askForDownloadScreen(lat, lon);
+        if (checkMissing) {
+            askToDownloadMissingData(lat, lon);
         }
         getC().elevationImageProviderManager.setProviderForTargetCoords(targetLatitude, targetLongitude);
 
@@ -149,13 +146,32 @@ public class CurrentLocation {
     private static final long DOWNLOAD_SETTLE_MILLIS = 30_000L;
 
     /**
+     * Raises the modal "download missing data?" dialog for this place, once, if it is wanted.
+     *
+     * <p>Two callers ask, at the two moments the answer is knowable. {@link #setCurrentTargetCoords}
+     * asks up front, from the files that ought to be on disk; the tile updater asks when it finds
+     * it cannot build anything for the target (see UpdateMapTilesRunnable), which is the moment the
+     * user actually sees nothing happen. Whichever gets there first marks the area asked-about, so
+     * the second is a no-op.
+     */
+    public void askToDownloadMissingData(double lat, double lon) {
+        if (!shouldAskToDownloadMissingData(lat, lon)) {
+            return;
+        }
+        // Remember that this area has been asked about before showing the dialog, so a moving
+        // GPS fix (which re-targets on every update) cannot raise it again and again.
+        getC().checkMissingData.dismiss(lat, lon);
+        getNativeScreenCaller().askForDownloadScreen(lat, lon);
+    }
+
+    /**
      * Whether to raise the modal "download missing data?" dialog. This is deliberately much more
      * reluctant than the in-app banner (see MapViewerScreen/TableDownloadData), which stays
      * visible whenever data is missing and is the non-intrusive way to offer the download.
      */
     private boolean shouldAskToDownloadMissingData(double lat, double lon) {
         if (getNativeScreenCaller() == null) {
-            // iOS does not provide one.
+            // The headless renderer, and any platform yet to build a dialog.
             return false;
         }
         if (getAppState().isMapDataDownloadStarted()

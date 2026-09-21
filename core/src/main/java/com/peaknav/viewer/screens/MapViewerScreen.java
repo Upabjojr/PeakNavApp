@@ -179,6 +179,20 @@ public class MapViewerScreen implements Screen {
 		this.positionChangeListeners.add(positionChangeListener);
 	}
 
+	/**
+	 * Shows or hides the "download data for this area" button at the top of the screen. Normally
+	 * driven by an arrival (below), but the tile updater raises it too, for the case where there
+	 * is no arrival to drive it: nothing can be built for the target, so nothing calls back, and
+	 * the button is then the only way out of an empty screen.
+	 */
+	public void setDownloadDataOffered(final boolean offered) {
+		Gdx.app.postRunnable(() -> {
+			if (tableDownloadData != null) {
+				tableDownloadData.getTable().setVisible(offered);
+			}
+		});
+	}
+
 	// TODO: this should only be called from ElevationImageProviderManager:
 	public void setCurrentCoordLocation(double longitude, double latitude, double elevation) {
 		// While label updates are held, the camera is scripted from outside frame by

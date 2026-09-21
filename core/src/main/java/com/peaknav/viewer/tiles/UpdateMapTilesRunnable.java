@@ -1,17 +1,21 @@
 package com.peaknav.viewer.tiles;
 
 import static com.peaknav.compatibility.PeakNavAppState.getAppState;
+import static com.peaknav.database.CheckMissingData.checkMissingElevationForCoord;
 import static com.peaknav.database.CheckMissingData.getMinZoomTile;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
+import static com.peaknav.viewer.screens.LabelLoading.State.LOADED;
 import static com.peaknav.viewer.screens.LabelLoading.State.LOADING;
 import static com.peaknav.viewer.screens.LabelLoading.State.LOADING_UPDATING;
+import static com.peaknav.viewer.screens.LabelLoading.State.NO_DATA;
 
 import com.badlogic.gdx.Gdx;
 import com.peaknav.elevation.ElevationImageAbstract;
 import com.peaknav.elevation.ElevationImageStorage;
 import com.peaknav.utils.StoppableRunnable;
 import com.peaknav.viewer.MapViewerSingleton;
+import com.peaknav.viewer.screens.LabelLoading;
 
 import com.peaknav.geo.BoundingBox;
 import com.peaknav.geo.LatLong;
@@ -190,6 +194,33 @@ public class UpdateMapTilesRunnable extends StoppableRunnable {
         getC().tileManager.tileRenderer.execDraw.stopLoop();
     }
 
+    /**
+     * The centre-of-screen message, or null before the map screen has been built - this runnable
+     * can be queued by a target set at startup, before there is anything to write on.
+     */
+    private static LabelLoading loadingBanner() {
+        return MapViewerSingleton.getViewerInstance() == null
+                ? null : MapViewerSingleton.getViewerInstance().labelLoading;
+    }
+
+    /**
+     * Both ways of offering the download for a place that has none of it: the modal prompt, which
+     * is deliberately reluctant (it will not ask twice about the same area, nor while a download
+     * runs), and the button at the top of the screen, which is not - reaching here means the map
+     * can draw nothing at all, and the user must always have a way on from that.
+     */
+    private static void offerTheDownload(double latitude, double longitude) {
+        if (!checkMissingElevationForCoord(latitude, longitude)) {
+            // Out at sea, or anywhere else with no elevation block published: there is nothing to
+            // fetch, so neither offer would lead anywhere.
+            return;
+        }
+        if (getC().getMapViewerScreen() != null) {
+            getC().getMapViewerScreen().setDownloadDataOffered(true);
+        }
+        getC().L.askToDownloadMissingData(latitude, longitude);
+    }
+
     private void updateMapTilesWorker(boolean forceReload) {
         targetLatLong = getC().L.getTargetLatLong();
 
@@ -198,6 +229,17 @@ public class UpdateMapTilesRunnable extends StoppableRunnable {
         }
 
         if (!forceReload && lastUpdatedPos != null && LatLongUtils.sphericalDistance(lastUpdatedPos, targetLatLong) < 200) {
+            // The tiles already on screen cover this target, so there is nothing to build. If a
+            // failed move left "no data for this area" up - the user searched somewhere with
+            // nothing downloaded, declined the download, and was brought back here - it no longer
+            // describes what is on screen, and nothing else would ever take it down.
+            LabelLoading labelLoading = loadingBanner();
+            if (labelLoading != null && labelLoading.getState() == NO_DATA) {
+                labelLoading.setState(LOADED);
+                if (getC().getMapViewerScreen() != null) {
+                    getC().getMapViewerScreen().setDownloadDataOffered(false);
+                }
+            }
             return;
         }
 
@@ -208,11 +250,16 @@ public class UpdateMapTilesRunnable extends StoppableRunnable {
                 MapTile.computeZoomElevFactor(MapTile.ZOOM_LEVEL_MIN)
         );
         if (!eis.checkImageExistence()) {
+            // Nothing to build the terrain from. Say so and offer the download: left as it was,
+            // the "Loading..." this method just put up stayed there for ever, because the only
+            // thing that ever takes it down is a tile finishing, and no tile will.
+            LabelLoading labelLoading = loadingBanner();
+            if (labelLoading != null) {
+                labelLoading.setState(NO_DATA);
+            }
+            offerTheDownload(targetLatLong.getLatitude(), targetLatLong.getLongitude());
             return;
         }
-
-        // TODO: if there are no downloaded tiles for the current coordinates,
-        // there should be some prompts to ask the users if they want to download the missing tiles.
 
         interruptDrawingThread();
 
