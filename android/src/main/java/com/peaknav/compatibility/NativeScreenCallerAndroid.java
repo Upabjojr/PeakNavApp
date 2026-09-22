@@ -1,5 +1,6 @@
 package com.peaknav.compatibility;
 
+import com.peaknav.viewer.mapscreens.MapScreens;
 import static android.Manifest.permission.ACCESS_COARSE_LOCATION;
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
 import static com.peaknav.utils.PeakNavPermissions.checkLocationPermission;
@@ -224,19 +225,40 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         mainActivity.runOnUiThread(runnable);
     }
 
+    /**
+     * The download chooser, drawn by libGDX over the map like the other platforms' (see
+     * {@link MapScreens}). It used to be an osmdroid fragment, MapDataDownloadChooser.
+     */
     @Override
     public void openMapDataDownloadChooser(double lat, double lon, boolean goToAfterDownload) {
-        runOnUiThread(() -> {
-            MapDataDownloadChooser fragment = new MapDataDownloadChooser(lat, lon, goToAfterDownload, false);
-            openFragmentWithTransaction(fragment, "map_data_download_chooser");
-        });
+        MapScreens.openDownloadChooser(lat, lon, goToAfterDownload, false);
     }
 
     @Override
     public void openMapDataDownloadChooserWizard() {
+        MapScreens.openDownloadChooser(0, 0, false, true);
+    }
+
+    /**
+     * Location for the libGDX map screens, which ask from the render thread. LocationManager
+     * wants its requests made on a thread with a Looper - the UI thread - and a request made
+     * before the permission is granted is dropped, so it is queued to be made again when the
+     * answer comes (AndroidLauncher.onRequestPermissionsResult drains the queue). Only then:
+     * a request queued while the permission is already there would sit in the queue until
+     * some later permission prompt, and answer a screen long gone.
+     */
+    @Override
+    public void requestCurrentLocation(com.peaknav.ui.CurrentLocationCallback callback) {
         runOnUiThread(() -> {
-            MapDataDownloadChooser fragment = new MapDataDownloadChooser(0, 0, false, true);
-            openFragmentWithTransaction(fragment, "map_data_download_chooser");
+            boolean granted = ActivityCompat.checkSelfPermission(context, ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    || ActivityCompat.checkSelfPermission(context, ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+            if (!granted) {
+                mainActivity.locationPermissionCallbacks.add(
+                        () -> getCurrentLocationListener(mainActivity).getCurrentLocation(callback));
+                checkLocationPermission(mainActivity);
+                return;
+            }
+            getCurrentLocationListener(mainActivity).getCurrentLocation(callback);
         });
     }
 
@@ -259,12 +281,10 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         MapViewerSingleton.getAppInstance().pause();
     }
 
+    /** The search screen, drawn by libGDX over the map; it used to be the SearchMenu fragment. */
     @Override
     public void openScreenSearchLocation(com.peaknav.ui.ClickCallback callback) {
-        runOnUiThread(() -> {
-            SearchMenu fragment = new SearchMenu();
-            openFragmentWithTransaction(fragment, "search_menu");
-        });
+        MapScreens.openSearch();
     }
 
     private boolean checkCameraHardware() {

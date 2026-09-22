@@ -210,6 +210,11 @@ public class UpdateMapTilesRunnable extends StoppableRunnable {
      * can draw nothing at all, and the user must always have a way on from that.
      */
     private static void offerTheDownload(double latitude, double longitude) {
+        if (getAppState().isMapDataDownloadStarted()) {
+            // It is being downloaded: the centre of the screen says so, with its percentage, and
+            // a banner offering the same download would only be asking to start it twice.
+            return;
+        }
         if (!checkMissingElevationForCoord(latitude, longitude)) {
             // Out at sea, or anywhere else with no elevation block published: there is nothing to
             // fetch, so neither offer would lead anywhere.

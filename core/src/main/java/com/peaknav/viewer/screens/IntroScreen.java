@@ -33,6 +33,11 @@ import com.peaknav.viewer.widgets.WidgetGetter;
 public class IntroScreen implements Screen {
     SpriteBatch spriteBatch;
     Stage stage;
+
+    /** The welcome screen's stage, which the first-run download chooser is laid over. */
+    public Stage getStage() {
+        return stage;
+    }
     private MapApp mapApp;
     private LabelLoading labelLoading;
     private InputMultiplexer multiplexer;

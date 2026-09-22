@@ -81,6 +81,22 @@ public abstract class NativeScreenCaller {
 
     public abstract CurrentLocationListener getCurrentLocationListener();
 
+    /**
+     * Asks where the device is, asking for the permission first where that is needed. The
+     * answer may come on any thread, more than once, or never.
+     *
+     * <p>For the map screens in {@code core} (search and the download chooser), which cannot
+     * know that Android wants its location requests made on the UI thread and repeated once
+     * the permission is granted, or that iOS wants them on the main thread. Those override it.
+     */
+    public void requestCurrentLocation(com.peaknav.ui.CurrentLocationCallback callback) {
+        ensureLocationPermissions();
+        CurrentLocationListener listener = getCurrentLocationListener();
+        if (listener != null) {
+            listener.getCurrentLocation(callback);
+        }
+    }
+
     public abstract void askForDownloadScreen(double lat, double lon);
 
     /**

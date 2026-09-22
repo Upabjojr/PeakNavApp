@@ -1,6 +1,6 @@
 package com.peaknav.compatibility;
 
-import static com.peaknav.compatibility.PeakNavAppState.getAppState;
+import com.peaknav.viewer.mapscreens.MapScreens;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.utils.PreferencesManager.P;
@@ -8,9 +8,7 @@ import static com.peaknav.utils.PreferencesManager.P;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.peaknav.database.LuceneGeonameSearch;
-import com.peaknav.database.MissingDataDownloader;
 import com.peaknav.gesture.OrientationPointerListener;
-import com.peaknav.network.NominatimResponse;
 import com.peaknav.ui.ClickCallback;
 import com.peaknav.ui.CurrentLocationCallback;
 import com.peaknav.ui.CurrentLocationListener;
@@ -18,36 +16,19 @@ import com.peaknav.ui.TextFieldsCallback;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.desktop.DesktopSwing;
 import com.peaknav.viewer.desktop.GalleryPickDesktop;
-import com.peaknav.viewer.desktop.MapViewerDesktopSingleton;
 
 import java.awt.BorderLayout;
 import java.awt.Desktop;
-import java.awt.Dimension;
 import java.awt.Rectangle;
-import java.awt.event.KeyEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import java.awt.Component;
-import javax.swing.Box;
-import javax.swing.JComponent;
-import javax.swing.KeyStroke;
 import javax.swing.JLabel;
-import javax.swing.BoxLayout;
-import javax.swing.DefaultListModel;
-import javax.swing.JButton;
-import javax.swing.JFrame;
-import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JTextField;
-import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
-import javax.swing.border.EmptyBorder;
 
 public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
@@ -58,212 +39,29 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         runnable.run();
     }
 
+    /**
+     * The download chooser, the map screen the phones have: see {@link MapScreens}. The desktop
+     * used to have no chooser at all and downloaded around the point it was handed.
+     */
     @Override
     public void openMapDataDownloadChooser(double lat, double lon, boolean goToAfterDownload) {
-        getC().submitExecutorGeneric(() -> {
-
-            MissingDataDownloader missingDataDownloader = getC().missingDataDownloader;
-            missingDataDownloader.setCoords(lat, lon);
-
-            // The started flag suppresses the missing-data prompt while a download runs
-            // (CurrentLocation.shouldAskToDownloadMissingData). It MUST be cleared on every
-            // exit path: left set, the prompt never appears again for the whole session.
-            getAppState().setMapDataDownloadStarted(true);
-            try {
-                missingDataDownloader.doDownload(goToAfterDownload);
-            } finally {
-                getAppState().setMapDataDownloadStarted(false);
-            }
-            getAppState().setMapDataDownloaded(true);
-        });
+        MapScreens.openDownloadChooser(lat, lon, goToAfterDownload, false);
     }
 
+    /** The welcome screen's download button: the chooser, starting on the whole world. */
     @Override
     public void openMapDataDownloadChooserWizard() {
-        // This used to only setMapDataDownloaded(true): the intro screen's "download data"
-        // button marked the data as present without fetching a single byte, which is why the
-        // desktop app "could not download map data" - it never tried. Android opens a
-        // region-chooser wizard here; the desktop has no such screen, so do the honest
-        // minimum instead: actually download for the current target location. The intro
-        // button sets the download consent before calling this, so the workers really fetch.
-        getC().submitExecutorGeneric(() -> {
-            if (!getC().L.isCurrentLocationNotSet()) {
-                double lat = getC().L.getTargetLatitude();
-                double lon = getC().L.getTargetLongitude();
-                MissingDataDownloader missingDataDownloader = getC().missingDataDownloader;
-                missingDataDownloader.setCoords(lat, lon);
-                // Cleared in finally, or this suppresses the missing-data prompt for the
-                // rest of the session - which is exactly the bug this once caused.
-                getAppState().setMapDataDownloadStarted(true);
-                try {
-                    missingDataDownloader.doDownload(false);
-                } finally {
-                    getAppState().setMapDataDownloadStarted(false);
-                }
-            }
-            // Lets the intro proceed either way; with no location set yet there is nothing
-            // sensible to fetch, and the missing-data prompt takes over once one is chosen.
-            getAppState().setMapDataDownloaded(true);
-        });
+        boolean located = !getC().L.isCurrentLocationNotSet();
+        MapScreens.openDownloadChooser(
+                located ? getC().L.getTargetLatitude() : 0,
+                located ? getC().L.getTargetLongitude() : 0,
+                false, true);
     }
 
-    /**
-     * Distinguishes the latest search from earlier ones, so a slow online (Nominatim) response
-     * arriving after the user has already searched again cannot interleave stale rows into the
-     * list (clicking a row would then navigate to the wrong place). Only touched on the EDT.
-     */
-    private int searchGeneration = 0;
-
-    /**
-     * The search window while it is open, so a second click raises it instead of building
-     * another one. Clicking the button twice used to leave two identical windows stacked,
-     * each with its own result list, and typing into the one on top searched in a window
-     * the user could no longer see. Only touched on the EDT.
-     */
-    private JFrame openSearchFrame;
-
+    /** The search screen with its map, drawn by libGDX; it replaced a Swing window. */
     @Override
     public void openScreenSearchLocation(ClickCallback callback) {
-        // The whole window is built on the EDT (this method is called from the GL render thread;
-        // constructing Swing UI there is undefined behaviour and deadlock-prone on macOS).
-        DesktopSwing.onEdt(() -> {
-            if (openSearchFrame != null) {
-                // One search window, and clicking the button again is a request to SEE it:
-                // un-minimised, above the map, with the caret back in the search box.
-                com.peaknav.viewer.desktop.WindowRaiser.bringToFront(openSearchFrame);
-                return;
-            }
-            JFrame searchFrame = new JFrame();
-            openSearchFrame = searchFrame;
-            // Closing it - by the window button, by Escape, or by picking a result - must
-            // release the slot above, or search would open once per session and never again.
-            searchFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-            searchFrame.addWindowListener(new java.awt.event.WindowAdapter() {
-                @Override
-                public void windowClosed(java.awt.event.WindowEvent event) {
-                    openSearchFrame = null;
-                }
-            });
-            searchFrame.setLayout(null);
-            searchFrame.setSize(800, 600);
-            searchFrame.setTitle(s("Search_place_title"));
-            JPanel panel = new JPanel();
-            BoxLayout layout = new BoxLayout(panel, BoxLayout.PAGE_AXIS);
-            panel.setLayout(layout);
-            panel.setBounds(0, 0, 800, 600);
-            panel.setBorder(new EmptyBorder(12, 12, 12, 12));
-            searchFrame.add(panel);
-
-            // The pane used to be a bare text field over an unlabeled list - nothing said
-            // what to type or what the list was for. Each part now announces itself.
-            JLabel promptLabel = new JLabel(s("Search_prompt"));
-            promptLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            panel.add(promptLabel);
-            panel.add(Box.createVerticalStrut(6));
-
-            JTextField textField = new JTextField("", 1);
-            textField.setMaximumSize(new Dimension(300, 65));
-            textField.setAlignmentX(Component.LEFT_ALIGNMENT);
-            textField.setToolTipText(s("Search_prompt"));
-            panel.add(textField, BorderLayout.CENTER);
-            JButton searchButton = new JButton();
-            searchButton.setText(s("Search"));
-            searchButton.setSize(new Dimension(150, 50));
-            searchButton.setAlignmentX(Component.LEFT_ALIGNMENT);
-            panel.add(searchButton);
-            panel.add(Box.createVerticalStrut(12));
-
-            JLabel resultsLabel = new JLabel(s("Search_results_hint"));
-            resultsLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            panel.add(resultsLabel);
-            panel.add(Box.createVerticalStrut(4));
-            // No vertical glue here: it would expand between the label and the result list
-            // below it; the scroll pane itself takes the remaining height.
-
-            SwingUtilities.getRootPane(searchButton).setDefaultButton(searchButton);
-
-            DefaultListModel<String> model = new DefaultListModel<>();
-
-            JList<String> list = new JList<>(model);
-            list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-            list.setVisibleRowCount(10);
-            list.setFixedCellHeight(28);
-            list.setBorder(new EmptyBorder(6, 6, 6, 6));
-
-            list.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    int idx = list.locationToIndex(e.getPoint());
-                    if (idx != -1) {
-                        Rectangle cellBounds = list.getCellBounds(idx, idx);
-                        if (cellBounds != null && cellBounds.contains(e.getPoint())
-                                && idx < jGeonameResults.size()) {
-                            LuceneGeonameSearch.GeonameResult result = jGeonameResults.get(idx);
-                            // Core-state mutation (tile updates, missing-data checks) belongs on
-                            // the GL thread, not the EDT.
-                            Gdx.app.postRunnable(
-                                    () -> getC().L.setCurrentTargetCoords(result.lat, result.lon));
-                            searchFrame.dispose();
-                        }
-                    }
-                }
-            });
-
-            JScrollPane resultsPane = new JScrollPane(list);
-            resultsPane.setAlignmentX(Component.LEFT_ALIGNMENT);
-            panel.add(resultsPane, BorderLayout.CENTER);
-
-            searchButton.addActionListener(actionEvent -> {
-                final int generation = ++searchGeneration;
-                // Coordinates, in any of the common printed forms, need no results to choose from.
-                double[] coordinates = com.peaknav.utils.CoordinateSearch.parseCoordinates(textField.getText());
-                if (coordinates != null) {
-                    Gdx.app.postRunnable(() -> getC().L.setCurrentTargetCoords(coordinates[0], coordinates[1]));
-                    searchFrame.dispose();
-                    MapViewerSingleton.getAppInstance().resume();
-                    return;
-                }
-                String searchText = com.peaknav.utils.CoordinateSearch.cleanQuery(textField.getText());
-                if (searchText.isEmpty()) {
-                    return;
-                }
-                List<LuceneGeonameSearch.GeonameResult> geonameResults = getC().luceneGeonameSearch.searchGeoName(searchText);
-                model.clear();
-                for (LuceneGeonameSearch.GeonameResult gr : geonameResults) {
-                    model.addElement(gr.getFullName());
-                }
-                jGeonameResults.clear();
-                jGeonameResults.addAll(geonameResults);
-
-                // The callback arrives on a network thread: the list model and the shared result
-                // list may only be touched on the EDT, and only if no newer search superseded us.
-                getC().onlineSearch.parseDestinationText(searchText,
-                        nominatimResponses -> DesktopSwing.onEdt(() -> {
-                    if (generation != searchGeneration) {
-                        return; // stale response of an earlier search
-                    }
-                    for (NominatimResponse nominatimResponse : nominatimResponses) {
-                        LuceneGeonameSearch.GeonameResult geonameResult = new LuceneGeonameSearch.GeonameResult(
-                                nominatimResponse.displayName, nominatimResponse.displayName,
-                                nominatimResponse.lat, nominatimResponse.lon, -1
-                        );
-                        model.addElement(geonameResult.getFullName());
-                        jGeonameResults.add(geonameResult);
-                    }
-                }));
-                MapViewerSingleton.getAppInstance().resume();
-            });
-            // Escape closes the panel, from anywhere inside it - WHEN_IN_FOCUSED_WINDOW, so
-            // it works while the caret is in the search box, which is where it always is.
-            // Bound to Escape alone: Delete has to keep deleting characters as one types.
-            searchFrame.getRootPane().registerKeyboardAction(
-                    closeEvent -> searchFrame.dispose(),
-                    KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-                    JComponent.WHEN_IN_FOCUSED_WINDOW);
-
-            searchFrame.setVisible(true);
-            textField.requestFocus();
-        });
+        MapScreens.openSearch();
     }
 
     /**
@@ -572,7 +370,10 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                     }
                     getC().submitExecutorGeneric(() -> P.setCollectDownloadInfo(true));
                 }
-                this.openMapDataDownloadChooser();
+                // The place the prompt is about, not the current target: from the search
+                // screen's Go To the prompt comes before the flight, with the target still on
+                // the old spot, and the chooser opened there. goToAfterDownload as on Android.
+                openMapDataDownloadChooser(lat, lon, true);
             } else if (dialogResult == JOptionPane.NO_OPTION) {
                 // Go back to where we were, without re-running the missing-data check: doing that
                 // here would pop this very dialog straight back up when the old spot lacks data

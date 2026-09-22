@@ -112,6 +112,12 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 				new androidx.activity.OnBackPressedCallback(true) {
 			@Override
 			public void handleOnBackPressed() {
+				// The search and download screens are drawn by libGDX, not fragments: with
+				// nothing on the back stack, Back would have left the app from inside them.
+				if (com.peaknav.viewer.mapscreens.MapScreens.isOpen()) {
+					com.peaknav.viewer.mapscreens.MapScreens.back();
+					return;
+				}
 				if (getSupportFragmentManager().getBackStackEntryCount() > 0) {
 					com.peaknav.compatibility.NativeScreenCaller caller =
 							com.peaknav.utils.PeakNavUtils.getNativeScreenCaller();

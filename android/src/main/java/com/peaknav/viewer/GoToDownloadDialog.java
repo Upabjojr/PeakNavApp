@@ -54,6 +54,10 @@ public class GoToDownloadDialog extends Fragment {
                 case DialogInterface.BUTTON_POSITIVE:
                     getNativeScreenCaller().openMapDataDownloadChooser(lat, lon, true);
                     shown = false;
+                    // The chooser is drawn by libGDX now, over the map (MapScreens): this
+                    // fragment has to go, or the map stays paused and hidden behind it and the
+                    // chooser never appears. The old chooser was a fragment stacked on top.
+                    finish();
                     break;
 
                 case DialogInterface.BUTTON_NEGATIVE:

@@ -1363,6 +1363,11 @@ public class MapViewerScreen implements Screen {
 	}
 
 	private Stage stage;
+
+	/** The interface's stage, which the search and download screens are laid over. */
+	public Stage getStage() {
+		return stage;
+	}
 	private Stage stageCopyright;
 	private Stage stageNavigationOverview;
 
