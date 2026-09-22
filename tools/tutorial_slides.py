@@ -37,6 +37,8 @@ SLIDES = [
     ("Tutorial_options",        "base",          "options"),
     ("Tutorial_options_pane",   "options",       None),
     ("Tutorial_satellite",      "satellite",     None),
+    # "trails" must show paths with their names and route numbers, "pistes" the runs and lifts:
+    # the two captures were once taken the wrong way round, and the slides showed each other's.
     ("Tutorial_trails",         "trails",        None),
     ("Tutorial_pistes",         "pistes",        None),
     ("Tutorial_sky",            "sky",           None),

@@ -82,6 +82,8 @@ public class TutorialOverlay implements Disposable {
     private Texture ringTexture;
     /** The two edge buttons, kept so the one with nowhere to go can be hidden. */
     private Table backButton, forwardButton;
+    /** The close button in the corner; see {@link #onOwnButton}. */
+    private Actor closeButton;
     private int index;
     private boolean landscapeLayout;
 
@@ -114,6 +116,9 @@ public class TutorialOverlay implements Disposable {
         root.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
+                if (onOwnButton(event.getTarget())) {
+                    return;   // the button has moved the slideshow itself, or closed it
+                }
                 goTo(index + (x > root.getWidth() / 2 ? 1 : -1));
             }
         });
@@ -208,16 +213,31 @@ public class TutorialOverlay implements Disposable {
         detail.setFontScale(shortSide * DETAIL_FRACTION / font.getLineHeight() * base);
         counter.setFontScale(shortSide * DETAIL_FRACTION * 0.85f / font.getLineHeight() * base);
 
+        // The caption's two rows are as tall as the tallest of any slide's, measured at the width
+        // they will have: sized to each slide's own text instead, the caption grew and shrank from
+        // one slide to the next and the picture above it wobbled with it. Measured here, in the
+        // language the app speaks, so every language gets the room its longest caption needs.
+        float pad = widgetUnitStep * 0.4f;
+        float captionWidth = landscape
+                ? Math.min(stageWidth * 0.38f, shortSide * 1.1f)
+                : stageWidth - widgetUnitStep;
+        float titleHeight = 0, detailHeight = 0;
+        for (Slide slide : slides) {
+            titleHeight = Math.max(titleHeight, wrappedHeight(title, s(slide.key), captionWidth));
+            detailHeight = Math.max(detailHeight, wrappedHeight(detail, s(slide.key + "_detail"), captionWidth));
+        }
+        title.setAlignment(Align.topLeft);
+        detail.setAlignment(Align.topLeft);
+
         captionBox.clearChildren();
-        captionBox.add(title).growX().left().row();
-        captionBox.add(detail).growX().left().row();
+        captionBox.add(title).growX().left().height(titleHeight).row();
+        captionBox.add(detail).growX().left().height(detailHeight).row();
         Table progressRow = new Table();
         progressRow.add(progress).height(shortSide / 220f).growX();
         progressRow.add(counter).padLeft(widgetUnitStep * 0.4f).right();
         captionBox.add(progressRow).growX().padTop(widgetUnitStep * 0.25f).row();
 
         Table content = new Table();
-        float pad = widgetUnitStep * 0.4f;
         if (landscape) {
             // Wide window: the picture keeps the height, the caption sits beside it.
             content.add(slideView).expand().fill().pad(pad);
@@ -268,10 +288,38 @@ public class TutorialOverlay implements Disposable {
                 hide();
             }
         });
+        closeButton = close;
         closeRow.add(close).size(Math.max(widgetUnitStep, shortSide * 0.09f)).pad(widgetUnitStep * 0.35f);
         root.addActor(closeRow);
         closeRow.toFront();   // and the close button over the arrows
         showSlide();
+    }
+
+    /**
+     * Whether a tap landed on one of the buttons laid over the slideshow, which answer it
+     * themselves.
+     *
+     * <p>Without this every tap on an edge arrow moved two slides and the tutorial showed only
+     * every other one. The arrows' {@code event.stop()} was meant to keep the tap from this
+     * listener too, and does not: a stage hands a touch-up to each listener that took the
+     * touch-down, one after another (Stage.touchUp walks its touch focuses), and stopping the
+     * event only ends its bubbling, not that walk. The forward arrow sits on the right half of
+     * the screen, so this listener moved forward as well; the back arrow, on the left, back.
+     */
+    private boolean onOwnButton(Actor target) {
+        return target != null
+                && ((backButton != null && target.isDescendantOf(backButton))
+                        || (forwardButton != null && target.isDescendantOf(forwardButton))
+                        || (closeButton != null && target.isDescendantOf(closeButton)));
+    }
+
+    /** How tall {@code text} is in {@code like}'s style and scale, wrapped at {@code width}. */
+    private static float wrappedHeight(Label like, String text, float width) {
+        Label probe = new Label(text, like.getStyle());
+        probe.setFontScale(like.getFontScaleX(), like.getFontScaleY());
+        probe.setWrap(true);
+        probe.setWidth(width);
+        return probe.getPrefHeight();
     }
 
     /** One edge arrow: a square half-transparent button with a chevron, tapped to move a slide. */
@@ -287,7 +335,8 @@ public class TutorialOverlay implements Disposable {
         arrow.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                event.stop();   // the root's own tap would move as well, and twice is once too many
+                // The root's own tap listener gets this tap too, whatever stop() says; it
+                // leaves it alone (onOwnButton).
                 goTo(index + (forward ? 1 : -1));
             }
         });
