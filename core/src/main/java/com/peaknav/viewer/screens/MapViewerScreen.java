@@ -58,6 +58,7 @@ import com.peaknav.viewer.renderer_gdx.TileBatchRenderer;
 import com.peaknav.gesture.MountainInputController;
 import com.peaknav.gesture.PositionChangeListener;
 import com.peaknav.utils.Units;
+import com.peaknav.viewer.labels.PoiObject;
 import com.peaknav.viewer.tiles.MapTile;
 import com.peaknav.viewer.widgets.KeyboardHelpOverlay;
 import com.peaknav.viewer.widgets.WidgetGetter;
@@ -604,6 +605,8 @@ public class MapViewerScreen implements Screen {
 	/** The frame the queued moves start from: that first move goes straight onto it. */
 	private int gpxTourQueuedFrom = 0;
 
+	/** The pane a tapped label opens (see FeatureInfoPane); null until the stage is built. */
+	public com.peaknav.viewer.widgets.FeatureInfoPane featureInfoPane;
 	/** The GPX info pane (see GpxInfoPane); null until the stage is built. */
 	public com.peaknav.viewer.widgets.GpxInfoPane gpxInfoPane;
 
@@ -1469,6 +1472,8 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(tableLocation.gpxSeekTable);
 		gpxInfoPane = new com.peaknav.viewer.widgets.GpxInfoPane(widgetUnitStep);
 		stage.addActor(gpxInfoPane.getTable());
+		featureInfoPane = new com.peaknav.viewer.widgets.FeatureInfoPane(widgetUnitStep);
+		stage.addActor(featureInfoPane.getTable());
 		tableLocation.gpxSeekSlider.addListener(new ChangeListener() {
 			@Override
 			public void changed(ChangeEvent event, Actor actor) {
@@ -2227,6 +2232,52 @@ public class MapViewerScreen implements Screen {
 		}
 		if (shapeRenderer != null)
 			shapeRenderer.dispose();
+	}
+
+	/**
+	 * A tap at a point of the screen (pixels, y down): on a label, opens the pane about what it
+	 * names and, for a peak, hut or place, puts the pin there as a tap on the ground would, so
+	 * flying, orbiting and routing to it work as they do for any point. Anywhere else, closes the
+	 * pane and returns false, so the tap goes on to do what it does.
+	 */
+	public boolean showFeatureAt(float screenX, float screenY) {
+		if (featureInfoPane == null || labelRenderer == null) {
+			return false;
+		}
+		// A fingertip's width around the label's plate still counts as on it.
+		float slack = 0.12f * Units.getWidgetUnitStep() * Gdx.graphics.getWidth() / Math.max(1f, stage.getWidth());
+		Object feature = labelRenderer.featureAt(screenX, Gdx.graphics.getHeight() - screenY, slack);
+		if (feature == null) {
+			featureInfoPane.hide();
+			return false;
+		}
+		com.peaknav.viewer.labels.FeatureInfo.Viewer viewer = new com.peaknav.viewer.labels.FeatureInfo.Viewer(
+				cam.position.y,
+				Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude()),
+				getC().i18n != null ? getC().i18n.getLanguage() : null,
+				P.getUnitSystem());
+		if (feature instanceof PoiObject) {
+			PoiObject poi = (PoiObject) feature;
+			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(poi, viewer));
+			stopOrbit();
+			impact = poi.getPosition3D(new Vector3());
+			updateImpact();
+		} else {
+			com.peaknav.areas.MapArea area = (com.peaknav.areas.MapArea) feature;
+			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(area, viewer));
+			// The pin at its middle, on the ground there, where the terrain is loaded.
+			float ground = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(area.lat, area.lon);
+			if (!Float.isNaN(ground)) {
+				stopOrbit();
+				impact = new Vector3(
+						(float) Units.convertLonitsToLatits(area.lon, getC().L.getTargetLatitude()),
+						area.lat,
+						Units.convertMetersToLatits(ground)
+								- com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(area.lat, area.lon));
+				updateImpact();
+			}
+		}
+		return true;
 	}
 
 	public boolean updateImpact() {

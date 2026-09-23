@@ -121,6 +121,10 @@ public class MountainInputController extends CameraInputController {
             if (mapViewerScreen.backgroundPicManager.getBackgroundPixmap() != null) {
                 return false;
             }
+            // A label tapped tells what it names; anywhere else closes that and picks a point.
+            if (mapViewerScreen.showFeatureAt(x, y)) {
+                return true;
+            }
             // Picking a new point ends an orbit around the old one.
             mapViewerScreen.stopOrbit();
 

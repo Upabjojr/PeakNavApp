@@ -26,6 +26,8 @@ public class MapArea {
     public final float peakMeters;
     public final float visibleRangeKm;
     public final int population;
+    /** Its Wikidata item, "Q1330952"; null if the data names none. */
+    public final String wikidataId;
 
     /**
      * Hard cap on the relevance radius. It must stay inside {@link AreaRegistry}'s tile-loading
@@ -37,6 +39,14 @@ public class MapArea {
     public MapArea(String name, String type, float lat, float lon,
                    float semiMajorKm, float semiMinorKm, float rotationDeg, float peakMeters,
                    float visibleRangeKm, int population) {
+        this(name, type, lat, lon, semiMajorKm, semiMinorKm, rotationDeg, peakMeters, visibleRangeKm,
+                population, null);
+    }
+
+    public MapArea(String name, String type, float lat, float lon,
+                   float semiMajorKm, float semiMinorKm, float rotationDeg, float peakMeters,
+                   float visibleRangeKm, int population, String wikidataId) {
+        this.wikidataId = (wikidataId == null || wikidataId.isEmpty()) ? null : wikidataId;
         this.name = (name == null) ? "" : name;
         this.type = (type == null || type.isEmpty()) ? "island" : type;
         this.lat = lat;

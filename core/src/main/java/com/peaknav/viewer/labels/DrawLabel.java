@@ -365,6 +365,28 @@ public class DrawLabel {
     public void dispose() {
     }
 
+    /**
+     * Whether a point on the screen (pixels, y up) falls on the label's plate, or within
+     * {@code slack} pixels of it all round - a fingertip is wider than the plate is tall.
+     */
+    public boolean plateContains(float x, float y, float slack) {
+        lock.lock();
+        try {
+            float[] v = polygon.getTransformedVertices();
+            // Into the plate's own frame: along its text, and across it. Vertices go (min,min)
+            // (max,min) (max,max) (min,max); see updateLabelPolygonCoordinates.
+            float cos = drawLabelCategory.rotationAngleCos, sin = drawLabelCategory.rotationAngleSin;
+            float dx = x - v[0], dy = y - v[1];
+            float along = dx * cos + dy * sin;
+            float across = -dx * sin + dy * cos;
+            float length = (v[2] - v[0]) * cos + (v[3] - v[1]) * sin;
+            float height = -(v[6] - v[0]) * sin + (v[7] - v[1]) * cos;
+            return along >= -slack && along <= length + slack && across >= -slack && across <= height + slack;
+        } finally {
+            lock.unlock();
+        }
+    }
+
     public float getScreenLabelY() {
         return screenLabelY;
     }

@@ -29,6 +29,7 @@ import com.peaknav.viewer.PerspectiveCameraExt;
 import com.peaknav.viewer.labels.AreaLabelStability;
 import com.peaknav.viewer.labels.DrawLabel;
 import com.peaknav.viewer.labels.DrawLabelCategory;
+import com.peaknav.viewer.labels.PoiObject;
 import com.peaknav.viewer.render_tiles.ImpactPixmap;
 import com.peaknav.viewer.screens.BackgroundPicManager;
 import com.peaknav.viewer.screens.MapViewerScreen;
@@ -572,6 +573,45 @@ public class LabelRenderer {
             out.add(new DrawnArea(areaDrawn.get(i)));
         }
         return out;
+    }
+
+    /**
+     * What the label at a point of the screen names: a {@link PoiObject} for a peak, hut or place,
+     * a {@link MapArea} for a lake, island, range or town, null where no label is drawn. The point
+     * is in pixels, y up. A label under the point itself wins over one only near it, and the
+     * peaks' and places' labels, drawn on top, over the areas'. Call on the render thread.
+     */
+    public Object featureAt(final float x, final float y, final float slack) {
+        if (!P.isLabelsVisible()) {
+            return null;
+        }
+        final PoiObject[] hit = new PoiObject[2]; // under the point; near it
+        getC().O.iterateOverDisplayablePois(poiObject -> {
+            DrawLabel label = poiObject.drawLabel;
+            if (hit[0] != null || label == null || !label.isVisible()) {
+                return;
+            }
+            if (label.plateContains(x, y, 0)) {
+                hit[0] = poiObject;
+            } else if (hit[1] == null && label.plateContains(x, y, slack)) {
+                hit[1] = poiObject;
+            }
+        });
+        if (hit[0] != null) {
+            return hit[0];
+        }
+        MapArea near = null;
+        for (int i = areaDrawn.size() - 1; i >= 0; i--) {
+            PendingArea a = areaDrawn.get(i);
+            if (x >= a.rx && x <= a.rx + a.rw && y >= a.ry && y <= a.ry + a.rh) {
+                return hit[1] != null ? hit[1] : a.area;
+            }
+            if (near == null && x >= a.rx - slack && x <= a.rx + a.rw + slack
+                    && y >= a.ry - slack && y <= a.ry + a.rh + slack) {
+                near = a.area;
+            }
+        }
+        return hit[1] != null ? hit[1] : near;
     }
 
     /**

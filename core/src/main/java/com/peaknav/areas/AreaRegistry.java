@@ -181,7 +181,8 @@ public class AreaRegistry {
                                     jo.getFloat("rotationDeg", 0f),
                                     jo.getFloat("peakMeters", 0f),
                                     jo.getFloat("visibleRangeKm", 0f),
-                                    jo.getInt("population", 0)));
+                                    jo.getInt("population", 0),
+                                    jo.getString("wikidataId", null)));
                         } catch (RuntimeException e) {
                             System.err.println("[Areas] skipped bad entry in tile "
                                     + tileX + "," + tileY + ": " + e.getMessage());
