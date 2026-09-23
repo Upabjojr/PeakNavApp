@@ -67,6 +67,8 @@ public class GpxInfoPane {
     /** Kept clear under the pane: the scrub bar and the coordinates beneath it. */
     private static final float BOTTOM_CLEAR_UNITS = 3.2f;
     private static final Color SCROLL_KNOB = new Color(1f, 1f, 1f, 0.55f);
+    /** Behind the way a tour is on, in the list of ways: the profile's blue, the tour dot's. */
+    private static final Color CURRENT_WAY = new Color(0.10f, 0.45f, 0.90f, 0.6f);
     private static final Color AXIS_TEXT = new Color(0.82f, 0.88f, 1f, 1f);
     private static final Color GRID = new Color(1f, 1f, 1f, 0.2f);
     /** Most labels an axis gets: the small pane, and the maximized one along its width. */
@@ -102,8 +104,17 @@ public class GpxInfoPane {
     private final Label wayKindNow;
     /** Every way the track follows, as a computed route records them; see RouteGpx. */
     private final Label waysTitle;
+    /** The list's header, tapped to fold the list away or open it: its title and a chevron. */
+    private final Table waysHeader = new Table();
+    private final Image waysChevron;
     private final List<Label> wayRows = new ArrayList<>();
     private final Table waysList = new Table();
+    /** The row of each way, a table so the one the tour is on can be lit behind its text. */
+    private final List<Table> wayCells = new ArrayList<>();
+    private final Drawable currentWayBackground;
+    private boolean waysOpen = true;
+    /** The row lit as the way the tour is on; -1 for none. */
+    private int litWay = -1;
     private final Label.LabelStyle axisStyle;
     private final List<Label> yLabels = new ArrayList<>();
     private final List<Label> xLabels = new ArrayList<>();
@@ -185,7 +196,23 @@ public class GpxInfoPane {
         wayNow = label(style);
         wayKindNow = label(style);
         waysTitle = label(style);
-        waysTitle.setText(s("Gpx_info_ways"));
+        currentWayBackground = getC().widgetTextures.getUniformDrawable(CURRENT_WAY);
+        // The pane's fold chevron: up to fold the list away, as it folds the pane; turned over,
+        // down, to open it again.
+        waysChevron = new Image(getC().widgetTextures.getTextureRegionDrawable(ICON_FOLD)) {
+            @Override
+            public void layout() {
+                super.layout();
+                setOrigin(Align.center);
+            }
+        };
+        waysHeader.setTouchable(com.badlogic.gdx.scenes.scene2d.Touchable.enabled);
+        waysHeader.addListener(new com.badlogic.gdx.scenes.scene2d.utils.ClickListener() {
+            @Override
+            public void clicked(com.badlogic.gdx.scenes.scene2d.InputEvent event, float x, float y) {
+                setWaysOpen(!waysOpen);
+            }
+        });
         axisStyle = new Label.LabelStyle(style);
         axisStyle.fontColor = AXIS_TEXT;
         speedGroup.addActor(speedGraph);
@@ -316,12 +343,25 @@ public class GpxInfoPane {
             body.add(speedGroup).height(graphWidth * SPEED_UNITS / PANE_UNITS).row();
         }
         if (!stretches.isEmpty()) {
-            waysList.clearChildren();
-            for (Label row : wayRows) {
-                waysList.add(row).left().width(width).padBottom(0.04f * u).row();
+            float chevron = 0.45f * u;
+            waysTitle.setText(s("Gpx_info_ways") + " (" + stretches.size() + ")");
+            waysHeader.clearChildren();
+            waysHeader.add(waysTitle).left().width(width - chevron - 0.1f * u);
+            waysHeader.add(waysChevron).size(chevron).right().padLeft(0.1f * u);
+            waysChevron.setRotation(waysOpen ? 0f : 180f);
+            body.add(waysHeader).padTop(0.12f * u).row();
+            if (waysOpen) {
+                // No scroll pane of its own: a long list scrolls with the rest of the pane.
+                waysList.clearChildren();
+                float inset = 0.08f * u;
+                for (int i = 0; i < wayCells.size(); i++) {
+                    Table cell = wayCells.get(i);
+                    cell.clearChildren();
+                    cell.add(wayRows.get(i)).left().width(width - 2 * inset).pad(0.02f * u, inset, 0.02f * u, inset);
+                    waysList.add(cell).left().width(width).padBottom(0.02f * u).row();
+                }
+                body.add(waysList).row();
             }
-            body.add(waysTitle).padTop(0.12f * u).row();
-            body.add(waysList).row();
         }
 
         panel.add(buttons).width(width).row();
@@ -434,6 +474,17 @@ public class GpxInfoPane {
      * The ways, for tests and scripts: where a tour is, the way there and what kind ("" without a
      * tour or ways) and the time there ("" without a tour), then a row for every way of the track.
      */
+    /** Whether the list of ways is open, and which row is lit (-1: none); for tests. */
+    public int[] waysState() {
+        return new int[]{waysOpen ? 1 : 0, litWay};
+    }
+
+    /** Opens the list of ways or folds it away, as its header does. */
+    public void setWaysOpen(boolean value) {
+        waysOpen = value;
+        layoutPanel();
+    }
+
     public String[] getWayTexts() {
         List<String> out = new ArrayList<>();
         out.add(currentShown && !stretches.isEmpty() ? wayNowText : "");
@@ -514,6 +565,7 @@ public class GpxInfoPane {
             currentShown = showCurrent;
             layoutPanel();
         }
+        lightWay(showCurrent && !stretches.isEmpty() ? stretchAt(f) : -1);
         placeAxes();
         redrawGraphs();
         boolean showDot = open && showCurrent;
@@ -523,6 +575,20 @@ public class GpxInfoPane {
             float size = 0.3f * widgetUnitStep;
             dot.setBounds(profile.getX() + f * profile.getWidth() - size / 2, y - size / 2, size, size);
         }
+    }
+
+    /** Lights the row of the way the tour is on, and puts out the one lit before. */
+    private void lightWay(int index) {
+        if (index == litWay) {
+            return;
+        }
+        if (litWay >= 0 && litWay < wayCells.size()) {
+            wayCells.get(litWay).setBackground((Drawable) null);
+        }
+        if (index >= 0 && index < wayCells.size()) {
+            wayCells.get(index).setBackground(currentWayBackground);
+        }
+        litWay = index;
     }
 
     /** The stretch a fraction 0..1 of the way along is on: the last to start at or before it. */
@@ -545,6 +611,8 @@ public class GpxInfoPane {
         stretches = new ArrayList<>();
         stretchStarts = new float[0];
         wayRows.clear();
+        wayCells.clear();
+        litWay = -1;
         if (track == null || track.getStretches().isEmpty() || stats == null) {
             return;
         }
@@ -573,6 +641,7 @@ public class GpxInfoPane {
             Label row = label(new Label.LabelStyle(name.getStyle()));
             row.setText(text);
             wayRows.add(row);
+            wayCells.add(new Table());
         }
     }
 

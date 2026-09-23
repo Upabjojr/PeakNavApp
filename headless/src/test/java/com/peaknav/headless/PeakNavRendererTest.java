@@ -1444,11 +1444,25 @@ class PeakNavRendererTest {
             File panel = newTempFile("route_ways.png");
             renderer.captureWithUi(panel);
             System.out.println("route ways: " + panel.getAbsolutePath());
+            int[] waysState = renderer.gpxInfoWaysState();
+            assertEquals(1, waysState[0], "the list of ways starts open");
+            assertTrue(waysState[1] >= 0 && waysState[1] < stretches.size(),
+                    "the way the tour is on is lit: " + waysState[1]);
+            String litRow = ways[3 + waysState[1]];
+            String wayLabel = ways[0].substring(ways[0].indexOf(": ") + 2);
+            assertTrue(litRow.contains(ways[1]) && (litRow.startsWith(wayLabel) || litRow.startsWith(ways[1])),
+                    "and it is the way the pane names: " + ways[0] + " | " + ways[1] + " vs " + litRow);
             renderer.setGpxInfoMaximized(true).scrollGpxInfo(1f).settle(300);
             File list = newTempFile("route_ways_list.png");
             renderer.captureWithUi(list);
             System.out.println("route ways list: " + list.getAbsolutePath());
-            renderer.setGpxInfoMaximized(false);
+            renderer.setGpxInfoWaysOpen(false).settle(300);
+            float[] folded = renderer.gpxInfoScroll();
+            File closed = newTempFile("route_ways_folded.png");
+            renderer.captureWithUi(closed);
+            System.out.println("route ways folded: " + closed.getAbsolutePath() + " scroll " + folded[0]);
+            assertEquals(0, renderer.gpxInfoWaysState()[0], "folded away");
+            renderer.setGpxInfoWaysOpen(true).setGpxInfoMaximized(false);
         } finally {
             renderer.clearGpx();
         }

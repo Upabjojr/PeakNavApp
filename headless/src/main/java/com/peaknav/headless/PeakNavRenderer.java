@@ -981,6 +981,19 @@ public final class PeakNavRenderer implements AutoCloseable {
         return out[0];
     }
 
+    /** Whether the GPX pane's list of ways is open, and which row is lit (-1: none). */
+    public int[] gpxInfoWaysState() {
+        final int[][] out = new int[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.waysState());
+        return out[0];
+    }
+
+    /** Opens the GPX pane's list of ways or folds it away, as its header does. */
+    public PeakNavRenderer setGpxInfoWaysOpen(final boolean open) {
+        onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.setWaysOpen(open));
+        return this;
+    }
+
     /** The GPX that "route to here" writes for a route, as it is opened, saved and shared. */
     public String routeGpx(com.peaknav.routing.WalkingRouter.Route route, double toLatitude, double toLongitude) {
         final String[] out = new String[1];
