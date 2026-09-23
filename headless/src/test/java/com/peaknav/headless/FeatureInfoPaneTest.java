@@ -129,6 +129,30 @@ class FeatureInfoPaneTest {
         assertEquals(peak[0].getPosition3D(new Vector3()).dst(impact[0]), 0f, 1e-6f);
         renderer.captureWithUi(capture("feature_peak.png"));
 
+        // A tap on the pane itself, through the app's input as a finger's goes, stays on the pane:
+        // not a new point picked, nor the pane closed, by the map beneath it.
+        renderer.settle(300);
+        renderer.runOnRenderThread(() -> {
+            com.badlogic.gdx.scenes.scene2d.Actor panel = screen().featureInfoPane.getTable().getChildren().first();
+            com.badlogic.gdx.math.Vector2 inside = panel.localToStageCoordinates(
+                    new com.badlogic.gdx.math.Vector2(4, panel.getHeight() * 0.4f));
+            com.badlogic.gdx.math.Vector2 window = screen().getStage().stageToScreenCoordinates(inside);
+            com.badlogic.gdx.InputProcessor input = com.badlogic.gdx.Gdx.input.getInputProcessor();
+            input.touchDown((int) window.x, (int) window.y, 0, com.badlogic.gdx.Input.Buttons.LEFT);
+            input.touchUp((int) window.x, (int) window.y, 0, com.badlogic.gdx.Input.Buttons.LEFT);
+        });
+        renderer.settle(300);
+        final Vector3[] after = new Vector3[1];
+        final FeatureInfo[] still = new FeatureInfo[1];
+        renderer.runOnRenderThread(() -> {
+            after[0] = screen().impact == null ? null : screen().impact.cpy();
+            still[0] = screen().featureInfoPane.getShown();
+        });
+        assertNotNull(still[0], "a tap on the pane went through and closed it");
+        assertEquals(peak[0].name, still[0].title, "a tap on the pane went through to another label");
+        assertNotNull(after[0]);
+        assertEquals(0f, impact[0].dst(after[0]), 1e-6f, "a tap on the pane went through and moved the pin");
+
         renderer.runOnRenderThread(() -> screen().featureInfoPane.setTagsOpen(true));
         renderer.settle(300);
         renderer.runOnRenderThread(() -> lines[0] = screen().featureInfoPane.getShownLines());

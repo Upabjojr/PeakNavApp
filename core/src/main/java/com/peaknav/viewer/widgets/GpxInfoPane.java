@@ -162,6 +162,8 @@ public class GpxInfoPane {
         root.setVisible(false);
 
         panelBackground = getC().widgetTextures.getUniformDrawable(PANEL);
+        panel.setTouchable(com.badlogic.gdx.scenes.scene2d.Touchable.enabled);
+        panel.addListener(FeatureInfoPane.swallowingListener());
 
         foldButton = getC().widgetTextures.getButtonWithIcon(ICON_FOLD, null);
         foldButton.setName("gpx_info_fold");

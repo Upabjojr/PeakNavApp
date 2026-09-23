@@ -7,6 +7,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.scenes.scene2d.InputListener;
 import com.badlogic.gdx.scenes.scene2d.Touchable;
 import com.badlogic.gdx.scenes.scene2d.ui.Button;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
@@ -74,6 +75,7 @@ public class FeatureInfoPane {
 
         panel.setBackground(getC().widgetTextures.getUniformDrawable(PANEL));
         panel.setTouchable(Touchable.enabled);
+        panel.addListener(swallowingListener());
 
         titleStyle = new Label.LabelStyle();
         titleStyle.font = getC().styleSingleton.getBitmapFontSmallWhite();
@@ -237,6 +239,25 @@ public class FeatureInfoPane {
         }
         shownLines.add(row.label + ": " + row.value);
         return cell;
+    }
+
+    /**
+     * Keeps a touch, a drag or a turn of the wheel on a pane from going through it to the map:
+     * the stage passes on what no listener handled, and the pane's background has none of its
+     * own, so a tap there picked a point, or another label, under the pane.
+     */
+    static InputListener swallowingListener() {
+        return new InputListener() {
+            @Override
+            public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
+                return true;
+            }
+
+            @Override
+            public boolean scrolled(InputEvent event, float x, float y, float amountX, float amountY) {
+                return true;
+            }
+        };
     }
 
     private static Label wrapped(String text, Label.LabelStyle style) {
