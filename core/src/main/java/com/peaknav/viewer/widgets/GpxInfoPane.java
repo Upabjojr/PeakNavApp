@@ -21,6 +21,7 @@ import com.badlogic.gdx.utils.Align;
 import com.peaknav.gpx.GpxTrack;
 import com.peaknav.gpx.GpxTrackStats;
 import com.peaknav.gpx.GraphTicks;
+import com.peaknav.routing.WayWording;
 import com.peaknav.utils.PreferencesManager.UnitSystem;
 
 import java.util.ArrayList;
@@ -95,6 +96,14 @@ public class GpxInfoPane {
     private final Label speed;
     private final Label current;
     private final Label walked;
+    /** Where a running tour is: the time there, and the way it is on and what kind of way. */
+    private final Label timeNow;
+    private final Label wayNow;
+    private final Label wayKindNow;
+    /** Every way the track follows, as a computed route records them; see RouteGpx. */
+    private final Label waysTitle;
+    private final List<Label> wayRows = new ArrayList<>();
+    private final Table waysList = new Table();
     private final Label.LabelStyle axisStyle;
     private final List<Label> yLabels = new ArrayList<>();
     private final List<Label> xLabels = new ArrayList<>();
@@ -127,6 +136,12 @@ public class GpxInfoPane {
     private boolean currentShown;
     private String currentText = "";
     private String walkedText = "";
+    private String timeNowText = "";
+    private String wayNowText = "";
+    private String wayKindNowText = "";
+    /** The shown track's stretches, and how far along it each starts, as a share of its length. */
+    private List<GpxTrack.Stretch> stretches = new ArrayList<>();
+    private float[] stretchStarts = new float[0];
 
     public GpxInfoPane(float widgetUnitStep) {
         this.widgetUnitStep = widgetUnitStep;
@@ -166,6 +181,11 @@ public class GpxInfoPane {
         speed = label(style);
         current = label(style);
         walked = label(style);
+        timeNow = label(style);
+        wayNow = label(style);
+        wayKindNow = label(style);
+        waysTitle = label(style);
+        waysTitle.setText(s("Gpx_info_ways"));
         axisStyle = new Label.LabelStyle(style);
         axisStyle.fontColor = AXIS_TEXT;
         speedGroup.addActor(speedGraph);
@@ -279,6 +299,11 @@ public class GpxInfoPane {
         if (currentShown) {
             body.add(current).row();
             body.add(walked).row();
+            body.add(timeNow).row();
+            if (!stretches.isEmpty()) {
+                body.add(wayNow).row();
+                body.add(wayKindNow).row();
+            }
         }
         if (stats != null && stats.hasTwoProfiles()) {
             body.add(legend).padTop(0.04f * u).row();
@@ -289,6 +314,14 @@ public class GpxInfoPane {
         if (stats != null && stats.speedKmh != null) {
             body.add(speed).padTop(0.08f * u).row();
             body.add(speedGroup).height(graphWidth * SPEED_UNITS / PANE_UNITS).row();
+        }
+        if (!stretches.isEmpty()) {
+            waysList.clearChildren();
+            for (Label row : wayRows) {
+                waysList.add(row).left().width(width).padBottom(0.04f * u).row();
+            }
+            body.add(waysTitle).padTop(0.12f * u).row();
+            body.add(waysList).row();
         }
 
         panel.add(buttons).width(width).row();
@@ -397,6 +430,21 @@ public class GpxInfoPane {
      * speed ("" without), and the elevation where a running tour is and the distance it has
      * walked ("" without).
      */
+    /**
+     * The ways, for tests and scripts: where a tour is, the way there and what kind ("" without a
+     * tour or ways) and the time there ("" without a tour), then a row for every way of the track.
+     */
+    public String[] getWayTexts() {
+        List<String> out = new ArrayList<>();
+        out.add(currentShown && !stretches.isEmpty() ? wayNowText : "");
+        out.add(currentShown && !stretches.isEmpty() ? wayKindNowText : "");
+        out.add(currentShown ? timeNowText : "");
+        for (Label row : wayRows) {
+            out.add(row.getText().toString());
+        }
+        return out.toArray(new String[0]);
+    }
+
     public String[] getTexts() {
         return new String[]{name.getText().toString(), distance.getText().toString(),
                 time.getText().toString(), climb.getText().toString(), heights.getText().toString(),
@@ -441,6 +489,26 @@ public class GpxInfoPane {
                 walkedText = walkedNow;
                 walked.setText(walkedNow);
             }
+            float[] elapsed = stats.elapsedMinutes;
+            String timeText = s("Gpx_info_time_now") + ": " + GpxTrackStats.formatDuration(valueAt(elapsed, f))
+                    + " / " + GpxTrackStats.formatDuration(elapsed[elapsed.length - 1]);
+            if (!timeText.equals(timeNowText)) {
+                timeNowText = timeText;
+                timeNow.setText(timeText);
+            }
+            if (!stretches.isEmpty()) {
+                com.peaknav.routing.WayInfo way = stretches.get(stretchAt(f)).way;
+                String wayText = s("Gpx_info_way_now") + ": " + new WayWording(units).label(way);
+                if (!wayText.equals(wayNowText)) {
+                    wayNowText = wayText;
+                    wayNow.setText(wayText);
+                }
+                String kindText = WayWording.kind(way);
+                if (!kindText.equals(wayKindNowText)) {
+                    wayKindNowText = kindText;
+                    wayKindNow.setText(kindText);
+                }
+            }
         }
         if (showCurrent != currentShown) {
             currentShown = showCurrent;
@@ -454,6 +522,57 @@ public class GpxInfoPane {
             float y = profile.getY() + graphY(valueAt(plotted, f), plotLow, plotHigh, profile.getHeight());
             float size = 0.3f * widgetUnitStep;
             dot.setBounds(profile.getX() + f * profile.getWidth() - size / 2, y - size / 2, size, size);
+        }
+    }
+
+    /** The stretch a fraction 0..1 of the way along is on: the last to start at or before it. */
+    private int stretchAt(float fraction) {
+        int at = 0;
+        for (int i = 1; i < stretchStarts.length; i++) {
+            if (stretchStarts[i] <= fraction) {
+                at = i;
+            }
+        }
+        return at;
+    }
+
+    /**
+     * The track's stretches, and a row for each: what the way is called, what kind it is, and how
+     * far and how long it goes - the time read off the same walking-time series as the profile's
+     * axis, so the rows add up to the track's time.
+     */
+    private void buildWays(GpxTrack track, UnitSystem units) {
+        stretches = new ArrayList<>();
+        stretchStarts = new float[0];
+        wayRows.clear();
+        if (track == null || track.getStretches().isEmpty() || stats == null) {
+            return;
+        }
+        List<GpxTrack.Point> points = track.getPoints();
+        double[] along = new double[points.size()];
+        for (int i = 1; i < points.size(); i++) {
+            GpxTrack.Point a = points.get(i - 1), b = points.get(i);
+            along[i] = along[i - 1] + com.peaknav.routing.WalkingRouter.metres(a.lat, a.lon, b.lat, b.lon);
+        }
+        double total = along[along.length - 1];
+        if (total <= 0) {
+            return;
+        }
+        stretches = new ArrayList<>(track.getStretches());
+        stretchStarts = new float[stretches.size()];
+        WayWording wording = new WayWording(units);
+        float[] elapsed = stats.elapsedMinutes;
+        for (int k = 0; k < stretches.size(); k++) {
+            GpxTrack.Stretch stretch = stretches.get(k);
+            int first = Math.min(stretch.firstPoint, along.length - 1);
+            int last = k + 1 < stretches.size() ? Math.min(stretches.get(k + 1).firstPoint, along.length - 1) : along.length - 1;
+            float from = (float) (along[first] / total), to = (float) (along[last] / total);
+            stretchStarts[k] = from;
+            String text = wording.line(stretch.way, GpxTrackStats.formatDistance(along[last] - along[first], units)
+                    + ", " + GpxTrackStats.formatDuration(valueAt(elapsed, to) - valueAt(elapsed, from)));
+            Label row = label(new Label.LabelStyle(name.getStyle()));
+            row.setText(text);
+            wayRows.add(row);
         }
     }
 
@@ -542,6 +661,7 @@ public class GpxInfoPane {
         });
         disposeGraphs();
         plotted = null;
+        buildWays(longest, units);
         if (stats == null) {
             buildHeightAxis(units);
             buildTimeAxis();
@@ -575,6 +695,9 @@ public class GpxInfoPane {
         buildTimeAxis();
         currentText = ""; // in the new units, next frame
         walkedText = "";
+        timeNowText = "";
+        wayNowText = "";
+        wayKindNowText = "";
         if (stats.speedKmh != null) {
             speed.setText(s("Gpx_info_speed") + ": " + s("Gpx_info_speed_average") + " "
                     + GpxTrackStats.formatSpeed(stats.averageSpeedKmh, units) + "   "

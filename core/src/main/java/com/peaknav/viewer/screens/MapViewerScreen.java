@@ -2346,10 +2346,23 @@ public class MapViewerScreen implements Screen {
 		if (Float.isNaN(groundMeters)) {
 			return;   // not loaded there: the old ground is a better guess than none
 		}
-		getC().L.setCurrentTerrainEleQuiet(Units.convertMetersToLatits(groundMeters)
-				- com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+		float ground = Units.convertMetersToLatits(groundMeters)
+				- com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon);
+		getC().L.setCurrentTerrainEleQuiet(ground);
 		if (tableTool != null) {
-			tableTool.sliderElevation.setVisualPercent(convertUnitsZ2ElevationBar(cam.position.z));
+			// Only the knob moves: the camera is where it should be, and a change event would
+			// pop the "+height" toast on every drag of a paused tour's scrub bar.
+			Slider slider = tableTool.sliderElevation;
+			boolean events = slider.getProgrammaticChangeEvents();
+			slider.setProgrammaticChangeEvents(false);
+			try {
+				slider.setVisualPercent(convertUnitsZ2ElevationBar(cam.position.z));
+			} finally {
+				slider.setProgrammaticChangeEvents(events);
+			}
+		}
+		if (cam.position.z < ground + LIFT_ELEV) {
+			setCameraElevationMeters(0);   // it stopped under the ground: onto it
 		}
 	}
 

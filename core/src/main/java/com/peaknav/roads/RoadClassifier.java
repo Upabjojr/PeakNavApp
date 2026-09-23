@@ -214,6 +214,21 @@ public final class RoadClassifier {
         }
     }
 
+    /** A value of the way's own tags, not a relation's; null if absent or empty. */
+    public static String ownValue(List<Tag> tags, String key) {
+        return tags == null ? null : value(tags, 0, ownTagCount(tags), key);
+    }
+
+    /** {@link #trailName} over a way's whole tag list, for callers outside the classifier. */
+    public static String trailNameOf(List<Tag> tags) {
+        return tags == null ? null : trailName(tags, ownTagCount(tags));
+    }
+
+    /** {@link #trailNumber} over a way's whole tag list, for callers outside the classifier. */
+    public static String trailNumberOf(List<Tag> tags) {
+        return tags == null ? null : trailNumber(tags, ownTagCount(tags));
+    }
+
     /** A road's name: its own, else its own reference ("SS38", "E62"). */
     static String roadName(List<Tag> tags, int ownEnd) {
         String name = value(tags, 0, ownEnd, "name");

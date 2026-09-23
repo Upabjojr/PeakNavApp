@@ -968,6 +968,26 @@ public final class PeakNavRenderer implements AutoCloseable {
         return out[0];
     }
 
+    /**
+     * The GPX info pane's ways: the way where a tour is, what kind, the time there, then a row
+     * for every way of the track (see GpxInfoPane.getWayTexts); null while the pane is hidden.
+     */
+    public String[] gpxInfoWayTexts() {
+        final String[][] out = new String[1][];
+        onRenderThread(() -> {
+            com.peaknav.viewer.widgets.GpxInfoPane pane = mapApp.mapViewerScreen.gpxInfoPane;
+            out[0] = pane == null || !pane.getTable().isVisible() ? null : pane.getWayTexts();
+        });
+        return out[0];
+    }
+
+    /** The GPX that "route to here" writes for a route, as it is opened, saved and shared. */
+    public String routeGpx(com.peaknav.routing.WalkingRouter.Route route, double toLatitude, double toLongitude) {
+        final String[] out = new String[1];
+        onRenderThread(() -> out[0] = com.peaknav.routing.RouteToPoint.gpxFor(route, toLatitude, toLongitude));
+        return out[0];
+    }
+
     /** Folds the GPX info pane open or shut, as its header does. */
     public PeakNavRenderer setGpxInfoOpen(final boolean open) {
         onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.setOpen(open));

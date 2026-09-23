@@ -51,16 +51,116 @@ public final class WalkingRouter {
         public final double[] lon;
         public final double metres;
         public final double seconds;
+        /**
+         * The way each leg follows, leg {@code i} running from point {@code i} to {@code i + 1};
+         * null for the straight legs joining the two ends to the network.
+         */
+        final WayInfo[] legWay;
+        final double[] legMetres;
+        final double[] legSeconds;
 
-        Route(double[] lat, double[] lon, double metres, double seconds) {
+        Route(double[] lat, double[] lon, double metres, double seconds,
+              WayInfo[] legWay, double[] legMetres, double[] legSeconds) {
             this.lat = lat;
             this.lon = lon;
             this.metres = metres;
             this.seconds = seconds;
+            this.legWay = legWay;
+            this.legMetres = legMetres;
+            this.legSeconds = legSeconds;
         }
 
         public int size() {
             return lat.length;
+        }
+
+        /**
+         * The route as the ways it follows, one stretch to each: consecutive legs along ways that
+         * say the same (see {@link WayInfo#equals}) are one stretch.
+         */
+        public List<Stretch> stretches() {
+            return stretches(null);
+        }
+
+        /**
+         * As {@link #stretches()}, timed by another clock: {@code secondsAt[i]} is the time to walk
+         * from the start to point {@code i}. The search times each leg from the heights at its two
+         * ends, which is right for choosing between ways but, over the short legs of a winding
+         * path on a coarse elevation grid, reads every wobble of the grid as a climb; the GPX pane
+         * times a track over 50 m stretches instead, and the file must agree with it.
+         */
+        public List<Stretch> stretches(double[] secondsAt) {
+            List<Stretch> out = new ArrayList<>();
+            int from = 0;
+            double metres = 0, seconds = 0;
+            for (int i = 0; i < legWay.length; i++) {
+                metres += legMetres[i];
+                seconds += secondsAt != null ? secondsAt[i + 1] - secondsAt[i] : legSeconds[i];
+                boolean last = i == legWay.length - 1;
+                if (last || !same(legWay[i], legWay[i + 1])) {
+                    out.add(new Stretch(from, i + 1, legWay[i], metres, seconds));
+                    from = i + 1;
+                    metres = 0;
+                    seconds = 0;
+                }
+            }
+            return withoutSlivers(out);
+        }
+
+        /**
+         * Folds stretches of a metre or two - a junction's node shared by a third way, the walker
+         * standing on the path already - into the stretch after them, or the last into the one
+         * before: nobody walks them, and listed they are noise between the ways that matter.
+         */
+        private static List<Stretch> withoutSlivers(List<Stretch> stretches) {
+            List<Stretch> out = new ArrayList<>(stretches.size());
+            Stretch carried = null; // slivers waiting to join the next stretch
+            for (Stretch s : stretches) {
+                if (carried != null) {
+                    s = new Stretch(carried.from, s.to, s.way, carried.metres + s.metres, carried.seconds + s.seconds);
+                    carried = null;
+                }
+                if (s.metres < SLIVER_METRES) {
+                    carried = s;
+                } else {
+                    out.add(s);
+                }
+            }
+            if (carried != null) {
+                if (out.isEmpty()) {
+                    out.add(carried);
+                } else {
+                    Stretch last = out.remove(out.size() - 1);
+                    out.add(new Stretch(last.from, carried.to, last.way, last.metres + carried.metres,
+                            last.seconds + carried.seconds));
+                }
+            }
+            return out;
+        }
+
+        private static boolean same(WayInfo a, WayInfo b) {
+            return a == null ? b == null : a.equals(b);
+        }
+    }
+
+    /** Stretches shorter than this are folded into their neighbour; see Route.stretches. */
+    static final double SLIVER_METRES = 2.0;
+
+    /** A part of a route along one way: points {@code from} to {@code to}, both included. */
+    public static final class Stretch {
+        public final int from;
+        public final int to;
+        /** The way; null for a straight leg off the network, to or from an end. */
+        public final WayInfo way;
+        public final double metres;
+        public final double seconds;
+
+        Stretch(int from, int to, WayInfo way, double metres, double seconds) {
+            this.from = from;
+            this.to = to;
+            this.way = way;
+            this.metres = metres;
+            this.seconds = seconds;
         }
     }
 
@@ -134,6 +234,7 @@ public final class WalkingRouter {
             if (way == null || way.latLongs == null || !walkable(way.tags)) {
                 continue;
             }
+            WayInfo info = WayInfo.of(way.tags);
             for (LatLong[] line : way.latLongs) {
                 if (line == null) {
                     continue;
@@ -143,7 +244,7 @@ public final class WalkingRouter {
                         continue;
                     }
                     graph.addEdge(graph.node(line[i].latitude, line[i].longitude),
-                            graph.node(line[i + 1].latitude, line[i + 1].longitude));
+                            graph.node(line[i + 1].latitude, line[i + 1].longitude), info);
                 }
             }
         }
@@ -159,7 +260,7 @@ public final class WalkingRouter {
         int t = graph.attach(end);
         if (start.a == end.a && start.b == end.b) {
             // Both ends on one segment: the walk along it between them.
-            graph.link(s, t);
+            graph.link(s, t, start.way);
         }
         int[] previous = graph.shortest(s, t);
         if (previous == null) {
@@ -172,17 +273,23 @@ public final class WalkingRouter {
         int count = nodes.size() + 2;
         double[] lat = new double[count];
         double[] lon = new double[count];
+        // Leg i runs from point i to i + 1. The first and last join the ends to the network in a
+        // straight line, along no way; those between follow the edges the search took.
+        WayInfo[] legWays = new WayInfo[count - 1];
         lat[0] = fromLat;
         lon[0] = fromLon;
         for (int i = 0; i < nodes.size(); i++) {
             int node = nodes.get(nodes.size() - 1 - i);
             lat[i + 1] = graph.lat(node);
             lon[i + 1] = graph.lon(node);
+            if (i > 0) {
+                legWays[i] = graph.way(nodes.get(nodes.size() - i), node);
+            }
         }
         lat[count - 1] = toLat;
         lon[count - 1] = toLon;
         // Joining legs of zero length (an end exactly on a node) leave duplicate points: drop them.
-        return dedupe(lat, lon, elevation);
+        return dedupe(lat, lon, legWays, elevation);
     }
 
     /** Distance on the sphere, in metres. */
@@ -224,9 +331,17 @@ public final class WalkingRouter {
         return seconds;
     }
 
-    private static Route dedupe(double[] lat, double[] lon, Elevation elevation) {
+    /**
+     * @param ways the way of each leg, {@code ways[i]} from point i to i + 1. A point dropped as a
+     *             duplicate of the one before takes its zero-length leg with it; the leg that
+     *             reaches the next distinct point is the one before that point, whose way it keeps.
+     */
+    private static Route dedupe(double[] lat, double[] lon, WayInfo[] ways, Elevation elevation) {
         double[] outLat = new double[lat.length];
         double[] outLon = new double[lon.length];
+        WayInfo[] outWays = new WayInfo[lat.length];
+        double[] outMetres = new double[lat.length];
+        double[] outSeconds = new double[lat.length];
         int n = 0;
         double length = 0, seconds = 0;
         for (int i = 0; i < lat.length; i++) {
@@ -234,32 +349,39 @@ public final class WalkingRouter {
                 continue;
             }
             if (n > 0) {
-                length += metres(outLat[n - 1], outLon[n - 1], lat[i], lon[i]);
-                seconds += legSeconds(outLat[n - 1], outLon[n - 1], Double.NaN, lat[i], lon[i], Double.NaN, elevation);
+                double legMetres = metres(outLat[n - 1], outLon[n - 1], lat[i], lon[i]);
+                double legSecs = legSeconds(outLat[n - 1], outLon[n - 1], Double.NaN, lat[i], lon[i], Double.NaN, elevation);
+                length += legMetres;
+                seconds += legSecs;
+                outWays[n - 1] = ways[i - 1];
+                outMetres[n - 1] = legMetres;
+                outSeconds[n - 1] = legSecs;
             }
             outLat[n] = lat[i];
             outLon[n] = lon[i];
             n++;
         }
-        double[] finalLat = new double[n];
-        double[] finalLon = new double[n];
-        System.arraycopy(outLat, 0, finalLat, 0, n);
-        System.arraycopy(outLon, 0, finalLon, 0, n);
-        return new Route(finalLat, finalLon, length, seconds);
+        int legs = Math.max(0, n - 1);
+        return new Route(java.util.Arrays.copyOf(outLat, n), java.util.Arrays.copyOf(outLon, n), length, seconds,
+                java.util.Arrays.copyOf(outWays, legs), java.util.Arrays.copyOf(outMetres, legs),
+                java.util.Arrays.copyOf(outSeconds, legs));
     }
 
     /** Where a point meets the network: on segment a-b, {@code along} metres from a. */
     private static final class Snap {
         final int a;
         final int b;
+        /** The way the segment belongs to. */
+        final WayInfo way;
         final double along;
         final double lat;
         final double lon;
         final double metres;
 
-        Snap(int a, int b, double along, double lat, double lon, double metres) {
+        Snap(int a, int b, WayInfo way, double along, double lat, double lon, double metres) {
             this.a = a;
             this.b = b;
+            this.way = way;
             this.along = along;
             this.lat = lat;
             this.lon = lon;
@@ -278,7 +400,10 @@ public final class WalkingRouter {
         private final Map<Long, Integer> index = new HashMap<>();
         private final List<double[]> coordinates = new ArrayList<>();
         private final List<int[]> segments = new ArrayList<>();
+        private final List<WayInfo> segmentWays = new ArrayList<>();
         private final List<List<Integer>> neighbours = new ArrayList<>();
+        /** The way of each link, in step with {@link #neighbours}. */
+        private final List<List<WayInfo>> neighbourWays = new ArrayList<>();
         /** Each node's height, looked up the first time a walk touches it (NaN: not known). */
         private final List<Double> heights = new ArrayList<>();
         private final Elevation elevation;
@@ -299,6 +424,7 @@ public final class WalkingRouter {
             int id = coordinates.size();
             coordinates.add(new double[]{lat, lon});
             neighbours.add(new ArrayList<Integer>());
+            neighbourWays.add(new ArrayList<WayInfo>());
             heights.add(null);
             if (found == null) {
                 index.put(key, id);
@@ -328,17 +454,34 @@ public final class WalkingRouter {
             return legSeconds(lat(from), lon(from), height(from), lat(to), lon(to), height(to), elevation);
         }
 
-        void addEdge(int a, int b) {
+        void addEdge(int a, int b, WayInfo way) {
             if (a == b) {
                 return;
             }
             segments.add(new int[]{a, b});
-            link(a, b);
+            segmentWays.add(way);
+            link(a, b, way);
         }
 
-        void link(int a, int b) {
+        void link(int a, int b, WayInfo way) {
             neighbours.get(a).add(b);
+            neighbourWays.get(a).add(way);
             neighbours.get(b).add(a);
+            neighbourWays.get(b).add(way);
+        }
+
+        /**
+         * The way the link from a to b follows. Where two ways join the same pair of nodes, the
+         * first: the search took the link, not a way, and both walk the same ground.
+         */
+        WayInfo way(int a, int b) {
+            List<Integer> next = neighbours.get(a);
+            for (int i = 0; i < next.size(); i++) {
+                if (next.get(i) == b) {
+                    return neighbourWays.get(a).get(i);
+                }
+            }
+            return null;
         }
 
         int edgeCount() {
@@ -350,7 +493,8 @@ public final class WalkingRouter {
             double cos = Math.cos(Math.toRadians(lat));
             Snap best = null;
             double bestSquared = Double.MAX_VALUE;
-            for (int[] segment : segments) {
+            for (int k = 0; k < segments.size(); k++) {
+                int[] segment = segments.get(k);
                 double ax = (lon(segment[0]) - lon) * cos, ay = lat(segment[0]) - lat;
                 double bx = (lon(segment[1]) - lon) * cos, by = lat(segment[1]) - lat;
                 double dx = bx - ax, dy = by - ay;
@@ -363,7 +507,7 @@ public final class WalkingRouter {
                     double snapLat = lat + py;
                     double snapLon = lon + px / cos;
                     double segmentMetres = metres(lat(segment[0]), lon(segment[0]), lat(segment[1]), lon(segment[1]));
-                    best = new Snap(segment[0], segment[1], t * segmentMetres, snapLat, snapLon,
+                    best = new Snap(segment[0], segment[1], segmentWays.get(k), t * segmentMetres, snapLat, snapLon,
                             metres(lat, lon, snapLat, snapLon));
                 }
             }
@@ -375,9 +519,10 @@ public final class WalkingRouter {
             int id = coordinates.size();
             coordinates.add(new double[]{snap.lat, snap.lon});
             neighbours.add(new ArrayList<Integer>());
+            neighbourWays.add(new ArrayList<WayInfo>());
             heights.add(null);
-            link(id, snap.a);
-            link(id, snap.b);
+            link(id, snap.a, snap.way);
+            link(id, snap.b, snap.way);
             return id;
         }
 

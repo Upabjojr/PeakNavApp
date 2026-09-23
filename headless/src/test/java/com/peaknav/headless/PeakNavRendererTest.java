@@ -1419,6 +1419,36 @@ class PeakNavRendererTest {
             File framed = newTempFile("route.png");
             renderer.capture(framed);
             System.out.println("route frame: " + framed.getAbsolutePath());
+
+            // The ways it follows: in the file, as every way's first point names it...
+            java.util.List<com.peaknav.routing.WalkingRouter.Stretch> stretches = route.stretches();
+            String gpx = renderer.routeGpx(route, toLat, toLon);
+            System.out.println("route gpx description:\n" + gpx.substring(gpx.indexOf("<desc>"), gpx.indexOf("</desc>") + 7));
+            assertTrue(stretches.size() >= 2, "a walk up to Findeln changes way: " + stretches.size());
+            int named = 0;
+            for (com.peaknav.routing.WalkingRouter.Stretch stretch : stretches) {
+                if (stretch.way != null && (stretch.way.name != null || stretch.way.number != null)) {
+                    named++;
+                }
+            }
+            assertTrue(named > 0, "Zermatt's paths have names and numbers, and the route says them");
+            // ...and in the pane: a row for each, and while the tour is paused halfway, the way there.
+            String[] ways = renderer.gpxInfoWayTexts();
+            assertEquals(3 + stretches.size(), ways.length, "a row for every way");
+            renderer.seekGpxTour(0.5f);
+            renderer.settle(800);
+            ways = renderer.gpxInfoWayTexts();
+            System.out.println("halfway: " + ways[0] + " | " + ways[1] + " | " + ways[2]);
+            assertTrue(!ways[0].isEmpty() && !ways[1].isEmpty() && !ways[2].isEmpty(),
+                    "the way, its kind and the time where the tour is");
+            File panel = newTempFile("route_ways.png");
+            renderer.captureWithUi(panel);
+            System.out.println("route ways: " + panel.getAbsolutePath());
+            renderer.setGpxInfoMaximized(true).scrollGpxInfo(1f).settle(300);
+            File list = newTempFile("route_ways_list.png");
+            renderer.captureWithUi(list);
+            System.out.println("route ways list: " + list.getAbsolutePath());
+            renderer.setGpxInfoMaximized(false);
         } finally {
             renderer.clearGpx();
         }

@@ -175,4 +175,75 @@ public class TestWalkingRouter {
         String noElevation = RouteGpx.toGpx("x", route, (lat, lon) -> null);
         assertFalse(GpxParser.parse(noElevation).get(0).getPoints().get(0).hasElevation);
     }
+
+    @Test
+    void theRouteSaysWhichWaysItFollows() {
+        // South side on a numbered trail made of two ways, then up the east side on a track;
+        // the walker stands 30 m south of the start, off the paths.
+        double off = 30 / 111_195.0;
+        double midLon = (W + E) / 2;
+        List<Way> ways = Arrays.asList(
+                way(t("highway", "path", "name", "Sentiero dei Fiori", "ref", "12", "sac_scale", "mountain_hiking",
+                        "type", "route", "route", "hiking", "ref", "E5"), S, W, S, midLon),
+                way(t("highway", "path", "name", "Sentiero dei Fiori", "ref", "12", "sac_scale", "mountain_hiking",
+                        "type", "route", "route", "hiking", "ref", "E5"), S, midLon, S, E),
+                way(t("highway", "track", "tracktype", "grade2"), S, E, N, E));
+        WalkingRouter.Route route = WalkingRouter.route(ways, S - off, W, N, E, 50);
+        assertNotNull(route);
+
+        List<WalkingRouter.Stretch> stretches = route.stretches();
+        assertEquals(3, stretches.size(), "off the paths, the trail (one stretch, not two ways), the track");
+        assertNull(stretches.get(0).way, "the walker's step onto the trail follows no way");
+        WayInfo trail = stretches.get(1).way;
+        assertEquals("Sentiero dei Fiori", trail.name);
+        assertEquals("12/E5", trail.number, "its own number, then its hiking route's");
+        assertEquals("path", trail.highway);
+        assertEquals(2, trail.sacGrade());
+        assertEquals("track", stretches.get(2).way.highway);
+        assertEquals(2, stretches.get(2).way.trackGrade());
+        assertEquals(WalkingRouter.metres(S, W, S, E), stretches.get(1).metres, 0.5);
+        double metres = 0, seconds = 0;
+        for (WalkingRouter.Stretch stretch : stretches) {
+            metres += stretch.metres;
+            seconds += stretch.seconds;
+        }
+        assertEquals(route.metres, metres, 1e-6, "the stretches add up to the route");
+        assertEquals(route.seconds, seconds, 1e-6);
+        assertEquals(route.size() - 1, stretches.get(2).to);
+
+        // Written as GPX and read back, the ways come back where they start.
+        String gpx = RouteGpx.toGpx("Route", route, null);
+        assertTrue(gpx.contains("<name>12/E5 Sentiero dei Fiori</name>"), "named for other apps too");
+        assertTrue(gpx.contains("<type>track</type>"));
+        GpxTrack track = GpxParser.parse(gpx).get(0);
+        List<GpxTrack.Stretch> read = track.getStretches();
+        assertEquals(3, read.size());
+        for (int i = 0; i < 3; i++) {
+            assertEquals(stretches.get(i).from, read.get(i).firstPoint);
+            assertEquals(stretches.get(i).way, read.get(i).way);
+        }
+    }
+
+    @Test
+    void waysAreNamedAndGraded() {
+        assertEquals(4, new WayInfo(null, null, "path", "T4", null).sacGrade());
+        assertEquals(6, new WayInfo(null, null, "path", "difficult_alpine_hiking", null).sacGrade());
+        assertEquals(0, new WayInfo(null, null, "path", "unknown", null).sacGrade());
+        assertEquals(0, new WayInfo(null, null, "track", null, "grade9").trackGrade());
+        // A road's reference is its number; a bus route's name does not name the street.
+        WayInfo road = WayInfo.of(tagList("highway", "residential", "name", "Via Roma", "ref", "SP1",
+                "type", "route", "route", "bus", "name", "Linea 3"));
+        assertEquals("Via Roma", road.name);
+        assertEquals("SP1", road.number);
+        WayInfo unnamed = WayInfo.of(tagList("highway", "residential", "type", "route", "route", "bus", "name", "Linea 3"));
+        assertNull(unnamed.name);
+    }
+
+    private static List<Tag> tagList(String... kv) {
+        List<Tag> list = new ArrayList<>();
+        for (int i = 0; i + 1 < kv.length; i += 2) {
+            list.add(new Tag(kv[i], kv[i + 1]));
+        }
+        return list;
+    }
 }

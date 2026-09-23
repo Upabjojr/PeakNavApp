@@ -80,6 +80,17 @@ public final class GpxParser {
                     // leave without elevation
                 }
             }
+            XmlReader.Element extensions = pt.getChildByName("extensions");
+            XmlReader.Element way = extensions == null ? null
+                    : extensions.getChildByName(com.peaknav.routing.RouteGpx.WAY_ELEMENT);
+            if (way != null) {
+                // An empty element is a stretch along no way; see RouteGpx.
+                boolean none = way.getAttributes() == null || way.getAttributes().size == 0;
+                track.startStretch(none ? null : new com.peaknav.routing.WayInfo(
+                        way.getAttribute("name", null), way.getAttribute("ref", null),
+                        way.getAttribute("highway", null), way.getAttribute("sac_scale", null),
+                        way.getAttribute("tracktype", null)));
+            }
             Long millis = parseTime(childText(pt, "time"));
             track.add(lat, lon, ele, hasEle,
                     millis != null ? millis : 0L, millis != null);

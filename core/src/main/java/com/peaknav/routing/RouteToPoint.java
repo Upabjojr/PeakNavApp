@@ -148,14 +148,51 @@ public final class RouteToPoint {
         }
     }
 
-    /** The route as a GPX track named after its destination, with the terrain's heights. */
+    /** The route as a GPX track named after its destination, with the terrain's heights and its ways. */
     public static String gpxFor(WalkingRouter.Route route, double toLat, double toLon) {
+        RouteGpx.Elevation elevation = (lat, lon) -> {
+            // ElevationUtils' own lookup never finds a tile; the loaded terrain does.
+            float metres = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+            return Float.isNaN(metres) ? null : metres;
+        };
         return RouteGpx.toGpx(String.format(Locale.ROOT, s("Route_name"), toLat, toLon), route,
-                (lat, lon) -> {
-                    // ElevationUtils' own lookup never finds a tile; the loaded terrain does.
-                    float metres = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
-                    return Float.isNaN(metres) ? null : metres;
-                });
+                route.stretches(secondsAlong(route, elevation)), elevation,
+                // The ways it follows, in the reader's words, as the GPX pane will show them.
+                new WayWording(com.peaknav.utils.PreferencesManager.P.getUnitSystem()));
+    }
+
+    /**
+     * Seconds from the start to each point of the route, as the GPX pane will show them: from the
+     * very stats the pane computes for the track the route is opened as (heights from the terrain,
+     * marked computed), read off at each point as the pane reads them, so the times the file gives
+     * each way add up to the walking time the pane shows.
+     */
+    static double[] secondsAlong(WalkingRouter.Route route, RouteGpx.Elevation elevation) {
+        int n = route.size();
+        com.peaknav.gpx.GpxTrack track = new com.peaknav.gpx.GpxTrack("");
+        for (int i = 0; i < n; i++) {
+            Float h = elevation == null ? null : elevation.metres(route.lat[i], route.lon[i]);
+            boolean known = h != null && !h.isNaN();
+            track.add((float) route.lat[i], (float) route.lon[i], known ? h : 0f, known, 0L, false);
+        }
+        track.markHeightsComputed();
+        com.peaknav.gpx.GpxTrackStats stats = com.peaknav.gpx.GpxTrackStats.of(track, null);
+        double[] seconds = new double[n];
+        if (stats == null) {
+            return seconds;
+        }
+        double[] along = new double[n];
+        for (int i = 1; i < n; i++) {
+            com.peaknav.gpx.GpxTrack.Point a = track.getPoints().get(i - 1), b = track.getPoints().get(i);
+            along[i] = along[i - 1] + WalkingRouter.metres(a.lat, a.lon, b.lat, b.lon);
+        }
+        float[] elapsed = stats.elapsedMinutes;
+        for (int i = 0; i < n; i++) {
+            double position = along[n - 1] <= 0 ? 0 : along[i] / along[n - 1] * (elapsed.length - 1);
+            int k = Math.min(elapsed.length - 2, (int) position);
+            seconds[i] = 60 * (elapsed[k] + (position - k) * (elapsed[k + 1] - elapsed[k]));
+        }
+        return seconds;
     }
 
     /** The route between two points over the map data in {@code store}, or why there is none. */
