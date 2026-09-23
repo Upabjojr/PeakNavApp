@@ -796,6 +796,9 @@ public class MapViewerScreen implements Screen {
 		}
 		queueGpxTourFrom(frame, !wasPaused);
 		moveCameraAction.setPaused(wasPaused);
+		if (wasPaused) {
+			groundElevationBarUnderCamera();
+		}
 	}
 
 	/**
@@ -875,7 +878,7 @@ public class MapViewerScreen implements Screen {
 			return;
 		}
 		if (gpxTourActive && moveCameraAction.isComplete()) {
-			endGpxTour(); // the tour played out on its own
+			endGpxTour(true); // the tour played out on its own
 		}
 		boolean hasGpx = !getC().gpxManager.isEmpty();
 		tableLocation.buttonGpxFly.setVisible(hasGpx);
@@ -934,6 +937,7 @@ public class MapViewerScreen implements Screen {
 	public void toggleGpxFlythrough() {
 		if (isGpxTourPlaying()) {
 			moveCameraAction.setPaused(true);
+			groundElevationBarUnderCamera();   // the camera stops over the track, not the target
 		} else if (isGpxTourPaused()) {
 			moveCameraAction.setPaused(false);
 			// The hold expires while paused; extend it so the resumed tour is not interrupted.
@@ -946,7 +950,11 @@ public class MapViewerScreen implements Screen {
 
 	/** Abandons a running tour and releases the camera (used when the GPX itself is cleared). */
 	public void stopGpxFlythrough() {
-		endGpxTour();
+		stopGpxFlythrough(true);
+	}
+
+	private void stopGpxFlythrough(boolean groundBar) {
+		endGpxTour(groundBar);
 		moveCameraAction.clearSteps();
 		gpxTourFrames.clear(); // don't keep keyframes for a track that is going away
 		gpxFrameHoldUntilMs = 0L;
@@ -956,12 +964,15 @@ public class MapViewerScreen implements Screen {
 	private float gpxFieldOfViewBeforeTour = Float.NaN;
 
 	/** Marks the tour finished and restores the pre-tour field of view. */
-	private void endGpxTour() {
+	private void endGpxTour(boolean groundBar) {
 		gpxTourActive = false;
 		if (!Float.isNaN(gpxFieldOfViewBeforeTour)) {
 			cam.fieldOfView = gpxFieldOfViewBeforeTour;
 			gpxFieldOfViewBeforeTour = Float.NaN;
 			cam.update();
+		}
+		if (groundBar) {
+			Gdx.app.postRunnable(this::groundElevationBarUnderCamera);
 		}
 	}
 
@@ -2310,7 +2321,36 @@ public class MapViewerScreen implements Screen {
 	}
 
 	public void stopOrbit() {
-		orbiting = false;
+		if (orbiting) {
+			orbiting = false;
+			// Called from the input thread's handlers and from elsewhere: the bar is scene2d.
+			Gdx.app.postRunnable(this::groundElevationBarUnderCamera);
+		}
+	}
+
+	/**
+	 * Measures the elevation bar from the ground under the camera, where an orbit or a GPX tour
+	 * has left it (issue #35). Both carry the camera across the map without moving the target,
+	 * and the bar's zero is the ground under the target: left there, the knob sat at the wrong
+	 * height, its toast measured from ground kilometres away, and dragging it to the bottom
+	 * put the camera underground or hundreds of metres up. Once, when the camera comes to
+	 * rest, not every frame, which would slide the knob under a finger dragging it. The quiet
+	 * setter: nothing is re-targeted and the camera stays where it is, unless it is now below
+	 * the ground, where the bar's floor lifts it out.
+	 */
+	private void groundElevationBarUnderCamera() {
+		float lat = cam.position.y;
+		// World x is the longitude scaled by the TARGET's latitude, as every mesh is.
+		float lon = Units.convertLatitsToLonits(cam.position.x, (float) getC().L.getTargetLatitude());
+		float groundMeters = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+		if (Float.isNaN(groundMeters)) {
+			return;   // not loaded there: the old ground is a better guess than none
+		}
+		getC().L.setCurrentTerrainEleQuiet(Units.convertMetersToLatits(groundMeters)
+				- com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+		if (tableTool != null) {
+			tableTool.sliderElevation.setVisualPercent(convertUnitsZ2ElevationBar(cam.position.z));
+		}
 	}
 
 	/**
@@ -2321,9 +2361,11 @@ public class MapViewerScreen implements Screen {
 	 * request before re-targeting, and that fly belongs to the new destination, not the old.
 	 */
 	public void cancelScheduledCameraPath() {
-		stopOrbit();
+		// Not stopOrbit or stopGpxFlythrough, which measure the bar from the ground the camera
+		// stopped over: the new destination's own ground is about to be measured instead.
+		orbiting = false;
 		if (gpxTourActive) {
-			stopGpxFlythrough(); // also clears the queued steps and the framing hold
+			stopGpxFlythrough(false); // also clears the queued steps and the framing hold
 		} else {
 			moveCameraAction.clearSteps();
 		}

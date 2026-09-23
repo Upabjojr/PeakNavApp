@@ -69,6 +69,25 @@ public class MountainInputController extends CameraInputController {
     // briefly flashes the overlay. -1 means "no candidate".
     private int unboundCandidateKeycode = -1;
 
+    /**
+     * While the gyroscope points the camera, nothing else may: a drag, a pinch, the wheel or
+     * a key moved the camera for one frame and the sensor moved it back on the next, and
+     * pointing the phone down the pinch zoom fought the sensor rather than zooming. Taps
+     * still measure, and the elevation bar still raises the camera.
+     */
+    private volatile boolean cameraControlsSuspended = false;
+
+    public void setCameraControlsSuspended(boolean suspended) {
+        cameraControlsSuspended = suspended;
+        // A key held when the gyroscope took over would otherwise resume turning when it is
+        // switched off, and the drag in progress would carry on from where the finger was.
+        clearKeyboardLook();
+    }
+
+    public boolean isCameraControlsSuspended() {
+        return cameraControlsSuspended;
+    }
+
     public static class MountainGestureListener extends CameraGestureListener {
         private final Vector2 tmpV1 = new Vector2();
         private final Vector2 tmpV2 = new Vector2();
@@ -121,6 +140,10 @@ public class MountainInputController extends CameraInputController {
             tmpV1.set(initialPointer2).sub(initialPointer1).nor();
             tmpV2.set(pointer2).sub(pointer1).nor();
             float rotationDeg = (float) Math.toDegrees(Math.asin(tmpV1.crs(tmpV2)));
+
+            if (((MountainInputController) controller).cameraControlsSuspended) {
+                return true;
+            }
 
             if (PhotoPin.isActive()) {
                 // Twisting two fingers turns the terrain about the pin, no tilt limit: a
@@ -237,6 +260,9 @@ public class MountainInputController extends CameraInputController {
     }
 
     protected boolean process(float deltaX, float deltaY, int button) {
+        if (cameraControlsSuspended) {
+            return false;
+        }
         // Taking hold of the view ends the orbit: two things steering one camera only
         // produces a fight, and the person with their hand on it should win.
         mapViewerScreen.stopOrbit();
@@ -312,7 +338,7 @@ public class MountainInputController extends CameraInputController {
 
     private void updateKeyboardAltitude(float scaledDeltaTime) {
         float delta = (altitudeUpPressed ? 1f : 0f) - (altitudeDownPressed ? 1f : 0f);
-        if (delta == 0f || mapViewerScreen == null)
+        if (delta == 0f || mapViewerScreen == null || cameraControlsSuspended)
             return;
 
         mapViewerScreen.nudgeCameraElevationBar(delta * altitudeBarsPerSecond * scaledDeltaTime);
@@ -457,6 +483,9 @@ public class MountainInputController extends CameraInputController {
 
     @Override
     public boolean zoom (float amount) {
+        if (cameraControlsSuspended) {
+            return false;
+        }
         amount *= pinchZoomFactor3;
         float delta = -perspectiveCamera.getAngleForCompassDelta()*amount;
         float newFieldOfView = perspectiveCamera.getAngleForCompassDelta() + delta;

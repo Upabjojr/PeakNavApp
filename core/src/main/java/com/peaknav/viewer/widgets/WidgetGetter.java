@@ -291,6 +291,11 @@ public class WidgetGetter {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
                     // buttonOrientation.setChecked(!buttonOrientation.isChecked());
+                    // Only the gyroscope points the camera while it is on (see
+                    // MountainInputController.setCameraControlsSuspended).
+                    if (mapApp.mapViewerScreen.controller != null) {
+                        mapApp.mapViewerScreen.controller.setCameraControlsSuspended(buttonOrientation.isChecked());
+                    }
                     if (buttonOrientation.isChecked()) {
                         getNativeScreenCaller().getOrientationPointerListener().start();
                     } else {
