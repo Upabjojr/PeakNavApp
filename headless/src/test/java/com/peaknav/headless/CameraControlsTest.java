@@ -171,4 +171,44 @@ class CameraControlsTest {
         assertEquals(expected, barMeters[0], 2.0,
                 "the bar measures from the ground the orbit started over, not the ground below");
     }
+
+    @Test
+    @Order(4)
+    @DisplayName("the elevation readout gives the viewpoint's height above the sea, over the coordinates")
+    void elevationReadout() throws Exception {
+        renderer.moveTo(LAT, LON);
+        renderer.awaitTilesLoaded(120_000);
+        renderer.setElevationMeters(250);
+        renderer.aim(245, 5);
+        renderer.runOnRenderThread(() -> com.peaknav.utils.PreferencesManager.P.setShowElevation(true));
+        try {
+            renderer.settle(800);
+            Vector3 eye = renderer.cameraPosition();
+            float lat = eye.y;
+            float lon = Units.convertLatitsToLonits(eye.x, (float) PeakNavUtils.getC().L.getTargetLatitude());
+            float ground = PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+            final double[] bar = new double[1];
+            final String[] text = new String[1];
+            renderer.runOnRenderThread(() -> {
+                bar[0] = screen().getCameraElevationMeters();
+                text[0] = screen().labelRenderer.getElevationText();
+            });
+            double expected = ground + bar[0] + Units.convertLatitsToMeters(screen().LIFT_ELEV);
+            System.out.println("[elevation] " + text[0] + " expected " + expected);
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(-?\\d+) m$").matcher(text[0]);
+            assertTrue(m.find(), "no height in metres in \"" + text[0] + "\"");
+            assertEquals(expected, Integer.parseInt(m.group(1)), 3.0, text[0]);
+            renderer.captureWithUi(new java.io.File(System.getProperty("java.io.tmpdir"), "peaknav-feature-info/elevation.png"));
+
+            // With a track loaded, the scrub bar runs just above the coordinates: the readout goes over it.
+            renderer.loadGpx("<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" version=\"1.1\"><trk><trkseg>"
+                    + "<trkpt lat=\"46.0207\" lon=\"7.7491\"/><trkpt lat=\"46.0000\" lon=\"7.7300\"/>"
+                    + "</trkseg></trk></gpx>");
+            renderer.settle(800);
+            renderer.captureWithUi(new java.io.File(System.getProperty("java.io.tmpdir"), "peaknav-feature-info/elevation_gpx.png"));
+            renderer.clearGpx();
+        } finally {
+            renderer.runOnRenderThread(() -> com.peaknav.utils.PreferencesManager.P.setShowElevation(false));
+        }
+    }
 }

@@ -25,6 +25,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SUN_SHADING;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_COMPASS_LOCATION;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_COORDINATES;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ELEVATION;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_CORNER_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_CONSTELLATIONS;
@@ -93,6 +94,7 @@ public class PreferencesManager {
     private boolean horizonCompass;
     private boolean compassLocation;
     private boolean showCoordinates;
+    private boolean showElevation;
     private boolean cornerCompass;
     private boolean skyView;
     private boolean skyConstellations;
@@ -238,6 +240,7 @@ public class PreferencesManager {
         // All three compass-and-location items default to on for a fresh install.
         compassLocation = preferences.getBoolean(VIEWER_COMPASS_LOCATION, true);
         showCoordinates = preferences.getBoolean(VIEWER_SHOW_COORDINATES, true);
+        showElevation = preferences.getBoolean(VIEWER_SHOW_ELEVATION, false);
         cornerCompass = preferences.getBoolean(VIEWER_CORNER_COMPASS, true);
         skyView = preferences.getBoolean(VIEWER_SKY, true);
         skyConstellations = preferences.getBoolean(VIEWER_SKY_CONSTELLATIONS, true);
@@ -580,6 +583,17 @@ public class PreferencesManager {
     public void setShowCoordinates(boolean enabled) {
         showCoordinates = enabled;
         preferences.putBoolean(VIEWER_SHOW_COORDINATES, enabled);
+        preferences.flush();
+    }
+
+    /** Whether the viewpoint's elevation is written on screen, over the coordinates. */
+    public boolean isShowElevation() {
+        return showElevation;
+    }
+
+    public void setShowElevation(boolean enabled) {
+        showElevation = enabled;
+        preferences.putBoolean(VIEWER_SHOW_ELEVATION, enabled);
         preferences.flush();
     }
 

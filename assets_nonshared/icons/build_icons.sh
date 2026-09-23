@@ -62,6 +62,7 @@ ICONS=(
   "icon_sky_ecliptic:128:128"
   "icon_sky_labels:128:128"
   "icon_loc_pin:128:256"
+  "icon_elevation_readout:128:128"
   # These eight are loaded by the app exactly like the rest but were missing from this
   # list, so a build from a clean checkout came up short of the icons it asks for.
   "icon_checkbox_sky:128:128"

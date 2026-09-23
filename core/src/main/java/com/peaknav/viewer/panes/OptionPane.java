@@ -544,6 +544,15 @@ public class OptionPane {
         }));
         buttons.add(checkBoxCoordinates);
 
+        ImageTextButtonOptionPane checkBoxElevation = getC().widgetGetter.getImageTextButton(
+                "icons/icon_elevation_readout.png", s("Show_elevation"), true);
+        addCheckingStateProperty(checkBoxElevation, () -> P.isShowElevation());
+        checkBoxElevation.addClickListener(() -> changer.execute(() -> {
+            P.setShowElevation(checkBoxElevation.isChecked());
+            P.setCompassLocation(true);
+        }));
+        buttons.add(checkBoxElevation);
+
         ImageTextButtonOptionPane checkBoxHorizon = getC().widgetGetter.getImageTextButton(
                 "icons/icon_compass_horizon.png", s("Horizon_compass"), true);
         addCheckingStateProperty(checkBoxHorizon, () -> P.isHorizonCompass());

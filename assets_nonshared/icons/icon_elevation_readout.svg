@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- The height you are at: a mountain, a dashed level line from its flank across to a scale,
+     and an arrow up the scale. No lettering, as for the other icons: rsvg would substitute
+     whatever font happens to exist. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <!-- the mountain, with a snow cap -->
+  <path d="M20 200 L96 64 L172 200 Z" fill="#12222e"/>
+  <path d="M96 64 L118 104 L106 98 L96 110 L86 98 L74 104 Z" fill="#f0f0f0"/>
+
+  <!-- the level you stand at, across to the scale -->
+  <line x1="126" y1="118" x2="196" y2="118" stroke="#d23b32" stroke-width="8"
+        stroke-dasharray="14 10" stroke-linecap="round"/>
+
+  <!-- the scale: an upright with ticks, an arrow at its top -->
+  <line x1="208" y1="200" x2="208" y2="52" stroke="#12222e" stroke-width="8"
+        stroke-linecap="round"/>
+  <path d="M208 30 L226 60 L190 60 Z" fill="#12222e"/>
+  <g stroke="#12222e" stroke-width="6" stroke-linecap="round">
+    <line x1="208" y1="164" x2="224" y2="164"/>
+    <line x1="208" y1="84" x2="224" y2="84"/>
+  </g>
+  <circle cx="208" cy="118" r="11" fill="#d23b32"/>
+
+  <!-- the ground -->
+  <line x1="12" y1="200" x2="228" y2="200" stroke="#12222e" stroke-width="8"
+        stroke-linecap="round"/>
+</svg>

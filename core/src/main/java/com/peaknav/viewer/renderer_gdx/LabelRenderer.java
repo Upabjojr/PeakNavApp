@@ -159,7 +159,7 @@ public class LabelRenderer {
      * compass-and-location group, so it obeys that master switch plus its own toggle.
      */
     private void renderCoordinates() {
-        if (!P.isCompassLocation() || !P.isShowCoordinates())
+        if (!P.isCompassLocation() || (!P.isShowCoordinates() && !P.isShowElevation()))
             return;
         // Where the CAMERA is, not where the target is. They are usually the same, but not
         // while the camera is moving under its own steam: orbiting a clicked point circles
@@ -172,38 +172,91 @@ public class LabelRenderer {
         PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
         float lat = cam.position.y;
         float lon = Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude());
-        // Rebuild only when the text would actually change. Comparing the raw floats would
-        // reformat every frame of an orbit, which is exactly the garbage this cache avoids.
-        // Written as a negated "close enough" so the first frame formats too: the cache starts
-        // at NaN, and every comparison against NaN is false.
-        if (!(Math.abs(lat - coordinatesCachedLat) < 1e-5f
-                && Math.abs(lon - coordinatesCachedLon) < 1e-5f)) {
-            coordinatesCachedLat = lat;
-            coordinatesCachedLon = lon;
-            coordinatesText = String.format(java.util.Locale.ENGLISH, "%.5f° %s   %.5f° %s",
-                    Math.abs(lat), lat >= 0 ? "N" : "S",
-                    Math.abs(lon), lon >= 0 ? "E" : "W");
+        // Above the copyright notice at the bottom, clear of the corner buttons.
+        float py = COORDINATES_PILL_Y * widgetUnitStep;
+        float elevationY = py;
+        if (P.isShowCoordinates()) {
+            // Rebuild only when the text would actually change. Comparing the raw floats would
+            // reformat every frame of an orbit, which is exactly the garbage this cache avoids.
+            // Written as a negated "close enough" so the first frame formats too: the cache starts
+            // at NaN, and every comparison against NaN is false.
+            if (!(Math.abs(lat - coordinatesCachedLat) < 1e-5f
+                    && Math.abs(lon - coordinatesCachedLon) < 1e-5f)) {
+                coordinatesCachedLat = lat;
+                coordinatesCachedLon = lon;
+                coordinatesText = String.format(java.util.Locale.ENGLISH, "%.5f° %s   %.5f° %s",
+                        Math.abs(lat), lat >= 0 ? "N" : "S",
+                        Math.abs(lon), lon >= 0 ? "E" : "W");
+            }
+            float ph = drawReadoutPill(coordinatesGlyph, coordinatesText, py);
+            elevationY = py + ph + READOUT_GAP * widgetUnitStep;
         }
-        String text = coordinatesText;
+        if (P.isShowElevation()) {
+            // The viewpoint's height above the sea: the camera's, put back on the round Earth
+            // the world frame flattens it off.
+            float metres = Units.convertLatitsToMeters(cam.position.z
+                    + ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+            int shown = Math.round(P.getUnitSystem() == com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL
+                    ? metres * 3.28084f : metres);
+            if (shown != elevationCachedValue || P.getUnitSystem() != elevationCachedUnits) {
+                elevationCachedValue = shown;
+                elevationCachedUnits = P.getUnitSystem();
+                elevationText = s("Feature_elevation") + "  " + shown
+                        + (elevationCachedUnits == com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL ? " ft" : " m");
+            }
+            drawReadoutPill(elevationGlyph, elevationText, Math.max(elevationY, aboveScrubBar()));
+        }
+    }
+
+    /** The elevation readout's text as last drawn, for tests. */
+    public String getElevationText() {
+        return elevationText;
+    }
+
+    /** Between two readout pills stacked one on the other, in widget units. */
+    private static final float READOUT_GAP = 0.22f;
+
+    private final GlyphLayout elevationGlyph = new GlyphLayout();
+    private int elevationCachedValue = Integer.MIN_VALUE;
+    private com.peaknav.utils.PreferencesManager.UnitSystem elevationCachedUnits;
+    private String elevationText = "";
+
+    /**
+     * Where a pill must start to clear the GPX scrub bar, pixels up from the bottom; 0 while the
+     * bar is hidden. The bar runs just above the coordinates while a track is loaded.
+     */
+    private float aboveScrubBar() {
+        MapViewerScreen viewer = MapViewerSingleton.getViewerInstance();
+        if (viewer == null || viewer.tableLocation == null || !viewer.tableLocation.gpxSeekTable.isVisible()) {
+            return 0f;
+        }
+        com.badlogic.gdx.scenes.scene2d.Actor bar = viewer.tableLocation.gpxSeekSlider;
+        com.badlogic.gdx.math.Vector2 top = bar.localToStageCoordinates(scrubBarTop.set(0, bar.getHeight()));
+        viewer.getStage().stageToScreenCoordinates(top);
+        return Gdx.graphics.getHeight() - top.y + READOUT_GAP * widgetUnitStep;
+    }
+
+    private final com.badlogic.gdx.math.Vector2 scrubBarTop = new com.badlogic.gdx.math.Vector2();
+
+    /** A line of text on a dark pill, centred across the screen, {@code y} pixels up; returns its height. */
+    private float drawReadoutPill(GlyphLayout glyph, String text, float y) {
         BitmapFont font = getC().styleSingleton.getBitmapFontSmallWhite();
-        coordinatesGlyph.setText(font, text);
-        float tw = coordinatesGlyph.width;
-        float th = coordinatesGlyph.height;
+        glyph.setText(font, text);
+        float tw = glyph.width;
+        float th = glyph.height;
         float padX = 0.4f * widgetUnitStep;
         float padY = 0.18f * widgetUnitStep;
         float pw = tw + 2f * padX;
         float ph = th + 2f * padY;
         float cx = Gdx.graphics.getWidth() * 0.5f;
         float px = cx - pw * 0.5f;
-        // Above the copyright notice at the bottom, clear of the corner buttons.
-        float py = COORDINATES_PILL_Y * widgetUnitStep;
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         try {
             shapeRenderer.setColor(0.05f, 0.06f, 0.13f, 0.78f);
-            fillPill(px, py, pw, ph, ph * 0.5f);
+            fillPill(px, y, pw, ph, ph * 0.5f);
         } finally {
             shapeRenderer.end();
         }
@@ -213,10 +266,11 @@ public class LabelRenderer {
         spriteBatch.begin();
         try {
             font.setColor(Color.WHITE);
-            font.draw(spriteBatch, text, cx - tw * 0.5f, py + ph * 0.5f + th * 0.5f);
+            font.draw(spriteBatch, text, cx - tw * 0.5f, y + ph * 0.5f + th * 0.5f);
         } finally {
             spriteBatch.end();
         }
+        return ph;
     }
 
     private final GlyphLayout clockGlyph = new GlyphLayout();
@@ -265,8 +319,9 @@ public class LabelRenderer {
         // Directly under the coordinates pill when that is showing, and in its place when it is
         // not - so the clock never floats alone over a gap where the coordinates would have been.
         float py = COORDINATES_PILL_Y * widgetUnitStep;
-        if (P.isCompassLocation() && P.isShowCoordinates()) {
-            py -= ph + 0.22f * widgetUnitStep;
+        // The elevation takes the coordinates' place when they are off, so it counts the same.
+        if (P.isCompassLocation() && (P.isShowCoordinates() || P.isShowElevation())) {
+            py -= ph + READOUT_GAP * widgetUnitStep;
         }
         // The attribution line runs along the very bottom; do not sit on it.
         py = Math.max(py, 0.2f * widgetUnitStep);
