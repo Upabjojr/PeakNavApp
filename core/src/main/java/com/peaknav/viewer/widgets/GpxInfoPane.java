@@ -479,6 +479,25 @@ public class GpxInfoPane {
         return new int[]{waysOpen ? 1 : 0, litWay};
     }
 
+    /**
+     * Scrolls the row of way {@code k} into view and says where its middle is on the stage, for
+     * tests to tap it as a finger would; null when the list is folded or has no such row.
+     */
+    public float[] wayRowOnStage(int k) {
+        if (!waysOpen || k < 0 || k >= wayCells.size() || wayCells.get(k).getStage() == null) {
+            return null;
+        }
+        Table cell = wayCells.get(k);
+        root.validate();
+        com.badlogic.gdx.math.Vector2 inBody = cell.localToAscendantCoordinates(body, new com.badlogic.gdx.math.Vector2());
+        scroll.scrollTo(inBody.x, inBody.y, cell.getWidth(), cell.getHeight(), false, true);
+        scroll.updateVisualScroll();
+        root.validate();
+        com.badlogic.gdx.math.Vector2 v = cell.localToStageCoordinates(
+                new com.badlogic.gdx.math.Vector2(cell.getWidth() / 2, cell.getHeight() / 2));
+        return new float[]{v.x, v.y};
+    }
+
     /** Opens the list of ways or folds it away, as its header does. */
     public void setWaysOpen(boolean value) {
         waysOpen = value;
@@ -641,7 +660,17 @@ public class GpxInfoPane {
             Label row = label(new Label.LabelStyle(name.getStyle()));
             row.setText(text);
             wayRows.add(row);
-            wayCells.add(new Table());
+            // Tapped, the tour goes to where the way starts: paused there if it was not playing.
+            Table cell = new Table();
+            cell.setTouchable(com.badlogic.gdx.scenes.scene2d.Touchable.enabled);
+            final float start = from;
+            cell.addListener(new com.badlogic.gdx.scenes.scene2d.utils.ClickListener() {
+                @Override
+                public void clicked(com.badlogic.gdx.scenes.scene2d.InputEvent event, float x, float y) {
+                    getC().getMapViewerScreen().seekGpxTourAlongTrack(start);
+                }
+            });
+            wayCells.add(cell);
         }
     }
 

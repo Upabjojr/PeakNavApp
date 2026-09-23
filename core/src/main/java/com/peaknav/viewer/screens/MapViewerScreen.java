@@ -763,6 +763,29 @@ public class MapViewerScreen implements Screen {
 	}
 
 	/**
+	 * Jumps the tour to a point of the track, {@code fraction} of its length along - the measure
+	 * {@link #getGpxTourFraction} reports - and never short of it: the frame there, or the first
+	 * after. For going to where a way of the list starts, which must then be the way the pane
+	 * lights, not the end of the one before. {@link #seekGpxTour} spreads its fraction over the
+	 * frames circling the end too, a different measure, right for a scrub bar that reaches them.
+	 */
+	public void seekGpxTourAlongTrack(float fraction) {
+		if (!gpxTourActive || moveCameraAction.isComplete()) {
+			seekGpxTour(0f);   // sets the tour up, paused, as a first drag of the bar does
+			if (!gpxTourActive) {
+				return;
+			}
+		}
+		int total = gpxTourFrames.size();
+		if (total < 2 || gpxTourTrackFrames < 2) {
+			return;
+		}
+		int frame = Math.min(gpxTourTrackFrames - 1,
+				(int) Math.ceil(MathUtils.clamp(fraction, 0f, 1f) * (gpxTourTrackFrames - 1) - 1e-4f));
+		seekGpxTour(frame / (float) (total - 1));
+	}
+
+	/**
 	 * Jumps the tour to a fraction of the way along and carries on from there - or, when the
 	 * tour is paused, stays paused but shows that point.
 	 *

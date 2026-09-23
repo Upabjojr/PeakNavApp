@@ -988,6 +988,25 @@ public final class PeakNavRenderer implements AutoCloseable {
         return out[0];
     }
 
+    /** Taps the row of way {@code k} in the GPX pane's list, through the stage as a finger does. */
+    public PeakNavRenderer tapGpxInfoWay(final int k) {
+        // Scrolled into view first, then tapped once a frame has drawn it there: a scroll pane
+        // moves what it holds when it draws, not when it is told to scroll.
+        onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.wayRowOnStage(k));
+        settle(300);
+        onRenderThread(() -> {
+            float[] at = mapApp.mapViewerScreen.gpxInfoPane.wayRowOnStage(k);
+            if (at == null) {
+                throw new IllegalStateException("no row " + k + " in the list of ways");
+            }
+            com.badlogic.gdx.scenes.scene2d.Stage stage = mapApp.mapViewerScreen.getStage();
+            com.badlogic.gdx.math.Vector2 screen = stage.stageToScreenCoordinates(new com.badlogic.gdx.math.Vector2(at[0], at[1]));
+            stage.touchDown((int) screen.x, (int) screen.y, 0, com.badlogic.gdx.Input.Buttons.LEFT);
+            stage.touchUp((int) screen.x, (int) screen.y, 0, com.badlogic.gdx.Input.Buttons.LEFT);
+        });
+        return this;
+    }
+
     /** Opens the GPX pane's list of ways or folds it away, as its header does. */
     public PeakNavRenderer setGpxInfoWaysOpen(final boolean open) {
         onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.setWaysOpen(open));

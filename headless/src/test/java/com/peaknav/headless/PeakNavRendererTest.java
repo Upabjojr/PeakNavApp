@@ -1452,6 +1452,22 @@ class PeakNavRendererTest {
             String wayLabel = ways[0].substring(ways[0].indexOf(": ") + 2);
             assertTrue(litRow.contains(ways[1]) && (litRow.startsWith(wayLabel) || litRow.startsWith(ways[1])),
                     "and it is the way the pane names: " + ways[0] + " | " + ways[1] + " vs " + litRow);
+            // A tapped way takes the tour to where it starts, and is then the lit one. The first
+            // way long enough for the tour's frames to stop on, from the end: 100 m or more.
+            int target = -1;
+            for (int k = stretches.size() - 1; k > 0 && target < 0; k--) {
+                if (stretches.get(k).metres >= 100 && k != waysState[1]) {
+                    target = k;
+                }
+            }
+            assertTrue(target > 0, "a way to tap");
+            renderer.tapGpxInfoWay(target).settle(800);
+            assertEquals(target, renderer.gpxInfoWaysState()[1],
+                    "tapped, way " + target + " is where the tour went: " + renderer.gpxInfoWayTexts()[0]);
+            File tapped = newTempFile("route_way_tapped.png");
+            renderer.captureWithUi(tapped);
+            System.out.println("route way tapped: " + tapped.getAbsolutePath() + " -> " + renderer.gpxInfoWayTexts()[0]);
+
             renderer.setGpxInfoMaximized(true).scrollGpxInfo(1f).settle(300);
             File list = newTempFile("route_ways_list.png");
             renderer.captureWithUi(list);
