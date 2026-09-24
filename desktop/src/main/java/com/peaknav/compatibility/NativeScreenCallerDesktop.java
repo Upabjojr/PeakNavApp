@@ -130,16 +130,21 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
             if (file == null) {
                 return;
             }
-            getC().submitExecutorGeneric(() -> {
-                try {
-                    String xml = new String(
-                            java.nio.file.Files.readAllBytes(file.toPath()),
-                            java.nio.charset.StandardCharsets.UTF_8);
-                    getC().gpxManager.loadFromXml(xml);
-                } catch (java.io.IOException e) {
-                    System.err.println("[GPX] could not read " + file + ": " + e.getMessage());
-                }
-            });
+            loadGpxFile(file);
+        });
+    }
+
+    /** Reads a .gpx on a worker and adds its paths; from the chooser or a drop on the window. */
+    public static void loadGpxFile(java.io.File file) {
+        getC().submitExecutorGeneric(() -> {
+            try {
+                String xml = new String(
+                        java.nio.file.Files.readAllBytes(file.toPath()),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                getC().gpxManager.loadFromXml(xml);
+            } catch (java.io.IOException e) {
+                System.err.println("[GPX] could not read " + file + ": " + e.getMessage());
+            }
         });
     }
 

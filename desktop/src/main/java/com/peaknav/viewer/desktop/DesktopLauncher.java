@@ -70,6 +70,12 @@ public class DesktopLauncher {
 				System.exit(0);
 				return true;
 			}
+
+			@Override
+			public void filesDropped(String[] files) {
+				// A photo dropped on the window becomes the background, a .gpx a path.
+				GalleryPickDesktop.openDropped(files);
+			}
 		});
 		config.setPreferencesConfig(getGdxFilesExternalRootFolderName(), Files.FileType.External);
 		setNumOfCpuCores(4);

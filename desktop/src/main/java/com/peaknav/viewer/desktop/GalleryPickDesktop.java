@@ -2,7 +2,9 @@ package com.peaknav.viewer.desktop;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Pixmap;
+import com.peaknav.compatibility.NativeScreenCallerDesktop;
 import com.peaknav.utils.PeakNavUtils;
+import com.peaknav.viewer.MapApp;
 import com.peaknav.viewer.MapViewerSingleton;
 
 import java.io.File;
@@ -69,6 +71,40 @@ public class GalleryPickDesktop {
         });
     }
 
+    /**
+     * Files dragged onto the window: every .gpx among them is loaded as a path, and the
+     * first image becomes the background, exactly as if each had been picked in its
+     * chooser. Anything else is ignored, and so is a drop while the map is not on screen
+     * (the intro, the download chooser).
+     *
+     * <p>Called on the render thread by the window listener; the reading and decoding go
+     * to other threads, as for a picked file.
+     */
+    public static void openDropped(String[] paths) {
+        MapApp app = MapViewerSingleton.getAppInstance();
+        if (app.getScreen() != app.mapViewerScreen) {
+            return;
+        }
+        boolean imageTaken = false;
+        for (String path : paths) {
+            File file = new File(path).getAbsoluteFile();
+            if (!file.isFile()) {
+                continue;
+            }
+            if (file.getName().toLowerCase().endsWith(".gpx")) {
+                NativeScreenCallerDesktop.loadGpxFile(file);
+            } else if (!imageTaken && isImage(file)) {
+                imageTaken = true;
+                new Thread(() -> setAppBackgroundImage(file), "gallery-image-load").start();
+            }
+        }
+    }
+
+    private static boolean isImage(File f) {
+        String name = f.getName().toLowerCase();
+        return name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
+    }
+
     private static void selectImage() {
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
@@ -77,12 +113,7 @@ public class GalleryPickDesktop {
         fileChooser.addChoosableFileFilter(new FileFilter() {
             @Override
             public boolean accept(File f) {
-                return (
-                    f.getName().toLowerCase().endsWith(".png") ||
-                    f.getName().toLowerCase().endsWith(".jpg") ||
-                    f.getName().toLowerCase().endsWith(".jpeg") ||
-                    f.isDirectory()
-                );
+                return isImage(f) || f.isDirectory();
             }
 
             @Override
