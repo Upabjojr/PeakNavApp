@@ -215,4 +215,37 @@ class CameraControlsTest {
             renderer.runOnRenderThread(() -> com.peaknav.utils.PreferencesManager.P.setShowElevation(was[0]));
         }
     }
+
+    /** The field of view change one typed character makes, with Shift held or not. */
+    private float zoomStep(char character, boolean shift) {
+        final float[] fov = new float[2];
+        renderer.runOnRenderThread(() -> {
+            MountainInputController controller = screen().controller;
+            fov[0] = screen().cam.fieldOfView;
+            if (shift) controller.keyDown(Input.Keys.SHIFT_RIGHT);
+            controller.keyTyped(character);
+            if (shift) controller.keyUp(Input.Keys.SHIFT_RIGHT);
+            fov[1] = screen().cam.fieldOfView;
+        });
+        return fov[1] - fov[0];
+    }
+
+    @Test
+    @Order(5)
+    @DisplayName("Shift makes the zoom keys finer, with the characters Shift turns them into")
+    void shiftZoomsFiner() {
+        renderer.aim(40, 5);
+        renderer.settle(200);
+        float in = zoomStep('+', false);
+        float out = zoomStep('-', false);
+        // '*' is Shift and '+' on Italian and German keyboards; '_' is Shift and '-'.
+        float fineIn = zoomStep('*', true);
+        float fineOut = zoomStep('_', true);
+        assertTrue(in != 0f && out != 0f, "the zoom keys did nothing");
+        assertEquals(Math.signum(in), Math.signum(fineIn), "Shift and '+' zoomed the wrong way");
+        assertEquals(Math.signum(out), Math.signum(fineOut), "Shift and '-' zoomed the wrong way");
+        assertTrue(Math.abs(fineIn) < 0.5f * Math.abs(in), "Shift and '+' was not finer: " + fineIn + " vs " + in);
+        assertTrue(Math.abs(fineOut) < 0.5f * Math.abs(out), "Shift and '-' was not finer: " + fineOut + " vs " + out);
+        assertEquals(0f, zoomStep('*', false), 0f, "'*' without Shift zoomed");
+    }
 }

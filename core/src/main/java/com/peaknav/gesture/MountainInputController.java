@@ -29,8 +29,8 @@ public class MountainInputController extends CameraInputController {
      * the field of view, aiming automatically gets finer as the user zooms in.
      */
     public float lookScreensPerSecond = 0.8f;
-    /** Multiplier applied while the modifier key is held, for fine aiming. */
-    public float lookSlowFactor = 0.25f;
+    /** Multiplier applied while Shift is held, for fine aiming and fine altitude. */
+    public float lookSlowFactor = 0.1f;
 
     /**
      * How much of the elevation bar the altitude keys travel in one second. The bar is
@@ -45,6 +45,8 @@ public class MountainInputController extends CameraInputController {
      * key lets the OS key-repeat stack the steps up into a smooth zoom.
      */
     public float zoomStepAmount = 0.0015f;
+    /** Multiplier on the zoom step while Shift is held: about a 1.4% step. */
+    public float zoomSlowFactor = 0.2f;
 
     public int lookLeftKey = Input.Keys.LEFT;
     public int lookRightKey = Input.Keys.RIGHT;
@@ -362,7 +364,8 @@ public class MountainInputController extends CameraInputController {
             altitudeUpPressed = pressed;
         } else if (keycode == altitudeDownKey) {
             altitudeDownPressed = pressed;
-        } else if (keycode == lookSlowKey) {
+        } else if (keycode == lookSlowKey || keycode == Input.Keys.SHIFT_RIGHT) {
+            // Either Shift slows the camera, not only the left one.
             lookSlowPressed = pressed;
             // The modifier alone points nothing, so let it through to the other processors.
             return false;
@@ -399,14 +402,20 @@ public class MountainInputController extends CameraInputController {
      * user's keyboard, the OS translates the key to that character and delivers it here.
      * A bound character also cancels the unbound-key candidate so the overlay is never
      * raised for it, and dismisses the overlay if it is already shown.
+     * <p>
+     * With Shift held the zoom step is finer. Shift changes the character, so the
+     * shifted forms of the zoom keys are matched too: '+' ('=' on US layouts), '*'
+     * ('+' on Italian and German ones) and '_' ('-' on most).
      */
     @Override
     public boolean keyTyped(char character) {
         boolean bound = true;
-        if (character == '+' || character == '=') {
-            zoom(zoomStepAmount);
-        } else if (character == '-') {
-            zoom(-zoomStepAmount);
+        float step = lookSlowPressed ? zoomStepAmount * zoomSlowFactor : zoomStepAmount;
+        if (character == '+' || character == '='
+                || (lookSlowPressed && character == '*')) {
+            zoom(step);
+        } else if (character == '-' || (lookSlowPressed && character == '_')) {
+            zoom(-step);
         } else if (character == '?' && mapViewerScreen != null) {
             // The "?" button opens the tutorial (the keyboard help is separate).
             mapViewerScreen.activateHelpButton();
