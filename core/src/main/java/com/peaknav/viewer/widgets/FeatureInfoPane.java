@@ -64,11 +64,20 @@ public class FeatureInfoPane {
     private final Image tagsChevron;
     private boolean tagsOpen = false;
     private FeatureInfo shown;
-    /** The pane's one action and its button's words; null for none. */
-    private String actionText;
-    private Runnable action;
-    private final Label actionLabel;
-    private final Table actionButton = new Table();
+    /** The pane's buttons and their words; none for none. */
+    private String[] actionTexts = new String[0];
+    private Runnable[] actions = new Runnable[0];
+    private final Table actionRow = new Table();
+    /** A row of colours to pick from, the picked one outlined; null for none. */
+    private String[] swatches;
+    private int swatchSelected = -1;
+    private SwatchPick swatchPick;
+    private final Table swatchRow = new Table();
+
+    /** A colour picked from the pane's row of them, by its place in the row. */
+    public interface SwatchPick {
+        void picked(int index);
+    }
     /** The texts shown, one per line, "label: value", for tests. */
     private final List<String> shownLines = new ArrayList<>();
 
@@ -102,22 +111,6 @@ public class FeatureInfoPane {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
                 hide();
-            }
-        });
-
-        actionLabel = new Label("", valueStyle);
-        actionLabel.setAlignment(Align.center);
-        actionButton.setBackground(getC().widgetTextures.getUniformDrawable(ACTION));
-        actionButton.setTouchable(Touchable.enabled);
-        actionButton.setName("feature_info_action");
-        actionButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                Runnable run = action;
-                hide();
-                if (run != null) {
-                    run.run();
-                }
             }
         });
 
@@ -172,9 +165,23 @@ public class FeatureInfoPane {
      * marker". The pane closes once the button has run.
      */
     public void show(FeatureInfo info, String actionText, Runnable action) {
+        show(info, action == null ? new String[0] : new String[]{actionText},
+                action == null ? new Runnable[0] : new Runnable[]{action}, null, -1, null);
+    }
+
+    /**
+     * With buttons side by side at the pane's foot - "Rename", "Delete marker" - each closing the
+     * pane before it runs, and, when {@code swatches} are given ("#rrggbb"), a row of colours over
+     * them, {@code selected} outlined, a tap on one handed to {@code pick} with the pane left open.
+     */
+    public void show(FeatureInfo info, String[] actionTexts, Runnable[] actions,
+                     String[] swatches, int selected, SwatchPick pick) {
         shown = info;
-        this.actionText = action == null ? null : actionText;
-        this.action = action;
+        this.actionTexts = actionTexts;
+        this.actions = actions;
+        this.swatches = swatches;
+        this.swatchSelected = selected;
+        this.swatchPick = pick;
         tagsOpen = false;
         layoutPanel();
         root.setVisible(true);
@@ -184,7 +191,10 @@ public class FeatureInfoPane {
     public void hide() {
         root.setVisible(false);
         shown = null;
-        action = null;
+        actions = new Runnable[0];
+        actionTexts = new String[0];
+        swatches = null;
+        swatchPick = null;
     }
 
     public void setTagsOpen(boolean open) {
@@ -195,14 +205,28 @@ public class FeatureInfoPane {
         scroll.setScrollY(y);
     }
 
-    /** Presses the pane's action button, as a tap on it does; false if it has none. For tests. */
+    /** Presses the pane's first action button, as a tap on it does; false if it has none. For tests. */
     public boolean pressAction() {
-        if (action == null || !isShown()) {
+        return pressAction(0);
+    }
+
+    /** Presses the pane's action button {@code index}, as a tap on it does. For tests. */
+    public boolean pressAction(int index) {
+        if (!isShown() || index >= actions.length) {
             return false;
         }
-        Runnable run = action;
+        Runnable run = actions[index];
         hide();
         run.run();
+        return true;
+    }
+
+    /** Picks colour {@code index} from the pane's row, as a tap on it does. For tests. */
+    public boolean pickSwatch(int index) {
+        if (!isShown() || swatches == null || swatchPick == null || index >= swatches.length) {
+            return false;
+        }
+        swatchPick.picked(index);
         return true;
     }
 
@@ -261,12 +285,57 @@ public class FeatureInfoPane {
 
         panel.add(head).width(width).row();
         panel.add(scroll).width(width).maxHeight(visibleHeight()).padTop(0.08f * u).row();
-        if (action != null) {
-            actionLabel.setText(actionText);
-            actionButton.clearChildren();
-            actionButton.add(actionLabel).pad(0.12f * u, 0.3f * u, 0.12f * u, 0.3f * u);
-            panel.add(actionButton).width(width).padTop(0.14f * u);
-            shownLines.add("[" + actionText + "]");
+        if (swatches != null) {
+            swatchRow.clearChildren();
+            float size = Math.min(0.62f * u, (width - (swatches.length - 1) * 0.12f * u) / swatches.length);
+            for (int i = 0; i < swatches.length; i++) {
+                final int index = i;
+                // The picked one inside a white ring: a white cell with the colour inset in it.
+                Table swatch = new Table();
+                boolean picked = i == swatchSelected;
+                swatch.setBackground(getC().widgetTextures.getUniformDrawable(picked ? Color.WHITE : PANEL));
+                Image fill = new Image(getC().widgetTextures.getUniformDrawable(Color.valueOf(swatches[i])));
+                swatch.add(fill).size(size - (picked ? 0.16f * u : 0.08f * u));
+                swatch.setTouchable(Touchable.enabled);
+                swatch.setName("feature_info_swatch_" + i);
+                swatch.addListener(new ClickListener() {
+                    @Override
+                    public void clicked(InputEvent event, float x, float y) {
+                        if (swatchPick != null) {
+                            swatchPick.picked(index);
+                        }
+                    }
+                });
+                swatchRow.add(swatch).size(size).padRight(i < swatches.length - 1 ? 0.12f * u : 0);
+            }
+            panel.add(swatchRow).left().padTop(0.14f * u).row();
+            shownLines.add("{" + swatches.length + " colours, " + swatchSelected + " picked}");
+        }
+        if (actions.length > 0) {
+            actionRow.clearChildren();
+            float between = 0.12f * u;
+            float each = (width - (actions.length - 1) * between) / actions.length;
+            for (int i = 0; i < actions.length; i++) {
+                final Runnable run = actions[i];
+                Label text = new Label(actionTexts[i], valueStyle);
+                text.setAlignment(Align.center);
+                text.setWrap(true);
+                Table button = new Table();
+                button.setBackground(getC().widgetTextures.getUniformDrawable(ACTION));
+                button.setTouchable(Touchable.enabled);
+                button.setName("feature_info_action_" + i);
+                button.addListener(new ClickListener() {
+                    @Override
+                    public void clicked(InputEvent event, float x, float y) {
+                        hide();
+                        run.run();
+                    }
+                });
+                button.add(text).width(each - 0.3f * u).pad(0.12f * u, 0.15f * u, 0.12f * u, 0.15f * u);
+                actionRow.add(button).width(each).fillY().padRight(i < actions.length - 1 ? between : 0);
+                shownLines.add("[" + actionTexts[i] + "]");
+            }
+            panel.add(actionRow).width(width).padTop(0.14f * u);
         }
         panel.invalidateHierarchy();
     }

@@ -71,4 +71,29 @@ public class TestMarkerStore {
         assertEquals(1, read.size());
         assertEquals("Ok", read.get(0).name);
     }
+
+    @Test
+    public void renamedAndRecolouredMarkersKeepTheirPlace() {
+        FileHandle file = new FileHandle(new File(folder, MarkerStore.FILE_NAME));
+        MarkerStore store = new MarkerStore(file);
+        Marker car = new Marker("Car", 46.0, 7.7, 1000, 0);
+        store.add(car);
+        store.add(new Marker("Spring", 46.1, 7.7, 1000, 0));
+        assertTrue(store.update(car.withName("Car, level 2").withColor(MarkerColor.ORANGE)));
+        assertFalse(store.update(new Marker("Nowhere", 10, 10, 0, 0)));
+
+        List<Marker> read = new MarkerStore(file).getMarkers();
+        assertEquals("Car, level 2", read.get(0).name, "the renamed marker left its place in the list");
+        assertEquals(MarkerColor.ORANGE, read.get(0).color);
+        assertEquals(MarkerColor.BLUE, read.get(1).color);
+        String gpx = file.readString("UTF-8");
+        assertTrue(gpx.contains("<peaknav:marker color=\"orange\"/>"), gpx);
+        assertTrue(gpx.contains("<sym>Flag, Blue</sym>"), gpx);
+    }
+
+    @Test
+    public void aDeviceFlagSymbolGivesTheColour() {
+        List<Marker> read = MarkerStore.parse("<gpx><wpt lat=\"46\" lon=\"7\"><name>Hut</name><sym>Flag, Red</sym></wpt></gpx>");
+        assertEquals(MarkerColor.RED, read.get(0).color);
+    }
 }

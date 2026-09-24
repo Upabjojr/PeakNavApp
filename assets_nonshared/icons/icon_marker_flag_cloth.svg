@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- A marker flag's cloth alone, white, for the map to tint in the marker's colour; drawn under
+     icon_marker_flag_pole, which carries its outline. Same frame as icon_marker_flag. -->
+<svg width="128" height="192" viewBox="0 0 128 192" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <path d="M26 12 L118 12 L94 44 L118 76 L26 76 Z" fill="#ffffff"/>
+</svg>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- A marker flag without its colour: the pole, its shadow and the cloth's outline, drawn over the
+     tinted icon_marker_flag_cloth. The pole's foot is the marked point. -->
+<svg width="128" height="192" viewBox="0 0 128 192" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="22" cy="186" rx="18" ry="5" fill="#000000" opacity="0.28"/>
+  <line x1="22" y1="186" x2="22" y2="10" stroke="#ffffff" stroke-width="11" stroke-linecap="round"/>
+  <line x1="22" y1="186" x2="22" y2="10" stroke="#1d2530" stroke-width="6" stroke-linecap="round"/>
+  <path d="M26 12 L118 12 L94 44 L118 76 L26 76 Z"
+        fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M26 12 L118 12 L94 44 L118 76 L26 76 Z"
+        fill="none" stroke="#0c3a60" stroke-width="2.5" stroke-linejoin="round"/>
+</svg>

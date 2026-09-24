@@ -648,7 +648,11 @@ public class LabelRenderer {
     /** The flag's top, roughly, for the occlusion test's second try (see renderMarkers). */
     private static final float MARKER_LIFT_METRES = 8f;
 
-    private com.badlogic.gdx.graphics.g2d.TextureRegion markerFlag;
+    /** The flag in two layers: its cloth, white, tinted to the marker's colour; the pole and outline over it. */
+    private com.badlogic.gdx.graphics.g2d.TextureRegion markerCloth;
+    private com.badlogic.gdx.graphics.g2d.TextureRegion markerPole;
+    private final java.util.EnumMap<com.peaknav.markers.MarkerColor, Color> markerColors =
+            new java.util.EnumMap<>(com.peaknav.markers.MarkerColor.class);
     private final GlyphLayout markerGlyph = new GlyphLayout();
     private final Vector3 markerWorld = new Vector3();
     private final Vector3 markerScreen = new Vector3();
@@ -705,12 +709,16 @@ public class LabelRenderer {
         if (markers.isEmpty()) {
             return;
         }
-        if (markerFlag == null) {
-            markerFlag = getC().widgetTextures.getTextureRegionDrawable("icons/icon_marker_flag.png").getRegion();
+        if (markerCloth == null) {
+            markerCloth = getC().widgetTextures.getTextureRegionDrawable("icons/icon_marker_flag_cloth.png").getRegion();
+            markerPole = getC().widgetTextures.getTextureRegionDrawable("icons/icon_marker_flag_pole.png").getRegion();
+            for (com.peaknav.markers.MarkerColor c : com.peaknav.markers.MarkerColor.values()) {
+                markerColors.put(c, Color.valueOf(c.hex));
+            }
         }
         float targetLatitude = getC().L.getTargetLatitude();
         float flagHeight = MARKER_FLAG_UNITS * widgetUnitStep;
-        float flagWidth = flagHeight * markerFlag.getRegionWidth() / markerFlag.getRegionHeight();
+        float flagWidth = flagHeight * markerPole.getRegionWidth() / markerPole.getRegionHeight();
         BitmapFont font = getC().styleSingleton.getBitmapFontVerySmallWhite();
         for (com.peaknav.markers.Marker m : markers) {
             float lat = (float) m.latitude, lon = (float) m.longitude;
@@ -792,8 +800,10 @@ public class LabelRenderer {
             }
             spriteBatch.begin();
             try {
+                spriteBatch.setColor(markerColors.get(d.marker.color));
+                spriteBatch.draw(markerCloth, d.x, d.y, flagWidth, flagHeight);
                 spriteBatch.setColor(Color.WHITE);
-                spriteBatch.draw(markerFlag, d.x, d.y, flagWidth, flagHeight);
+                spriteBatch.draw(markerPole, d.x, d.y, flagWidth, flagHeight);
             } finally {
                 spriteBatch.end();
             }

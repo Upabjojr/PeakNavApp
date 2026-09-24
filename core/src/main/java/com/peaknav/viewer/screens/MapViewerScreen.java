@@ -2328,17 +2328,61 @@ public class MapViewerScreen implements Screen {
 		return true;
 	}
 
-	/** A marker's pane, with its Delete button, and the pin on it. */
-	private void showMarkerPane(final com.peaknav.markers.Marker marker, com.peaknav.viewer.labels.FeatureInfo.Viewer viewer) {
+	/**
+	 * A marker's pane, and the pin on it: its colours to pick from, the flag recoloured at once,
+	 * and Rename and Delete buttons.
+	 */
+	private void showMarkerPane(final com.peaknav.markers.Marker marker, final com.peaknav.viewer.labels.FeatureInfo.Viewer viewer) {
+		final com.peaknav.markers.MarkerColor[] colors = com.peaknav.markers.MarkerColor.values();
+		String[] swatches = new String[colors.length];
+		for (int i = 0; i < colors.length; i++) {
+			swatches[i] = colors[i].hex;
+		}
 		featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(marker, viewer),
-				s("Marker_delete"), () -> {
-					getC().markerStore.remove(marker.latitude, marker.longitude);
-					removeImpact();
-					toast(" " + s("Marker_deleted") + " ");
+				new String[]{s("Marker_rename"), s("Marker_delete")},
+				new Runnable[]{
+						() -> renameMarker(marker, viewer),
+						() -> {
+							getC().markerStore.remove(marker.latitude, marker.longitude);
+							removeImpact();
+							toast(" " + s("Marker_deleted") + " ");
+						}},
+				swatches, marker.color.ordinal(),
+				index -> {
+					com.peaknav.markers.Marker recoloured = marker.withColor(colors[index]);
+					getC().markerStore.update(recoloured);
+					showMarkerPane(recoloured, viewer);
 				});
 		stopOrbit();
 		impact = markerWorldPosition(marker);
 		updateImpact();
+	}
+
+	/** Asks for a marker's new name; its pane opens again under it. An empty name changes nothing. */
+	private void renameMarker(final com.peaknav.markers.Marker marker, final com.peaknav.viewer.labels.FeatureInfo.Viewer viewer) {
+		getNativeScreenCaller().promptForTextFields(s("Marker_rename"), null,
+				new String[]{s("Marker_name")}, new String[]{marker.name},
+				new com.peaknav.ui.TextFieldsCallback() {
+					@Override
+					public void onEntered(String[] values) {
+						final String name = values == null || values.length == 0 || values[0] == null
+								? "" : values[0].trim();
+						// The dialog answers on the platform's own thread; the store and the pane
+						// belong to the render thread.
+						Gdx.app.postRunnable(() -> {
+							com.peaknav.markers.Marker renamed = name.isEmpty() ? marker : marker.withName(name);
+							if (renamed != marker) {
+								getC().markerStore.update(renamed);
+							}
+							showMarkerPane(renamed, viewer);
+						});
+					}
+
+					@Override
+					public void onCancelled() {
+						Gdx.app.postRunnable(() -> showMarkerPane(marker, viewer));
+					}
+				});
 	}
 
 	/** Near enough to turn and look at a marker; farther, the view goes there instead. */

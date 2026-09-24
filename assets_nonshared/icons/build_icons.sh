@@ -65,6 +65,8 @@ ICONS=(
   "icon_elevation_readout:128:128"
   "icon_marker_add:128:128"
   "icon_marker_flag:128:192"
+  "icon_marker_flag_cloth:128:192"
+  "icon_marker_flag_pole:128:192"
   # These eight are loaded by the app exactly like the rest but were missing from this
   # list, so a build from a clean checkout came up short of the icons it asks for.
   "icon_checkbox_sky:128:128"

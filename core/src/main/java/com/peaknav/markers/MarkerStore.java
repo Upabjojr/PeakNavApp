@@ -22,6 +22,8 @@ public final class MarkerStore {
 
     /** The file's name in the app's data folder. */
     public static final String FILE_NAME = "markers.gpx";
+    /** PeakNav's own waypoint extension, in its GPX namespace (RouteGpx.NAMESPACE): the flag's colour. */
+    static final String MARKER_ELEMENT = "peaknav:marker";
 
     /** Null until known: the app's own store finds its file on first use (see {@link #MarkerStore()}). */
     private FileHandle file;
@@ -82,6 +84,22 @@ public final class MarkerStore {
         for (int i = 0; i < markers.size(); i++) {
             if (markers.get(i).samePlace(latitude, longitude)) {
                 markers.remove(i);
+                changed();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Puts {@code changed} in place of the marker on its spot, keeping its place in the list: a
+     * renamed or recoloured marker. False if there is none there.
+     */
+    public synchronized boolean update(Marker changed) {
+        loadIfNeeded();
+        for (int i = 0; i < markers.size(); i++) {
+            if (markers.get(i).samePlace(changed.latitude, changed.longitude)) {
+                markers.set(i, changed);
                 changed();
                 return true;
             }
@@ -176,11 +194,16 @@ public final class MarkerStore {
                 XmlReader.Element ele = wpt.getChildByName("ele");
                 XmlReader.Element name = wpt.getChildByName("name");
                 XmlReader.Element time = wpt.getChildByName("time");
+                XmlReader.Element sym = wpt.getChildByName("sym");
+                XmlReader.Element extensions = wpt.getChildByName("extensions");
+                XmlReader.Element own = extensions == null ? null : extensions.getChildByName(MARKER_ELEMENT);
                 out.add(new Marker(
                         name != null && name.getText() != null ? name.getText() : "",
                         lat, lon,
                         ele != null && ele.getText() != null ? Double.parseDouble(ele.getText().trim()) : Double.NaN,
-                        time != null && time.getText() != null ? parseTime(time.getText().trim()) : 0L));
+                        time != null && time.getText() != null ? parseTime(time.getText().trim()) : 0L,
+                        MarkerColor.parse(own == null ? null : own.getAttribute("color", null),
+                                sym == null ? null : sym.getText())));
             } catch (RuntimeException skipped) {
                 // One malformed waypoint costs only itself.
             }
@@ -191,7 +214,8 @@ public final class MarkerStore {
     static String toGpx(List<Marker> markers) {
         StringBuilder out = new StringBuilder(256 + markers.size() * 160);
         out.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-                .append("<gpx version=\"1.1\" creator=\"PeakNav\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
+                .append("<gpx version=\"1.1\" creator=\"PeakNav\" xmlns=\"http://www.topografix.com/GPX/1/1\"")
+                .append(" xmlns:peaknav=\"").append(com.peaknav.routing.RouteGpx.NAMESPACE).append("\">\n");
         for (Marker m : markers) {
             out.append(String.format(Locale.ROOT, "<wpt lat=\"%.7f\" lon=\"%.7f\">", m.latitude, m.longitude));
             if (!Double.isNaN(m.elevation)) {
@@ -200,8 +224,13 @@ public final class MarkerStore {
             if (m.created > 0) {
                 out.append("<time>").append(formatTime(m.created)).append("</time>");
             }
-            out.append("<name>").append(escape(m.name)).append("</name>")
-                    .append("<sym>Flag, Blue</sym>")
+            // GPX 1.1 order: ele, time, name, sym, extensions.
+            out.append("<name>").append(escape(m.name)).append("</name>");
+            if (m.color.gpxSymbol != null) {
+                out.append("<sym>").append(m.color.gpxSymbol).append("</sym>");
+            }
+            out.append("<extensions><").append(MARKER_ELEMENT).append(" color=\"").append(m.color.key())
+                    .append("\"/></extensions>")
                     .append("</wpt>\n");
         }
         return out.append("</gpx>\n").toString();

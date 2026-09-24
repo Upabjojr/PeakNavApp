@@ -149,11 +149,35 @@ class MarkersTest {
             System.out.println("[marker] " + lines[0]);
             assertEquals(saved.name, shown[0].title);
             assertTrue(lines[0].contains("[" + PeakNavUtils.s("Marker_delete") + "]"), String.valueOf(lines[0]));
+            assertTrue(lines[0].contains("[" + PeakNavUtils.s("Marker_rename") + "]"), String.valueOf(lines[0]));
             renderer.captureWithUi(capture("marker_pane.png"));
 
+            // Red, from the pane's colours: saved, the flag recoloured, the pane still open on it.
+            final boolean[] picked = new boolean[1];
+            renderer.runOnRenderThread(() -> picked[0] = screen().featureInfoPane.pickSwatch(
+                    com.peaknav.markers.MarkerColor.RED.ordinal()));
+            assertTrue(picked[0], "the marker's pane has no colours");
+            renderer.settle(300);
+            assertEquals(com.peaknav.markers.MarkerColor.RED, markers().get(markers().size() - 1).color);
+            renderer.runOnRenderThread(() -> lines[0] = screen().featureInfoPane.getShownLines());
+            assertTrue(lines[0].contains("{6 colours, 1 picked}"), String.valueOf(lines[0]));
+            // Renamed, as the name typed into Rename's dialog is saved (the headless dialog
+            // answers "cancelled", so the store takes it here).
+            final Marker red = markers().get(markers().size() - 1);
+            renderer.runOnRenderThread(() -> PeakNavUtils.getC().markerStore.update(red.withName("Car park")));
+            renderer.settle(300);
+            renderer.runOnRenderThread(() -> drawn[0] = screen().labelRenderer.drawnMarkerNames());
+            assertTrue(drawn[0].contains("Car park"), "the renamed flag: " + drawn[0]);
+            renderer.captureWithUi(capture("marker_red.png"));
+
             final boolean[] pressed = new boolean[1];
-            renderer.runOnRenderThread(() -> pressed[0] = screen().featureInfoPane.pressAction());
-            assertTrue(pressed[0]);
+            // The flag tapped again, and Delete: the pane's second button (Rename is the first).
+            int fx = Math.round(box[0][0] + box[0][2] * 0.2f);
+            int fy = Math.round(HEIGHT - (box[0][1] + box[0][3] * 0.8f));
+            renderer.tap(fx, fy);
+            renderer.settle(300);
+            renderer.runOnRenderThread(() -> pressed[0] = screen().featureInfoPane.pressAction(1));
+            assertTrue(pressed[0], "no Delete on the pane");
             renderer.settle(300);
             assertEquals(before, markers().size(), "the marker was not deleted");
             renderer.runOnRenderThread(() -> drawn[0] = screen().labelRenderer.drawnMarkerNames());

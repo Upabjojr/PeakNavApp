@@ -13,13 +13,31 @@ public final class Marker {
     public final double elevation;
     /** When it was saved, milliseconds since the epoch; 0 when not known. */
     public final long created;
+    /** Its flag's colour. */
+    public final MarkerColor color;
 
     public Marker(String name, double latitude, double longitude, double elevation, long created) {
+        this(name, latitude, longitude, elevation, created, MarkerColor.BLUE);
+    }
+
+    public Marker(String name, double latitude, double longitude, double elevation, long created,
+                  MarkerColor color) {
+        this.color = color == null ? MarkerColor.BLUE : color;
         this.name = name == null ? "" : name;
         this.latitude = latitude;
         this.longitude = longitude;
         this.elevation = elevation;
         this.created = created;
+    }
+
+    /** The same marker under another name. */
+    public Marker withName(String newName) {
+        return new Marker(newName, latitude, longitude, elevation, created, color);
+    }
+
+    /** The same marker with a flag of another colour. */
+    public Marker withColor(MarkerColor newColor) {
+        return new Marker(name, latitude, longitude, elevation, created, newColor);
     }
 
     /** Whether two markers stand on the same spot, to a few centimetres. */
@@ -29,6 +47,6 @@ public final class Marker {
 
     @Override
     public String toString() {
-        return "Marker{" + name + " " + latitude + "," + longitude + " " + elevation + "}";
+        return "Marker{" + name + " " + latitude + "," + longitude + " " + elevation + " " + color.key() + "}";
     }
 }
