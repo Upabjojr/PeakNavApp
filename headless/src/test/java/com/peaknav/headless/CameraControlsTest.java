@@ -180,7 +180,11 @@ class CameraControlsTest {
         renderer.awaitTilesLoaded(120_000);
         renderer.setElevationMeters(250);
         renderer.aim(245, 5);
-        renderer.runOnRenderThread(() -> com.peaknav.utils.PreferencesManager.P.setShowElevation(true));
+        final boolean[] was = new boolean[1];
+        renderer.runOnRenderThread(() -> {
+            was[0] = com.peaknav.utils.PreferencesManager.P.isShowElevation();
+            com.peaknav.utils.PreferencesManager.P.setShowElevation(true);
+        });
         try {
             renderer.settle(800);
             Vector3 eye = renderer.cameraPosition();
@@ -208,7 +212,7 @@ class CameraControlsTest {
             renderer.captureWithUi(new java.io.File(System.getProperty("java.io.tmpdir"), "peaknav-feature-info/elevation_gpx.png"));
             renderer.clearGpx();
         } finally {
-            renderer.runOnRenderThread(() -> com.peaknav.utils.PreferencesManager.P.setShowElevation(false));
+            renderer.runOnRenderThread(() -> com.peaknav.utils.PreferencesManager.P.setShowElevation(was[0]));
         }
     }
 }

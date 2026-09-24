@@ -242,7 +242,7 @@ public class PreferencesManager {
         // All three compass-and-location items default to on for a fresh install.
         compassLocation = preferences.getBoolean(VIEWER_COMPASS_LOCATION, true);
         showCoordinates = preferences.getBoolean(VIEWER_SHOW_COORDINATES, true);
-        showElevation = preferences.getBoolean(VIEWER_SHOW_ELEVATION, false);
+        showElevation = preferences.getBoolean(VIEWER_SHOW_ELEVATION, true);
         showMarkers = preferences.getBoolean(VIEWER_SHOW_MARKERS, true);
         cornerCompass = preferences.getBoolean(VIEWER_CORNER_COMPASS, true);
         skyView = preferences.getBoolean(VIEWER_SKY, true);
