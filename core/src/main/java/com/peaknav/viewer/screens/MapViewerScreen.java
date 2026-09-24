@@ -1580,7 +1580,20 @@ public class MapViewerScreen implements Screen {
 			mapSqlite.createTables();
 		}
 
-		mapSqlite.cleanQueue();
+		// Tiles still queued are a download the app was closed during: finished tiles carry their
+		// time and failed ones are dropped, so nothing else stays. They used to be dropped here
+		// (the desktop never got round to it), so a first run closed half way through came back
+		// with half a place and nothing fetching the rest. Taken up again instead, once the
+		// screen is built - unless downloads were never consented to, when there is nothing to
+		// take up.
+		boolean resumeDownload = P.isCollectDownloadInfo() && !mapSqlite.getDownloadQueue().isEmpty();
+		if (!resumeDownload) {
+			mapSqlite.cleanQueue();
+		} else {
+			// Said now, before the saved place is loaded below: arriving there with its data
+			// still coming, the missing-data check would otherwise offer to download it again.
+			com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloadStarted(true);
+		}
 
 		getC().tileManager.tileRenderer.initialize();
 		getC().cacheDirManager = new CacheDirManager();
@@ -1617,6 +1630,27 @@ public class MapViewerScreen implements Screen {
 		resetMultiplexerOnce();
 
 		needToBeShown = false;
+
+		if (resumeDownload) {
+			resumeInterruptedDownload();
+		}
+	}
+
+	/**
+	 * The download a previous run was closed during, fetched as the download screen fetches one;
+	 * showOnce has already said it is running.
+	 */
+	private void resumeInterruptedDownload() {
+		Thread thread = new Thread(() -> {
+			try {
+				getC().missingDataDownloader.resumeQueued();
+			} finally {
+				com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloadStarted(false);
+			}
+			com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloaded(true);
+		}, "download-resume");
+		thread.setDaemon(true);
+		thread.start();
 	}
 
 	private void resetMultiplexerOnce() {

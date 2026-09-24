@@ -50,6 +50,18 @@ public class MissingDataDownloader {
     }
 
     public void doDownload(boolean goToLocation) {
+        download(true, goToLocation);
+    }
+
+    /**
+     * Takes up a download the app was closed during: the tiles still queued from it, and no new
+     * area. They are fetched and the map refreshed as any download does.
+     */
+    public void resumeQueued() {
+        download(false, false);
+    }
+
+    private void download(boolean queueArea, boolean goToLocation) {
 
         // TODO: add checks to avoid re-downloading the same file multiple times:
 
@@ -59,7 +71,9 @@ public class MissingDataDownloader {
             tableLocation.progressBarTable.setVisible(true);
         });
 
-        peakNavDownloadManager.addDataToQueue(lat, lon);
+        if (queueArea) {
+            peakNavDownloadManager.addDataToQueue(lat, lon);
+        }
 
         peakNavDownloadManager.processQueue();
 

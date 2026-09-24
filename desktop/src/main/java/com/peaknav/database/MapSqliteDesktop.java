@@ -171,7 +171,11 @@ public class MapSqliteDesktop extends MapSqlite {
 
     @Override
     public void cleanQueue() {
-        // TODO
+        try (PreparedStatement statement = connection.prepareStatement(sqlRemoveDownloadQueueNotDownloaded)) {
+            statement.execute();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

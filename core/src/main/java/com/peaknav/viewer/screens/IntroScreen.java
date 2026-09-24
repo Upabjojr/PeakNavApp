@@ -346,7 +346,9 @@ public class IntroScreen implements Screen {
         tableDownloadMap.add(buttonDM).width(2*widgetUnitStep).height(2*widgetUnitStep).padBottom(0.5f*widgetUnitStep).row();
 
         boolean firstTimeAppRun = P.isFirstTimeAppRun();
-        tableDownloadMap.setVisible(firstTimeAppRun);
+        // Not over a download already running: one a previous run was closed during is taken up
+        // (MapViewerScreen.showOnce) before this screen is built.
+        tableDownloadMap.setVisible(firstTimeAppRun && !downloadStarted);
 
         stage.addActor(tableDownloadMap);
 
@@ -510,7 +512,11 @@ public class IntroScreen implements Screen {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
 
-        if (!preview && labelLoading.getState() == LabelLoading.State.LOADED) {
+        // Not while no place has ever been chosen: "loaded" there is null island, with nothing
+        // on it to load, and the map it opened showed the ocean at 0° 0° with no way on but the
+        // search that pops up over it. The welcome screen, and its download button, is the way.
+        boolean noPlaceYet = P.getCoordinatesFirstTime() && getC().L.isCurrentLocationNotSet();
+        if (!preview && !noPlaceYet && labelLoading.getState() == LabelLoading.State.LOADED) {
             // TODO: labelLoading.getState() may never be LOADED if no location permission was granted to the app
             mapApp.setScreen(mapApp.mapViewerScreen);
         }
