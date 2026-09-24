@@ -1461,7 +1461,16 @@ class PeakNavRendererTest {
                 }
             }
             assertTrue(target > 0, "a way to tap");
-            renderer.tapGpxInfoWay(target).settle(800);
+            // Not in one jump: a quick flight along the track, which lands within 1.2 s.
+            renderer.tapGpxInfoWay(target).settle(150);
+            final boolean[] gliding = new boolean[1];
+            renderer.runOnRenderThread(() -> gliding[0] =
+                    com.peaknav.viewer.MapViewerSingleton.getViewerInstance().isGpxTourGliding());
+            assertTrue(gliding[0], "the tapped way was jumped to, not flown to");
+            renderer.settle(1_500);
+            renderer.runOnRenderThread(() -> gliding[0] =
+                    com.peaknav.viewer.MapViewerSingleton.getViewerInstance().isGpxTourGliding());
+            assertFalse(gliding[0], "still flying to the tapped way");
             assertEquals(target, renderer.gpxInfoWaysState()[1],
                     "tapped, way " + target + " is where the tour went: " + renderer.gpxInfoWayTexts()[0]);
             File tapped = newTempFile("route_way_tapped.png");

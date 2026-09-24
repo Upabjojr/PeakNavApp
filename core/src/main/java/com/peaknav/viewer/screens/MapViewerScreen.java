@@ -617,6 +617,9 @@ public class MapViewerScreen implements Screen {
 	 * the first move queued, which flies (or holds) straight onto its own frame.
 	 */
 	public float getGpxTourFraction() {
+		if (gpxGlideActive && gpxTourTrackFrames >= 2) {
+			return MathUtils.clamp(gpxGlideFrameAt(gpxGlideElapsed) / (gpxTourTrackFrames - 1), 0f, 1f);
+		}
 		int total = gpxTourFrames.size();
 		if (!gpxTourActive || total == 0 || moveCameraAction.isComplete() || gpxTourTrackFrames < 2) {
 			return -1f;
@@ -785,7 +788,85 @@ public class MapViewerScreen implements Screen {
 		}
 		int frame = Math.min(gpxTourTrackFrames - 1,
 				(int) Math.ceil(MathUtils.clamp(fraction, 0f, 1f) * (gpxTourTrackFrames - 1) - 1e-4f));
-		seekGpxTour(frame / (float) (total - 1));
+		glideGpxTourTo(frame);
+	}
+
+	// ---- Gliding along the track to a point of it -----------------------------------------
+	//
+	// A way tapped in the GPX pane's list takes the tour to where it starts - not in one jump,
+	// which left no sense of where along the track that is, but in a quick flight along the
+	// tour's own frames, easing in and out: half a second for a neighbouring way, at most
+	// 1.2 s for the far end. The tour is held while it flies, and lands as a seek does - paused
+	// if it was, carrying on if it was playing.
+
+	private static final float GLIDE_MIN_SECONDS = 0.5f;
+	private static final float GLIDE_MAX_SECONDS = 1.2f;
+	private boolean gpxGlideActive;
+	private float gpxGlideFrom, gpxGlideTo, gpxGlideElapsed, gpxGlideSeconds;
+	private boolean gpxGlideWasPaused;
+	private final Vector3 gpxGlideDir = new Vector3();
+
+	/** Where the tour is now, in frames along the track (fractional while it flies between two). */
+	private float gpxTourFrameNow() {
+		float fraction = getGpxTourFraction();
+		return fraction < 0 ? 0f : fraction * (gpxTourTrackFrames - 1);
+	}
+
+	private void glideGpxTourTo(int frame) {
+		float from = gpxGlideActive ? gpxGlideFrameAt(gpxGlideElapsed) : gpxTourFrameNow();
+		if (Math.abs(frame - from) < 0.5f) {
+			seekGpxTour(frame / (float) (gpxTourFrames.size() - 1));
+			return;
+		}
+		gpxGlideWasPaused = gpxGlideActive ? gpxGlideWasPaused : moveCameraAction.isPaused();
+		moveCameraAction.setPaused(true);
+		gpxGlideFrom = from;
+		gpxGlideTo = frame;
+		gpxGlideElapsed = 0f;
+		float share = Math.abs(frame - from) / Math.max(1, gpxTourTrackFrames - 1);
+		gpxGlideSeconds = MathUtils.clamp(GLIDE_MIN_SECONDS + share * (GLIDE_MAX_SECONDS - GLIDE_MIN_SECONDS),
+				GLIDE_MIN_SECONDS, GLIDE_MAX_SECONDS);
+		gpxGlideActive = true;
+	}
+
+	/** The frame, fractional, the glide has reached after {@code elapsed} seconds: eased in and out. */
+	private float gpxGlideFrameAt(float elapsed) {
+		float t = MathUtils.clamp(elapsed / gpxGlideSeconds, 0f, 1f);
+		float eased = t * t * (3f - 2f * t);
+		return gpxGlideFrom + (gpxGlideTo - gpxGlideFrom) * eased;
+	}
+
+	/** One frame of a glide: the camera between the two tour frames it has reached. */
+	private void stepGpxGlide(float deltaTime) {
+		if (!gpxGlideActive) {
+			return;
+		}
+		if (!gpxTourActive || gpxTourFrames.size() < 2) {
+			gpxGlideActive = false;
+			return;
+		}
+		gpxGlideElapsed += deltaTime;
+		if (gpxGlideElapsed >= gpxGlideSeconds) {
+			// Landed: exactly as a seek puts it there, and the tour as it was before.
+			gpxGlideActive = false;
+			seekGpxTour(gpxGlideTo / (float) (gpxTourFrames.size() - 1));
+			moveCameraAction.setPaused(gpxGlideWasPaused);
+			return;
+		}
+		float at = gpxGlideFrameAt(gpxGlideElapsed);
+		int a = MathUtils.clamp((int) Math.floor(at), 0, gpxTourFrames.size() - 1);
+		int b = Math.min(a + 1, gpxTourFrames.size() - 1);
+		float t = at - a;
+		GpxTourFrame fa = gpxTourFrames.get(a), fb = gpxTourFrames.get(b);
+		cam.position.set(fa.pos).lerp(fb.pos, t);
+		cam.direction.set(gpxGlideDir.set(fa.dir).lerp(fb.dir, t).nor());
+		cam.up.set(Vector3.Z);
+		cam.update();
+	}
+
+	/** Whether the tour is gliding to a way picked from the list; see {@link #seekGpxTourAlongTrack}. */
+	public boolean isGpxTourGliding() {
+		return gpxGlideActive;
 	}
 
 	/**
@@ -799,6 +880,11 @@ public class MapViewerScreen implements Screen {
 	 * from exactly the view on screen.
 	 */
 	public void seekGpxTour(float fraction) {
+		if (gpxGlideActive) {
+			// The bar dragged mid-glide: the drag wins, and the tour stays as it was before.
+			gpxGlideActive = false;
+			moveCameraAction.setPaused(gpxGlideWasPaused);
+		}
 		if (!gpxTourActive || moveCameraAction.isComplete()) {
 			// The bar is there before the tour has been started, or after it has played out:
 			// dragging it sets the tour up, paused, at that point - play then carries on from it.
@@ -980,6 +1066,7 @@ public class MapViewerScreen implements Screen {
 	}
 
 	private void stopGpxFlythrough(boolean groundBar) {
+		gpxGlideActive = false;
 		endGpxTour(groundBar);
 		moveCameraAction.clearSteps();
 		gpxTourFrames.clear(); // don't keep keyframes for a track that is going away
@@ -1844,6 +1931,7 @@ public class MapViewerScreen implements Screen {
 			slideShowOverlay.update(deltaTime);
 		}
 
+		stepGpxGlide(deltaTime);
 		updateGpxButtons();
 
 		float targetLat = getC().L.getTargetLatitude();
