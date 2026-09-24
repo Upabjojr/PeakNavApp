@@ -72,7 +72,7 @@ public class PbfTileBinaryParser extends BinaryParser {
             }
             LatLong latLong = new LatLong(convertLongToCoord(lat), convertLongToCoord(lon));
             if (tags.size() > 0) {
-                PointOfInterest poi = new PointOfInterest(tile.zoomLevel, tags, latLong);
+                PointOfInterest poi = new PointOfInterest(tile.zoomLevel, tags, latLong, id);
                 mapReadResult.pointOfInterests.add(poi);
             }
             nodeToLatLong.put(id, latLong);
@@ -96,7 +96,7 @@ public class PbfTileBinaryParser extends BinaryParser {
                     convertLongToCoord(node.getLon()));
             List<Tag> tags = getTagList(node.getKeysList(), node.getValsList());
             PointOfInterest poi = new PointOfInterest(
-                    tile.zoomLevel, tags, latLong);
+                    tile.zoomLevel, tags, latLong, node.getId());
             mapReadResult.pointOfInterests.add(poi);
         }
 

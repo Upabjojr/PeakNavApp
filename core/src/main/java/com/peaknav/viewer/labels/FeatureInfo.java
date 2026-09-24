@@ -108,6 +108,9 @@ public final class FeatureInfo {
         add(rows, "Feature_wikipedia", wikipedia, wikipediaLink(wikipedia));
         String wikidata = tags.get("wikidata");
         add(rows, "Feature_wikidata", wikidata, wikidataLink(wikidata));
+        if (poi.osmId > 0) {
+            add(rows, "Feature_openstreetmap", "node " + poi.osmId, osmNodeLink(poi.osmId));
+        }
 
         List<String> keys = new ArrayList<>(tags.keySet());
         Collections.sort(keys);
@@ -115,7 +118,7 @@ public final class FeatureInfo {
         for (String key : keys) {
             // A value the fonts cannot draw would be a row of boxes.
             if (listed(key) && !FontCharacters.containsUnrenderable(tags.get(key))) {
-                listed.add(new Row(key, tags.get(key), null));
+                listed.add(new Row(key, tags.get(key), tagLink(key, tags.get(key))));
             }
         }
         return new FeatureInfo(poi.name, kindOf(poi.drawLabelCategory, tags), rows, listed, poi.lat, poi.lon);
@@ -279,6 +282,45 @@ public final class FeatureInfo {
         return "https://" + language + ".wikipedia.org/wiki/" + encode(title);
     }
 
+    static String osmNodeLink(long id) {
+        return "https://www.openstreetmap.org/node/" + id;
+    }
+
+    /**
+     * Where a tag's value leads, if anywhere: a web address as it is, a website tagged without
+     * its scheme, an e-mail or a phone number, and the references to Wikipedia, Wikidata and
+     * Wikimedia Commons - also the prefixed ones, like brand:wikidata. Null for the rest.
+     */
+    static String tagLink(String key, String value) {
+        if (value == null) {
+            return null;
+        }
+        String v = value.trim();
+        if (v.startsWith("http://") || v.startsWith("https://")) {
+            int semicolon = v.indexOf(';');
+            return semicolon > 0 ? v.substring(0, semicolon).trim() : v;
+        }
+        if (key.equals("website") || key.equals("url") || key.equals("contact:website")) {
+            return webLink(v);
+        }
+        if (key.equals("email") || key.equals("contact:email")) {
+            return "mailto:" + v;
+        }
+        if (key.equals("phone") || key.equals("contact:phone") || key.equals("contact:mobile")) {
+            return "tel:" + v.replaceAll("[^+0-9]", "");
+        }
+        if (key.equals("wikidata") || key.endsWith(":wikidata")) {
+            return wikidataLink(v);
+        }
+        if (key.equals("wikipedia") || key.endsWith(":wikipedia")) {
+            return wikipediaLink(v);
+        }
+        if (key.equals("wikimedia_commons") || key.equals("image") && v.startsWith("File:")) {
+            return "https://commons.wikimedia.org/wiki/" + encode(v.replace(' ', '_'));
+        }
+        return null;
+    }
+
     static String wikidataLink(String wikidata) {
         if (wikidata == null || !wikidata.trim().matches("Q[0-9]+")) {
             return null;
@@ -288,7 +330,7 @@ public final class FeatureInfo {
 
     private static String encode(String text) {
         try {
-            return URLEncoder.encode(text, "UTF-8").replace("+", "%20").replace("%2F", "/");
+            return URLEncoder.encode(text, "UTF-8").replace("+", "%20").replace("%2F", "/").replace("%3A", ":");
         } catch (UnsupportedEncodingException e) {
             return text;
         }

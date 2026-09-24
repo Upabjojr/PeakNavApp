@@ -23,6 +23,8 @@ public class PoiObject {
     /** Metres of prominence from the map data, or -1 when it carries none. */
     public final float prominence;
     public final DrawLabelCategory drawLabelCategory;
+    /** Its OpenStreetMap node id, for a link to it; 0 where not known. */
+    public long osmId;
     private final Map<String, String> tags;
 
 

@@ -275,8 +275,19 @@ public class FeatureInfoPane {
             tagsChevron.setRotation(tagsOpen ? 0f : 180f);
             body.add(tagsHeader).padTop(0.15f * u).row();
             if (tagsOpen) {
-                for (FeatureInfo.Row tag : shown.tags) {
-                    Label line = wrapped(tag.label + " = " + tag.value, factStyle);
+                for (final FeatureInfo.Row tag : shown.tags) {
+                    Label line = wrapped(tag.label + " = " + tag.value,
+                            tag.url != null ? linkStyle : factStyle);
+                    if (tag.url != null) {
+                        // A web address, a Wikipedia or Wikidata reference: opened on a tap.
+                        line.setTouchable(Touchable.enabled);
+                        line.addListener(new ClickListener() {
+                            @Override
+                            public void clicked(InputEvent event, float x, float y) {
+                                Gdx.net.openURI(tag.url);
+                            }
+                        });
+                    }
                     body.add(line).padTop(0.02f * u).row();
                     shownLines.add(tag.label + " = " + tag.value);
                 }

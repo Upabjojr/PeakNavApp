@@ -226,7 +226,9 @@ public class MapDataManager {
                 }
             }
             if (ele != null) {
-                poiList.add(new PoiObject(name, lon, lat, ele, tags, prominence, isolationParent, drawLabelCategory));
+                PoiObject poiObject = new PoiObject(name, lon, lat, ele, tags, prominence, isolationParent, drawLabelCategory);
+                poiObject.osmId = pointOfInterest.id;
+                poiList.add(poiObject);
             }
         }
         return poiList;

@@ -79,4 +79,20 @@ public class TestFeatureInfo {
         assertEquals(270, FeatureInfo.bearingDegrees(0, 8.1, 0, 8), 0.01);
         assertEquals(111195, FeatureInfo.distanceMetres(0, 0, 1, 0), 1);
     }
+
+    @Test
+    public void tagsThatAreLinksCanBeOpened() {
+        assertEquals("https://example.org/hut", FeatureInfo.tagLink("contact:facebook", "https://example.org/hut"));
+        assertEquals("https://www.rifugio.it", FeatureInfo.tagLink("website", "www.rifugio.it"));
+        assertEquals("https://www.wikidata.org/wiki/Q1374", FeatureInfo.tagLink("wikidata", "Q1374"));
+        assertEquals("https://www.wikidata.org/wiki/Q42", FeatureInfo.tagLink("brand:wikidata", "Q42"));
+        assertEquals("https://de.wikipedia.org/wiki/Matterhorn", FeatureInfo.tagLink("wikipedia", "de:Matterhorn"));
+        assertEquals("https://commons.wikimedia.org/wiki/Category:Matterhorn",
+                FeatureInfo.tagLink("wikimedia_commons", "Category:Matterhorn"));
+        assertEquals("mailto:info@rifugio.it", FeatureInfo.tagLink("email", "info@rifugio.it"));
+        assertEquals("tel:+390465501200", FeatureInfo.tagLink("phone", "+39 0465 501200"));
+        assertNull(FeatureInfo.tagLink("ele", "4478"));
+        assertNull(FeatureInfo.tagLink("image", "a picture"));
+        assertEquals("https://www.openstreetmap.org/node/281747458", FeatureInfo.osmNodeLink(281747458L));
+    }
 }
