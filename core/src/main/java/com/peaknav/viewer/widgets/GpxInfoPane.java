@@ -7,6 +7,7 @@ import static com.peaknav.utils.PreferencesManager.P;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.ui.Button;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
@@ -278,19 +279,49 @@ public class GpxInfoPane {
     }
 
     public void setOpen(boolean value) {
+        float kept = scrollShare();
         open = value;
         layoutPanel();
+        restoreScroll(kept);
     }
 
     /** Wide (across to the buttons on the right) or back to the small pane. Opens a folded pane. */
     public void setMaximized(boolean value) {
+        float kept = scrollShare();
         maximized = value;
         open = true;
         width = targetWidth();
         visibleHeight = visibleHeight();
         buildTimeAxis(); // more labels along a wider graph
         layoutPanel();
-        scroll.setScrollY(0);
+        restoreScroll(kept);
+    }
+
+    /**
+     * How far down the body the pane is scrolled, 0 at the top and 1 at the bottom - kept across a
+     * resize or a fold, which lay the pane out afresh and used to leave it at the top. A share,
+     * not a distance: maximized, the graphs grow, and the same distance is another place.
+     */
+    private float scrollShare() {
+        if (!open) {
+            return foldedScrollShare;
+        }
+        float max = scroll.getMaxY();
+        return max > 0 ? MathUtils.clamp(scroll.getScrollY() / max, 0f, 1f) : foldedScrollShare;
+    }
+
+    /** Where the body was scrolled when the pane was folded; see {@link #scrollShare}. */
+    private float foldedScrollShare = 0f;
+
+    private void restoreScroll(float share) {
+        if (!open) {
+            foldedScrollShare = share;
+            return;
+        }
+        root.validate();
+        scroll.layout();
+        scroll.setScrollPercentY(share);
+        scroll.updateVisualScroll();
     }
 
     /**

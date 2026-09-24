@@ -480,6 +480,12 @@ class PeakNavRendererTest {
         renderer.settle(2_000);
     }
 
+    /** The GPX pane's body scrolled (nearly) to its end - or not scrollable at all. */
+    private static void assertScrolledToTheBottom(float[] scroll, String when) {
+        assertTrue(scroll[0] <= 0 || scroll[1] / scroll[0] > 0.9f,
+                "the pane went back up " + when + ": " + java.util.Arrays.toString(scroll));
+    }
+
     private File newTempFile(String name) {
         try {
             return Files.createTempDirectory("peaknav-test").resolve(name).toFile();
@@ -1711,6 +1717,15 @@ class PeakNavRendererTest {
             File bottom = newTempFile("gpx-speed-large-bottom.png");
             renderer.captureWithUi(bottom);
             assertTrue(renderer.gpxInfoScroll()[1] > 0, "scrolled down to the speed graph");
+            // Resized, folded and opened again, the pane keeps its place instead of going back
+            // to the top.
+            renderer.setGpxInfoMaximized(false).settle(300);
+            assertScrolledToTheBottom(renderer.gpxInfoScroll(), "after restoring the pane's size");
+            renderer.setGpxInfoOpen(false).settle(200);
+            renderer.setGpxInfoOpen(true).settle(300);
+            assertScrolledToTheBottom(renderer.gpxInfoScroll(), "after folding the pane and opening it again");
+            renderer.setGpxInfoMaximized(true).settle(300);
+            assertScrolledToTheBottom(renderer.gpxInfoScroll(), "after maximizing it again");
             renderer.setGpxInfoMaximized(false).settle(300);
             System.out.println("gpx speed frames: " + small.getAbsolutePath() + " " + large.getAbsolutePath()
                     + " " + bottom.getAbsolutePath());
