@@ -204,6 +204,9 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
         newVisiblePois.clear();
 
         C.O.iterateOverAllLists(poiObject -> {
+            // A place whose height is not known yet has no position to label.
+            if (!poiObject.resolveElevation())
+                return;
             DrawLabel drawLabel = poiObject.drawLabel;
 
             drawLabel.lock.lock();

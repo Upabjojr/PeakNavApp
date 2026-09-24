@@ -753,7 +753,8 @@ public final class PeakNavRenderer implements AutoCloseable {
                 }
                 o.addChild("lat", new JsonValue(poi.lat));
                 o.addChild("lon", new JsonValue(poi.lon));
-                o.addChild("elevation_m", new JsonValue(poi.elevation));
+                if (!Float.isNaN(poi.elevation))
+                    o.addChild("elevation_m", new JsonValue(poi.elevation));
                 if (poi.prominence > 0) {
                     o.addChild("prominence_m", new JsonValue(poi.prominence));
                 }

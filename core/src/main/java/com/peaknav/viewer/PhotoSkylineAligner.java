@@ -667,9 +667,9 @@ public final class PhotoSkylineAligner {
      * <p>Not {@code ElevationUtils.getElevationLatitsFromMaxCoords}: that goes through
      * {@code CheckMissingData.getMaxZoomTile}, which builds its finest-zoom index from
      * zoom-8 column and row numbers, so the walk up the tile pyramid starts from a tile
-     * that never exists and the lookup always comes back empty. Fixing it there changes
-     * what the label loader does with every POI lacking an {@code ele} tag (they are
-     * dropped today), so it is left alone here and the index is built properly instead.
+     * that never exists and the lookup always comes back empty. The label loader used it
+     * for every POI lacking an {@code ele} tag, and so dropped them all; it now reads this
+     * sampler instead (MapDataManager, PoiObject.resolveElevation).
      */
     private static final ElevationSampler LOADED_TERRAIN = new ElevationSampler() {
         @Override

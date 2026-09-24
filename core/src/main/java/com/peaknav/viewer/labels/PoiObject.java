@@ -10,13 +10,14 @@ import static com.peaknav.viewer.labels.DrawLabelCategory.PLACE;
 import com.badlogic.gdx.math.Vector3;
 
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.Map;
 
 public class PoiObject {
 
     public final String name;
-    public final float lat, lon, elevation;
+    public final float lat, lon;
+    /** Metres; NaN for a place or hut whose terrain was not loaded when it was read. */
+    public float elevation;
     public transient DrawLabel drawLabel;
     public final int isolationParent;
     /** Metres of prominence from the map data, or -1 when it carries none. */
@@ -94,48 +95,119 @@ public class PoiObject {
         };
     }
 
+    /**
+     * The order the non-peak labels - places and huts - claim contested spots in: earlier wins.
+     *
+     * <p>By {@link #labelWeight} over the distance, in km, from the viewer: how much a place
+     * matters from here. The list spans some 130 km around the viewer, so size alone let every
+     * mid-sized village in three provinces outrank the one the viewer stands in; distance alone
+     * let a nameless locality nearby outrank the town behind it.
+     *
+     * <p>It used to be population first, which in the map data is patchy - around Trento half
+     * the villages carry none while 188 hamlets do, so a hamlet of 49 outranked every untagged
+     * village - and then a distance scaled by a list of place kinds that put suburb and
+     * neighbourhood above town.
+     */
     public static Comparator<PoiObject> getComparatorPois(double curLat, double curLon, double curEle) {
-        return (o1, o2) -> {
-            int pop1 = o1.getPopulation();
-            int pop2 = o2.getPopulation();
-            if (pop1 != pop2)
-                return Integer.compare(pop2, pop1);
+        final double kmPerDegreeLon = KM_PER_DEGREE * Math.cos(Math.toRadians(curLat));
+        return (o1, o2) -> Double.compare(
+                labelScore(o2.getLabelWeight(), distanceKm(o2, curLat, curLon, kmPerDegreeLon)),
+                labelScore(o1.getLabelWeight(), distanceKm(o1, curLat, curLon, kmPerDegreeLon)));
+    }
 
-            double distance1 = Math.pow(o1.lat - curLat, 2) + Math.pow(o1.lon - curLon, 2);
-            double distance2 = Math.pow(o2.lat - curLat, 2) + Math.pow(o2.lon - curLon, 2);
+    private static final double KM_PER_DEGREE = 111.2;
 
-            if (o1.drawLabelCategory == PLACE)
-                distance1 *= getDistanceModifier(getPriorityOsmPlace(o1), 2);
-            if (o2.drawLabelCategory == PLACE)
-                distance2 *= getDistanceModifier(getPriorityOsmPlace(o2), 2);
-            return Double.compare(distance1, distance2);
-        };
+    private static double distanceKm(PoiObject o, double curLat, double curLon, double kmPerDegreeLon) {
+        double dy = (o.lat - curLat) * KM_PER_DEGREE;
+        double dx = (o.lon - curLon) * kmPerDegreeLon;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /**
+     * How much a label matters from a distance: its weight per km. Within the first km
+     * distance stops counting, so the village underfoot does not outrank a city.
+     */
+    public static double labelScore(double weight, double distanceKm) {
+        return weight / Math.max(distanceKm, 1.0);
+    }
+
+    private double labelWeight = -1;
+
+    private double getLabelWeight() {
+        if (labelWeight < 0)
+            labelWeight = labelWeight(drawLabelCategory, tags);
+        return labelWeight;
+    }
+
+    /**
+     * How much a place matters, in something like inhabitants: its population where the data
+     * has one, else a typical figure for its kind, so an untagged village ranks as a village
+     * rather than last. A hamlet's figure is capped, since hamlets are often tagged with their
+     * whole municipality's. A hut counts as a sizeable hamlet. Uninhabited names - localities,
+     * squares - and regions, whose name at a single point says little, count for almost
+     * nothing. A Wikipedia article, or at least a Wikidata entry, adds a little: better known.
+     */
+    public static double labelWeight(DrawLabelCategory category, Map<String, String> tags) {
+        double weight;
+        if (category == DrawLabelCategory.ALPINE_HUT) {
+            weight = 100;
+        } else {
+            String place = tags == null ? null : tags.get("place");
+            int population = parsePopulation(tags);
+            weight = settlementWeight(place == null ? "" : place, population);
+        }
+        if (tags != null) {
+            if (tags.containsKey("wikipedia"))
+                weight *= 1.5;
+            else if (tags.containsKey("wikidata"))
+                weight *= 1.2;
+        }
+        return weight;
+    }
+
+    private static double settlementWeight(String place, int population) {
+        switch (place) {
+            case "city":
+                return population > 0 ? population : 100_000;
+            case "town":
+            case "borough":
+                return population > 0 ? population : 10_000;
+            case "municipality":
+            case "suburb":
+                return population > 0 ? population : 1_000;
+            case "village":
+            case "island":
+                return population > 0 ? population : 300;
+            case "quarter":
+                return population > 0 ? Math.min(population, 5_000) : 300;
+            case "neighbourhood":
+                return population > 0 ? Math.min(population, 2_000) : 100;
+            case "hamlet":
+                return population > 0 ? Math.min(population, 500) : 50;
+            case "isolated_dwelling":
+            case "farm":
+                return 5;
+            default:
+                return 2;
+        }
     }
 
     private int getPopulation() {
-        if (population >= 0)
-            return population;
-
-        String popS = tags.get("population");
-        if (popS == null)
-            population = 0;
-        else {
-            try {
-                popS = popS.replaceAll("[., ]", "");
-                population = Integer.parseInt(popS);
-            } catch (NumberFormatException ignored) {
-                population = 0;
-            }
-        }
+        if (population < 0)
+            population = parsePopulation(tags);
         return population;
     }
 
-    private static double getDistanceModifier(double val, double rescaler) {
-        return 1.0 + rescaler*val;
-    }
-
-    private static double getPriorityOsmTags(PoiObject poiObject) {
-        return ((double) poiObject.drawLabelCategory.ordinal())/DrawLabelCategory.values().length;
+    /** The {@code population} tag as a number, or 0 where it is missing or unreadable. */
+    public static int parsePopulation(Map<String, String> tags) {
+        String popS = tags == null ? null : tags.get("population");
+        if (popS == null)
+            return 0;
+        try {
+            return Integer.parseInt(popS.replaceAll("[., ]", ""));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     public Vector3 getPosition3D(Vector3 targetVector) {
@@ -144,46 +216,6 @@ public class PoiObject {
 
     public void updatePositionToTargetLongitude() {
         pos.x = (float) convertLonitsToLatits(lon, getC().L.getTargetLatitude());
-    }
-
-    private static final String[] PlacePriority = {
-        "municipality",
-        "city",
-        "borough",
-        "suburb",
-        "quarter",
-        "neighbourhood",
-        "city_block",
-        "plot",
-        "town",
-        "village",
-        "hamlet",
-        "isolated_dwelling",
-        "farm",
-        "allotments",
-        "island",
-        "islet",
-        "square",
-        "locality",
-    };
-
-    private static final Map<String, Double> placePriorityMap = refreshPriorityMap();
-
-    private static Map<String, Double> refreshPriorityMap() {
-        Map<String, Double> map = new HashMap<>();
-        for (int i = 0; i < PlacePriority.length; i++) {
-            map.put(PlacePriority[i], ((double)i)/PlacePriority.length);
-        }
-        return map;
-    }
-
-    private static double getPriorityOsmPlace(PoiObject poiObject) {
-        String placeValue = poiObject.tags.get("place");
-        try {
-            return placePriorityMap.get(placeValue);
-        } catch (Exception e) {
-            return 1.0;
-        }
     }
 
     /** The object's map tags (OSM-style key/value pairs), read-only. Never null. */
@@ -206,7 +238,6 @@ public class PoiObject {
         this.lat = lat;
         float dz = convertLatitsToMeters(getElevationCorrectionForRoundEarth(lat, lon));
         this.elevation = elevation;
-        float elevationAfterRoundEarthCorrection = elevation - dz;
         this.isolationParent = isolationParent;
         this.drawLabelCategory = drawLabelCategory;
         this.tags = tags;
@@ -215,7 +246,24 @@ public class PoiObject {
         this.pos.set(
                 (float)convertLonitsToLatits(lon, lat),
                 lat,
-                convertMetersToLatits(elevationAfterRoundEarthCorrection));
+                convertMetersToLatits(elevation - dz));
+    }
+
+    /**
+     * Whether the height is known, filling it in from the terrain if it was not when the
+     * object was read (see MapDataManager). Until it is, the object has no place in 3D and
+     * is not labelled.
+     */
+    public boolean resolveElevation() {
+        if (!Float.isNaN(elevation))
+            return true;
+        float terrain = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+        if (Float.isNaN(terrain))
+            return false;
+        float dz = convertLatitsToMeters(getElevationCorrectionForRoundEarth(lat, lon));
+        pos.z = convertMetersToLatits(terrain - dz);
+        elevation = terrain;
+        return true;
     }
 
     public int hashCode() {

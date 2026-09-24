@@ -1,6 +1,5 @@
 package com.peaknav.viewer;
 
-import static com.peaknav.elevation.ElevationUtils.getElevationLatitsFromMaxCoords;
 import static com.peaknav.utils.PeakNavUtils.containsUnrenderableCharacters;
 
 import com.peaknav.pbf.Tag;
@@ -197,7 +196,20 @@ public class MapDataManager {
             if (name == null || drawLabelCategory == null)
                 continue;
             if (ele == null) {
-                ele = getElevationLatitsFromMaxCoords(lon, lat, false);
+                // No "ele" tag - most villages and huts have none: the height of the loaded
+                // terrain. This used to ask ElevationUtils, whose lookup always comes back
+                // empty (see PhotoSkylineAligner.loadedTerrain), so every such place was
+                // dropped: Strembo, Pinzolo, Carisolo, the whole of Val Rendena. It also
+                // returned latits where the tag is in metres.
+                float terrain = PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+                if (!Float.isNaN(terrain)) {
+                    ele = terrain;
+                } else if (drawLabelCategory != DrawLabelCategory.PEAK) {
+                    // Its terrain is not loaded yet. A place or hut is kept, and gets its
+                    // height when the terrain arrives (PoiObject.resolveElevation). A peak's
+                    // label prints its height, so a peak still waits for the next read.
+                    ele = Float.NaN;
+                }
             }
             if (containsUnrenderableCharacters(name)) {
                 // Latin forms from the data first; kana romanized if that is all there
