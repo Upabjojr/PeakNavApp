@@ -55,6 +55,12 @@ public class OptionPane {
     private final Table selectBoxSatSrc;
     private final Table selectInfoOpts;
     private final Table selectGpx;
+    /** "My paths and markers": the GPX paths' submenu and the markers'. */
+    private final Table selectPathsAndMarkers;
+    /** The markers' submenu; its list of markers is rebuilt every time it opens. */
+    private final Table selectMarkers;
+    private final Table markersList = new Table();
+    private com.badlogic.gdx.scenes.scene2d.ui.ScrollPane markersScroll;
     private final Table selectLabels;
     private final Table selectSky;
     private final Table selectCompass;
@@ -122,6 +128,8 @@ public class OptionPane {
         selectBoxUnits = createSelectBoxUnitSystem();
         selectInfoOpts = createInfoOptsMenu();
         selectGpx = createGpxMenu();
+        selectMarkers = createMarkersMenu();
+        selectPathsAndMarkers = createPathsAndMarkersMenu();
         selectLabels = createLabelsMenu();
         selectSky = createSkyMenu();
         selectCompass = createCompassMenu();
@@ -197,6 +205,14 @@ public class OptionPane {
 
     public Table getSelectBoxSatelliteSource() {
         return selectBoxSatSrc;
+    }
+
+    public Table getSelectPathsAndMarkers() {
+        return selectPathsAndMarkers;
+    }
+
+    public Table getSelectMarkers() {
+        return selectMarkers;
     }
 
     public Table getSelectGpx() {
@@ -339,6 +355,43 @@ public class OptionPane {
                 "icons/icon_back.png", s("Back"), false);
         back.addClickListener(() -> {
             table.setVisible(false);
+            selectPathsAndMarkers.setVisible(true);
+        });
+        buttons.add(back);
+
+        addButtonsToTable(table, buttons, true, buttonWidth);
+        table.setVisible(false);
+        return table;
+    }
+
+    /** "My paths and markers": two entries, the GPX paths' submenu and the markers'. */
+    private Table createPathsAndMarkersMenu() {
+        Table table = new Table();
+        table.center();
+        table.setFillParent(true);
+        float buttonWidth = this.buttonWidth * 1.2f;
+        List<Table> buttons = new ArrayList<>(3);
+
+        ImageTextButtonOptionPane buttonGpx = getC().widgetGetter.getImageTextButton(
+                "icons/icon_map.png", s("Gpx_paths"), false);
+        buttonGpx.addClickListener(() -> {
+            table.setVisible(false);
+            selectGpx.setVisible(true);
+        });
+        buttons.add(buttonGpx);
+
+        ImageTextButtonOptionPane buttonMarkers = getC().widgetGetter.getImageTextButton(
+                "icons/icon_marker_add.png", s("Markers_menu"), false);
+        buttonMarkers.addClickListener(() -> {
+            table.setVisible(false);
+            showMarkersMenu();
+        });
+        buttons.add(buttonMarkers);
+
+        ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
+                "icons/icon_back.png", s("Back"), false);
+        back.addClickListener(() -> {
+            table.setVisible(false);
             show();
         });
         buttons.add(back);
@@ -346,6 +399,101 @@ public class OptionPane {
         addButtonsToTable(table, buttons, true, buttonWidth);
         table.setVisible(false);
         return table;
+    }
+
+    /**
+     * The markers: whether their flags are shown, one button for each - which turns the view to it,
+     * or takes it there - then sharing them all as a GPX file and deleting them all. The list is
+     * built afresh on opening, and scrolls when there are more than the screen holds.
+     */
+    private Table createMarkersMenu() {
+        Table table = new Table();
+        table.center();
+        table.setFillParent(true);
+        float buttonWidth = this.buttonWidth * 1.2f;
+
+        ImageTextButtonOptionPane checkBoxShow = getC().widgetGetter.getImageTextButton(
+                "icons/icon_marker_add.png", s("Markers_show"), true);
+        addCheckingStateProperty(checkBoxShow, () -> P.isShowMarkers());
+        checkBoxShow.addClickListener(() -> changer.execute(() -> P.setShowMarkers(checkBoxShow.isChecked())));
+
+        markersScroll = new com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(markersList);
+        markersScroll.setScrollingDisabled(true, false);
+        markersScroll.setOverscroll(false, false);
+
+        ImageTextButtonOptionPane buttonShare = getC().widgetGetter.getImageTextButton(
+                "icons/icon_gpx_share.png", s("Markers_share"), false);
+        buttonShare.addClickListener(() -> {
+            if (!getC().markerStore.getMarkers().isEmpty()) {
+                getNativeScreenCaller().shareGpx("PeakNav_markers", getC().markerStore.toGpxText());
+                hide();
+            }
+        });
+
+        ImageTextButtonOptionPane buttonDeleteAll = getC().widgetGetter.getImageTextButton(
+                "icons/icon_x.png", s("Markers_delete_all"), false);
+        buttonDeleteAll.addClickListener(() -> {
+            if (getC().markerStore.getMarkers().isEmpty()) {
+                return;
+            }
+            getNativeScreenCaller().promptYesNo(s("Markers_delete_all"), s("Markers_delete_all_prompt"),
+                    () -> Gdx.app.postRunnable(() -> {
+                        getC().markerStore.clear();
+                        rebuildMarkersList();
+                    }));
+        });
+
+        ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
+                "icons/icon_back.png", s("Back"), false);
+        back.addClickListener(() -> {
+            table.setVisible(false);
+            selectPathsAndMarkers.setVisible(true);
+        });
+
+        table.add(checkBoxShow).width(buttonWidth).height(height).padBottom(padHeight).row();
+        table.add(markersScroll).width(buttonWidth).padBottom(padHeight).row();
+        table.add(buttonShare).width(buttonWidth).height(height).padBottom(padHeight).row();
+        table.add(buttonDeleteAll).width(buttonWidth).height(height).padBottom(padHeight).row();
+        table.add(back).width(buttonWidth).height(height);
+        table.setVisible(false);
+        return table;
+    }
+
+    /** Opens the markers' submenu on the markers as they are now. */
+    private void showMarkersMenu() {
+        updateCheckingStates();
+        rebuildMarkersList();
+        selectMarkers.setVisible(true);
+    }
+
+    /** One button per marker, or a line saying there are none. */
+    private void rebuildMarkersList() {
+        float buttonWidth = this.buttonWidth * 1.2f;
+        markersList.clearChildren();
+        List<com.peaknav.markers.Marker> markers = getC().markerStore.getMarkers();
+        if (markers.isEmpty()) {
+            com.badlogic.gdx.scenes.scene2d.ui.Label none = new com.badlogic.gdx.scenes.scene2d.ui.Label(
+                    s("Markers_none"), getC().styleSingleton.getLabelStyle());
+            none.setWrap(true);
+            none.setAlignment(com.badlogic.gdx.utils.Align.center);
+            markersList.add(none).width(buttonWidth).pad(padHeight);
+        } else {
+            for (final com.peaknav.markers.Marker marker : markers) {
+                ImageTextButtonOptionPane button = getC().widgetGetter.getImageTextButton(
+                        "icons/icon_marker_flag.png", marker.name, false);
+                button.addClickListener(() -> {
+                    hide();
+                    getC().getMapViewerScreen().goToMarker(marker);
+                });
+                markersList.add(button).width(buttonWidth).height(height).padBottom(padHeight).row();
+            }
+        }
+        // Room for the buttons around the list; the list scrolls in what is left.
+        float stageHeight = selectMarkers.getStage() != null ? selectMarkers.getStage().getHeight() : Gdx.graphics.getHeight();
+        float room = Math.max(height + padHeight, stageHeight - 4 * (height + padHeight) - 2 * height);
+        selectMarkers.getCell(markersScroll).height(Math.min(room, markersList.getPrefHeight()));
+        selectMarkers.invalidateHierarchy();
+        markersScroll.setScrollY(0);
     }
 
     /**
@@ -1551,11 +1699,11 @@ public class OptionPane {
         tableSky.add(buttonSkyOptions).width(buttonWidth * 0.2f).height(height);
         buttons.add(tableSky);
 
-        // GPX paths: a single entry that opens its own submenu (load file / from URL / clear).
+        // The user's own things: GPX paths and markers, each with its submenu under this one.
         ImageTextButtonOptionPane buttonGpxMenu = getC().widgetGetter.getImageTextButton(
-                "icons/icon_map.png", s("Gpx_paths"), false);
+                "icons/icon_map.png", s("Paths_and_markers"), false);
         buttonGpxMenu.addClickListener(() -> {
-            selectGpx.setVisible(true);
+            selectPathsAndMarkers.setVisible(true);
             table.setVisible(false);
             tableOneColumn.setVisible(false);
         });
@@ -1780,6 +1928,8 @@ public class OptionPane {
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
         selectGpx.setVisible(false);
+        selectPathsAndMarkers.setVisible(false);
+        selectMarkers.setVisible(false);
         selectLabels.setVisible(false);
         selectSky.setVisible(false);
         selectCompass.setVisible(false);
@@ -1800,6 +1950,8 @@ public class OptionPane {
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
         selectGpx.setVisible(false);
+        selectPathsAndMarkers.setVisible(false);
+        selectMarkers.setVisible(false);
         selectLabels.setVisible(false);
         selectSky.setVisible(false);
         selectCompass.setVisible(false);

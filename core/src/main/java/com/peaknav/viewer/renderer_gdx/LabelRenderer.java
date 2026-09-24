@@ -645,7 +645,7 @@ public class LabelRenderer {
     private static final float MARKER_FLAG_UNITS = 1.25f;
     /** Where the pole's foot is across the flag's image, as a share of its width (icon_marker_flag). */
     private static final float MARKER_FOOT_X = 22f / 128f;
-    /** Lifted a little over the ground for the occlusion test, or the ground itself hides it. */
+    /** The flag's top, roughly, for the occlusion test's second try (see renderMarkers). */
     private static final float MARKER_LIFT_METRES = 8f;
 
     private com.badlogic.gdx.graphics.g2d.TextureRegion markerFlag;
@@ -698,6 +698,9 @@ public class LabelRenderer {
         if (viewer == null || viewer.cam == null) {
             return;
         }
+        if (!P.isShowMarkers()) {
+            return;
+        }
         List<com.peaknav.markers.Marker> markers = getC().markerStore.getMarkers();
         if (markers.isEmpty()) {
             return;
@@ -711,8 +714,11 @@ public class LabelRenderer {
         BitmapFont font = getC().styleSingleton.getBitmapFontVerySmallWhite();
         for (com.peaknav.markers.Marker m : markers) {
             float lat = (float) m.latitude, lon = (float) m.longitude;
-            double metres = Double.isNaN(m.elevation)
-                    ? com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon) : m.elevation;
+            // On the ground as the terrain has it, where it is loaded: a height saved from other
+            // data - another app's GPX, a label's tag - can lie under this terrain, and the flag
+            // would stand buried out of sight. The saved height is for where there is no terrain.
+            double ground = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+            double metres = !Double.isNaN(ground) ? ground : m.elevation;
             if (Double.isNaN(metres)) {
                 continue;
             }
@@ -725,9 +731,17 @@ public class LabelRenderer {
                 continue;
             }
             if (viewer.impactPixmap != null) {
-                markerScreen.set(markerWorld);
-                markerScreen.z += Units.convertMetersToLatits(MARKER_LIFT_METRES);
-                if (!getC().visibility.checkVisible(markerScreen, viewer.impactPixmap)) {
+                // The depth test asks whether the point's distance matches the terrain's in its
+                // direction: the foot on the ground itself does, as a label's summit does. A point
+                // lifted over it looks past the ground at what lies behind, so that is only the
+                // fallback, for a foot the terrain in front just covers.
+                boolean visible = getC().visibility.checkVisible(markerWorld, viewer.impactPixmap);
+                if (!visible) {
+                    markerScreen.set(markerWorld);
+                    markerScreen.z += Units.convertMetersToLatits(MARKER_LIFT_METRES);
+                    visible = getC().visibility.checkVisible(markerScreen, viewer.impactPixmap);
+                }
+                if (!visible) {
                     continue;
                 }
             }

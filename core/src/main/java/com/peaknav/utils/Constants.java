@@ -29,6 +29,7 @@ public interface Constants {
         String VIEWER_COMPASS_LOCATION = "viewerCompassLocation";
         String VIEWER_SHOW_COORDINATES = "viewerShowCoordinates";
         String VIEWER_SHOW_ELEVATION = "viewerShowElevation";
+        String VIEWER_SHOW_MARKERS = "viewerShowMarkers";
         String VIEWER_CORNER_COMPASS = "viewerCornerCompass";
         String VIEWER_SKY = "viewerSky";
         String VIEWER_SKY_CONSTELLATIONS = "viewerSkyConstellations";

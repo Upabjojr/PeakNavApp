@@ -1532,6 +1532,8 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(optionPane.getSelectBoxUnits());
 		stage.addActor(optionPane.getSelectInfoOpts());
 		stage.addActor(optionPane.getSelectGpx());
+		stage.addActor(optionPane.getSelectPathsAndMarkers());
+		stage.addActor(optionPane.getSelectMarkers());
 		stage.addActor(optionPane.getSelectLabels());
 		stage.addActor(optionPane.getSelectSky());
 		stage.addActor(optionPane.getSelectCompass());
@@ -2291,16 +2293,7 @@ public class MapViewerScreen implements Screen {
 				getC().i18n != null ? getC().i18n.getLanguage() : null,
 				P.getUnitSystem());
 		if (feature instanceof com.peaknav.markers.Marker) {
-			final com.peaknav.markers.Marker marker = (com.peaknav.markers.Marker) feature;
-			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(marker, viewer),
-					s("Marker_delete"), () -> {
-						getC().markerStore.remove(marker.latitude, marker.longitude);
-						removeImpact();
-						toast(" " + s("Marker_deleted") + " ");
-					});
-			stopOrbit();
-			impact = markerWorldPosition(marker);
-			updateImpact();
+			showMarkerPane((com.peaknav.markers.Marker) feature, viewer);
 		} else if (feature instanceof PoiObject) {
 			final PoiObject poi = (PoiObject) feature;
 			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(poi, viewer),
@@ -2335,11 +2328,57 @@ public class MapViewerScreen implements Screen {
 		return true;
 	}
 
-	/** Where a marker stands in the world frame, on its saved height or, without one, the ground. */
+	/** A marker's pane, with its Delete button, and the pin on it. */
+	private void showMarkerPane(final com.peaknav.markers.Marker marker, com.peaknav.viewer.labels.FeatureInfo.Viewer viewer) {
+		featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(marker, viewer),
+				s("Marker_delete"), () -> {
+					getC().markerStore.remove(marker.latitude, marker.longitude);
+					removeImpact();
+					toast(" " + s("Marker_deleted") + " ");
+				});
+		stopOrbit();
+		impact = markerWorldPosition(marker);
+		updateImpact();
+	}
+
+	/** Near enough to turn and look at a marker; farther, the view goes there instead. */
+	private static final float MARKER_LOOK_METRES = 60_000f;
+
+	/**
+	 * A marker picked from the list of them: the view turns to face it where it is near, pin and
+	 * pane on it; and goes to it where it is not, as a search result's Go To does.
+	 */
+	public void goToMarker(com.peaknav.markers.Marker marker) {
+		if (featureInfoPane == null) {
+			return;
+		}
+		Vector3 at = markerWorldPosition(marker);
+		Vector3 toward = at.cpy().sub(cam.position);
+		if (Units.convertLatitsToMeters(toward.len()) > MARKER_LOOK_METRES || at.z == 0f) {
+			stopOrbit();
+			getC().L.setCurrentTargetCoords(marker.latitude, marker.longitude);
+			toast(" " + marker.name + " ");
+			return;
+		}
+		tableTool.buttonOrientation.setChecked(false);   // the gyroscope would turn it straight back
+		Vector3 direction = toward.nor();
+		// Level with the world, whatever the old up was: up is the vertical, less its part along
+		// the new direction.
+		Vector3 up = new Vector3(0, 0, 1).mulAdd(direction, -direction.z).nor();
+		moveCameraAction.setCameraVectors(cam.position.cpy(), direction, up, false,
+				com.badlogic.gdx.math.Interpolation.smooth, false);
+		showMarkerPane(marker, new com.peaknav.viewer.labels.FeatureInfo.Viewer(
+				cam.position.y,
+				Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude()),
+				getC().i18n != null ? getC().i18n.getLanguage() : null,
+				P.getUnitSystem()));
+	}
+
+	/** Where a marker's flag stands in the world frame: on the loaded ground, else its saved height. */
 	private Vector3 markerWorldPosition(com.peaknav.markers.Marker marker) {
 		float lat = (float) marker.latitude, lon = (float) marker.longitude;
-		double metres = Double.isNaN(marker.elevation)
-				? com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon) : marker.elevation;
+		double ground = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+		double metres = !Double.isNaN(ground) ? ground : marker.elevation;
 		return new Vector3(
 				(float) Units.convertLonitsToLatits(lon, getC().L.getTargetLatitude()),
 				lat,

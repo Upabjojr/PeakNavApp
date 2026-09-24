@@ -89,6 +89,19 @@ public final class MarkerStore {
         return false;
     }
 
+    /** Removes every marker. */
+    public synchronized void clear() {
+        loadIfNeeded();
+        markers.clear();
+        changed();
+    }
+
+    /** All the markers as a GPX file's text, to share. */
+    public synchronized String toGpxText() {
+        loadIfNeeded();
+        return toGpx(markers);
+    }
+
     /** "Marker 3": the first number no saved marker is already called by. */
     public synchronized String nextDefaultName(String word) {
         loadIfNeeded();

@@ -26,6 +26,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_COMPASS_LOCATION;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_COORDINATES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ELEVATION;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_MARKERS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_CORNER_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_CONSTELLATIONS;
@@ -95,6 +96,7 @@ public class PreferencesManager {
     private boolean compassLocation;
     private boolean showCoordinates;
     private boolean showElevation;
+    private boolean showMarkers;
     private boolean cornerCompass;
     private boolean skyView;
     private boolean skyConstellations;
@@ -241,6 +243,7 @@ public class PreferencesManager {
         compassLocation = preferences.getBoolean(VIEWER_COMPASS_LOCATION, true);
         showCoordinates = preferences.getBoolean(VIEWER_SHOW_COORDINATES, true);
         showElevation = preferences.getBoolean(VIEWER_SHOW_ELEVATION, false);
+        showMarkers = preferences.getBoolean(VIEWER_SHOW_MARKERS, true);
         cornerCompass = preferences.getBoolean(VIEWER_CORNER_COMPASS, true);
         skyView = preferences.getBoolean(VIEWER_SKY, true);
         skyConstellations = preferences.getBoolean(VIEWER_SKY_CONSTELLATIONS, true);
@@ -583,6 +586,17 @@ public class PreferencesManager {
     public void setShowCoordinates(boolean enabled) {
         showCoordinates = enabled;
         preferences.putBoolean(VIEWER_SHOW_COORDINATES, enabled);
+        preferences.flush();
+    }
+
+    /** Whether the user's markers stand on the map as flags. */
+    public boolean isShowMarkers() {
+        return showMarkers;
+    }
+
+    public void setShowMarkers(boolean enabled) {
+        showMarkers = enabled;
+        preferences.putBoolean(VIEWER_SHOW_MARKERS, enabled);
         preferences.flush();
     }
 
