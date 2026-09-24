@@ -6,6 +6,7 @@ import static com.peaknav.utils.PeakNavPermissions.handleLocationPermission;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getLoadFactory;
 import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
+import static com.peaknav.utils.PeakNavUtils.looksLikeImage;
 import static com.peaknav.utils.PeakNavUtils.checkImageGpsAndPrompt;
 import static com.peaknav.utils.PeakNavUtils.setBytesAsBackgroundImage;
 import static com.peaknav.viewer.controller.MapController.setNumOfCpuCores;
@@ -337,13 +338,6 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-	}
-
-	private static boolean looksLikeImage(byte[] d) {
-		if (d.length >= 3 && (d[0] & 0xFF) == 0xFF && (d[1] & 0xFF) == 0xD8 && (d[2] & 0xFF) == 0xFF) {
-			return true; // JPEG
-		}
-		return d.length >= 4 && (d[0] & 0xFF) == 0x89 && d[1] == 'P' && d[2] == 'N' && d[3] == 'G'; // PNG
 	}
 
 	private byte[] readShareBytes(Uri uri) {

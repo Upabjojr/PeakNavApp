@@ -327,6 +327,18 @@ public class PeakNavUtils {
     }
 
     /**
+     * Whether the bytes are a JPEG or a PNG, by their magic numbers - the only images the
+     * background can show. A file handed over by another app is judged by this rather than
+     * by its name or MIME type, which senders often get wrong; anything else is taken as GPX.
+     */
+    public static boolean looksLikeImage(byte[] d) {
+        if (d.length >= 3 && (d[0] & 0xFF) == 0xFF && (d[1] & 0xFF) == 0xD8 && (d[2] & 0xFF) == 0xFF) {
+            return true; // JPEG
+        }
+        return d.length >= 4 && (d[0] & 0xFF) == 0x89 && d[1] == 'P' && d[2] == 'N' && d[3] == 'G'; // PNG
+    }
+
+    /**
      * If the given image carries EXIF GPS coordinates, ask the user (through the
      * native screen caller) whether to navigate to the place it was taken.
      */

@@ -83,6 +83,18 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
 
+            <!-- Open a JPEG or PNG directly - "Open with" from a file manager, a gallery or a
+                 download - the same as a shared photo. Only the two types the background can
+                 decode: claiming image/* would put PeakNav in the list for HEIC and GIF too. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="image/jpeg" />
+                <data android:mimeType="image/png" />
+            </intent-filter>
+
             <!-- Receive a shared GPX track. GPX has no single agreed MIME type, so accept the ones
                  apps commonly attach; the launcher confirms the content by its bytes. -->
             <intent-filter>

@@ -99,8 +99,8 @@
     <!-- Termination, not a prompt, if the camera is reached without it - as with motion. -->
     <key>NSCameraUsageDescription</key>
     <string>PeakNav uses the camera to place a photo behind the mountain view.</string>
-    <!-- Registers the app as a .gpx handler, so "Open in PeakNav" appears in Files, Mail
-         and other apps' share sheets - the counterpart of the Android manifest's VIEW/SEND
+    <!-- Registers the app as a .gpx, .jpeg and .png handler, so "Open in PeakNav" appears
+         in Files, Mail and other apps' share sheets - the counterpart of the Android manifest's VIEW/SEND
          filters. The type is declared here as well as claimed: GPX has no system-known
          identifier, and an imported declaration is what ties the extension and MIME type
          to it. Incoming files are copied to Documents/Inbox and arrive in the app
@@ -124,6 +124,21 @@
             <key>LSItemContentTypes</key>
             <array>
                 <string>com.topografix.gpx</string>
+            </array>
+        </dict>
+        <!-- A photo opened from Files or Mail becomes the background, as a picked one
+             does. Alternate, so PeakNav is offered without becoming the default viewer. -->
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Photo</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.jpeg</string>
+                <string>public.png</string>
             </array>
         </dict>
     </array>

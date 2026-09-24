@@ -30,18 +30,20 @@ import java.util.TimerTask;
  * looked in {@code src/main/java}, found nothing there, and reported success. That is fixed;
  * the launcher is now held to the same compiler as the rest of the project.
  *
- * <p>Beyond launching, this is also where GPX files opened from other apps arrive:
- * Info.plist registers the .gpx document type, and the system calls {@link #openURL} with
- * a copy of the file in Documents/Inbox.
+ * <p>Beyond launching, this is also where GPX tracks and photos opened from other apps
+ * arrive: Info.plist registers the .gpx, .jpeg and .png document types, and the system
+ * calls {@link #openURL} with a copy of the file in Documents/Inbox.
  */
 public class IOSLauncher extends IOSApplication.Delegate {
 
     /** Give a cold-started app this long to bring the map screen up before dropping a file. */
-    private static final int GPX_DELIVERY_ATTEMPTS = 60;
-    private static final long GPX_RETRY_MS = 250L;
+    private static final int DELIVERY_ATTEMPTS = 60;
+    private static final long RETRY_MS = 250L;
 
     /**
-     * A .gpx handed over by another app - Files, Mail, a share sheet. The bytes are read
+     * A .gpx or a photo handed over by another app - Files, Mail, a share sheet. The bytes
+     * decide which it is, as on Android: JPEG or PNG magic is a photo, anything else a
+     * track. They are read
      * immediately (the Inbox copy is ours, but there is no reason to gamble on its
      * lifetime), and delivery waits for the map screen: on a cold start this fires long
      * before core exists, the same race Android's share intent has, resolved the same way.
@@ -55,24 +57,38 @@ public class IOSLauncher extends IOSApplication.Delegate {
         if (bytes == null) {
             return false;
         }
-        deliverGpxWhenReady(new String(bytes, StandardCharsets.UTF_8), 0);
+        deliverWhenReady(bytes, 0);
         return true;
     }
 
-    private void deliverGpxWhenReady(final String xml, final int attempt) {
-        if (attempt > GPX_DELIVERY_ATTEMPTS) {
+    private void deliverWhenReady(final byte[] bytes, final int attempt) {
+        if (attempt > DELIVERY_ATTEMPTS) {
             return;
         }
         if (MapViewerSingleton.getViewerInstance() == null || Gdx.app == null) {
-            new Timer("gpx-delivery", true).schedule(new TimerTask() {
+            new Timer("file-delivery", true).schedule(new TimerTask() {
                 @Override
                 public void run() {
-                    deliverGpxWhenReady(xml, attempt + 1);
+                    deliverWhenReady(bytes, attempt + 1);
                 }
-            }, GPX_RETRY_MS);
+            }, RETRY_MS);
+            return;
+        }
+        if (PeakNavUtils.looksLikeImage(bytes)) {
+            // As a photo picked from the library: "Loading..." up, decoded on a worker.
+            MapViewerSingleton.getViewerInstance().setPhotoLoading(true);
+            PeakNavUtils.getC().submitExecutorGeneric(() -> {
+                try {
+                    PeakNavUtils.setBytesAsBackgroundImage(bytes);
+                    PeakNavUtils.checkImageGpsAndPrompt(bytes);
+                } catch (RuntimeException unreadable) {
+                    MapViewerSingleton.getViewerInstance().setPhotoLoading(false);
+                }
+            });
             return;
         }
         // loadFromXml toasts and moves the camera, so it belongs on the render thread.
+        final String xml = new String(bytes, StandardCharsets.UTF_8);
         Gdx.app.postRunnable(() -> PeakNavUtils.getC().gpxManager.loadFromXml(xml));
     }
 
