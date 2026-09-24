@@ -487,6 +487,11 @@ public class LabelRenderer {
     // (setTransformMatrix copies the values into the batch). Avoids a per-frame allocation.
     private final Matrix4 identityMat = new Matrix4();
 
+    /** Radius of the field-of-view beam behind the rose, in rose widths: the rose is 0.5. */
+    private static final float COMPASS_BEAM_RADIUS = 0.72f;
+    private static final Color COMPASS_BEAM_FILL = new Color(0.93f, 0.16f, 0.16f, 0.55f);
+    private static final Color COMPASS_BEAM_EDGE = new Color(0.93f, 0.16f, 0.16f, 1f);
+
     private void renderCompass() {
         // The rose in the top-right corner was always drawn; it now honours the
         // compass-and-location group's master switch and its own toggle.
@@ -497,12 +502,23 @@ public class LabelRenderer {
         float angle2 = cam.getAngleForCompass2();
         float deltaAngle = cam.getAngleForCompassDelta();
 
+        // The field of view, as a beam out of the rose. The rose is an opaque disc, so a wedge
+        // of its own radius showed only as a sliver at the rim; this one reaches past it, a
+        // translucent fill with a solid edge.
+        float beamRadius = w * COMPASS_BEAM_RADIUS;
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         try {
-            shapeRenderer.setColor(Color.RED);
-            shapeRenderer.arc(x, y, w/2f, angle2, deltaAngle);
-        } catch (Throwable throwable) {
-            System.err.println("error!");
+            shapeRenderer.setColor(COMPASS_BEAM_FILL);
+            shapeRenderer.arc(x, y, beamRadius, angle2, deltaAngle);
+        } finally {
+            shapeRenderer.end();
+        }
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        try {
+            shapeRenderer.setColor(COMPASS_BEAM_EDGE);
+            shapeRenderer.arc(x, y, beamRadius, angle2, deltaAngle);
         } finally {
             shapeRenderer.end();
         }
