@@ -45,13 +45,14 @@ public final class RouteToPoint {
     private static final int READ_ZOOM = 12;
     private static final int MAX_TILES = 144;
     /**
-     * How long a search may take before the user is told it gave up. A 40 km walk over dense paths
-     * can keep a phone busy for a long while, and nothing on screen says whether a route is still
-     * coming - the GPX view just never appears.
+     * How long a search may take before the user is told it gave up. A search that finds no route
+     * is the one that runs to the limit - it explores every path it read before it can say so - and
+     * waiting 45 seconds to be told "no route" was far too long; a route found is found well within
+     * this.
      */
-    static final long TIMEOUT_SECONDS = 45;
+    static final long TIMEOUT_SECONDS = 5;
     /** Beyond the deadline, how long the watchdog allows a step that cannot check it (a tile read). */
-    private static final long WATCHDOG_GRACE_SECONDS = 10;
+    private static final long WATCHDOG_GRACE_SECONDS = 2;
 
     /** What a computation came to: a route, or why there is none. */
     public static final class Result {
