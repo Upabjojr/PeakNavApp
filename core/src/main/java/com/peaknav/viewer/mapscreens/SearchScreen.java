@@ -6,6 +6,7 @@ import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
 import static com.peaknav.utils.PeakNavUtils.s;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -46,6 +47,11 @@ class SearchScreen extends MapScreens.Base {
     private double pinLat, pinLon;
     /** Distinguishes the latest online search from older ones still on their way back. */
     private int searchGeneration = 0;
+    /** The result rows in list order, and where each one points, for the arrow keys. */
+    private final List<Table> resultRows = new ArrayList<>();
+    private final List<double[]> resultPoints = new ArrayList<>();
+    /** The row the arrow keys have highlighted, or -1: Enter goes there instead of searching. */
+    private int selected = -1;
 
     SearchScreen() {
         float unit = MapScreens.unit();
@@ -56,9 +62,20 @@ class SearchScreen extends MapScreens.Base {
         field.setMessageText(s("Search_place_title"));
         field.setTextFieldListener((textField, c) -> {
             if (c == '\n' || c == '\r') {
-                searchAll(textField.getText());
+                onEnter(textField.getText());
             } else {
                 searchOffline(textField.getText());
+            }
+        });
+        field.addListener(new InputListener() {
+            @Override
+            public boolean keyDown(InputEvent event, int keycode) {
+                if (keycode == Input.Keys.DOWN) {
+                    return moveSelection(1);
+                } else if (keycode == Input.Keys.UP) {
+                    return moveSelection(-1);
+                }
+                return false;
             }
         });
         TextButton search = MapScreens.button(s("Search"));
@@ -235,8 +252,52 @@ class SearchScreen extends MapScreens.Base {
                 }));
     }
 
+    /** Enter: with a result highlighted, it is picked and gone to, as a tap and Go To; else a search. */
+    private void onEnter(String typed) {
+        if (selected >= 0 && resultsPane.isVisible()) {
+            double[] point = resultPoints.get(selected);
+            setPin(point[0], point[1], false);
+            goToPin();
+        } else {
+            searchAll(typed);
+        }
+    }
+
+    /**
+     * Up and Down: the highlight moves through the results, from none to the first, stopping
+     * at either end, and the list scrolls to keep it in view. False, so the key goes on to
+     * the text field, when there is no list to move in.
+     */
+    private boolean moveSelection(int step) {
+        if (!resultsPane.isVisible() || resultRows.isEmpty()) {
+            return false;
+        }
+        int next = Math.max(0, Math.min(resultRows.size() - 1, selected + step));
+        select(next);
+        Table row = resultRows.get(next);
+        resultsPane.layout();
+        resultsPane.scrollTo(row.getX(), row.getY(), row.getWidth(), row.getHeight());
+        return true;
+    }
+
+    private void select(int index) {
+        if (selected >= 0 && selected < resultRows.size()) {
+            resultRows.get(selected).setBackground(MapScreens.white());
+        }
+        selected = index;
+        if (index >= 0) {
+            resultRows.get(index).setBackground(
+                    getC().widgetTextures.getUniformDrawable(SELECTED_ROW));
+        }
+    }
+
+    private static final Color SELECTED_ROW = new Color(0.78f, 0.87f, 1f, 1f);
+
     private void setResults(List<LuceneGeonameSearch.GeonameResult> found) {
         results.clearChildren();
+        resultRows.clear();
+        resultPoints.clear();
+        selected = -1;
         for (LuceneGeonameSearch.GeonameResult result : found) {
             addResult(result.getFullName(), result.lat, result.lon);
         }
@@ -261,9 +322,14 @@ class SearchScreen extends MapScreens.Base {
             }
         });
         results.add(row).growX().padBottom(1f).row();
+        resultRows.add(row);
+        resultPoints.add(new double[]{lat, lon});
     }
 
     private void showResults(boolean visible) {
+        if (!visible) {
+            select(-1);
+        }
         resultsPane.setVisible(visible);
         if (visible) {
             resultsPane.setScrollY(0);
