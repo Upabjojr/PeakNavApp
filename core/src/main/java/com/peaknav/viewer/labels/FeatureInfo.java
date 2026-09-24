@@ -143,6 +143,21 @@ public final class FeatureInfo {
         return new FeatureInfo(area.name, areaKind(type), rows, new ArrayList<Row>(), area.lat, area.lon);
     }
 
+    /** A marker the user saved: its height, where it is from here, and when it was saved. */
+    public static FeatureInfo of(com.peaknav.markers.Marker marker, Viewer viewer) {
+        List<Row> rows = new ArrayList<>();
+        if (!Double.isNaN(marker.elevation)) {
+            add(rows, "Feature_elevation", GpxTrackStats.formatHeight(marker.elevation, viewer.units), null);
+        }
+        whereFrom(rows, marker.latitude, marker.longitude, viewer);
+        if (marker.created > 0) {
+            add(rows, "Marker_saved_on", java.text.DateFormat.getDateTimeInstance(
+                    java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(new java.util.Date(marker.created)), null);
+        }
+        return new FeatureInfo(marker.name, s("Marker_kind"), rows, new ArrayList<Row>(),
+                marker.latitude, marker.longitude);
+    }
+
     /** Distance, direction and coordinates. */
     private static void whereFrom(List<Row> rows, double lat, double lon, Viewer viewer) {
         if (!Double.isNaN(viewer.latitude) && !Double.isNaN(viewer.longitude)) {

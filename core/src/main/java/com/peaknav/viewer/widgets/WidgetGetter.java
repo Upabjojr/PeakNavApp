@@ -564,6 +564,7 @@ public class WidgetGetter {
         public final Button buttonOpenCoordinate;
         /** Walks to the tapped point along the map's paths, as a GPX track. */
         public final Button buttonRouteToDest;
+        public final Button buttonSaveMarker;
         private final Button buttonCancelGoToDest;
         public final Table tableCancelGoToDest;
         /** Opacity of the rendered terrain over a photo; shown only while a photo is up. */
@@ -851,7 +852,18 @@ public class WidgetGetter {
                     mapApp.mapViewerScreen.removeImpact();
                 }
             });
+            // And keeping the point: a marker, a flag on the map from now on (MarkerStore).
+            buttonSaveMarker = getC().widgetTextures.getButtonWithIcon("icons/icon_marker_add.png");
+            buttonSaveMarker.setName("save_marker");   // for /widgets, which places the tutorial's markers
+            buttonSaveMarker.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    mapApp.mapViewerScreen.saveImpactAsMarker();
+                }
+            });
             Table secondRow = new Table();
+            secondRow.add(buttonSaveMarker).width(widgetUnitStep).height(widgetUnitStep)
+                    .padRight(0.35f * widgetUnitStep);
             secondRow.add(buttonRouteToDest).width(widgetUnitStep).height(widgetUnitStep)
                     .padRight(0.35f * widgetUnitStep);
             secondRow.add(buttonOpenCoordinate).width(widgetUnitStep).height(widgetUnitStep);

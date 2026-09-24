@@ -36,6 +36,7 @@ public class FeatureInfoPane {
     private static final Color KIND = new Color(0.82f, 0.88f, 1f, 1f);
     private static final Color FACT = new Color(0.70f, 0.78f, 0.90f, 1f);
     private static final Color LINK = new Color(0.55f, 0.80f, 1f, 1f);
+    private static final Color ACTION = new Color(0.10f, 0.45f, 0.90f, 0.85f);
     private static final Color SCROLL_KNOB = new Color(1f, 1f, 1f, 0.55f);
     private static final float PANE_UNITS = 5.6f;
     private static final float PAD_LEFT_UNITS = 1.5f;
@@ -63,6 +64,11 @@ public class FeatureInfoPane {
     private final Image tagsChevron;
     private boolean tagsOpen = false;
     private FeatureInfo shown;
+    /** The pane's one action and its button's words; null for none. */
+    private String actionText;
+    private Runnable action;
+    private final Label actionLabel;
+    private final Table actionButton = new Table();
     /** The texts shown, one per line, "label: value", for tests. */
     private final List<String> shownLines = new ArrayList<>();
 
@@ -96,6 +102,22 @@ public class FeatureInfoPane {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
                 hide();
+            }
+        });
+
+        actionLabel = new Label("", valueStyle);
+        actionLabel.setAlignment(Align.center);
+        actionButton.setBackground(getC().widgetTextures.getUniformDrawable(ACTION));
+        actionButton.setTouchable(Touchable.enabled);
+        actionButton.setName("feature_info_action");
+        actionButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                Runnable run = action;
+                hide();
+                if (run != null) {
+                    run.run();
+                }
             }
         });
 
@@ -142,7 +164,17 @@ public class FeatureInfoPane {
     }
 
     public void show(FeatureInfo info) {
+        show(info, null, null);
+    }
+
+    /**
+     * With one thing to do about it, on a button at the pane's foot: "Delete marker", "Save as
+     * marker". The pane closes once the button has run.
+     */
+    public void show(FeatureInfo info, String actionText, Runnable action) {
         shown = info;
+        this.actionText = action == null ? null : actionText;
+        this.action = action;
         tagsOpen = false;
         layoutPanel();
         root.setVisible(true);
@@ -152,6 +184,7 @@ public class FeatureInfoPane {
     public void hide() {
         root.setVisible(false);
         shown = null;
+        action = null;
     }
 
     public void setTagsOpen(boolean open) {
@@ -160,6 +193,17 @@ public class FeatureInfoPane {
         layoutPanel();
         scroll.layout();
         scroll.setScrollY(y);
+    }
+
+    /** Presses the pane's action button, as a tap on it does; false if it has none. For tests. */
+    public boolean pressAction() {
+        if (action == null || !isShown()) {
+            return false;
+        }
+        Runnable run = action;
+        hide();
+        run.run();
+        return true;
     }
 
     public boolean isTagsOpen() {
@@ -216,7 +260,14 @@ public class FeatureInfoPane {
         }
 
         panel.add(head).width(width).row();
-        panel.add(scroll).width(width).maxHeight(visibleHeight()).padTop(0.08f * u);
+        panel.add(scroll).width(width).maxHeight(visibleHeight()).padTop(0.08f * u).row();
+        if (action != null) {
+            actionLabel.setText(actionText);
+            actionButton.clearChildren();
+            actionButton.add(actionLabel).pad(0.12f * u, 0.3f * u, 0.12f * u, 0.3f * u);
+            panel.add(actionButton).width(width).padTop(0.14f * u);
+            shownLines.add("[" + actionText + "]");
+        }
         panel.invalidateHierarchy();
     }
 

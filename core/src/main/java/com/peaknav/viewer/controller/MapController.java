@@ -80,6 +80,8 @@ public class MapController {
     public final OnlineSearch onlineSearch = new OnlineSearch();
     public final com.peaknav.gpx.GpxManager gpxManager = new com.peaknav.gpx.GpxManager();
     public final com.peaknav.areas.AreaRegistry areaRegistry = new com.peaknav.areas.AreaRegistry();
+    /** The user's own points, drawn as flags; see MarkerStore. The file is read on first use. */
+    public final com.peaknav.markers.MarkerStore markerStore = new com.peaknav.markers.MarkerStore();
     public WidgetGetter widgetGetter = null;
     public CacheDirManager cacheDirManager;
     public LuceneGeonameSearch luceneGeonameSearch;

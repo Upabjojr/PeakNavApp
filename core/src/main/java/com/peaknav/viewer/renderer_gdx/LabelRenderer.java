@@ -127,6 +127,8 @@ public class LabelRenderer {
             renderLabelLines();
             renderLabelTexts();
         }
+        // The user's own markers over the map's labels: they are what was put there on purpose.
+        renderMarkers();
         renderHorizonCompass();
         MapViewerScreen viewer = MapViewerSingleton.getViewerInstance();
         if (getAppState().isLoadingMapData() || (viewer != null && viewer.isBusy())) {
@@ -630,13 +632,184 @@ public class LabelRenderer {
         return out;
     }
 
+    // ---- Markers ---------------------------------------------------------------------------
+    //
+    // The user's saved points (MarkerStore), each a flag standing on its spot with its name beside
+    // it - over the labels, since a marker is there because someone put it there. A flag behind
+    // the camera, behind the terrain or too far away to matter is not drawn, and what was drawn
+    // is kept, flag and name, for a tap to find (featureAt).
+
+    /** Farther than this a marker is not drawn: it would be a speck, and far off the map loaded. */
+    private static final float MARKER_MAX_METRES = 200_000f;
+    /** A flag's height on screen, in widget units. */
+    private static final float MARKER_FLAG_UNITS = 1.25f;
+    /** Where the pole's foot is across the flag's image, as a share of its width (icon_marker_flag). */
+    private static final float MARKER_FOOT_X = 22f / 128f;
+    /** Lifted a little over the ground for the occlusion test, or the ground itself hides it. */
+    private static final float MARKER_LIFT_METRES = 8f;
+
+    private com.badlogic.gdx.graphics.g2d.TextureRegion markerFlag;
+    private final GlyphLayout markerGlyph = new GlyphLayout();
+    private final Vector3 markerWorld = new Vector3();
+    private final Vector3 markerScreen = new Vector3();
+    private final Vector3 markerToward = new Vector3();
+
+    /** A marker as it was last drawn: the marker, and its flag and name's box on screen, pixels, y up. */
+    private static final class DrawnMarker {
+        final com.peaknav.markers.Marker marker;
+        final float x, y, width, height;
+        final float distance;
+
+        DrawnMarker(com.peaknav.markers.Marker marker, float x, float y, float width, float height, float distance) {
+            this.marker = marker;
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.distance = distance;
+        }
+    }
+
+    /** What the last frame drew, nearest last - it is drawn over the others. Render thread only. */
+    private final List<DrawnMarker> drawnMarkers = new java.util.ArrayList<>();
+
+    /** The markers the last frame drew, for tests: their names. Render thread only. */
+    public List<String> drawnMarkerNames() {
+        List<String> out = new java.util.ArrayList<>();
+        for (DrawnMarker d : drawnMarkers) {
+            out.add(d.marker.name);
+        }
+        return out;
+    }
+
+    /** The screen box of the marker drawn with that name, pixels, y up; null if none. For tests. */
+    public float[] drawnMarkerBox(String name) {
+        for (DrawnMarker d : drawnMarkers) {
+            if (d.marker.name.equals(name)) {
+                return new float[]{d.x, d.y, d.width, d.height};
+            }
+        }
+        return null;
+    }
+
+    private void renderMarkers() {
+        drawnMarkers.clear();
+        MapViewerScreen viewer = MapViewerSingleton.getViewerInstance();
+        if (viewer == null || viewer.cam == null) {
+            return;
+        }
+        List<com.peaknav.markers.Marker> markers = getC().markerStore.getMarkers();
+        if (markers.isEmpty()) {
+            return;
+        }
+        if (markerFlag == null) {
+            markerFlag = getC().widgetTextures.getTextureRegionDrawable("icons/icon_marker_flag.png").getRegion();
+        }
+        float targetLatitude = getC().L.getTargetLatitude();
+        float flagHeight = MARKER_FLAG_UNITS * widgetUnitStep;
+        float flagWidth = flagHeight * markerFlag.getRegionWidth() / markerFlag.getRegionHeight();
+        BitmapFont font = getC().styleSingleton.getBitmapFontVerySmallWhite();
+        for (com.peaknav.markers.Marker m : markers) {
+            float lat = (float) m.latitude, lon = (float) m.longitude;
+            double metres = Double.isNaN(m.elevation)
+                    ? com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon) : m.elevation;
+            if (Double.isNaN(metres)) {
+                continue;
+            }
+            markerWorld.set((float) Units.convertLonitsToLatits(lon, targetLatitude), lat,
+                    Units.convertMetersToLatits(metres)
+                            - ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+            markerToward.set(markerWorld).sub(viewer.cam.position);
+            float distance = Units.convertLatitsToMeters(markerToward.len());
+            if (distance > MARKER_MAX_METRES || markerToward.dot(viewer.cam.direction) <= 0) {
+                continue;
+            }
+            if (viewer.impactPixmap != null) {
+                markerScreen.set(markerWorld);
+                markerScreen.z += Units.convertMetersToLatits(MARKER_LIFT_METRES);
+                if (!getC().visibility.checkVisible(markerScreen, viewer.impactPixmap)) {
+                    continue;
+                }
+            }
+            viewer.cam.project(markerScreen.set(markerWorld));
+            float footX = markerScreen.x, footY = markerScreen.y;
+            if (footX < -flagWidth || footX > Gdx.graphics.getWidth() + flagWidth
+                    || footY < -flagHeight || footY > Gdx.graphics.getHeight()) {
+                continue;
+            }
+            markerGlyph.setText(font, m.name);
+            float x = footX - MARKER_FOOT_X * flagWidth;
+            float width = flagWidth + (m.name.isEmpty() ? 0 : markerGlyph.width + 0.3f * widgetUnitStep);
+            drawnMarkers.add(new DrawnMarker(m, x, footY, width, flagHeight, distance));
+        }
+        if (drawnMarkers.isEmpty()) {
+            return;
+        }
+        // Far to near: a near flag stands in front of a far one.
+        java.util.Collections.sort(drawnMarkers, (a, b) -> Float.compare(b.distance, a.distance));
+
+        float padX = 0.12f * widgetUnitStep, padY = 0.06f * widgetUnitStep;
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        spriteBatch.setTransformMatrix(identityMat);
+        for (DrawnMarker d : drawnMarkers) {
+            // The name on a dark plate by the flag's cloth, then the flag over the plate's end.
+            if (!d.marker.name.isEmpty()) {
+                markerGlyph.setText(font, d.marker.name);
+                float plateX = d.x + flagWidth * 0.55f;
+                float plateH = markerGlyph.height + 2 * padY;
+                float plateY = d.y + flagHeight * 0.62f - plateH * 0.5f;
+                float plateW = markerGlyph.width + 2 * padX + flagWidth * 0.45f;
+                shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+                try {
+                    shapeRenderer.setColor(0.05f, 0.06f, 0.13f, 0.78f);
+                    fillPill(plateX, plateY, plateW, plateH, plateH * 0.5f);
+                } finally {
+                    shapeRenderer.end();
+                }
+                spriteBatch.begin();
+                try {
+                    font.setColor(Color.WHITE);
+                    font.draw(spriteBatch, d.marker.name, plateX + flagWidth * 0.45f + padX,
+                            plateY + plateH * 0.5f + markerGlyph.height * 0.5f);
+                } finally {
+                    spriteBatch.end();
+                }
+            }
+            spriteBatch.begin();
+            try {
+                spriteBatch.setColor(Color.WHITE);
+                spriteBatch.draw(markerFlag, d.x, d.y, flagWidth, flagHeight);
+            } finally {
+                spriteBatch.end();
+            }
+        }
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
     /**
-     * What the label at a point of the screen names: a {@link PoiObject} for a peak, hut or place,
-     * a {@link MapArea} for a lake, island, range or town, null where no label is drawn. The point
-     * is in pixels, y up. A label under the point itself wins over one only near it, and the
-     * peaks' and places' labels, drawn on top, over the areas'. Call on the render thread.
+     * What the label at a point of the screen names: a {@link com.peaknav.markers.Marker} for one
+     * of the user's flags, a {@link PoiObject} for a peak, hut or place, a {@link MapArea} for a
+     * lake, island, range or town, null where nothing is drawn. The point is in pixels, y up. What
+     * is under the point itself wins over what is only near it, and what is drawn on top - flags,
+     * then peaks' and places' labels - over what is beneath. Call on the render thread.
      */
     public Object featureAt(final float x, final float y, final float slack) {
+        // A marker first, nearest first: the flags are drawn over everything else.
+        com.peaknav.markers.Marker nearMarker = null;
+        for (int i = drawnMarkers.size() - 1; i >= 0; i--) {
+            DrawnMarker d = drawnMarkers.get(i);
+            if (x >= d.x && x <= d.x + d.width && y >= d.y && y <= d.y + d.height) {
+                return d.marker;
+            }
+            if (nearMarker == null && x >= d.x - slack && x <= d.x + d.width + slack
+                    && y >= d.y - slack && y <= d.y + d.height + slack) {
+                nearMarker = d.marker;
+            }
+        }
+        if (nearMarker != null) {
+            return nearMarker;
+        }
         if (!P.isLabelsVisible()) {
             return null;
         }

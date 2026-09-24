@@ -2290,17 +2290,38 @@ public class MapViewerScreen implements Screen {
 				Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude()),
 				getC().i18n != null ? getC().i18n.getLanguage() : null,
 				P.getUnitSystem());
-		if (feature instanceof PoiObject) {
-			PoiObject poi = (PoiObject) feature;
-			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(poi, viewer));
+		if (feature instanceof com.peaknav.markers.Marker) {
+			final com.peaknav.markers.Marker marker = (com.peaknav.markers.Marker) feature;
+			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(marker, viewer),
+					s("Marker_delete"), () -> {
+						getC().markerStore.remove(marker.latitude, marker.longitude);
+						removeImpact();
+						toast(" " + s("Marker_deleted") + " ");
+					});
+			stopOrbit();
+			impact = markerWorldPosition(marker);
+			updateImpact();
+		} else if (feature instanceof PoiObject) {
+			final PoiObject poi = (PoiObject) feature;
+			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(poi, viewer),
+					s("Marker_save"), () -> {
+						saveMarker(poi.name, poi.lat, poi.lon, poi.elevation);
+						// The flag takes the pin's place.
+						removeImpact();
+					});
 			stopOrbit();
 			impact = poi.getPosition3D(new Vector3());
 			updateImpact();
 		} else {
-			com.peaknav.areas.MapArea area = (com.peaknav.areas.MapArea) feature;
-			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(area, viewer));
+			final com.peaknav.areas.MapArea area = (com.peaknav.areas.MapArea) feature;
 			// The pin at its middle, on the ground there, where the terrain is loaded.
-			float ground = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(area.lat, area.lon);
+			final float ground = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(area.lat, area.lon);
+			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(area, viewer),
+					Float.isNaN(ground) ? null : s("Marker_save"),
+					Float.isNaN(ground) ? null : () -> {
+						saveMarker(area.name, area.lat, area.lon, ground);
+						removeImpact();
+					});
 			if (!Float.isNaN(ground)) {
 				stopOrbit();
 				impact = new Vector3(
@@ -2312,6 +2333,51 @@ public class MapViewerScreen implements Screen {
 			}
 		}
 		return true;
+	}
+
+	/** Where a marker stands in the world frame, on its saved height or, without one, the ground. */
+	private Vector3 markerWorldPosition(com.peaknav.markers.Marker marker) {
+		float lat = (float) marker.latitude, lon = (float) marker.longitude;
+		double metres = Double.isNaN(marker.elevation)
+				? com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon) : marker.elevation;
+		return new Vector3(
+				(float) Units.convertLonitsToLatits(lon, getC().L.getTargetLatitude()),
+				lat,
+				Double.isNaN(metres) ? 0f : Units.convertMetersToLatits(metres)
+						- com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+	}
+
+	/** Keeps a point as a marker, a flag on the map from now on; says so. */
+	public void saveMarker(String name, double latitude, double longitude, double elevationMetres) {
+		String kept = name == null || name.trim().isEmpty()
+				? getC().markerStore.nextDefaultName(s("Marker_kind")) : name.trim();
+		getC().markerStore.add(new com.peaknav.markers.Marker(kept, latitude, longitude, elevationMetres,
+				System.currentTimeMillis()));
+		toast(" " + s("Marker_saved") + ": " + kept + " ");
+	}
+
+	/**
+	 * The pin's point kept as a marker, from its button. Named after what the info pane shows,
+	 * when that is about the same spot - a peak tapped, then saved - and "Marker 3" otherwise.
+	 */
+	public void saveImpactAsMarker() {
+		if (impact == null) {
+			return;
+		}
+		float lat = impact.y;
+		float lon = Units.convertLatitsToLonits(impact.x, getC().L.getTargetLatitude());
+		double metres = Units.convertLatitsToMeters(impact.z
+				+ com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+		String name = null;
+		com.peaknav.viewer.labels.FeatureInfo shown = featureInfoPane == null ? null : featureInfoPane.getShown();
+		if (shown != null && Math.abs(shown.latitude - lat) < 1e-4 && Math.abs(shown.longitude - lon) < 1e-4) {
+			name = shown.title;
+		}
+		saveMarker(name, lat, lon, metres);
+		if (featureInfoPane != null) {
+			featureInfoPane.hide();
+		}
+		removeImpact();
 	}
 
 	public boolean updateImpact() {
