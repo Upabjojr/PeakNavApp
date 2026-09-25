@@ -51,14 +51,18 @@ public final class FeatureInfo {
     /** The map data's own tags, key and value, sorted by key; empty for an area. */
     public final List<Row> tags;
     public final double latitude, longitude;
+    /** Its Wikidata entry ("Q1374"), whose picture the pane shows when online; null if none. */
+    public final String wikidataId;
 
-    private FeatureInfo(String title, String kind, List<Row> rows, List<Row> tags, double latitude, double longitude) {
+    private FeatureInfo(String title, String kind, List<Row> rows, List<Row> tags, double latitude, double longitude,
+                        String wikidataId) {
         this.title = title;
         this.kind = kind;
         this.rows = Collections.unmodifiableList(rows);
         this.tags = Collections.unmodifiableList(tags);
         this.latitude = latitude;
         this.longitude = longitude;
+        this.wikidataId = wikidataLink(wikidataId) != null ? wikidataId.trim() : null;
     }
 
     /** Where the reader stands, to tell how far away and which way; NaN for not known. */
@@ -121,7 +125,8 @@ public final class FeatureInfo {
                 listed.add(new Row(key, tags.get(key), tagLink(key, tags.get(key))));
             }
         }
-        return new FeatureInfo(poi.name, kindOf(poi.drawLabelCategory, tags), rows, listed, poi.lat, poi.lon);
+        return new FeatureInfo(poi.name, kindOf(poi.drawLabelCategory, tags), rows, listed, poi.lat, poi.lon,
+                wikidata);
     }
 
     /** A lake, an island, a range or a town, from what the areas' data carries. */
@@ -143,7 +148,8 @@ public final class FeatureInfo {
             add(rows, "Feature_population", String.valueOf(area.population), null);
         }
         add(rows, "Feature_wikidata", area.wikidataId, wikidataLink(area.wikidataId));
-        return new FeatureInfo(area.name, areaKind(type), rows, new ArrayList<Row>(), area.lat, area.lon);
+        return new FeatureInfo(area.name, areaKind(type), rows, new ArrayList<Row>(), area.lat, area.lon,
+                area.wikidataId);
     }
 
     /** A marker the user saved: its height, where it is from here, and when it was saved. */
@@ -158,7 +164,7 @@ public final class FeatureInfo {
                     java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(new java.util.Date(marker.created)), null);
         }
         return new FeatureInfo(marker.name, s("Marker_kind"), rows, new ArrayList<Row>(),
-                marker.latitude, marker.longitude);
+                marker.latitude, marker.longitude, null);
     }
 
     /** Distance, direction and coordinates. */

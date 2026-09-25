@@ -5,6 +5,8 @@ import static com.peaknav.utils.PeakNavUtils.s;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.InputListener;
@@ -18,6 +20,8 @@ import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Align;
+import com.badlogic.gdx.utils.Scaling;
+import com.peaknav.network.WikidataPicture;
 import com.peaknav.viewer.labels.FeatureInfo;
 
 import java.util.ArrayList;
@@ -59,6 +63,11 @@ public class FeatureInfoPane {
     private final ScrollPane scroll;
     private final Button closeButton;
     private final Label.LabelStyle titleStyle, kindStyle, factStyle, valueStyle, linkStyle;
+    /** The Wikidata entry's picture, once fetched, and whose it is (see {@link WikidataPicture}). */
+    private Texture picture;
+    private String pictureCredit, pictureUrl, pictureFor;
+    /** The tallest the picture is drawn, in widget units, so the facts stay in view under it. */
+    private static final float PICTURE_MAX_UNITS = 3.4f;
     private final Table tagsHeader = new Table();
     private final Label tagsTitle;
     private final Image tagsChevron;
@@ -183,14 +192,57 @@ public class FeatureInfoPane {
         this.swatchSelected = selected;
         this.swatchPick = pick;
         tagsOpen = false;
+        showPictureOf(info.wikidataId);
         layoutPanel();
         root.setVisible(true);
         scroll.setScrollY(0);
     }
 
+    /**
+     * Asks for the picture of the Wikidata entry, when there is one and a connection: it
+     * arrives later, on the render thread, and goes at the top of the pane if the pane still
+     * shows the same thing.
+     */
+    private void showPictureOf(final String wikidataId) {
+        if (wikidataId != null && wikidataId.equals(pictureFor)) {
+            return;
+        }
+        disposePicture();
+        pictureFor = wikidataId;
+        if (wikidataId == null) {
+            return;
+        }
+        WikidataPicture.fetch(wikidataId, (id, fetched) -> {
+            if (!isShown() || !id.equals(pictureFor) || picture != null) {
+                fetched.pixmap.dispose();
+                return;
+            }
+            picture = new Texture(fetched.pixmap);
+            picture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            fetched.pixmap.dispose();
+            pictureCredit = fetched.credit;
+            pictureUrl = fetched.pageUrl;
+            float y = scroll.getScrollY();
+            layoutPanel();
+            scroll.layout();
+            scroll.setScrollY(y);
+        });
+    }
+
+    private void disposePicture() {
+        if (picture != null) {
+            picture.dispose();
+            picture = null;
+        }
+        pictureCredit = null;
+        pictureUrl = null;
+        pictureFor = null;
+    }
+
     public void hide() {
         root.setVisible(false);
         shown = null;
+        disposePicture();
         actions = new Runnable[0];
         actionTexts = new String[0];
         swatches = null;
@@ -263,6 +315,9 @@ public class FeatureInfoPane {
         shownLines.add(shown.kind);
 
         body.defaults().left().width(width);
+        if (picture != null) {
+            addPicture(width);
+        }
         for (FeatureInfo.Row row : shown.rows) {
             body.add(row(row, width)).padTop(0.04f * u).row();
         }
@@ -352,6 +407,34 @@ public class FeatureInfoPane {
     }
 
     /** "Elevation   2145 m", or a link, which opens where it leads when tapped. */
+    /** The picture, as wide as the pane unless that makes it too tall, and its credit under it. */
+    private void addPicture(float width) {
+        float u = widgetUnitStep;
+        float height = Math.min(width * picture.getHeight() / picture.getWidth(), PICTURE_MAX_UNITS * u);
+        Image image = new Image(new TextureRegionDrawable(new TextureRegion(picture)));
+        image.setScaling(Scaling.fit);
+        body.add(image).width(width).height(height).padTop(0.04f * u).row();
+        String source = s("Feature_picture_source");
+        Label credit = wrapped(pictureCredit == null || pictureCredit.isEmpty()
+                ? source : pictureCredit + " · " + source, pictureUrl != null ? linkStyle : factStyle);
+        // Smaller than the facts. The font is shared and already scaled; a label's own scale
+        // replaces that rather than multiplying it.
+        credit.setFontScale(valueStyle.font.getScaleX() * 0.8f, valueStyle.font.getScaleY() * 0.8f);
+        body.add(credit).padTop(0.02f * u).padBottom(0.08f * u).row();
+        if (pictureUrl != null) {
+            // The file's page on Commons: the full credit and licence, and the picture at size.
+            ClickListener open = new ClickListener() {
+                @Override
+                public void clicked(InputEvent event, float x, float y) {
+                    Gdx.net.openURI(pictureUrl);
+                }
+            };
+            image.addListener(open);
+            credit.setTouchable(Touchable.enabled);
+            credit.addListener(open);
+        }
+    }
+
     private Table row(final FeatureInfo.Row row, float width) {
         float gap = 0.12f * widgetUnitStep;
         float labelWidth = LABEL_SHARE * width;
