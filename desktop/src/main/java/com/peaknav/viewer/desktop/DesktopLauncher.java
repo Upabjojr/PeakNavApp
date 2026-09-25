@@ -7,6 +7,7 @@ import com.badlogic.gdx.Files;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Window;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3WindowAdapter;
 import com.peaknav.viewer.MapApp;
 
@@ -69,6 +70,14 @@ public class DesktopLauncher {
 			public boolean closeRequested() {
 				System.exit(0);
 				return true;
+			}
+
+			@Override
+			public void created(Lwjgl3Window window) {
+				// Pinch to zoom on a touchpad, where the X server has it; GLFW does not.
+				if (System.getProperty("os.name", "").toLowerCase().contains("linux")) {
+					TouchpadPinchX11.start(window.getWindowHandle());
+				}
 			}
 
 			@Override

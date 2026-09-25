@@ -494,6 +494,17 @@ public class MountainInputController extends CameraInputController {
         return zoom(pinchZoomFactor2 * amount);
     }
 
+    /**
+     * A pinch that has grown by {@code ratio} since its last step - a touchpad's, on the
+     * desktop: the field of view shrinks by the same factor, as between two fingers on a
+     * phone. zoom() scales the view by 1 - 50 * amount.
+     */
+    public boolean zoomByPinchScale(float ratio) {
+        if (!(ratio > 0f))
+            return false;
+        return zoom((1f - 1f / ratio) / pinchZoomFactor3);
+    }
+
     @Override
     public boolean zoom (float amount) {
         if (cameraControlsSuspended) {
