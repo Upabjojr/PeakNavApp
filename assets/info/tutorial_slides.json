@@ -93,6 +93,16 @@
     "image": "tutorial_tap.jpg",
     "key": "Tutorial_tap",
     "marker": {
+      "cx": 0.5,
+      "cy": 0.5695,
+      "rw": 0.085,
+      "rh": 0.0391
+    }
+  },
+  {
+    "image": "tutorial_tap.jpg",
+    "key": "Tutorial_go_to",
+    "marker": {
       "cx": 0.7848,
       "cy": 0.3023,
       "rw": 0.085,
@@ -135,33 +145,43 @@
     "marker": null
   },
   {
-    "image": "tutorial_gpx.jpg",
+    "image": "tutorial_route.jpg",
     "key": "Tutorial_gpx",
     "marker": {
-      "cx": 0.9197,
-      "cy": 0.4916,
+      "cx": 0.9194,
+      "cy": 0.1274,
       "rw": 0.085,
-      "rh": 0.0391
+      "rh": 0.0392
     }
   },
   {
-    "image": "tutorial_gpx.jpg",
+    "image": "tutorial_route.jpg",
+    "key": "Tutorial_gpx_play",
+    "marker": {
+      "cx": 0.9194,
+      "cy": 0.4688,
+      "rw": 0.085,
+      "rh": 0.0392
+    }
+  },
+  {
+    "image": "tutorial_route.jpg",
     "key": "Tutorial_gpx_stats",
     "marker": {
-      "cx": 0.4269,
-      "cy": 0.1421,
+      "cx": 0.4259,
+      "cy": 0.0774,
       "rw": 0.08,
-      "rh": 0.0368
+      "rh": 0.0369
     }
   },
   {
     "image": "tutorial_route.jpg",
     "key": "Tutorial_gpx_share",
     "marker": {
-      "cx": 0.9197,
-      "cy": 0.7277,
+      "cx": 0.9194,
+      "cy": 0.738,
       "rw": 0.085,
-      "rh": 0.0391
+      "rh": 0.0392
     }
   },
   {

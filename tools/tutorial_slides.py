@@ -42,13 +42,17 @@ SLIDES = [
     ("Tutorial_trails",         "trails",        None),
     ("Tutorial_pistes",         "pistes",        None),
     ("Tutorial_sky",            "sky",           None),
-    ("Tutorial_tap",            "tap",           "go_to"),
+    # the tapped point is the pin on the terrain; the buttons beside it get slides of their own
+    ("Tutorial_tap",            "tap",           "tap_pin"),
+    ("Tutorial_go_to",          "tap",           "go_to"),
     ("Tutorial_orbit",          "tap",           "orbit"),
     ("Tutorial_open_maps",      "tap",           "open_coordinate"),
     ("Tutorial_route",          "tap",           "route_to"),
     ("Tutorial_route_result",   "route",         None),
-    ("Tutorial_gpx",            "gpx",           "gpx_play"),
-    ("Tutorial_gpx_stats",      "gpx",           "gpx_info_size"),
+    # a GPX file is opened from the options; the play button is the track follower
+    ("Tutorial_gpx",            "route",         "options"),
+    ("Tutorial_gpx_play",       "route",         "gpx_play"),
+    ("Tutorial_gpx_stats",      "route",         "gpx_info_size"),
     # the share button is on the route view: while a tour runs the bar shows the tour's own buttons
     ("Tutorial_gpx_share",      "route",         "gpx_share"),
     ("Tutorial_gallery",        "base",          "gallery"),

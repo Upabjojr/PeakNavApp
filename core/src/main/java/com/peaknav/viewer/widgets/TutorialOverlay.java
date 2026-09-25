@@ -9,12 +9,14 @@ import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.InputListener;
 import com.badlogic.gdx.scenes.scene2d.Touchable;
+import com.badlogic.gdx.math.Interpolation;
 import com.badlogic.gdx.scenes.scene2d.actions.Actions;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
@@ -80,6 +82,7 @@ public class TutorialOverlay implements Disposable {
     private final BitmapFont font;
     private final float widgetUnitStep;
     private Texture ringTexture;
+    private Texture spotlightTexture;
     /** The two edge buttons, kept so the one with nowhere to go can be hidden. */
     private Table backButton, forwardButton;
     /** The close button in the corner; see {@link #onOwnButton}. */
@@ -435,6 +438,38 @@ public class TutorialOverlay implements Disposable {
         return new TextureRegion(ringTexture);
     }
 
+    /**
+     * The dimming around a ring: clear in the middle, darkening to solid towards the edges and
+     * corners, which are solid so the same texture also fills the rest of the picture.
+     */
+    private Texture spotlight() {
+        if (spotlightTexture == null) {
+            int size = 128;
+            float centre = size / 2f;
+            Pixmap pixmap = new Pixmap(size, size, Pixmap.Format.RGBA8888);
+            pixmap.setBlending(Pixmap.Blending.None);
+            for (int y = 0; y < size; y++) {
+                for (int x = 0; x < size; x++) {
+                    float d = (float) Math.hypot(x + 0.5f - centre, y + 0.5f - centre) / centre;
+                    float t = Math.max(0f, Math.min(1f, (d - SPOTLIGHT_CLEAR) / (1f - SPOTLIGHT_CLEAR)));
+                    pixmap.setColor(0f, 0f, 0f, t * t * (3 - 2 * t));
+                    pixmap.drawPixel(x, y);
+                }
+            }
+            spotlightTexture = new Texture(pixmap);
+            spotlightTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            pixmap.dispose();
+        }
+        return spotlightTexture;
+    }
+
+    /** The clear part of the spotlight, as a fraction of its radius. */
+    private static final float SPOTLIGHT_CLEAR = 0.5f;
+    /** The spotlight's size against the ring's: its clear part a little wider than the ring. */
+    private static final float SPOTLIGHT_SCALE = 2.6f;
+    /** How dark the picture gets away from the ring. */
+    private static final float SPOTLIGHT_DIM = 0.55f;
+
     private void disposePictures() {
         for (TextureRegion region : pictures.values()) {
             region.getTexture().dispose();
@@ -448,6 +483,10 @@ public class TutorialOverlay implements Disposable {
         if (ringTexture != null) {
             ringTexture.dispose();
             ringTexture = null;
+        }
+        if (spotlightTexture != null) {
+            spotlightTexture.dispose();
+            spotlightTexture = null;
         }
     }
 
@@ -496,21 +535,26 @@ public class TutorialOverlay implements Disposable {
 
         private final Image picture = new Image();
         private final Image ring = new Image();
-        /** A second ring that swells and fades out of it, so the eye is caught by movement. */
-        private final Image ripple = new Image();
+        /** Rings that swell and fade out of it one after the other, so the eye is caught by movement. */
+        private final Image[] ripples = {new Image(), new Image()};
+        /** The rest of the picture dimmed, so the ringed spot is the bright one. */
+        private final Spotlight spotlight = new Spotlight();
         private float[] marker;
 
         SlideView() {
             picture.setScaling(Scaling.fit);
-            ring.setDrawable(new TextureRegionDrawable(ring()));
-            ripple.setDrawable(new TextureRegionDrawable(ring()));
-            ring.setVisible(false);
-            ripple.setVisible(false);
-            ring.setTouchable(Touchable.disabled);
-            ripple.setTouchable(Touchable.disabled);
             picture.setTouchable(Touchable.disabled);
             addActor(picture);
-            addActor(ripple);
+            addActor(spotlight);
+            for (Image ripple : ripples) {
+                ripple.setDrawable(new TextureRegionDrawable(ring()));
+                ripple.setVisible(false);
+                ripple.setTouchable(Touchable.disabled);
+                addActor(ripple);
+            }
+            ring.setDrawable(new TextureRegionDrawable(ring()));
+            ring.setVisible(false);
+            ring.setTouchable(Touchable.disabled);
             addActor(ring);
         }
 
@@ -518,21 +562,37 @@ public class TutorialOverlay implements Disposable {
             this.marker = marker;
             picture.setDrawable(region == null ? null : new TextureRegionDrawable(region));
             ring.setVisible(marker != null);
-            ripple.setVisible(marker != null);
+            spotlight.setVisible(marker != null);
             ring.clearActions();
-            ripple.clearActions();
+            spotlight.clearActions();
+            for (Image ripple : ripples) {
+                ripple.setVisible(marker != null);
+                ripple.clearActions();
+                ripple.getColor().a = 0f;
+            }
             if (marker != null) {
-                // The ring itself breathes and brightens...
-                ring.getColor().a = 1f;
-                ring.addAction(Actions.forever(Actions.parallel(
-                        Actions.sequence(Actions.scaleTo(0.88f, 0.88f, 0.5f),
-                                Actions.scaleTo(1.06f, 1.06f, 0.5f)),
-                        Actions.sequence(Actions.alpha(0.55f, 0.5f), Actions.alpha(1f, 0.5f)))));
-                // ...while a second ring swells out of it and fades, twice a second-and-a-half.
-                ripple.addAction(Actions.forever(Actions.sequence(
-                        Actions.parallel(Actions.scaleTo(1f, 1f), Actions.alpha(0.85f)),
-                        Actions.parallel(Actions.scaleTo(1.9f, 1.9f, 1.2f), Actions.alpha(0f, 1.2f)),
-                        Actions.delay(0.3f))));
+                // The picture dims around the spot...
+                spotlight.getColor().a = 0f;
+                spotlight.addAction(Actions.alpha(1f, 0.5f));
+                // ...the ring swoops in onto it from large, then breathes and brightens...
+                ring.getColor().a = 0f;
+                ring.setScale(3f);
+                ring.addAction(Actions.sequence(
+                        Actions.parallel(Actions.scaleTo(1f, 1f, 0.55f, Interpolation.swingOut),
+                                Actions.fadeIn(0.3f)),
+                        Actions.forever(Actions.parallel(
+                                Actions.sequence(Actions.scaleTo(0.85f, 0.85f, 0.45f, Interpolation.sine),
+                                        Actions.scaleTo(1.08f, 1.08f, 0.45f, Interpolation.sine)),
+                                Actions.sequence(Actions.alpha(0.6f, 0.45f), Actions.alpha(1f, 0.45f))))));
+                // ...and rings swell out of it and fade, one after the other.
+                for (int i = 0; i < ripples.length; i++) {
+                    ripples[i].addAction(Actions.sequence(
+                            Actions.delay(0.55f + 0.7f * i),
+                            Actions.forever(Actions.sequence(
+                                    Actions.parallel(Actions.scaleTo(1f, 1f), Actions.alpha(0.9f)),
+                                    Actions.parallel(Actions.scaleTo(2.2f, 2.2f, 1.4f, Interpolation.pow2Out),
+                                            Actions.alpha(0f, 1.4f))))));
+                }
             }
             invalidate();
         }
@@ -558,8 +618,13 @@ public class TutorialOverlay implements Disposable {
             float height = 2 * marker[3] * drawnHeight;
             ring.setBounds(centreX - width / 2, centreY - height / 2, width, height);
             ring.setOrigin(Align.center);
-            ripple.setBounds(ring.getX(), ring.getY(), width, height);
-            ripple.setOrigin(Align.center);
+            for (Image ripple : ripples) {
+                ripple.setBounds(ring.getX(), ring.getY(), width, height);
+                ripple.setOrigin(Align.center);
+            }
+            spotlight.setBounds(left, bottom, drawnWidth, drawnHeight);
+            spotlight.hole(centreX - left, centreY - bottom,
+                    SPOTLIGHT_SCALE * width, SPOTLIGHT_SCALE * height);
         }
 
         @Override
@@ -570,6 +635,64 @@ public class TutorialOverlay implements Disposable {
         @Override
         public float getPrefHeight() {
             return 0;
+        }
+    }
+
+    /**
+     * The picture darkened everywhere but around the ring: the spotlight texture over the ring,
+     * and its solid corner stretched over the rest, all clipped to the picture.
+     */
+    private final class Spotlight extends Actor {
+        private final TextureRegion hole = new TextureRegion();
+        private final TextureRegion solid = new TextureRegion();
+        private float holeX, holeY, holeWidth, holeHeight;
+
+        Spotlight() {
+            setTouchable(Touchable.disabled);
+            setVisible(false);
+        }
+
+        /** The spotlight's centre and full size, in this actor's own coordinates. */
+        void hole(float centreX, float centreY, float width, float height) {
+            holeX = centreX - width / 2;
+            holeY = centreY - height / 2;
+            holeWidth = width;
+            holeHeight = height;
+        }
+
+        @Override
+        public void draw(Batch batch, float parentAlpha) {
+            Texture texture = spotlight();
+            hole.setRegion(texture);
+            solid.setTexture(texture);
+            solid.setRegion(0, 0, 1, 1);
+            // In the batch's coordinates, which are the parent's while it draws its children.
+            if (!clipBegin(getX(), getY(), getWidth(), getHeight())) {
+                return;
+            }
+            Color was = batch.getColor().cpy();
+            batch.setColor(1f, 1f, 1f, SPOTLIGHT_DIM * getColor().a * parentAlpha);
+            float x = getX(), y = getY(), w = getWidth(), h = getHeight();
+            float top = holeY + holeHeight, right = holeX + holeWidth;
+            batch.draw(hole, x + holeX, y + holeY, holeWidth, holeHeight);
+            if (top < h) {
+                batch.draw(solid, x, y + top, w, h - top);
+            }
+            if (holeY > 0) {
+                batch.draw(solid, x, y, w, holeY);
+            }
+            float from = Math.max(holeY, 0), to = Math.min(top, h);
+            if (to > from) {
+                if (holeX > 0) {
+                    batch.draw(solid, x, y + from, holeX, to - from);
+                }
+                if (right < w) {
+                    batch.draw(solid, x + right, y + from, w - right, to - from);
+                }
+            }
+            batch.flush();
+            clipEnd();
+            batch.setColor(was);
         }
     }
 }

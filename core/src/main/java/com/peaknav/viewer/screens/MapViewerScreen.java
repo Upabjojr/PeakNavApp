@@ -1576,6 +1576,7 @@ public class MapViewerScreen implements Screen {
 		optionPane.hide();
 
 		buttonPinLoc = new ImageButton(getC().widgetTextures.getTextureRegionDrawable("icons/icon_loc_pin.png"));
+		buttonPinLoc.setName("tap_pin");   // for /widgets, which places the tutorial's markers
 		buttonPinLoc.setWidth(25);
 		buttonPinLoc.setHeight(50);
 		buttonPinLoc.addListener(new ChangeListener() {

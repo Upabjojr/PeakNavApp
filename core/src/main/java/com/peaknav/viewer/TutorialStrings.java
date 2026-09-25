@@ -9,7 +9,7 @@ package com.peaknav.viewer;
  *
  * <p>{@link #KEYS} is the whole contract: a slide uses {@code <key>} for its caption and
  * {@code <key>_detail} for the line under it. The slide order lives with the script that
- * writes the page, {@code tools/tutorial_screenshots.py}.
+ * writes the slides, {@code tools/tutorial_slides.py}.
  */
 public final class TutorialStrings {
 
@@ -28,11 +28,13 @@ public final class TutorialStrings {
             "Tutorial_pistes",
             "Tutorial_sky",
             "Tutorial_tap",
+            "Tutorial_go_to",
             "Tutorial_orbit",
             "Tutorial_open_maps",
             "Tutorial_route",
             "Tutorial_route_result",
             "Tutorial_gpx",
+            "Tutorial_gpx_play",
             "Tutorial_gpx_stats",
             "Tutorial_gpx_share",
             "Tutorial_gallery",
