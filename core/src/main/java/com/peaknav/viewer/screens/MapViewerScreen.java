@@ -1588,6 +1588,9 @@ public class MapViewerScreen implements Screen {
 		buttonPinLoc.setVisible(false);
 		tableLocation.tableCancelGoToDest.setVisible(false);
 		stage.addActor(buttonPinLoc);
+		// A mark on the map, so under the panes and menus: added after them, it was drawn
+		// over the info pane of the very label that was tapped.
+		buttonPinLoc.setZIndex(gpxInfoPane.getTable().getZIndex());
 
 		tableDownloadData = widgetGetter.getTableDownloadData();
 		stage.addActor(tableDownloadData.getTable());
