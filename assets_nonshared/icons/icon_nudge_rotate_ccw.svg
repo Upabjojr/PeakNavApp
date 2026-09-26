@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Pinned photo: turn the terrain anticlockwise about the pin (the red dot). -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <path d="M 120 58 A 62 62 0 1 0 182 120" fill="none" stroke="#2b333c" stroke-width="18" stroke-linecap="round"/>
+  <polygon points="182,92 160,128 204,128" fill="#2b333c"/>
+  <circle cx="120" cy="120" r="15" fill="#d62828"/>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#2b333c" stroke-width="3"/>
+</svg>

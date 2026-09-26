@@ -266,6 +266,11 @@ public class GpxInfoPane {
         return label;
     }
 
+    /** The pane's box itself, inside the full-screen table: what it covers of the map. */
+    public Table getPanel() {
+        return panel;
+    }
+
     public Table getTable() {
         return root;
     }

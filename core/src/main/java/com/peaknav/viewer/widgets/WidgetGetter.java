@@ -130,6 +130,12 @@ public class WidgetGetter {
             super(text, style);
         }
 
+        /** A caption too long for its row slides rather than running past the button. */
+        @Override
+        protected Label newLabel(String text, Label.LabelStyle style) {
+            return new MarqueeLabel(text, style);
+        }
+
         public void addClickListener(Runnable runnable) {
             EventListener listener = new ChangeListener() {
                 @Override
@@ -200,7 +206,12 @@ public class WidgetGetter {
         style.up.setLeftWidth(marginWidth);
 
         style.font = getC().styleSingleton.getBitmapFontSmall();
-        return new TextButton(text, style);
+        return new TextButton(text, style) {
+            @Override
+            protected Label newLabel(String text, Label.LabelStyle style) {
+                return new MarqueeLabel(text, style);
+            }
+        };
     }
 
     public class TableTool extends TableContainer {
@@ -1068,6 +1079,17 @@ public class WidgetGetter {
         private final com.badlogic.gdx.math.Vector2 photoColumnAnchor = new com.badlogic.gdx.math.Vector2();
 
         /** Puts the photo-only group on the share button's column, one pad above its top. */
+        /**
+         * The top of the photo's column over the share button (the terrain-opacity bar, and in
+         * debug builds the save-sample button above it), in stage coordinates; NaN while hidden.
+         */
+        public float photoColumnTop() {
+            if (photoColumn == null || !photoColumn.isVisible()) {
+                return Float.NaN;
+            }
+            return photoColumn.getY() + photoColumn.getHeight();
+        }
+
         public void placePhotoColumn() {
             if (shareButton == null) {
                 return;

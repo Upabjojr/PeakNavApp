@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Pinned photo: shrink the terrain in towards the pin (the red dot). -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <g fill="none" stroke="#2b333c" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="180" y1="60" x2="146" y2="94"/>
+    <polyline points="142,62 142,98 178,98"/>
+    <line x1="60" y1="180" x2="94" y2="146"/>
+    <polyline points="62,142 98,142 98,178"/>
+  </g>
+  <circle cx="120" cy="120" r="15" fill="#d62828"/>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#2b333c" stroke-width="3"/>
+</svg>

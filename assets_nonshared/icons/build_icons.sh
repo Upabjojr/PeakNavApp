@@ -79,6 +79,15 @@ ICONS=(
   # 30x50 is not a free choice: WidgetTextures.getNinePatchDrawable builds this one with
   # hard-coded 10px splits on all four sides, which land on the bar in the artwork only at
   # the SVG's own size. Rendering it larger stretches the wrong pixels.
+  # Photo overlay: fine nudges, and fine turns and stretches about a pinned point.
+  "icon_nudge_up:128:128"
+  "icon_nudge_down:128:128"
+  "icon_nudge_left:128:128"
+  "icon_nudge_right:128:128"
+  "icon_nudge_rotate_ccw:128:128"
+  "icon_nudge_rotate_cw:128:128"
+  "icon_nudge_stretch:128:128"
+  "icon_nudge_shrink:128:128"
   "slider_nine_patch:30:50"
 )
 

@@ -19,6 +19,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.peaknav.viewer.MapApp;
 import com.peaknav.viewer.MapViewerSingleton;
+import com.peaknav.viewer.widgets.MarqueeLabel;
 import com.peaknav.viewer.widgets.WidgetGetter;
 import static com.peaknav.viewer.widgets.WidgetGetter.ImageTextButtonOptionPane;
 
@@ -775,7 +776,8 @@ public class OptionPane {
                             final Slider[] out, final SliderChange onChange) {
         Table row = new Table();
         row.setBackground(getC().widgetTextures.getUniformDrawable(Color.WHITE));
-        Label label = new Label(text, new Label.LabelStyle(getC().styleSingleton.getBitmapFontSmall(), Color.BLACK));
+        // A name longer than the room beside the slider slides rather than pushing the row wider.
+        Label label = new MarqueeLabel(text, new Label.LabelStyle(getC().styleSingleton.getBitmapFontSmall(), Color.BLACK));
         final Slider slider = new Slider(min, max, step, false, menuSliderStyle(0.8f * height));
         slider.addListener(new ChangeListener() {
             @Override
@@ -783,8 +785,9 @@ public class OptionPane {
                 onChange.changed(slider.getValue(), !slider.isDragging());
             }
         });
-        row.add(label).left().padLeft(0.3f * widgetUnitStep).expandX();
-        row.add(slider).width(sliderWidth).height(0.8f * height).padRight(0.3f * widgetUnitStep);
+        row.add(label).left().padLeft(0.3f * widgetUnitStep).expandX().fillX();
+        row.add(slider).width(sliderWidth).height(0.8f * height).padLeft(0.2f * widgetUnitStep)
+                .padRight(0.3f * widgetUnitStep);
         out[0] = slider;
         return row;
     }
@@ -798,7 +801,7 @@ public class OptionPane {
                              final SliderChange onChange) {
         Table cell = new Table();
         cell.setBackground(getC().widgetTextures.getUniformDrawable(Color.WHITE));
-        Label label = new Label(text, new Label.LabelStyle(getC().styleSingleton.getBitmapFontVerySmallDark(), Color.BLACK));
+        Label label = new MarqueeLabel(text, new Label.LabelStyle(getC().styleSingleton.getBitmapFontVerySmallDark(), Color.BLACK));
         final Slider slider = new Slider(min, max, step, false, menuSliderStyle(0.5f * height));
         slider.addListener(new ChangeListener() {
             @Override
@@ -806,7 +809,7 @@ public class OptionPane {
                 onChange.changed(slider.getValue(), !slider.isDragging());
             }
         });
-        cell.add(label).left().padLeft(0.3f * widgetUnitStep).row();
+        cell.add(label).left().fillX().padLeft(0.3f * widgetUnitStep).padRight(0.3f * widgetUnitStep).row();
         cell.add(slider).expandX().fillX().height(0.5f * height)
                 .padLeft(0.3f * widgetUnitStep).padRight(0.3f * widgetUnitStep);
         out[0] = slider;
@@ -850,7 +853,8 @@ public class OptionPane {
 
         // Dash length, short on the left: a slider over the dash count, reversed, so dragging
         // right lengthens the dashes rather than multiplying them.
-        float sliderWidth = oneColumn ? buttonWidth * 0.62f : buttonWidth * 1.3f;
+        // Upright, half the row: the rest is the name's, which slides when it is longer still.
+        float sliderWidth = oneColumn ? buttonWidth * 0.5f : buttonWidth * 1.3f;
         final Slider[] dashLength = new Slider[1];
         Table dashLengthRow = sliderControl(oneColumn, s("Road_dash_length"), RoadStyle.DASH_COUNT_MIN,
                 RoadStyle.DASH_COUNT_MAX, 1f, sliderWidth, dashLength, (value, settled) -> {

@@ -307,6 +307,47 @@ public class MountainInputController extends CameraInputController {
         return processed;
     }
 
+    /**
+     * Moves the terrain on screen by a few pixels, for lining it up with a photo more finely
+     * than a finger can drag: the camera turns about its own up and right axes by the angle a
+     * pixel spans, so the move is exact on screen whatever the camera's roll. Positive
+     * {@code dx} is to the right, positive {@code dy} up.
+     */
+    public void nudgeTerrain(float dxPixels, float dyPixels) {
+        if (cameraControlsSuspended) {
+            return;
+        }
+        mapViewerScreen.stopOrbit();
+        float degreesPerPixel = perspectiveCamera.fieldOfView / Math.max(1, Gdx.graphics.getHeight());
+        // Turning the camera about its up axis to the left carries the terrain to the right.
+        camera.rotateAround(camera.position, tmpV2.set(camera.up), dxPixels * degreesPerPixel);
+        // Turning it up about its right axis carries the terrain down.
+        tmpV1.set(camera.direction).crs(camera.up).nor();
+        camera.rotateAround(camera.position, tmpV1, -dyPixels * degreesPerPixel);
+        if (camera.up.z < 0) {
+            camera.rotateAround(camera.position, tmpV1, dyPixels * degreesPerPixel);   // not over the top
+        }
+        camera.update();
+    }
+
+    /** Turns the terrain about the pinned point, clockwise on screen for a positive angle. */
+    public void turnAboutPin(float degrees) {
+        if (cameraControlsSuspended || !PhotoPin.isActive()) {
+            return;
+        }
+        // As a finger sweeping round the pin does (rotateAboutPin): the camera turns the other way.
+        camera.rotateAround(camera.position, PhotoPin.getDirection(pinAxis), -degrees);
+        camera.update();
+    }
+
+    /** Stretches the terrain out from the pinned point by {@code ratio}, which stays put. */
+    public void stretchAboutPin(float ratio) {
+        if (!PhotoPin.isActive()) {
+            return;
+        }
+        zoomByPinchScale(ratio);   // zoom() puts the pin back on its pixel
+    }
+
     /*
     @Override
     public boolean scrolled (float amountX, float amountY) {
