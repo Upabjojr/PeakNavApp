@@ -278,6 +278,8 @@ public class PeakNavUtils {
         Pixmap pixmap;
         try {
             pixmap = new Pixmap(bytesJpeg, 0, bytesJpeg.length);
+            // Down to what a texture can hold before anything else copies it (see below).
+            pixmap = fitPhotoEdge(pixmap, MAX_PHOTO_EDGE);
             // libGDX's decoder ignores the EXIF orientation tag, so a portrait photo (stored
             // as landscape pixels + a rotate tag) would come out sideways. Apply it here.
             pixmap = applyExifOrientation(pixmap, ExifReader.extractOrientation(bytesJpeg));
@@ -289,6 +291,40 @@ public class PeakNavUtils {
         MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(pixmap);
         // Keep a reduced copy for the skyline match, before anything can dispose the pixmap.
         com.peaknav.viewer.PhotoSkylineAligner.onPhotoLoaded(pixmap, bytesJpeg);
+    }
+
+    /**
+     * The longest side a background photo keeps. The photo becomes one texture, and one
+     * much larger than the screen gains nothing: a 24 MP photo from an iPhone 17 (5712 px
+     * tall) came out black there, its upload failing without a word, where 12 MP from an
+     * iPhone 11 showed. 2048 is within every GPU's texture limit and about a phone
+     * screen's height, and keeps the decoded photo near 12 MB.
+     */
+    static final int MAX_PHOTO_EDGE = 2048;
+
+    /**
+     * Returns the pixmap scaled down, keeping its proportions, so that neither side exceeds
+     * {@code maxEdge}, disposing the source when a new one is produced; unchanged if it fits.
+     * Only the proportions matter downstream: the field of view comes from the EXIF focal
+     * length and the width-to-height ratio.
+     */
+    static Pixmap fitPhotoEdge(Pixmap src, int maxEdge) {
+        while (Math.max(src.getWidth(), src.getHeight()) > maxEdge) {
+            int w = src.getWidth();
+            int h = src.getHeight();
+            // By halves while more than twice too big: a bilinear sample reads four pixels, so
+            // one larger step would skip most of them and leave the edges jagged.
+            float scale = Math.max(0.5f, (float) maxEdge / Math.max(w, h));
+            int nw = Math.max(1, Math.round(w * scale));
+            int nh = Math.max(1, Math.round(h * scale));
+            Pixmap dst = new Pixmap(nw, nh, src.getFormat());
+            dst.setBlending(Pixmap.Blending.None);
+            dst.setFilter(Pixmap.Filter.BiLinear);
+            dst.drawPixmap(src, 0, 0, w, h, 0, 0, nw, nh);
+            src.dispose();
+            src = dst;
+        }
+        return src;
     }
 
     /**
