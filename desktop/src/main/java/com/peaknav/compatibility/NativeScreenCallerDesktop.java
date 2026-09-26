@@ -109,6 +109,16 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     @Override
     public void pickGpxFile() {
         DesktopSwing.onEdt(() -> {
+            // The system's own dialog where there is one; Swing's otherwise.
+            java.io.File picked = com.peaknav.viewer.desktop.NativeFileDialogs.open(null,
+                    new com.peaknav.viewer.desktop.NativeFileDialogs.Filter("GPX tracks", "gpx"));
+            if (picked == null) {
+                return;
+            }
+            if (picked != com.peaknav.viewer.desktop.NativeFileDialogs.UNAVAILABLE) {
+                loadGpxFile(picked);
+                return;
+            }
             javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
             chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
             chooser.setAcceptAllFileFilterUsed(false);
@@ -399,44 +409,68 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         }
         // Default file name carries a timestamp so successive shots don't collide.
         String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
-        final String defaultName = "PeakNav_" + stamp + ".png";
+        // JPEG by default, as on the phones: a render of terrain and photographs is several
+        // times smaller so, and the EXIF block (where and which way) travels with it.
+        final String defaultName = "PeakNav_" + stamp + ".jpg";
         DesktopSwing.onEdt(() -> {
             try {
-                javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
-                chooser.setDialogTitle(s("Save_image"));
-                chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
-                chooser.setSelectedFile(new java.io.File(defaultName));
-                javax.swing.filechooser.FileNameExtensionFilter pngFilter =
-                        new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_png"), "png");
-                javax.swing.filechooser.FileNameExtensionFilter jpgFilter =
-                        new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_jpeg"), "jpg", "jpeg");
-                chooser.setAcceptAllFileFilterUsed(false);
-                chooser.addChoosableFileFilter(pngFilter);
-                chooser.addChoosableFileFilter(jpgFilter);
-                chooser.setFileFilter(pngFilter);
-
-                if (chooser.showSaveDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION) {
-                    pixmap.dispose();
-                    return;
-                }
-                java.io.File file = chooser.getSelectedFile();
-                if (file == null) {
-                    pixmap.dispose();
-                    return;
-                }
-                // Pick the format from the file extension; JPEG for .jpg/.jpeg, PNG otherwise. When
-                // no known extension is typed, fall back to the selected filter and append it.
-                String lower = file.getName().toLowerCase(java.util.Locale.ROOT);
+                // The system's own dialog where there is one, which asks before overwriting;
+                // then only a name this code changes needs asking about. Swing's otherwise.
+                java.io.File file;
                 boolean jpeg;
-                if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
-                    jpeg = true;
-                } else if (lower.endsWith(".png")) {
-                    jpeg = false;
-                } else {
-                    jpeg = chooser.getFileFilter() == jpgFilter;
-                    file = new java.io.File(file.getParentFile(), file.getName() + (jpeg ? ".jpg" : ".png"));
+                boolean askOverwrite = true;
+                java.io.File picked = com.peaknav.viewer.desktop.NativeFileDialogs.save(s("Save_image"),
+                        new com.peaknav.viewer.desktop.NativeFileDialogs.Filter("JPEG, PNG", "jpg", "jpeg", "png"),
+                        defaultName);
+                if (picked == null) {
+                    pixmap.dispose();
+                    return;
                 }
-                if (file.exists()) {
+                if (picked != com.peaknav.viewer.desktop.NativeFileDialogs.UNAVAILABLE) {
+                    String name = picked.getName().toLowerCase(java.util.Locale.ROOT);
+                    jpeg = !name.endsWith(".png");
+                    file = picked;
+                    askOverwrite = false;
+                    if (jpeg && !name.endsWith(".jpg") && !name.endsWith(".jpeg")) {
+                        file = new java.io.File(picked.getParentFile(), picked.getName() + ".jpg");
+                        askOverwrite = true;
+                    }
+                } else {
+                    javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+                    chooser.setDialogTitle(s("Save_image"));
+                    chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
+                    chooser.setSelectedFile(new java.io.File(defaultName));
+                    javax.swing.filechooser.FileNameExtensionFilter pngFilter =
+                            new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_png"), "png");
+                    javax.swing.filechooser.FileNameExtensionFilter jpgFilter =
+                            new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_jpeg"), "jpg", "jpeg");
+                    chooser.setAcceptAllFileFilterUsed(false);
+                    chooser.addChoosableFileFilter(jpgFilter);
+                    chooser.addChoosableFileFilter(pngFilter);
+                    chooser.setFileFilter(jpgFilter);
+
+                    if (chooser.showSaveDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION) {
+                        pixmap.dispose();
+                        return;
+                    }
+                    file = chooser.getSelectedFile();
+                    if (file == null) {
+                        pixmap.dispose();
+                        return;
+                    }
+                    // Pick the format from the file extension; JPEG for .jpg/.jpeg, PNG otherwise. When
+                    // no known extension is typed, fall back to the selected filter and append it.
+                    String lower = file.getName().toLowerCase(java.util.Locale.ROOT);
+                    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+                        jpeg = true;
+                    } else if (lower.endsWith(".png")) {
+                        jpeg = false;
+                    } else {
+                        jpeg = chooser.getFileFilter() == jpgFilter;
+                        file = new java.io.File(file.getParentFile(), file.getName() + (jpeg ? ".jpg" : ".png"));
+                    }
+                }
+                if (askOverwrite && file.exists()) {
                     int overwrite = javax.swing.JOptionPane.showConfirmDialog(null,
                             s("Overwrite_prompt"), s("File_exists"),
                             javax.swing.JOptionPane.YES_NO_OPTION);
@@ -533,21 +567,33 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
             return;
         }
         DesktopSwing.onEdt(() -> {
-            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
-            chooser.setDialogTitle(s("Save_gpx"));
-            chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
-            chooser.setAcceptAllFileFilterUsed(false);
-            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("GPX (*.gpx)", "gpx"));
-            chooser.setSelectedFile(new java.io.File(fileName));
-            if (chooser.showSaveDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION
-                    || chooser.getSelectedFile() == null) {
+            // The system's own dialog where there is one, which asks before overwriting itself;
+            // Swing's otherwise, after which this code asks.
+            java.io.File file = com.peaknav.viewer.desktop.NativeFileDialogs.save(s("Save_gpx"),
+                    new com.peaknav.viewer.desktop.NativeFileDialogs.Filter("GPX", "gpx"), fileName);
+            if (file == null) {
                 return;
             }
-            java.io.File file = chooser.getSelectedFile();
+            boolean askOverwrite = false;
+            if (file == com.peaknav.viewer.desktop.NativeFileDialogs.UNAVAILABLE) {
+                javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+                chooser.setDialogTitle(s("Save_gpx"));
+                chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
+                chooser.setAcceptAllFileFilterUsed(false);
+                chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("GPX (*.gpx)", "gpx"));
+                chooser.setSelectedFile(new java.io.File(fileName));
+                if (chooser.showSaveDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION
+                        || chooser.getSelectedFile() == null) {
+                    return;
+                }
+                file = chooser.getSelectedFile();
+                askOverwrite = true;
+            }
             if (!file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".gpx")) {
                 file = new java.io.File(file.getParentFile(), file.getName() + ".gpx");
+                askOverwrite = true;   // a name the dialog never saw
             }
-            if (file.exists() && javax.swing.JOptionPane.showConfirmDialog(null, s("Overwrite_prompt"),
+            if (askOverwrite && file.exists() && javax.swing.JOptionPane.showConfirmDialog(null, s("Overwrite_prompt"),
                     s("File_exists"), javax.swing.JOptionPane.YES_NO_OPTION) != javax.swing.JOptionPane.YES_OPTION) {
                 return;
             }

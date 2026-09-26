@@ -106,6 +106,16 @@ public class GalleryPickDesktop {
     }
 
     private static void selectImage() {
+        // The system's own dialog where there is one, with its previews of the pictures.
+        File picked = NativeFileDialogs.open(null,
+                new NativeFileDialogs.Filter("Gallery files", "png", "jpg", "jpeg"));
+        if (picked == null) {
+            return;
+        }
+        if (picked != NativeFileDialogs.UNAVAILABLE) {
+            new Thread(() -> setAppBackgroundImage(picked), "gallery-image-load").start();
+            return;
+        }
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
         fileChooser.setAcceptAllFileFilterUsed(false);
