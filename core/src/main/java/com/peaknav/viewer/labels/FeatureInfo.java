@@ -33,7 +33,7 @@ public final class FeatureInfo {
         public final String value;
         public final String url;
 
-        Row(String label, String value, String url) {
+        public Row(String label, String value, String url) {
             this.label = label;
             this.value = value;
             this.url = url;

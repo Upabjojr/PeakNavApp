@@ -22,6 +22,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Scaling;
 import com.peaknav.network.WikidataPicture;
+import com.peaknav.network.WikipediaArticle;
 import com.peaknav.viewer.labels.FeatureInfo;
 
 import java.util.ArrayList;
@@ -66,6 +67,12 @@ public class FeatureInfoPane {
     /** The Wikidata entry's picture, once fetched, and whose it is (see {@link WikidataPicture}). */
     private Texture picture;
     private String pictureCredit, pictureUrl, pictureFor;
+    /**
+     * The Wikidata entry's Wikipedia article, once found (see {@link WikipediaArticle}), and whose
+     * it is. It stands under the picture, in place of the row the OSM "wikipedia" tag gives.
+     */
+    private WikipediaArticle.Article article;
+    private String articleFor;
     /** The tallest the picture is drawn, in widget units, so the facts stay in view under it. */
     private static final float PICTURE_MAX_UNITS = 3.4f;
     private final Table tagsHeader = new Table();
@@ -193,6 +200,7 @@ public class FeatureInfoPane {
         this.swatchPick = pick;
         tagsOpen = false;
         showPictureOf(info.wikidataId);
+        showArticleOf(info.wikidataId);
         layoutPanel();
         root.setVisible(true);
         scroll.setScrollY(0);
@@ -229,6 +237,32 @@ public class FeatureInfoPane {
         });
     }
 
+    /**
+     * Asks Wikidata for the entry's Wikipedia article, in the app's language or else English:
+     * it arrives later, on the render thread, like the picture.
+     */
+    private void showArticleOf(final String wikidataId) {
+        if (wikidataId != null && wikidataId.equals(articleFor)) {
+            return;
+        }
+        article = null;
+        articleFor = wikidataId;
+        if (wikidataId == null) {
+            return;
+        }
+        String language = getC().i18n == null ? null : getC().i18n.getLanguage();
+        WikipediaArticle.fetch(wikidataId, language, (id, found) -> {
+            if (!isShown() || !id.equals(articleFor)) {
+                return;
+            }
+            article = found;
+            float y = scroll.getScrollY();
+            layoutPanel();
+            scroll.layout();
+            scroll.setScrollY(y);
+        });
+    }
+
     private void disposePicture() {
         if (picture != null) {
             picture.dispose();
@@ -243,6 +277,8 @@ public class FeatureInfoPane {
         root.setVisible(false);
         shown = null;
         disposePicture();
+        article = null;
+        articleFor = null;
         actions = new Runnable[0];
         actionTexts = new String[0];
         swatches = null;
@@ -318,7 +354,18 @@ public class FeatureInfoPane {
         if (picture != null) {
             addPicture(width);
         }
+        String wikipediaLabel = s("Feature_wikipedia");
+        if (article != null) {
+            // Under the picture; marked when it is the English one standing in for the reader's.
+            String language = getC().i18n == null ? "en" : getC().i18n.getLanguage();
+            String articleTitle = article.language.equals(language) ? article.title
+                    : article.title + " (" + article.language + ")";
+            body.add(row(new FeatureInfo.Row(wikipediaLabel, articleTitle, article.url), width)).padTop(0.04f * u).row();
+        }
         for (FeatureInfo.Row row : shown.rows) {
+            if (article != null && row.label.equals(wikipediaLabel)) {
+                continue;   // the OSM tag's article, in whatever language it names: replaced above
+            }
             body.add(row(row, width)).padTop(0.04f * u).row();
         }
         if (!shown.tags.isEmpty()) {
