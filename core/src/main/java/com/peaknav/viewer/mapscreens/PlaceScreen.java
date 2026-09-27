@@ -713,8 +713,8 @@ class PlaceScreen extends MapScreens.Base {
                 int period = Hatching.period(MapScreens.unit());
                 for (int i = 0; i < shown.size(); i++) {
                     Layer layer = shown.get(i);
-                    downloaded.add(new SlippyMap.Shading(boxes.get(i), null, layer.color, i, 1f)
-                            .hatched(Hatching.texture(layer.color, i, shown.size(), period), period));
+                    downloaded.add(new SlippyMap.Shading(boxes.get(i), null, layer.color, 0, 1f)
+                            .hatched(Hatching.texture(layer.color, i, shown.size(), period), period, i, shown.size()));
                 }
                 showPoint();
             });

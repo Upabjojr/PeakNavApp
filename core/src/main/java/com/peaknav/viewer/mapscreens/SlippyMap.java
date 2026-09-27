@@ -93,10 +93,19 @@ public class SlippyMap extends Widget implements Disposable {
         com.badlogic.gdx.graphics.Texture hatch;
         int hatchPeriod;
 
-        /** The boxes striped with {@code texture}, one period of {@code period} pixels. */
-        public Shading hatched(com.badlogic.gdx.graphics.Texture texture, int period) {
+        /** Which of how many kinds this is, for its slot in the dashes of its outline. */
+        int dashIndex, dashCount;
+
+        /**
+         * The boxes striped with {@code texture}, one period of {@code period} pixels, kind
+         * {@code index} of {@code count}; their outline dashed, the dashes in the kind's slot of
+         * the pattern as its stripes are (see {@link Hatching}).
+         */
+        public Shading hatched(com.badlogic.gdx.graphics.Texture texture, int period, int index, int count) {
             this.hatch = texture;
             this.hatchPeriod = period;
+            this.dashIndex = index;
+            this.dashCount = count;
             return this;
         }
 
@@ -677,13 +686,38 @@ public class SlippyMap extends Widget implements Disposable {
                 }
                 if (shading.hatch != null) {
                     double p = shading.hatchPeriod;
+                    // Texture rows run down the screen, as they do in the legend's swatches, so
+                    // the stripes lean the same way on both: v at the box's foot, less at its top.
                     // Kept small, for float precision far from the origin when zoomed in.
-                    double u = ((r[0] - originX) / p) % 1.0, v = ((r[1] - originY) / p) % 1.0;
+                    double u = ((r[0] - originX) / p) % 1.0, vBottom = ((originY - r[1]) / p) % 1.0;
                     batch.setColor(1f, 1f, 1f, parentAlpha);
                     batch.draw(shading.hatch, r[0], r[1], r[2], r[3],
-                            (float) u, (float) v, (float) (u + r[2] / p), (float) (v + r[3] / p));
+                            (float) u, (float) vBottom, (float) (u + r[2] / p), (float) (vBottom - r[3] / p));
                 }
-                if (shading.outline != null) {
+                if (shading.outline != null && shading.dashCount > 1) {
+                    // On the tile's own edge, not inside it: dashed, each kind in its own slot of
+                    // the pattern, so where the edges of several kinds lie together all of their
+                    // colours show along it. Set inside one another instead, the outlines sat
+                    // short of the tiles' borders, and the area to download looked the larger.
+                    float w = Math.max(2f, line * 1.5f * shading.thickness);
+                    double dash = (double) shading.hatchPeriod / shading.dashCount;
+                    double period = shading.hatchPeriod;
+                    double offset = shading.dashIndex * dash;
+                    batch.setColor(shading.outline.r, shading.outline.g, shading.outline.b, shading.outline.a * parentAlpha);
+                    float left = r[0], right = r[0] + r[2], bottom = r[1], top = r[1] + r[3];
+                    if (!shared[Shading.SOUTH]) {
+                        dashes(batch, left, right, bottom, w, true, originX + offset, period, dash);
+                    }
+                    if (!shared[Shading.NORTH]) {
+                        dashes(batch, left, right, top - w, w, true, originX + offset, period, dash);
+                    }
+                    if (!shared[Shading.WEST]) {
+                        dashes(batch, bottom, top, left, w, false, originY + offset, period, dash);
+                    }
+                    if (!shared[Shading.EAST]) {
+                        dashes(batch, bottom, top, right - w, w, false, originY + offset, period, dash);
+                    }
+                } else if (shading.outline != null) {
                     float w = line * shading.thickness;
                     float in = shading.inset * line * 1.5f;
                     // Inset only on the sides with an outline: along a shared edge the lines of
@@ -712,6 +746,34 @@ public class SlippyMap extends Widget implements Disposable {
             }
         }
         batch.setColor(1, 1, 1, parentAlpha);
+    }
+
+    /**
+     * Dashes along one edge, from {@code from} to {@code to}: across the screen at height
+     * {@code at} when {@code horizontal}, else up it at {@code at}. The pattern is anchored at
+     * {@code anchor}, a point in the map's pixels, so it runs on unbroken from tile to tile.
+     * Only the part of the edge on the map is drawn: zoomed in, a tile's edge is many screens long.
+     */
+    private void dashes(Batch batch, float from, float to, float at, float thickness, boolean horizontal,
+                        double anchor, double period, double dash) {
+        float lo = horizontal ? getX() : getY();
+        float hi = lo + (horizontal ? getWidth() : getHeight());
+        from = Math.max(from, lo);
+        to = Math.min(to, hi);
+        if (to <= from) {
+            return;
+        }
+        double start = anchor + Math.floor((from - anchor) / period) * period;
+        for (double s = start; s < to; s += period) {
+            float a = (float) Math.max(s, from), b = (float) Math.min(s + dash, to);
+            if (b > a) {
+                if (horizontal) {
+                    white.draw(batch, a, at, b - a, thickness);
+                } else {
+                    white.draw(batch, at, a, thickness, b - a);
+                }
+            }
+        }
     }
 
     /** A lat/lon box as x, y, width, height on screen - a rectangle, as mercator keeps them. */
