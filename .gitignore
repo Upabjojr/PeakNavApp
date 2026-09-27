@@ -155,3 +155,6 @@ __pycache__/
 # peaknav-videos, and the list that names them. Kept out of git like the other generated
 # assets (icons, the search index); the slideshow simply does not show without them.
 /assets/intro_slides/
+
+## Fonts baked by :core:bakeFonts at build time
+assets/fonts_baked/

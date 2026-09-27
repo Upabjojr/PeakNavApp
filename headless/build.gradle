@@ -77,3 +77,7 @@ tasks.register('renderJar', Jar) {
         attributes 'Main-Class': project.mainClassName, 'Enable-Native-Access': 'ALL-UNNAMED'
     }
 }
+
+// The fonts are baked when the app is built (:core:bakeFonts) into assets/fonts_baked/, which
+// this build packs with the other assets.
+processResources.dependsOn ':core:bakeFonts'

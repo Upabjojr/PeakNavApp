@@ -577,3 +577,7 @@ startScripts.classpath = project.tasks.jar.outputs.files
 if(enableGraalNative == 'true') {
     apply from: file("nativeimage.gradle")
 }
+
+// The fonts are baked when the app is built (:core:bakeFonts) into assets/fonts_baked/, which
+// this build packs with the other assets.
+processResources.dependsOn ':core:bakeFonts'

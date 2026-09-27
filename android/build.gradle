@@ -179,6 +179,8 @@ tasks.matching { it.name.contains("merge") && it.name.contains("JniLibFolders") 
 // the asset merge after it; otherwise mergeAssets fails with an implicit-dependency validation error.
 tasks.matching { it.name == 'mergeDebugAssets' || it.name == 'mergeReleaseAssets' }.configureEach { mergeTask ->
     mergeTask.dependsOn ':core:generateGeonamesAssetIndex'
+    // And the fonts, baked into assets/fonts_baked/ when the app is built.
+    mergeTask.dependsOn ':core:bakeFonts'
 }
 
 tasks.register('run', Exec) {

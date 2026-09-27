@@ -152,3 +152,7 @@ dependencies {
 	luceneJsr 'org.apache.lucene:lucene-queryparser:3.6.2'
 	runtimeOnly fileTree(luceneInlinedDir) { include '*.jar'; builtBy 'inlineLuceneJsr' }
 }
+
+// The fonts are baked when the app is built (:core:bakeFonts) into assets/fonts_baked/, which
+// this build packs with the other assets.
+processResources.dependsOn ':core:bakeFonts'

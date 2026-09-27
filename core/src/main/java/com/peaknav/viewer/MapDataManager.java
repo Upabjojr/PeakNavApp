@@ -1,6 +1,5 @@
 package com.peaknav.viewer;
 
-import static com.peaknav.utils.PeakNavUtils.containsUnrenderableCharacters;
 
 import com.peaknav.pbf.Tag;
 import com.peaknav.geo.Tile;
@@ -211,7 +210,9 @@ public class MapDataManager {
                     ele = Float.NaN;
                 }
             }
-            if (containsUnrenderableCharacters(name)) {
+            // Non-Latin rather than undrawable: the fonts draw Greek and Cyrillic for the
+            // translations, but labels are Latin (see FontCharacters.containsNonLatin).
+            if (com.peaknav.utils.FontCharacters.containsNonLatin(name)) {
                 // Latin forms from the data first; kana romanized if that is all there
                 // is; and for a kanji-only Japanese name with no reading anywhere, no
                 // label at all - the fallback transliterator reads kanji as Chinese,
