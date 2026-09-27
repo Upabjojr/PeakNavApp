@@ -204,6 +204,20 @@ public class OptionPane {
         return table.isVisible() || tableOneColumn.isVisible();
     }
 
+    /** Whether the options menu, or any of its submenus, is on screen. */
+    public boolean isAnyMenuVisible() {
+        Table[] menus = {table, tableOneColumn, getSelectBoxSatelliteSource(), getSelectBoxDownloadSource(),
+                getSelectBoxUnits(), getSelectInfoOpts(), getSelectGpx(), getSelectPathsAndMarkers(),
+                getSelectMarkers(), getSelectLabels(), getSelectSky(), getSelectCompass(), getSelectRoads(),
+                getSelectRoadsOneColumn(), getSelectRoadsGroup(), getSelectPistes()};
+        for (Table menu : menus) {
+            if (menu != null && menu.isVisible()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public Table getSelectBoxSatelliteSource() {
         return selectBoxSatSrc;
     }

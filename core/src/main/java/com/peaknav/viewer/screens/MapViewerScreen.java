@@ -2193,6 +2193,11 @@ public class MapViewerScreen implements Screen {
 
 		if (flagChange) {
 			updateImpact();
+		} else if (impact != null && buttonPinLoc != null && optionPane != null
+				&& buttonPinLoc.isVisible() == optionPane.isAnyMenuVisible()) {
+			// The menu opened or closed with the camera still: the pin hides under it, or
+			// comes back (see buttonPinLocUpdatePosition).
+			buttonPinLocUpdatePosition();
 		}
 
 		Texture sobelTexture = tileBatchRenderer.getSobelTexture();
@@ -2716,8 +2721,12 @@ public class MapViewerScreen implements Screen {
 			return false;
 		}
 		 */
-		buttonPinLoc.setVisible(true);
-		tableLocation.tableCancelGoToDest.setVisible(true);
+		// Not while the options menu is open: the pin and the tap's buttons are under it, but
+		// they showed through the gaps between its rows, as if drawn over it. The menu covers
+		// the map; they come back when it closes.
+		boolean underMenu = optionPane != null && optionPane.isAnyMenuVisible();
+		buttonPinLoc.setVisible(!underMenu);
+		tableLocation.tableCancelGoToDest.setVisible(!underMenu);
 		buttonPinLoc.setPosition(
 				pinStageCoords.x - 0.5f*buttonPinLoc.getWidth(),
 				pinStageCoords.y);
