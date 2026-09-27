@@ -124,6 +124,15 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 					com.peaknav.viewer.mapscreens.MapScreens.back();
 					return;
 				}
+				// Nor is the tutorial: Back closes it and shows the map again, as its own
+				// close button and the desktop's Escape do, rather than leaving the app.
+				com.peaknav.viewer.MapApp app = com.peaknav.viewer.MapViewerSingleton.getAppInstance();
+				if (app != null && app.mapViewerScreen != null && app.mapViewerScreen.tutorialOverlay != null
+						&& app.mapViewerScreen.tutorialOverlay.isVisible()) {
+					// On the render thread, which the stage belongs to.
+					com.badlogic.gdx.Gdx.app.postRunnable(() -> app.mapViewerScreen.tutorialOverlay.hide());
+					return;
+				}
 				if (getSupportFragmentManager().getBackStackEntryCount() > 0) {
 					com.peaknav.compatibility.NativeScreenCaller caller =
 							com.peaknav.utils.PeakNavUtils.getNativeScreenCaller();
