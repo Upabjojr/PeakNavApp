@@ -506,7 +506,7 @@ public class OptionPane {
         table.center();
         table.setFillParent(true);
 
-        List<Table> buttons = new ArrayList<>(9);
+        List<Table> buttons = new ArrayList<>(10);
 
         ImageTextButtonOptionPane checkBoxShowPeaks = getC().widgetGetter.getImageTextButton(
                 "icons/icon_checkbox_peak_names.png", s("Peak_names"), true);
@@ -566,6 +566,15 @@ public class OptionPane {
             P.persistRoadStyle();
         }));
         buttons.add(checkBoxRoadNames);
+
+        // The size of every label's text: with the labels it sizes, not in the main menu.
+        ImageTextButtonOptionPane checkBoxLargeFonts = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_large_fonts.png", s("Large_fonts"), true);
+        addCheckingStateProperty(checkBoxLargeFonts, ()->P.getViewLargeFonts());
+        checkBoxLargeFonts.addClickListener(() -> changer.execute(() -> {
+            P.setViewLargeFonts(checkBoxLargeFonts.isChecked());
+            getC().O.iterateOverVisiblePoisUnstoppable(poiObject -> poiObject.drawLabel.updateLabelPolygonCoordinates());
+        }));
+        buttons.add(checkBoxLargeFonts);
 
         ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
                 "icons/icon_back.png", s("Back"), false);
@@ -1665,13 +1674,6 @@ public class OptionPane {
         tableLabels.add(buttonLabelsOptions).width(buttonWidth * 0.2f).height(height);
         buttons.add(tableLabels);
 
-        ImageTextButtonOptionPane checkBoxLargeFonts = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_large_fonts.png", s("Large_fonts"), true);
-        addCheckingStateProperty(checkBoxLargeFonts, ()->P.getViewLargeFonts());
-        checkBoxLargeFonts.addClickListener(() -> changer.execute(() -> {
-            P.setViewLargeFonts(checkBoxLargeFonts.isChecked());
-            getC().O.iterateOverVisiblePoisUnstoppable(poiObject -> poiObject.drawLabel.updateLabelPolygonCoordinates());
-        }));
-        buttons.add(checkBoxLargeFonts);
 
         // Compass & location: master on/off plus a "..." submenu (coordinates, horizon
         // markers, corner rose) - the same composite scheme as the sky row below.
