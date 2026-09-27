@@ -72,6 +72,8 @@ public class PeakNavAppState {
         this.mapDataDownloaded = mapDataDownloaded;
         if (mapDataDownloaded) {
             getAppInstance().introScreen.triggerMapDataDownloaded();
+            // The search and download screen, if it is open, shades what is now on the device.
+            com.peaknav.viewer.mapscreens.MapScreens.downloadedDataChanged();
         }
     }
 

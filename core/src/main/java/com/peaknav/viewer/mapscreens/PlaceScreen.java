@@ -700,6 +700,13 @@ class PlaceScreen extends MapScreens.Base {
 
     // ------------------------------------------------------------------ what is downloaded
 
+    /** What is on the device changed while the screen is up: read it again (MapScreens). */
+    void reloadDownloaded() {
+        if (isShowing()) {
+            loadDownloadedTiles();
+        }
+    }
+
     /** Shades what is on the device already, read off the render thread and handed back. */
     private void loadDownloadedTiles() {
         getC().submitExecutorGeneric(() -> {

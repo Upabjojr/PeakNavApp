@@ -68,6 +68,22 @@ public final class MapScreens {
         });
     }
 
+    /**
+     * A download has finished: the place screen, if it is open, reads again what is on the
+     * device and shades it. It read that only when it opened, so an area downloaded while it
+     * was up stayed unshaded until it was closed and opened again. Any thread.
+     */
+    public static void downloadedDataChanged() {
+        if (Gdx.app == null) {
+            return;
+        }
+        Gdx.app.postRunnable(() -> {
+            if (current instanceof PlaceScreen) {
+                ((PlaceScreen) current).reloadDownloaded();
+            }
+        });
+    }
+
     /** Whether one of these screens is up: the system Back key closes it rather than the app. */
     public static boolean isOpen() {
         return open;
