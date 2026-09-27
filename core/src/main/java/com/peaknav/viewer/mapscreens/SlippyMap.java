@@ -167,7 +167,7 @@ public class SlippyMap extends Widget implements Disposable {
     });
 
     /** Textures kept in memory; a phone screen shows about 30, and this keeps a few screens' worth. */
-    private static final int MAX_TEXTURES = 160;
+    private static final int MAX_TEXTURES = 320;   // imagery and the world map under it
     /** A tile that failed is not asked for again until this long has passed. */
     private static final long RETRY_MILLIS = 15_000;
     /**
@@ -477,8 +477,14 @@ public class SlippyMap extends Widget implements Disposable {
         return dx * dx + dy * dy;
     }
 
-    /** Draws tile (z, x, y), or the part of a coarser tile in memory that covers it meanwhile. */
+    /**
+     * Draws tile (z, x, y), or the part of a coarser tile in memory that covers it meanwhile -
+     * over the offline world map's tile (WorldMapTiles), which is there at once and stays where
+     * the imagery is slow, failing or missing: land, borders and large countries' divisions in
+     * place of the grey the map showed until the network answered.
+     */
     private void drawTile(Batch batch, int z, int x, int y, float sx, float sy, float size) {
+        drawWorldBase(batch, z, x, y, sx, sy, size);
         Texture texture = textureOrRequest(z, x, y);
         if (texture != null) {
             batch.draw(texture, sx, sy, size, size, 0, 0, texture.getWidth(), texture.getHeight(), false, false);
@@ -495,6 +501,56 @@ public class SlippyMap extends Widget implements Disposable {
                 return;
             }
         }
+    }
+
+    private static final String WORLD_BASE = "world-base";
+
+    /** The offline world map's tile, or the part of a coarser one in memory while it is drawn. */
+    private void drawWorldBase(Batch batch, int z, int x, int y, float sx, float sy, float size) {
+        Texture base = worldBaseOrRequest(z, x, y);
+        if (base != null) {
+            batch.draw(base, sx, sy, size, size, 0, 0, base.getWidth(), base.getHeight(), false, false);
+            return;
+        }
+        for (int up = 1; up <= z; up++) {
+            Texture coarse = TILES.get(WORLD_BASE + '/' + (z - up) + '/' + (x >> up) + '/' + (y >> up));
+            if (coarse != null) {
+                int parts = 1 << up;
+                int cw = coarse.getWidth() / parts, ch = coarse.getHeight() / parts;
+                int srcX = (x - ((x >> up) << up)) * cw;
+                int srcY = (y - ((y >> up) << up)) * ch;
+                batch.draw(coarse, sx, sy, size, size, srcX, srcY, cw, ch, false, false);
+                return;
+            }
+        }
+    }
+
+    private Texture worldBaseOrRequest(int z, int x, int y) {
+        String key = WORLD_BASE + '/' + z + '/' + x + '/' + y;
+        Texture texture = TILES.get(key);
+        if (texture != null) {
+            return texture;
+        }
+        TILES.wanted(key);
+        if (!TILES.shouldLoad(key)) {
+            return null;
+        }
+        final Object context = TILES.context;
+        LOADER.execute(() -> {
+            if (!TILES.stillWanted(key)) {
+                Gdx.app.postRunnable(() -> TILES.dropped(key, context));
+                return;
+            }
+            Pixmap pixmap;
+            try {
+                pixmap = WorldMapTiles.render(z, x, y);
+            } catch (Throwable e) {
+                pixmap = null;
+            }
+            final Pixmap drawn = pixmap;
+            Gdx.app.postRunnable(() -> TILES.landed(key, drawn, context));
+        });
+        return null;
     }
 
     private Texture textureOrRequest(int z, int x, int y) {
