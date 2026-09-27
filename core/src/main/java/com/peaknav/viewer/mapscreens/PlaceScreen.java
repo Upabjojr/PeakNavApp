@@ -240,6 +240,10 @@ class PlaceScreen extends MapScreens.Base {
             hideKeyboard();
             showResults(false);
             choose(tapLat, tapLon, false);
+            // The point in the search box, in decimal degrees as a typed coordinate reads: it says
+            // exactly where the tap landed, can be copied, and searched again as it stands.
+            field.setText(String.format(Locale.ROOT, "%.5f, %.5f", tapLat, tapLon));
+            field.setCursorPosition(field.getText().length());
         });
 
         results.top();
