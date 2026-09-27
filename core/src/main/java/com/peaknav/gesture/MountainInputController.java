@@ -208,7 +208,58 @@ public class MountainInputController extends CameraInputController {
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
         dragPrevX = dragX = screenX;
         dragPrevY = dragY = screenY;
+        if (pointer == 0) {
+            forgetLostFingers();
+        }
         return super.touchDown(screenX, screenY, pointer, button);
+    }
+
+    /**
+     * A touch Android cancelled - the notification shade pulled down, a dialog or another app
+     * taking the screen mid-drag - is a finger lifted. CameraInputController does not handle
+     * the cancel, so it kept that finger as still down: every touch after it counted as a
+     * second finger, and one-finger drags stopped turning the camera for good, while the
+     * pinch and the elevation bar, handled elsewhere, went on working.
+     */
+    @Override
+    public boolean touchCancelled(int screenX, int screenY, int pointer, int button) {
+        boolean handled = super.touchCancelled(screenX, screenY, pointer, button);   // the gesture detector's own reset
+        super.touchUp(screenX, screenY, pointer, button);   // and the camera controller's finger
+        return handled;
+    }
+
+    private static java.lang.reflect.Field touchedField, multiTouchField;
+    private static boolean fieldsLooked;
+
+    /**
+     * A first finger coming down, with no other finger on the screen, starts afresh: any
+     * finger CameraInputController still counts as down lost its lift somewhere - a cancel
+     * from an older backend, a lift delivered to a screen no longer on show. It keeps them in
+     * private fields, reached by reflection; where that is not possible nothing changes, and
+     * touchCancelled covers the common case.
+     */
+    private void forgetLostFingers() {
+        for (int i = 1; i < 20; i++) {
+            if (com.badlogic.gdx.Gdx.input != null && com.badlogic.gdx.Gdx.input.isTouched(i)) {
+                return;   // a real second finger: a pinch is starting
+            }
+        }
+        try {
+            if (!fieldsLooked) {
+                fieldsLooked = true;
+                touchedField = com.badlogic.gdx.graphics.g3d.utils.CameraInputController.class.getDeclaredField("touched");
+                multiTouchField = com.badlogic.gdx.graphics.g3d.utils.CameraInputController.class.getDeclaredField("multiTouch");
+                touchedField.setAccessible(true);
+                multiTouchField.setAccessible(true);
+            }
+            if (touchedField != null && multiTouchField != null) {
+                touchedField.setInt(this, 0);
+                multiTouchField.setBoolean(this, false);
+            }
+        } catch (Throwable unavailable) {
+            touchedField = null;
+            multiTouchField = null;
+        }
     }
 
     @Override
