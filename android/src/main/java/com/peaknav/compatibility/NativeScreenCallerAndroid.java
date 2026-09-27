@@ -60,6 +60,7 @@ import com.peaknav.views.SearchMenu;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.List;
 
 public class NativeScreenCallerAndroid extends NativeScreenCaller {
@@ -255,10 +256,37 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             if (!granted) {
                 mainActivity.locationPermissionCallbacks.add(
                         () -> getCurrentLocationListener(mainActivity).getCurrentLocation(callback));
+                awaitingLocationPermission.add(callback);
                 checkLocationPermission(mainActivity);
                 return;
             }
             getCurrentLocationListener(mainActivity).getCurrentLocation(callback);
+        });
+    }
+
+    /** The requests that wait on the permission prompt; UI thread only. */
+    private final List<com.peaknav.ui.CurrentLocationCallback> awaitingLocationPermission = new ArrayList<>();
+
+    /**
+     * The permission prompt has been answered. Refused, the requests that waited on it go to
+     * {@link #locationPermissionDenied} - which, on a first run, estimates the position from the
+     * network instead; true if it did, so no settings dialog goes up on top of its own.
+     */
+    public boolean locationPermissionAnswered(boolean granted) {
+        List<com.peaknav.ui.CurrentLocationCallback> waiting = new ArrayList<>(awaitingLocationPermission);
+        awaitingLocationPermission.clear();
+        if (granted) {
+            return false;
+        }
+        mainActivity.locationPermissionCallbacks.clear();
+        if (waiting.isEmpty()) {
+            return false;
+        }
+        // One estimate, and one dialog asking for it, answering them all.
+        return locationPermissionDenied((longitude, latitude) -> {
+            for (com.peaknav.ui.CurrentLocationCallback callback : waiting) {
+                callback.setCurrentLocation(longitude, latitude);
+            }
         });
     }
 
@@ -403,6 +431,19 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     .setNegativeButton(s("No"), null);
             alertBuilder.create().show();
         });
+    }
+
+    @Override
+    public void promptChoice(String title, String message, String first, String second,
+                             Runnable onFirst, Runnable onSecond) {
+        mainActivity.runOnUiThread(() -> new AlertDialog.Builder(mainActivity)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton(first, (dialogInterface, i) -> onFirst.run())
+                .setNegativeButton(second, (dialogInterface, i) -> onSecond.run())
+                // Back, or a tap beside the dialog, counts as the second answer.
+                .setOnCancelListener(dialogInterface -> onSecond.run())
+                .create().show());
     }
 
     @Override
@@ -570,12 +611,24 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                 };
                 // Only ask providers the device has: asking a missing one (no "network" provider on
                 // devices without Google services, or on the emulator) throws and crashes the app.
+                // The GPS one only with precise access: given "approximate", asking it throws too.
                 List<String> providers = locationManager.getAllProviders();
-                boolean hasGps = providers.contains(LocationManager.GPS_PROVIDER);
+                boolean hasGps = providers.contains(LocationManager.GPS_PROVIDER)
+                        && ActivityCompat.checkSelfPermission(context, ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
                 boolean hasNetwork = providers.contains(LocationManager.NETWORK_PROVIDER);
+                // Android 12's own "fused" provider, where one of those two is missing: without
+                // Google's services there is often no network provider, and with approximate
+                // access there is no GPS one, so a de-Googled phone given "approximate" had no
+                // source at all. The fused one answers there, blurred to the access given.
+                boolean hasFused = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+                        && providers.contains(LocationManager.FUSED_PROVIDER)
+                        && !(hasGps && hasNetwork);
                 Location lastKnownLocation = hasGps ? locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) : null;
                 if (lastKnownLocation == null && hasNetwork) {
                     lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                }
+                if (lastKnownLocation == null && hasFused) {
+                    lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.FUSED_PROVIDER);
                 }
                 if (lastKnownLocation != null) {
                     locationListener.onLocationChanged(lastKnownLocation);
@@ -585,6 +638,9 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                 }
                 if (hasGps) {
                     locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, locationListener, null);
+                }
+                if (hasFused) {
+                    locationManager.requestSingleUpdate(LocationManager.FUSED_PROVIDER, locationListener, null);
                 }
             }
 

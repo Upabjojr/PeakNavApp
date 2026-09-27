@@ -177,11 +177,30 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     @Override
     public void promptYesNo(String title, String message, Runnable onYes) {
         DesktopSwing.onEdt(() -> {
+            // Wrapped: a paragraph handed to JOptionPane as plain text is laid out on one
+            // line, and a long one came out a metre and a half wide.
             int dialogResult = JOptionPane.showConfirmDialog(
-                    null, message, title, JOptionPane.YES_NO_OPTION);
+                    null,
+                    "<html><body style='width:380px'>" + escapeHtml(message).replace("\n", "<br>") + "</body></html>",
+                    title, JOptionPane.YES_NO_OPTION);
             if (dialogResult == JOptionPane.YES_OPTION) {
                 onYes.run();
             }
+        });
+    }
+
+    @Override
+    public void promptChoice(String title, String message, String first, String second,
+                             Runnable onFirst, Runnable onSecond) {
+        DesktopSwing.onEdt(() -> {
+            Object[] options = {first, second};
+            int answer = JOptionPane.showOptionDialog(
+                    null,
+                    "<html><body style='width:380px'>" + escapeHtml(message).replace("\n", "<br>") + "</body></html>",
+                    title, JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+                    null, options, options[0]);
+            // Closed without an answer counts as the second one.
+            (answer == 0 ? onFirst : onSecond).run();
         });
     }
 
@@ -271,63 +290,18 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     /**
      * "Go to my position" on a machine with no GPS: the position is estimated from the
-     * internet connection (see {@link com.peaknav.viewer.desktop.IpLocationDesktop}), which
-     * is the only source a desktop has. It used to do nothing at all - the button was there,
-     * and pressing it produced neither a move nor a word.
-     *
-     * <p>The estimate leaves the machine's address with an online service, so it is asked
-     * for once and the answer remembered; and it is an estimate, so the toast names the
-     * place it landed on rather than quietly moving the map somewhere odd.
+     * internet connection, which is the only source a desktop has - asked for once, and named
+     * in a toast (see {@link #estimateLocationFromNetwork}). It used to do nothing at all.
+     * On a first run, where the download chooser asks, searching is offered beside it, as on
+     * a phone with location access off.
      */
-    private final CurrentLocationListener currentLocationListener = new CurrentLocationListener() {
-        @Override
-        public void getCurrentLocation(CurrentLocationCallback currentLocationCallback) {
-            if (P.isIpLocationConsent()) {
-                estimatePositionFromNetwork(currentLocationCallback);
-                return;
-            }
-            DesktopSwing.onEdt(() -> {
-                // Wrapped: a paragraph handed to JOptionPane as plain text is laid out on one
-                // line, and this one came out a metre and a half wide.
-                int answer = JOptionPane.showConfirmDialog(
-                        null,
-                        "<html><body style='width:380px'>"
-                                + escapeHtml(s("Ip_location_consent")) + "</body></html>",
-                        s("Ip_location_title"),
-                        JOptionPane.YES_NO_OPTION);
-                if (answer != JOptionPane.YES_OPTION) {
-                    return;
-                }
-                // Off the EDT: writing a preference flushes it to disk.
-                getC().submitExecutorGeneric(() -> P.setIpLocationConsent(true));
-                estimatePositionFromNetwork(currentLocationCallback);
-            });
+    private final CurrentLocationListener currentLocationListener = callback -> {
+        if (isFirstRun()) {
+            offerEstimateOrSearch(callback, "Ip_location_choice_desktop");
+        } else {
+            estimateLocationFromNetwork(callback, "Ip_location_consent");
         }
     };
-
-    /** Asks the network where this machine is, and hands the answer to the map. */
-    private void estimatePositionFromNetwork(CurrentLocationCallback callback) {
-        makeToast(s("Ip_location_searching"));
-        com.peaknav.viewer.desktop.IpLocationDesktop.locate(
-                new com.peaknav.viewer.desktop.IpLocationDesktop.Listener() {
-                    @Override
-                    public void located(double latitude, double longitude, String placeName) {
-                        // The callback moves the camera, which belongs on the render thread;
-                        // the HTTP answer arrives on a network one.
-                        Gdx.app.postRunnable(() -> callback.setCurrentLocation(
-                                (float) longitude, (float) latitude));
-                        String where = placeName.isEmpty()
-                                ? String.format(java.util.Locale.ROOT, "%.3f, %.3f", latitude, longitude)
-                                : placeName;
-                        makeToast(s("Ip_location_estimated") + " " + where);
-                    }
-
-                    @Override
-                    public void failed() {
-                        makeToast(s("Ip_location_failed"));
-                    }
-                });
-    }
 
     @Override
     public CurrentLocationListener getCurrentLocationListener() {

@@ -22,8 +22,10 @@ import java.util.List;
  * <p>Authorization is asynchronous on iOS exactly as the runtime permission is on Android,
  * and the same trick answers it: callbacks that arrive before the user has decided wait in
  * {@link #waiting}, and the authorization-change delegate callback drains the queue the
- * moment the grant lands. A denial leaves the queue in place silently - the Android side
- * returns without an answer there too, and the "here" button simply stays un-lit.
+ * moment the grant lands. A denial hands the queue to core
+ * ({@code NativeScreenCaller.locationPermissionDenied}), which on a first run estimates the
+ * position from the internet connection instead and otherwise leaves it unanswered, as
+ * Android does.
  *
  * <p>Everything here must run on the main thread: the delegate's callbacks arrive on the
  * run loop of the thread the manager was created on, and on this backend the main thread is
@@ -93,6 +95,9 @@ public class LocationControllerIOS {
     public void getCurrentLocation(CurrentLocationCallback callback) {
         ensureManager();
         if (isDenied()) {
+            List<CurrentLocationCallback> refused = new ArrayList<>();
+            refused.add(callback);
+            refused(refused);
             return;
         }
         waiting.add(callback);
@@ -107,6 +112,12 @@ public class LocationControllerIOS {
     }
 
     private void authorizationChanged() {
+        if (!waiting.isEmpty() && isDenied()) {
+            List<CurrentLocationCallback> refused = new ArrayList<>(waiting);
+            waiting.clear();
+            refused(refused);
+            return;
+        }
         if (!waiting.isEmpty() && !isDenied()
                 && CLLocationManager.getAuthorizationStatus() != CLAuthorizationStatus.NotDetermined) {
             requestFix();
@@ -141,5 +152,19 @@ public class LocationControllerIOS {
                 work.run();
             }
         }
+    }
+
+    /** Requests that location access was refused to: one answer for them all, if core has one. */
+    private static void refused(List<CurrentLocationCallback> callbacks) {
+        com.peaknav.compatibility.NativeScreenCaller caller =
+                com.peaknav.utils.PeakNavUtils.getNativeScreenCaller();
+        if (caller == null) {
+            return;
+        }
+        caller.locationPermissionDenied((longitude, latitude) -> {
+            for (CurrentLocationCallback callback : callbacks) {
+                callback.setCurrentLocation(longitude, latitude);
+            }
+        });
     }
 }

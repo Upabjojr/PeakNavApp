@@ -1,4 +1,4 @@
-package com.peaknav.viewer.desktop;
+package com.peaknav.network;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Net;
@@ -6,11 +6,11 @@ import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 
 /**
- * Where the desktop's "go to my position" gets a position from.
+ * A position from the internet connection, for when there is no other: the desktop's "go to
+ * my position" (a computer has no GPS), and a phone's first run with location access refused.
  *
- * <p>A computer has no GPS, so the only thing left is the internet connection: an online
- * service is asked where the address the request came from is, and answers with the city
- * it believes that address sits in. That is what this does, and its limits are worth being
+ * <p>An online service is asked where the address the request came from is, and answers with
+ * the city it believes that address sits in. That is what this does, and its limits are worth being
  * honest about - the answer is the city, not the street, it is wrong outright behind a VPN
  * or a mobile hotspot, and the two services below can disagree by a couple of hundred
  * kilometres. The caller says so in a toast, naming the place it landed on, so a wrong
@@ -19,9 +19,9 @@ import com.badlogic.gdx.utils.JsonValue;
  * <p>Two services, tried in order, because either one alone is a single point of failure
  * and neither needs an account or a key. Nothing is sent but the request itself; the
  * address it comes from is what the service reads. The user is asked first, once - see
- * {@code PreferencesManager.isIpLocationConsent()}.
+ * {@code NativeScreenCaller.estimateLocationFromNetwork}.
  */
-public final class IpLocationDesktop {
+public final class IpLocation {
 
     /** What a lookup produced: degrees, plus the place name to show, or a failure. */
     public interface Listener {
@@ -38,7 +38,7 @@ public final class IpLocationDesktop {
     /** Beyond this the user has been staring at an unmoved map for long enough. */
     private static final int TIMEOUT_MILLIS = 8000;
 
-    private IpLocationDesktop() {
+    private IpLocation() {
     }
 
     /** Asks the first service, falling back to the next one; the listener is called once. */

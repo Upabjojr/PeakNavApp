@@ -77,12 +77,17 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 				}
 			}
 		} else if (requestCode == LOCATION_REQUEST_CODE) {
-			handleLocationPermission(this, grantResults, () -> {
+			com.peaknav.compatibility.NativeScreenCallerAndroid nsc =
+					(com.peaknav.compatibility.NativeScreenCallerAndroid) getNativeScreenCaller();
+			handleLocationPermission(this, () -> {
+				if (nsc != null) {
+					nsc.locationPermissionAnswered(true);
+				}
 				while (!locationPermissionCallbacks.isEmpty()) {
 					Runnable runnable = locationPermissionCallbacks.poll();
 					runnable.run();
 				}
-			});
+			}, () -> nsc != null && nsc.locationPermissionAnswered(false));
 		} else if (requestCode == MEDIA_LOCATION_REQUEST_CODE) {
 			// Open the picker whether or not media-location access was granted. If it was
 			// denied, the import will simply warn that the image location cannot be read.

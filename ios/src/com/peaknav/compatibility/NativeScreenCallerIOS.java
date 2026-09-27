@@ -309,6 +309,21 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         });
     }
 
+    @Override
+    public void promptChoice(final String title, final String message, final String first,
+                             final String second, final Runnable onFirst, final Runnable onSecond) {
+        onMainThread(() -> {
+            UIAlertController controller = new UIAlertController(
+                    title == null ? "" : title, message == null ? "" : message,
+                    UIAlertControllerStyle.Alert);
+            controller.addAction(new UIAlertAction(first, UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> onFirst.run()));
+            controller.addAction(new UIAlertAction(second, UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> onSecond.run()));
+            present(controller);
+        });
+    }
+
     /**
      * Asks for a set of values in one alert. iOS alerts take text fields directly, so this
      * is the platform's own dialogue rather than anything hand-built.
@@ -520,6 +535,12 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         onMainThread(() -> {
             LocationControllerIOS controller = locationController();
             if (controller.isDenied()) {
+                if (isFirstRun()) {
+                    // The request that follows is answered from the internet connection
+                    // instead (locationPermissionDenied), with a dialog of its own: iOS shows
+                    // one alert at a time, and that one is the more useful on a first run.
+                    return;
+                }
                 // The user said no earlier; only the Settings app can change that answer
                 // now, so point there rather than silently doing nothing forever.
                 askOpenSettings("Location_permission_missing",
