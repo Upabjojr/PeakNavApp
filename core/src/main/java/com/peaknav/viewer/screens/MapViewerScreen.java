@@ -1485,6 +1485,9 @@ public class MapViewerScreen implements Screen {
 	/** Shows or hides the "Loading..." screen for a photo being decoded; any thread. */
 	public void setPhotoLoading(final boolean loading) {
 		photoLoading = loading;
+		if (Gdx.app == null) {
+			return;   // libGDX not started yet: nothing on screen to update
+		}
 		Gdx.app.postRunnable(new Runnable() {
 			@Override
 			public void run() {

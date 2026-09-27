@@ -45,6 +45,17 @@ public class MapApp extends Game {
         introScreen = new IntroScreen(this);
     }
 
+    /**
+     * Whether {@link #create} has run: libGDX is up and the screens can be used. The screens
+     * themselves exist from the constructor on, well before that - on Android, before the
+     * activity's onCreate has even returned.
+     */
+    private volatile boolean created;
+
+    public boolean isCreated() {
+        return created;
+    }
+
     @Override
     public void create() {
         // if no location has ever been created, ask for one:
@@ -56,6 +67,7 @@ public class MapApp extends Game {
         setScreen(introScreen);
 
         getAppState().setMapDataDownloaded(getC().mapSqlite.existDownloadedTiles());
+        created = true;
     }
 
     @Override

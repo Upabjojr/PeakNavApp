@@ -294,8 +294,8 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		if (pendingShareData == null) {
 			return;
 		}
-		if (getC() == null || getC().getMapViewerScreen() == null) {
-			if (attempt < 60) {
+		if (!mapReady()) {
+			if (attempt < 120) {
 				shareHandler.postDelayed(() -> processPendingShare(attempt + 1), 250);
 			}
 			return;
@@ -324,6 +324,17 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		});
 	}
 
+	/**
+	 * Whether a share can be applied: this activity's app has been created by libGDX. The map
+	 * screen alone was the old test, and it exists from MapApp's constructor on - so a photo
+	 * shared into a PeakNav that was not running was applied in onCreate, before libGDX had
+	 * started, and crashed the app on the missing Gdx.app. Up to half a minute is waited.
+	 */
+	private boolean mapReady() {
+		return mapApp != null && mapApp.isCreated() && com.badlogic.gdx.Gdx.app != null
+				&& getC() != null && getC().getMapViewerScreen() != null;
+	}
+
 	/** The map's "Loading..." screen while a photo is read and decoded; safe from any thread. */
 	private static void setPhotoLoading(boolean loading) {
 		if (getC() != null && getC().getMapViewerScreen() != null) {
@@ -339,8 +350,8 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		if (pendingGeoLat == null || pendingGeoLon == null) {
 			return;
 		}
-		if (getC() == null || getC().getMapViewerScreen() == null) {
-			if (attempt < 60) {
+		if (!mapReady()) {
+			if (attempt < 120) {
 				shareHandler.postDelayed(() -> processPendingGeo(attempt + 1), 250);
 			}
 			return;
