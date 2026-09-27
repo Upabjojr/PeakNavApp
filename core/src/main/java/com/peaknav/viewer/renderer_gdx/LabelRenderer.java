@@ -951,15 +951,14 @@ public class LabelRenderer {
     }
 
     private void renderAreas() {
-        areaDrawn.clear();
         float targetLat = getC().L.getTargetLatitude();
         float targetLon = (float) getC().L.getTargetLongitude();
         List<MapArea> areas = getC().areaRegistry.getAreasNear(targetLat, targetLon);
-        if (areas.isEmpty())
-            return;
         PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
-        if (cam == null)
+        if (areas.isEmpty() || cam == null) {
+            areaDrawn.clear();
             return;
+        }
 
         // Is this a DECISION frame - one on which the set of area labels may change?
         // Between decisions the labels already on screen keep their places and simply
@@ -983,6 +982,20 @@ public class LabelRenderer {
         boolean decide = held
                 ? version != frozenAreaVersion
                 : now - lastAreaSelectionMs >= AREA_SELECTION_DEBOUNCE_MS;
+        // A still camera between decisions: the same labels in the same places as last frame,
+        // so they are drawn again as they were. Measuring them - an ellipse of points per area,
+        // each corrected for the earth's curvature and projected - was half of every frame's
+        // work on a phone, and made the idle frame rate unreachable. Anything else that could
+        // change them (the areas loaded, the switches, the fonts) is taken up at the next
+        // decision, at most half a second away.
+        if (!decide && areaCameraUnchanged(cam, areas)) {
+            for (int i = 0; i < areaDrawn.size(); i++) {
+                drawAreaName(areaDrawn.get(i));
+                labelsDrawnThisFrame++;
+            }
+            return;
+        }
+        areaDrawn.clear();
         if (decide) {
             // The cached terrain verdicts describe the view from the depth maps the last
             // decision read. Once the maps are re-rendered from kilometres away - a scripted
@@ -1277,6 +1290,37 @@ public class LabelRenderer {
                 labelsDrawnThisFrame++;
             }
         }
+    }
+
+    private final Vector3 areaCamPosition = new Vector3(Float.NaN, 0, 0);
+    private final Vector3 areaCamDirection = new Vector3();
+    private final Vector3 areaCamUp = new Vector3();
+    private float areaCamFov = Float.NaN;
+    private int areaCamWidth, areaCamHeight;
+    private List<MapArea> areaCamAreas;
+    private int areaCamAreaCount;
+
+    /**
+     * Whether the camera, the screen and the areas nearby are exactly as they were when the
+     * area labels were last measured; notes them for the next frame when not.
+     */
+    private boolean areaCameraUnchanged(PerspectiveCameraExt cam, List<MapArea> areas) {
+        int w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
+        boolean same = cam.position.equals(areaCamPosition) && cam.direction.equals(areaCamDirection)
+                && cam.up.equals(areaCamUp) && cam.fieldOfView == areaCamFov
+                && w == areaCamWidth && h == areaCamHeight
+                && areas == areaCamAreas && areas.size() == areaCamAreaCount;
+        if (!same) {
+            areaCamPosition.set(cam.position);
+            areaCamDirection.set(cam.direction);
+            areaCamUp.set(cam.up);
+            areaCamFov = cam.fieldOfView;
+            areaCamWidth = w;
+            areaCamHeight = h;
+            areaCamAreas = areas;
+            areaCamAreaCount = areas.size();
+        }
+        return same;
     }
 
     /** Interactive re-decision cadence for the area winners; see the comment above. */
