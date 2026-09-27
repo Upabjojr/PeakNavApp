@@ -239,6 +239,53 @@ public class OptionPane {
         return table.isVisible() || tableOneColumn.isVisible();
     }
 
+    /**
+     * The system Back key, from a platform that has one, while a menu is open: exactly what that
+     * menu's own Back button does - a submenu back to the menu it came from, the main menu
+     * closed - by pressing it. Render thread. False when no menu is open.
+     */
+    public boolean pressBack() {
+        for (Table menu : allMenus()) {
+            if (menu != null && menu.isVisible()) {
+                Button back = findBackButton(menu, s("Back"));
+                if (back != null) {
+                    ChangeListener.ChangeEvent event = new ChangeListener.ChangeEvent();
+                    back.fire(event);
+                } else {
+                    hide();
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Button findBackButton(com.badlogic.gdx.scenes.scene2d.Group group, String caption) {
+        for (Actor child : group.getChildren()) {
+            if (child instanceof TextButton && caption.equals(String.valueOf(((TextButton) child).getText()))) {
+                return (Button) child;
+            }
+            if (child instanceof com.badlogic.gdx.scenes.scene2d.ui.ImageTextButton
+                    && caption.equals(String.valueOf(((com.badlogic.gdx.scenes.scene2d.ui.ImageTextButton) child).getText()))) {
+                return (Button) child;
+            }
+            if (child instanceof com.badlogic.gdx.scenes.scene2d.Group) {
+                Button found = findBackButton((com.badlogic.gdx.scenes.scene2d.Group) child, caption);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Table[] allMenus() {
+        return new Table[]{table, tableOneColumn, getSelectBoxSatelliteSource(), getSelectBoxDownloadSource(),
+                getSelectBoxUnits(), getSelectInfoOpts(), getSelectLanguage(), getSelectGpx(), getSelectPathsAndMarkers(),
+                getSelectMarkers(), getSelectLabels(), getSelectLabelsOneColumn(), getSelectSky(), getSelectCompass(), getSelectRoads(),
+                getSelectRoadsOneColumn(), getSelectRoadsGroup(), getSelectPistes()};
+    }
+
     /** Whether the options menu, or any of its submenus, is on screen. */
     public boolean isAnyMenuVisible() {
         Table[] menus = {table, tableOneColumn, getSelectBoxSatelliteSource(), getSelectBoxDownloadSource(),

@@ -133,6 +133,14 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 					com.badlogic.gdx.Gdx.app.postRunnable(() -> app.mapViewerScreen.tutorialOverlay.hide());
 					return;
 				}
+				// Nor are the options menu and its submenus: Back does what their own Back
+				// button does - a submenu back to its menu, the menu closed - instead of
+				// leaving the app.
+				if (app != null && app.mapViewerScreen != null && app.mapViewerScreen.optionPane != null
+						&& app.mapViewerScreen.optionPane.isAnyMenuVisible()) {
+					com.badlogic.gdx.Gdx.app.postRunnable(() -> app.mapViewerScreen.optionPane.pressBack());
+					return;
+				}
 				if (getSupportFragmentManager().getBackStackEntryCount() > 0) {
 					com.peaknav.compatibility.NativeScreenCaller caller =
 							com.peaknav.utils.PeakNavUtils.getNativeScreenCaller();
