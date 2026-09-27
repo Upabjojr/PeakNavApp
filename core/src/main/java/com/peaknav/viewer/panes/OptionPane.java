@@ -55,6 +55,16 @@ public class OptionPane {
     private final float widgetUnitStep;
     private final Table selectBoxSatSrc;
     private final Table selectInfoOpts;
+    /** The languages to choose from: one column that scrolls, whatever the screen's shape. */
+    private Table selectLanguage;
+    private com.badlogic.gdx.scenes.scene2d.ui.ScrollPane languageScroll;
+    private Cell<com.badlogic.gdx.scenes.scene2d.ui.ScrollPane> languageScrollCell;
+    private Table languageList;
+    /** The menus laid out twice, for a screen held sideways and one held upright. */
+    private OrientedMenu mainMenu, labelsMenu, roadsMenu;
+    private ImageTextButtonOptionPane buttonLanguage;
+    private final List<TextButton> languageButtons = new ArrayList<>();
+    private final List<String> languageCodes = new ArrayList<>();
     private final Table selectGpx;
     /** "My paths and markers": the GPX paths' submenu and the markers'. */
     private final Table selectPathsAndMarkers;
@@ -63,6 +73,8 @@ public class OptionPane {
     private final Table markersList = new Table();
     private com.badlogic.gdx.scenes.scene2d.ui.ScrollPane markersScroll;
     private final Table selectLabels;
+    /** The same submenu in one column, for a screen held upright; see createLabelsMenu. */
+    private final Table selectLabelsOneColumn;
     private final Table selectSky;
     private final Table selectCompass;
     /** The roads submenu, laid out in pairs for a wide screen and in one column for a tall one. */
@@ -103,6 +115,10 @@ public class OptionPane {
         return selectBoxUnits;
     }
 
+    public Table getSelectLanguage() {
+        return selectLanguage;
+    }
+
     public Table getSelectInfoOpts() {
         return selectInfoOpts;
     }
@@ -128,10 +144,12 @@ public class OptionPane {
         selectBoxDownloadSrc = createDownloadSourceSelectBox();
         selectBoxUnits = createSelectBoxUnitSystem();
         selectInfoOpts = createInfoOptsMenu();
+        selectLanguage = createLanguageMenu();
         selectGpx = createGpxMenu();
         selectMarkers = createMarkersMenu();
         selectPathsAndMarkers = createPathsAndMarkersMenu();
-        selectLabels = createLabelsMenu();
+        selectLabels = createLabelsMenu(false);
+        selectLabelsOneColumn = createLabelsMenu(true);
         selectSky = createSkyMenu();
         selectCompass = createCompassMenu();
         selectRoads = createRoadsMenu(false);
@@ -148,6 +166,23 @@ public class OptionPane {
 
         table.setVisible(false);
         tableOneColumn.setVisible(false);
+
+        mainMenu = new OrientedMenu(table, tableOneColumn);
+        labelsMenu = new OrientedMenu(selectLabels, selectLabelsOneColumn);
+        roadsMenu = new OrientedMenu(selectRoads, selectRoadsOneColumn);
+    }
+
+    /**
+     * The screen turned or the window changed shape: each menu on show takes the layout that
+     * now fits, and the language list the height that now fits.
+     */
+    public void onResize() {
+        mainMenu.fit();
+        labelsMenu.fit();
+        roadsMenu.fit();
+        if (selectLanguage.isVisible()) {
+            fitLanguageList();
+        }
     }
 
     /*
@@ -207,8 +242,8 @@ public class OptionPane {
     /** Whether the options menu, or any of its submenus, is on screen. */
     public boolean isAnyMenuVisible() {
         Table[] menus = {table, tableOneColumn, getSelectBoxSatelliteSource(), getSelectBoxDownloadSource(),
-                getSelectBoxUnits(), getSelectInfoOpts(), getSelectGpx(), getSelectPathsAndMarkers(),
-                getSelectMarkers(), getSelectLabels(), getSelectSky(), getSelectCompass(), getSelectRoads(),
+                getSelectBoxUnits(), getSelectInfoOpts(), getSelectLanguage(), getSelectGpx(), getSelectPathsAndMarkers(),
+                getSelectMarkers(), getSelectLabels(), getSelectLabelsOneColumn(), getSelectSky(), getSelectCompass(), getSelectRoads(),
                 getSelectRoadsOneColumn(), getSelectRoadsGroup(), getSelectPistes()};
         for (Table menu : menus) {
             if (menu != null && menu.isVisible()) {
@@ -236,6 +271,10 @@ public class OptionPane {
 
     public Table getSelectLabels() {
         return selectLabels;
+    }
+
+    public Table getSelectLabelsOneColumn() {
+        return selectLabelsOneColumn;
     }
 
     public Table getSelectSky() {
@@ -515,7 +554,7 @@ public class OptionPane {
      * Submenu that toggles which labels are shown: the POI labels (peaks, places, alpine huts) and
      * the ranged-area labels (islands, cities, mountain ranges, lakes).
      */
-    private Table createLabelsMenu() {
+    private Table createLabelsMenu(boolean oneColumn) {
         Table table = new Table();
         table.center();
         table.setFillParent(true);
@@ -598,7 +637,7 @@ public class OptionPane {
         });
         buttons.add(back);
 
-        addButtonsToTable(table, buttons, true, buttonWidth);
+        addButtonsToTable(table, buttons, oneColumn, buttonWidth);
         table.setVisible(false);
         return table;
     }
@@ -1017,9 +1056,7 @@ public class OptionPane {
     public void openRoadsStyleSubmenu() {
         openRoadsSubmenu();
         selectRoadsGroup.setVisible(false);
-        boolean wide = Gdx.graphics.getWidth() > Gdx.graphics.getHeight();
-        selectRoads.setVisible(wide);
-        selectRoadsOneColumn.setVisible(!wide);
+        roadsMenu.show();
     }
 
     /** Shows the roads and pistes submenu, with its switches as they stand. */
@@ -1067,9 +1104,7 @@ public class OptionPane {
             for (Runnable refresher : roadMenuRefreshers) {
                 refresher.run();
             }
-            boolean wide = Gdx.graphics.getWidth() > Gdx.graphics.getHeight();
-            selectRoads.setVisible(wide);
-            selectRoadsOneColumn.setVisible(!wide);
+            roadsMenu.show();
             table.setVisible(false);
         });
 
@@ -1207,6 +1242,19 @@ public class OptionPane {
         });
         buttons.add(buttonSlideshow);
 
+        // The interface's language: the device's unless the reader picks another.
+        buttonLanguage = getC().widgetGetter.getImageTextButton(
+                "icons/icon_language.png", languageCaption(), false);
+        buttonLanguage.addListener(new ChangeListener() {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                table.setVisible(false);
+                selectLanguage.setVisible(true);
+                fitLanguageList();
+            }
+        });
+        buttons.add(buttonLanguage);
+
         WidgetGetter.ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton("icons/icon_back.png", s("Back"), false);
         back.addClickListener(() -> {
             table.setVisible(false);
@@ -1217,6 +1265,109 @@ public class OptionPane {
         addButtonsToTable(table, buttons, true, buttonWidth);
         table.setVisible(false);
         return table;
+    }
+
+    /** "Language: Italiano", or "Language: System language" while the device's is followed. */
+    private static String languageCaption() {
+        String chosen = P.getLanguage();
+        String name = chosen.isEmpty() ? null : com.peaknav.viewer.I18NWrapper.nameOf(chosen);
+        return s("Language") + ": " + (name != null ? name : s("Language_system"));
+    }
+
+    /**
+     * The languages to choose from, each under its own name, the device's language first, in
+     * one column that scrolls: two dozen of them fit no screen, and more will come. The choice
+     * is saved at once and used from the next start: every caption of the interface is laid
+     * out when the app starts.
+     */
+    private Table createLanguageMenu() {
+        Table table = new Table();
+        table.center();
+        table.setFillParent(true);
+
+        languageList = new Table();
+        List<String[]> choices = new ArrayList<>();
+        choices.add(new String[]{"", s("Language_system")});
+        for (String[] language : com.peaknav.viewer.I18NWrapper.LANGUAGES) {
+            choices.add(language);
+        }
+        for (String[] entry : choices) {
+            final String code = entry[0];
+            final TextButton choice = getC().widgetGetter.getTextButton(entry[1], true);
+            choice.setProgrammaticChangeEvents(false);
+            choice.setChecked(code.equals(P.getLanguage()));
+            choice.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    chooseLanguage(code);
+                }
+            });
+            languageButtons.add(choice);
+            languageCodes.add(code);
+            languageList.add(choice).width(buttonWidth).height(height).padBottom(padHeight).padRight(padHeight).row();
+        }
+        // A bar down the side, always shown, so it is plain there is more below: a list that
+        // scrolls without one looks like a list that ends where the screen does. Blue on white,
+        // the menu icons' colours, wide enough to be seen against the map behind it.
+        com.badlogic.gdx.scenes.scene2d.ui.ScrollPane.ScrollPaneStyle scrollStyle =
+                new com.badlogic.gdx.scenes.scene2d.ui.ScrollPane.ScrollPaneStyle();
+        float barWidth = Math.max(6f, 0.2f * widgetUnitStep);
+        com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable knob =
+                new com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable(getC().widgetTextures
+                        .getUniformDrawable(new com.badlogic.gdx.graphics.Color(0.17f, 0.50f, 0.72f, 1f)));
+        knob.setMinWidth(barWidth);
+        knob.setMinHeight(2f * barWidth);
+        com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable track =
+                new com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable(getC().widgetTextures
+                        .getUniformDrawable(new com.badlogic.gdx.graphics.Color(1f, 1f, 1f, 0.9f)));
+        track.setMinWidth(barWidth);
+        scrollStyle.vScrollKnob = knob;
+        scrollStyle.vScroll = track;
+        languageScroll = new com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(languageList, scrollStyle);
+        languageScroll.setScrollingDisabled(true, false);
+        languageScroll.setOverscroll(false, false);
+        languageScroll.setFadeScrollBars(false);
+        languageScroll.setScrollbarsOnTop(false);
+        languageScrollCell = table.add(languageScroll).width(buttonWidth + barWidth + padHeight);
+        table.row();
+        ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton("icons/icon_back.png", s("Back"), false);
+        back.addClickListener(() -> {
+            table.setVisible(false);
+            selectInfoOpts.setVisible(true);
+        });
+        table.add(back).width(buttonWidth).height(height).padTop(padHeight);
+        table.setVisible(false);
+        return table;
+    }
+
+    /**
+     * The list as tall as the screen allows beside its Back button, or as its languages need if
+     * less; scrolled to the one chosen, so it is in view when the list opens.
+     */
+    private void fitLanguageList() {
+        float room = Gdx.graphics.getHeight() * 0.8f - height - 3 * padHeight;
+        languageScrollCell.height(Math.max(height, Math.min(languageList.getPrefHeight(), room)));
+        selectLanguage.invalidateHierarchy();
+        selectLanguage.validate();
+        for (int i = 0; i < languageButtons.size(); i++) {
+            if (languageButtons.get(i).isChecked()) {
+                TextButton chosen = languageButtons.get(i);
+                languageScroll.layout();
+                languageScroll.scrollTo(chosen.getX(), chosen.getY(), chosen.getWidth(), chosen.getHeight(), true, true);
+                languageScroll.updateVisualScroll();
+                break;
+            }
+        }
+    }
+
+    private void chooseLanguage(String code) {
+        for (int i = 0; i < languageButtons.size(); i++) {
+            languageButtons.get(i).setChecked(languageCodes.get(i).equals(code));
+        }
+        changer.execute(() -> P.setLanguage(code));
+        buttonLanguage.setText(s("Language") + ": "
+                + (code.isEmpty() ? s("Language_system") : com.peaknav.viewer.I18NWrapper.nameOf(code)));
+        getNativeScreenCaller().alertMessage(s("Language_restart"));
     }
 
     private Table createSatelliteSourceSelectBox() {
@@ -1680,7 +1831,9 @@ public class OptionPane {
         buttonLabelsOptions.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
-                selectLabels.setVisible(true);
+                // Two columns on a screen held sideways, as the main menu and the trails'
+                // submenu are: in one, its eleven rows ran off the top and bottom.
+                labelsMenu.show();
                 table.setVisible(false);
                 tableOneColumn.setVisible(false);
             }
@@ -1948,21 +2101,17 @@ public class OptionPane {
 
     public void show() {
         updateCheckingStates();
-        if (Gdx.graphics.getWidth() > Gdx.graphics.getHeight()) {
-            table.setVisible(true);
-            tableOneColumn.setVisible(false);
-        } else {
-            table.setVisible(false);
-            tableOneColumn.setVisible(true);
-        }
+        mainMenu.show();
         selectBoxSatSrc.setVisible(false);
         selectBoxDownloadSrc.setVisible(false);
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
+        selectLanguage.setVisible(false);
         selectGpx.setVisible(false);
         selectPathsAndMarkers.setVisible(false);
         selectMarkers.setVisible(false);
         selectLabels.setVisible(false);
+        selectLabelsOneColumn.setVisible(false);
         selectSky.setVisible(false);
         selectCompass.setVisible(false);
         selectRoads.setVisible(false);
@@ -1981,10 +2130,12 @@ public class OptionPane {
         selectBoxDownloadSrc.setVisible(false);
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
+        selectLanguage.setVisible(false);
         selectGpx.setVisible(false);
         selectPathsAndMarkers.setVisible(false);
         selectMarkers.setVisible(false);
         selectLabels.setVisible(false);
+        selectLabelsOneColumn.setVisible(false);
         selectSky.setVisible(false);
         selectCompass.setVisible(false);
         selectRoads.setVisible(false);

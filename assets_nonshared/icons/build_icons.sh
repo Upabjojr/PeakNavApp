@@ -71,6 +71,7 @@ ICONS=(
   # list, so a build from a clean checkout came up short of the icons it asks for.
   "icon_checkbox_sky:128:128"
   "icon_info:128:128"
+  "icon_language:128:128"
   "icon_sky_constellations:128:128"
   "icon_sky_mode:128:128"
   "icon_sky_time:128:128"

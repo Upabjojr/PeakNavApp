@@ -60,6 +60,9 @@ public interface Constants {
         // Desktop only: consent to estimate the position from the internet connection,
         // which means handing the IP address to an online service. Asked once.
         String IP_LOCATION_CONSENT = "ipLocationConsent";
+        // The interface language the user chose over the device's, as a two-letter code; empty
+        // for the device's own. Read when the app starts (I18NWrapper).
+        String LANGUAGE = "language";
         String LAST_LATITUDE = "lastLatitude";
         String LAST_LONGITUDE = "lastLongitude";
 

@@ -1726,10 +1726,12 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(optionPane.getSelectBoxDownloadSource());
 		stage.addActor(optionPane.getSelectBoxUnits());
 		stage.addActor(optionPane.getSelectInfoOpts());
+		stage.addActor(optionPane.getSelectLanguage());
 		stage.addActor(optionPane.getSelectGpx());
 		stage.addActor(optionPane.getSelectPathsAndMarkers());
 		stage.addActor(optionPane.getSelectMarkers());
 		stage.addActor(optionPane.getSelectLabels());
+		stage.addActor(optionPane.getSelectLabelsOneColumn());
 		stage.addActor(optionPane.getSelectSky());
 		stage.addActor(optionPane.getSelectCompass());
 		stage.addActor(optionPane.getSelectRoads());
@@ -1946,9 +1948,8 @@ public class MapViewerScreen implements Screen {
 
 			getC().dataRetrieveThreadManager.triggerUpdateVisibilityByZooming();
 
-			if (optionPane.isVisible()) {
-				optionPane.show();
-			}
+			// Each menu on show takes the layout for the screen's new shape (OrientedMenu).
+			optionPane.onResize();
 			backgroundPicManager.recomputeSizes();
 		});
 	}

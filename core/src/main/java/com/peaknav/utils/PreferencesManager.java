@@ -15,6 +15,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.LAST_CAMERA_UP_Z;
 import static com.peaknav.utils.Constants.PREFERENCES.LAST_LATITUDE;
 import static com.peaknav.utils.Constants.PREFERENCES.LAST_LONGITUDE;
 import static com.peaknav.utils.Constants.PREFERENCES.IP_LOCATION_CONSENT;
+import static com.peaknav.utils.Constants.PREFERENCES.LANGUAGE;
 import static com.peaknav.utils.Constants.PREFERENCES.LOCATION_PERMISSION_DENIED;
 import static com.peaknav.utils.Constants.PREFERENCES.PREF_NAME;
 import static com.peaknav.utils.Constants.PREFERENCES.UNDERLAY_IMAGE_PROVIDER;
@@ -130,6 +131,20 @@ public class PreferencesManager {
     public void setIpLocationConsent(boolean ipLocationConsent) {
         this.ipLocationConsent = ipLocationConsent;
         preferences.putBoolean(IP_LOCATION_CONSENT, ipLocationConsent);
+        preferences.flush();
+    }
+
+    /** The interface language chosen over the device's (a two-letter code), or "" for the device's. */
+    private String language = "";
+
+    public String getLanguage() {
+        return language;
+    }
+
+    /** Saved at once; it takes effect the next time the app starts. */
+    public void setLanguage(String language) {
+        this.language = language == null ? "" : language;
+        preferences.putString(LANGUAGE, this.language);
         preferences.flush();
     }
 
@@ -266,6 +281,7 @@ public class PreferencesManager {
         locationPermissionDenied = preferences.getBoolean(LOCATION_PERMISSION_DENIED, false);
         // Default false: nothing leaves the machine until the user says so.
         ipLocationConsent = preferences.getBoolean(IP_LOCATION_CONSENT, false);
+        language = preferences.getString(LANGUAGE, "");
 
         satelliteProviderRegistry = new SatelliteProviderRegistry(
                 new JsonConfigStore(SatelliteProviderRegistry.CONFIG_FILE));

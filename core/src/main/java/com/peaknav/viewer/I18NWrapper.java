@@ -35,7 +35,7 @@ public class I18NWrapper {
 
     public I18NWrapper() {
         I18NBundle i18NBundle;
-        Locale locale = localeOverride != null ? localeOverride : translationLocale(Locale.getDefault());
+        Locale locale = localeOverride != null ? localeOverride : translationLocale(chosenOrDeviceLocale());
         this.language = locale.getLanguage();
         try {
             i18NBundle = I18NBundle.createBundle(Gdx.files.internal("i18n/strings"), locale);
@@ -45,6 +45,44 @@ public class I18NWrapper {
         }
         this.i18NBundle = i18NBundle;
         I18NBundle.setExceptionOnMissingKey(false);
+    }
+
+    /**
+     * The languages the app is translated into, as their two-letter codes, each with its name
+     * in itself - how a reader finds their own language in a list of languages they do not
+     * read. English first, then by name.
+     */
+    public static final String[][] LANGUAGES = {
+            {"en", "English"}, {"bg", "Български"}, {"cs", "Čeština"}, {"da", "Dansk"},
+            {"de", "Deutsch"}, {"el", "Ελληνικά"}, {"es", "Español"}, {"fr", "Français"},
+            {"hr", "Hrvatski"}, {"it", "Italiano"}, {"nl", "Nederlands"}, {"no", "Norsk"},
+            {"pl", "Polski"}, {"pt", "Português"}, {"ro", "Română"}, {"ru", "Русский"},
+            {"sk", "Slovenčina"}, {"sl", "Slovenščina"}, {"sr", "Српски"}, {"fi", "Suomi"},
+            {"sv", "Svenska"}, {"uk", "Українська"},
+    };
+
+    /** The name of a language in itself, or null for a code not among {@link #LANGUAGES}. */
+    public static String nameOf(String code) {
+        for (String[] language : LANGUAGES) {
+            if (language[0].equals(code)) {
+                return language[1];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The language the user chose in the options, over the device's; the device's where they
+     * chose none. Chosen, it is the reader's language everywhere - the menus, the place search,
+     * which script labels are written in.
+     */
+    private static Locale chosenOrDeviceLocale() {
+        com.peaknav.utils.PreferencesManager preferences = com.peaknav.utils.PreferencesManager.P;
+        String chosen = preferences == null ? "" : preferences.getLanguage();
+        if (chosen != null && !chosen.isEmpty() && nameOf(chosen) != null) {
+            return new Locale(chosen);
+        }
+        return Locale.getDefault();
     }
 
     /**
