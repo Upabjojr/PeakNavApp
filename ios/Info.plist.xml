@@ -18,6 +18,21 @@
         <string>it</string>
         <string>nb</string>
         <string>pt</string>
+        <string>nl</string>
+        <string>sv</string>
+        <string>da</string>
+        <string>fi</string>
+        <string>pl</string>
+        <string>cs</string>
+        <string>sk</string>
+        <string>sl</string>
+        <string>hr</string>
+        <string>sr</string>
+        <string>ro</string>
+        <string>ru</string>
+        <string>uk</string>
+        <string>bg</string>
+        <string>el</string>
     </array>
     <key>CFBundleDisplayName</key>
     <string>${app.name}</string>

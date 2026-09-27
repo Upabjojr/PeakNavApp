@@ -380,9 +380,21 @@ that is not something the build can fix.
 ## Internationalization
 
 User-facing strings live in `assets/i18n/strings_<lang>.properties` for
-**en, it, fr, de, es, pt, no**. There is no base `strings.properties`, and missing
-keys render as `???key???` — so **add every new key to all 7 files**. Look strings
+**en, it, fr, de, es, pt, no, nl, sv, da, fi, pl, cs, sk, sl, hr, sr, ro, ru, uk, bg, el**
+(Serbian in Cyrillic). There is no base `strings.properties`, and missing
+keys render as `???key???` — so **add every new key to all 22 files**. A new language
+also goes into `CFBundleLocalizations` in `ios/Info.plist.xml`. Look strings
 up with `PeakNavUtils.s("Key")`.
+
+## Fonts
+
+The fonts are baked when the app is built: `:core:bakeFonts` (com.peaknav.tools.FontBaker)
+lays out every font of `FontSpecs` with FreeType into `assets/fonts_baked/` (not in git),
+and the android, desktop, headless and ios builds run it first. `StyleSingleton` loads them
+and scales them to the screen; it lays a font out itself only when a screen needs it larger
+than baked (the headless renderer's big pictures). The glyph set is `FontCharacters` - Latin,
+Greek and Cyrillic; a new script goes into its `SCRIPT_RANGES`. Map labels are written in
+Latin letters regardless (`PoiObject` transliterates names).
 
 ## Gotchas
 
