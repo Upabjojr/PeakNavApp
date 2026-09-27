@@ -150,6 +150,8 @@ public final class PeakNavRenderer implements AutoCloseable {
         // The renderer's pictures stand for a phone's screen, at whatever size they are drawn:
         // buttons and text keep to fractions of it rather than the desktop's fixed pixel sizes.
         com.peaknav.utils.Units.setProportionalInterface(true);
+        // Labels in scripts the app's fonts lack are drawn by Java2D, as on the desktop.
+        com.peaknav.viewer.desktop.DesktopLauncher.installLabelRasterizer();
 
         MapViewerDesktopSingleton.initializeDesktopLoadFactory();
         // What this renders is the phones' interface - the tutorial's screenshots and their

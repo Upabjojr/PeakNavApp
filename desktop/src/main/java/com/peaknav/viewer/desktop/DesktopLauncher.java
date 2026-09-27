@@ -59,9 +59,24 @@ public class DesktopLauncher {
 		DesktopSwing.announceIfUnavailable();
 	}
 
+	/**
+	 * Map labels the app's fonts cannot draw (a name in its own script, for a reader of it) are
+	 * drawn by Java2D. A Java without AWT's libraries cannot: the labels stay Latin there.
+	 */
+	public static void installLabelRasterizer() {
+		try {
+			com.peaknav.viewer.desktop.Java2DLabelRasterizer rasterizer = new com.peaknav.viewer.desktop.Java2DLabelRasterizer();
+			rasterizer.canDraw("A");
+			com.peaknav.viewer.labels.LabelTextRasterizers.set(rasterizer);
+		} catch (Throwable noJava2D) {
+			System.err.println("PeakNav: no Java2D text (" + noJava2D + "); labels stay in Latin letters");
+		}
+	}
+
 	public static void main (String[] arg) {
 		prepareMacWindowSystem();
 		warnIfNoDesktopSupport();
+		installLabelRasterizer();
 		Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
 		config.setForegroundFPS(60);
 		config.setTitle(appName);

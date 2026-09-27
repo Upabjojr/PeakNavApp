@@ -231,7 +231,8 @@ public final class RoadClassifier {
 
     /** A road's name: its own, else its own reference ("SS38", "E62"). */
     static String roadName(List<Tag> tags, int ownEnd) {
-        String name = value(tags, 0, ownEnd, "name");
+        String name = com.peaknav.utils.LabelScripts.roadName(
+                value(tags, 0, ownEnd, "name"), value(tags, 0, ownEnd, "name:en"));
         return name != null ? name : value(tags, 0, ownEnd, "ref");
     }
 
@@ -242,7 +243,7 @@ public final class RoadClassifier {
     static String trailName(List<Tag> tags, int ownEnd) {
         String name = value(tags, 0, ownEnd, "name");
         if (name != null) {
-            return name;
+            return com.peaknav.utils.LabelScripts.roadName(name, value(tags, 0, ownEnd, "name:en"));
         }
         // Relation groups: [type=route, route=hiking, name=..., ref=...] one after another.
         int start = ownEnd;
@@ -252,7 +253,7 @@ public final class RoadClassifier {
             if (route != null && isTrailRoute(route)) {
                 String routeName = value(tags, start, end, "name");
                 if (routeName != null) {
-                    return routeName;
+                    return com.peaknav.utils.LabelScripts.roadName(routeName, value(tags, start, end, "name:en"));
                 }
             }
             start = end;

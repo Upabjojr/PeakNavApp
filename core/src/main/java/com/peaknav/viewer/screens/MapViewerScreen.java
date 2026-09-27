@@ -2500,7 +2500,7 @@ public class MapViewerScreen implements Screen {
 			final PoiObject poi = (PoiObject) feature;
 			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(poi, viewer),
 					s("Marker_save"), () -> {
-						saveMarker(poi.name, poi.lat, poi.lon, poi.elevation);
+						saveMarker(poi.getUiName(), poi.lat, poi.lon, poi.elevation);
 						// The flag takes the pin's place.
 						removeImpact();
 					});

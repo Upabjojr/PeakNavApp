@@ -125,7 +125,7 @@ public final class FeatureInfo {
                 listed.add(new Row(key, tags.get(key), tagLink(key, tags.get(key))));
             }
         }
-        return new FeatureInfo(poi.name, kindOf(poi.drawLabelCategory, tags), rows, listed, poi.lat, poi.lon,
+        return new FeatureInfo(poi.getUiName(), kindOf(poi.drawLabelCategory, tags), rows, listed, poi.lat, poi.lon,
                 wikidata);
     }
 

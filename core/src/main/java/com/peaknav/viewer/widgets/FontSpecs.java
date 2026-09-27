@@ -69,6 +69,11 @@ public final class FontSpecs {
             this.shadowOffset = shadowOffset;
         }
 
+        /** The colour its glyphs are baked in; a tint multiplies it. */
+        public Color color() {
+            return color;
+        }
+
         /** Its size in pixels on a screen whose short side is {@code shortSide}. */
         public int displaySize(float shortSide) {
             return Math.max(1, Math.round(shortSide * fraction));

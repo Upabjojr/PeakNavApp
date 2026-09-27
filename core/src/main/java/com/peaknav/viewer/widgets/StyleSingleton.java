@@ -147,6 +147,11 @@ public class StyleSingleton {
         return font;
     }
 
+    /** The size in pixels, on this screen, of a font {@link FontSpecs} describes. */
+    public int textPixelSize(FontSpecs.Spec spec) {
+        return spec.displaySize(minSize);
+    }
+
     public BitmapFont getBitmapFont() {
         return bitmapFont;
     }

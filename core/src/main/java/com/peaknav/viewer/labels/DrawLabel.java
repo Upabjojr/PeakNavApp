@@ -70,12 +70,7 @@ public class DrawLabel {
             return;
         }
         String newText = getText();
-        BitmapFont bitmapFontMedium = getC().styleSingleton.getBitmapFontMedium();
-        BitmapFont bitmapFontSmall = getC().styleSingleton.getBitmapFontSmall();
-        textWidthMedium = LabelTextMeasure.width(bitmapFontMedium, newText);
-        textHeightMedium = LabelTextMeasure.height(bitmapFontMedium);
-        textWidthSmall = LabelTextMeasure.width(bitmapFontSmall, newText);
-        textHeightSmall = LabelTextMeasure.height(bitmapFontSmall);
+        measure(newText);
         text = newText;
         builtTextGeneration = generation;
     }
@@ -97,6 +92,19 @@ public class DrawLabel {
     public void drawOnSpriteBatch(SpriteBatch spriteBatch) {
         refreshTextIfStale();
         String text = this.text;
+        if (platformText) {
+            // A picture drawn by the platform, its baseline where the app's font would put it:
+            // libGDX draws text from the top of the capitals, a cap height above the baseline.
+            boolean large = P.getViewLargeFonts();
+            com.peaknav.viewer.widgets.FontSpecs.Spec spec = large
+                    ? com.peaknav.viewer.widgets.FontSpecs.MEDIUM : com.peaknav.viewer.widgets.FontSpecs.SMALL;
+            float size = getC().styleSingleton.textPixelSize(spec);
+            // The colour the app's font would show: its baked colour, tinted as the label is.
+            platformColor.set(spec.color()).mul(textColor);
+            PlatformLabelTextures.draw(spriteBatch, text, size, platformColor,
+                    invRotUpperLeftGlyphX, invRotUpperLeftGlyphY - getCurrentTextHeight());
+            return;
+        }
         if (!text.equals(layoutText)) {
             // The text changed under the layouts (see textGeneration): lay both out afresh.
             glyphLayoutSmall = null;
@@ -201,18 +209,46 @@ public class DrawLabel {
         String text = this.getText();
         Color color = this.drawLabelCategory.getTextColor();
 
-        BitmapFont bitmapFontMedium = getC().styleSingleton.getBitmapFontMedium();
-        BitmapFont bitmapFontSmall =  getC().styleSingleton.getBitmapFontSmall();
-
         this.text = text;
         this.layoutText = text;
         this.builtTextGeneration = textGeneration;
         this.textColor = color;
         // Measured rather than laid out: this constructor runs on the POI loading thread.
-        this.textWidthMedium = LabelTextMeasure.width(bitmapFontMedium, text);
-        this.textHeightMedium = LabelTextMeasure.height(bitmapFontMedium);
-        this.textWidthSmall = LabelTextMeasure.width(bitmapFontSmall, text);
-        this.textHeightSmall = LabelTextMeasure.height(bitmapFontSmall);
+        measure(text);
+    }
+
+    /**
+     * Whether the text is drawn by the platform ({@link LabelTextRasterizer}): it has characters
+     * the app's fonts have no glyph for - a name kept in its own script for a reader of it
+     * (LabelScripts) - and the platform can draw them.
+     */
+    private volatile boolean platformText;
+    private final Color platformColor = new Color();
+
+    /**
+     * Measures the text at both label sizes, safely from any thread: through the app's fonts
+     * (LabelTextMeasure), or the platform's for a text they cannot draw. The height is the
+     * app's font's in both cases, so every label's plate is the same height.
+     */
+    private void measure(String newText) {
+        BitmapFont bitmapFontMedium = getC().styleSingleton.getBitmapFontMedium();
+        BitmapFont bitmapFontSmall = getC().styleSingleton.getBitmapFontSmall();
+        LabelTextRasterizer rasterizer = LabelTextRasterizers.get();
+        boolean platform = rasterizer != null
+                && com.peaknav.utils.FontCharacters.containsUnrenderable(newText)
+                && rasterizer.canDraw(newText);
+        if (platform) {
+            textWidthMedium = rasterizer.width(newText,
+                    getC().styleSingleton.textPixelSize(com.peaknav.viewer.widgets.FontSpecs.MEDIUM));
+            textWidthSmall = rasterizer.width(newText,
+                    getC().styleSingleton.textPixelSize(com.peaknav.viewer.widgets.FontSpecs.SMALL));
+        } else {
+            textWidthMedium = LabelTextMeasure.width(bitmapFontMedium, newText);
+            textWidthSmall = LabelTextMeasure.width(bitmapFontSmall, newText);
+        }
+        textHeightMedium = LabelTextMeasure.height(bitmapFontMedium);
+        textHeightSmall = LabelTextMeasure.height(bitmapFontSmall);
+        platformText = platform;
     }
 
 

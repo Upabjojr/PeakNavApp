@@ -211,7 +211,11 @@ public class MapDataManager {
                 }
             }
             // Non-Latin rather than undrawable: the fonts draw Greek and Cyrillic for the
-            // translations, but labels are Latin (see FontCharacters.containsNonLatin).
+            // translations, but labels are Latin (see FontCharacters.containsNonLatin) -
+            // unless the reader reads the name's own script (LabelScripts), who sees it as
+            // it is written. The Latin form is kept for the interface's own text, which the
+            // app's fonts draw (PoiObject.getUiName).
+            String latinName = null;
             if (com.peaknav.utils.FontCharacters.containsNonLatin(name)) {
                 // Latin forms from the data first; kana romanized if that is all there
                 // is; and for a kanji-only Japanese name with no reading anywhere, no
@@ -219,16 +223,21 @@ public class MapDataManager {
                 // which mislabelled every such mountain in Japan ("gao zuo shan" on
                 // 高座山). Chinese and Korean names pass through and keep their correct
                 // romanizations.
-                name = CjkLabelNames.bestLatinName(
+                latinName = CjkLabelNames.bestLatinName(
                         name, name_en, name_ja_rm, name_latn, name_hira,
                         hasJaTag, lat, lon);
-                if (name == null) {
-                    continue;
+                if (!com.peaknav.utils.LabelScripts.keepsOwnScript(name)) {
+                    if (latinName == null) {
+                        continue;
+                    }
+                    name = latinName;
+                    latinName = null;
                 }
             }
             if (ele != null) {
                 PoiObject poiObject = new PoiObject(name, lon, lat, ele, tags, prominence, isolationParent, drawLabelCategory);
                 poiObject.osmId = pointOfInterest.id;
+                poiObject.setLatinName(latinName);
                 poiList.add(poiObject);
             }
         }

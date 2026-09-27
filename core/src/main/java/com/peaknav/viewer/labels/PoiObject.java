@@ -226,6 +226,30 @@ public class PoiObject {
                 : java.util.Collections.unmodifiableMap(tags);
     }
 
+    /** The name in Latin letters, where the map shows it in another script; else null. */
+    private volatile String latinName;
+
+    /**
+     * The Latin form of a name shown in its own script ({@link #name}), from the data's own
+     * Latin names where it has one (CjkLabelNames); null otherwise.
+     */
+    public void setLatinName(String latinName) {
+        this.latinName = latinName == null ? null : getC().transliterator.transliterate(latinName);
+    }
+
+    /**
+     * The name for the interface's own text - the info panel's title, a saved marker - which
+     * the app's fonts draw: the map's name where they can draw it (Latin, Greek, Cyrillic),
+     * its Latin form where the map's is drawn by the platform (a Japanese or Chinese name).
+     */
+    public String getUiName() {
+        if (!com.peaknav.utils.FontCharacters.containsUnrenderable(name)) {
+            return name;
+        }
+        String latin = latinName;
+        return latin != null ? latin : getC().transliterator.transliterate(name);
+    }
+
     public void fillDrawLabel(DrawLabelCategory drawLabelCategory) {
         drawLabel = new DrawLabel(drawLabelCategory, this);
         // drawLabel.updatePosition(true);
@@ -235,7 +259,10 @@ public class PoiObject {
             String name, float lon, float lat,
             float elevation, Map<String, String> tags, float prominence,
             int isolationParent, DrawLabelCategory drawLabelCategory) {
-        this.name = getC().transliterator.transliterate(name);
+        // Folded to Latin letters, as labels always were, unless the reader reads the name's own
+        // script and something can draw it (LabelScripts): then it is shown as it is written.
+        this.name = com.peaknav.utils.LabelScripts.keepsOwnScript(name)
+                ? name : getC().transliterator.transliterate(name);
         this.lon = lon;
         this.lat = lat;
         float dz = convertLatitsToMeters(getElevationCorrectionForRoundEarth(lat, lon));

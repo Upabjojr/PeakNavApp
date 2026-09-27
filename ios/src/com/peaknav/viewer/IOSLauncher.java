@@ -144,6 +144,10 @@ public class IOSLauncher extends IOSApplication.Delegate {
         // And 20 while nothing on the map is happening; see IdleFrameRate. The desktop keeps
         // drawing every frame.
         com.peaknav.viewer.screens.IdleFrameRate.setEnabled(true);
+        // Labels in scripts the app's fonts lack - a place's own name, for a reader of that
+        // script - are drawn by UIKit; see LabelTextRasterizer.
+        com.peaknav.viewer.labels.LabelTextRasterizers.set(
+                new com.peaknav.compatibility.IOSLabelRasterizer());
         // Through MapViewerIOSSingleton, not `new MapApp(...)`: shared code looks the running
         // app up via MapViewerSingleton.getAppInstance(), and an instance built around the
         // singleton leaves that null - which made getAppInstance() build a second, broken one.

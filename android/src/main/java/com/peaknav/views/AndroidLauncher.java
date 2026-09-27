@@ -170,6 +170,10 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		com.peaknav.viewer.screens.IdleFrameRate.setPacer(new AndroidIdlePacer(this));
 		com.peaknav.viewer.screens.IdleFrameRate.setEnabled(true);
 
+		// Labels in scripts the app's fonts lack - a place's own name, for a reader of that
+		// script - are drawn by Android's text; see LabelTextRasterizer.
+		com.peaknav.viewer.labels.LabelTextRasterizers.set(new AndroidLabelRasterizer());
+
 		setContentView(R.layout.activity_main);
 
 		// The previous handler silently System.exit(1)'d on ANY uncaught exception on ANY thread,
