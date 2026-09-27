@@ -525,7 +525,10 @@ public class IntroScreen implements Screen {
         spriteBatch.end();
 
         stage.act(delta);
-        boolean pointAtButton = !downloadStarted && tableDownloadMap.isVisible();
+        // Not while the download chooser is open over this screen: the arrows point at a
+        // button it covers, and were drawn over the chooser's map.
+        boolean pointAtButton = !downloadStarted && tableDownloadMap.isVisible()
+                && !com.peaknav.viewer.mapscreens.MapScreens.isOpen();
         pointerTime += delta;
         if (pointAtButton) {
             drawDownloadButtonPointers(false);

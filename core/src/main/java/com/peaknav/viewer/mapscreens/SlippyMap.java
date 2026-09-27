@@ -86,6 +86,67 @@ public class SlippyMap extends Widget implements Disposable {
             this.outline = outline;
             this.inset = inset;
             this.thickness = thickness;
+            this.shared = sharedEdges(boxes);
+        }
+
+        /** Stripes over the boxes instead of, or beside, the fill: see {@link Hatching}. */
+        com.badlogic.gdx.graphics.Texture hatch;
+        int hatchPeriod;
+
+        /** The boxes striped with {@code texture}, one period of {@code period} pixels. */
+        public Shading hatched(com.badlogic.gdx.graphics.Texture texture, int period) {
+            this.hatch = texture;
+            this.hatchPeriod = period;
+            return this;
+        }
+
+        /**
+         * For each box, which of its edges - west, east, south, north - another box of the set
+         * lies along, the same length. No outline is drawn there: a block of downloaded tiles is
+         * one area with one outline round it, not a grid of squares each with its own, which
+         * left a double line and a gap between every two neighbours.
+         */
+        final boolean[][] shared;
+
+        static final int WEST = 0, EAST = 1, SOUTH = 2, NORTH = 3;
+
+        private static boolean[][] sharedEdges(List<BoundingBox> boxes) {
+            java.util.Set<String> keys = new java.util.HashSet<>();
+            for (BoundingBox b : boxes) {
+                keys.add(key(b.minLatitude, b.minLongitude, b.maxLatitude, b.maxLongitude));
+            }
+            boolean[][] shared = new boolean[boxes.size()][4];
+            for (int i = 0; i < boxes.size(); i++) {
+                BoundingBox b = boxes.get(i);
+                double w = b.maxLongitude - b.minLongitude;
+                shared[i][WEST] = keys.contains(key(b.minLatitude, b.minLongitude - w, b.maxLatitude, b.minLongitude));
+                shared[i][EAST] = keys.contains(key(b.minLatitude, b.maxLongitude, b.maxLatitude, b.maxLongitude + w));
+                // A tile's neighbours to the north and south are not the same height in degrees
+                // (mercator): matched by the shared edge and the same longitudes instead.
+                shared[i][SOUTH] = hasEdge(boxes, b, false);
+                shared[i][NORTH] = hasEdge(boxes, b, true);
+            }
+            return shared;
+        }
+
+        private static boolean hasEdge(List<BoundingBox> boxes, BoundingBox b, boolean north) {
+            for (BoundingBox o : boxes) {
+                if (o != b && close(o.minLongitude, b.minLongitude) && close(o.maxLongitude, b.maxLongitude)
+                        && (north ? close(o.minLatitude, b.maxLatitude) : close(o.maxLatitude, b.minLatitude))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static boolean close(double a, double b) {
+            return Math.abs(a - b) < 1e-6;
+        }
+
+        /** Degrees rounded well below a tile's size, so the same edge computed twice matches. */
+        private static String key(double minLat, double minLon, double maxLat, double maxLon) {
+            return Math.round(minLat * 1e6) + "," + Math.round(minLon * 1e6) + ","
+                    + Math.round(maxLat * 1e6) + "," + Math.round(maxLon * 1e6);
         }
     }
 
@@ -247,6 +308,28 @@ public class SlippyMap extends Widget implements Disposable {
 
     public double getCenterLongitude() {
         return longitudeOf(wrap(centerX));
+    }
+
+    /**
+     * Centres on the box and zooms so that it fills the map but for {@code margin} (a fraction
+     * of the map's size) on every side, within the zoom range. False, and nothing changed, while
+     * the map has no size yet: it has not been laid out.
+     */
+    public boolean fit(com.peaknav.geo.BoundingBox box, float margin) {
+        if (getWidth() <= 0 || getHeight() <= 0) {
+            return false;
+        }
+        double x0 = mercatorX(box.minLongitude), x1 = mercatorX(box.maxLongitude);
+        double y0 = mercatorY(box.maxLatitude), y1 = mercatorY(box.minLatitude);
+        double spanX = Math.max(1e-9, x1 - x0), spanY = Math.max(1e-9, y1 - y0);
+        double fill = Math.max(0.1, 1 - 2 * margin);
+        double zoomX = Math.log(getWidth() * fill / (tileSize * spanX)) / Math.log(2);
+        double zoomY = Math.log(getHeight() * fill / (tileSize * spanY)) / Math.log(2);
+        setZoom((float) Math.min(zoomX, zoomY));
+        centerX = (x0 + x1) / 2;
+        centerY = (y0 + y1) / 2;
+        clampCenter();
+        return true;
     }
 
     /** The pin, where a point has been chosen; null hides it. */
@@ -575,8 +658,15 @@ public class SlippyMap extends Widget implements Disposable {
 
     private void drawShadings(Batch batch, float parentAlpha) {
         float line = Math.max(1f, markerSize * 0.03f);
+        // Where the world's origin is on screen, so the stripes are laid in the map's pixels:
+        // unbroken from one tile to the next, and moving with the map as it is dragged.
+        double world = worldSize();
+        double originX = getX() + getWidth() / 2 - centerX * world;
+        double originY = getY() + getHeight() / 2 + centerY * world;
         for (Shading shading : shadings) {
-            for (BoundingBox box : shading.boxes) {
+            for (int i = 0; i < shading.boxes.size(); i++) {
+                BoundingBox box = shading.boxes.get(i);
+                boolean[] shared = shading.shared[i];
                 float[] r = screenRect(box);
                 if (r == null) {
                     continue;
@@ -585,18 +675,39 @@ public class SlippyMap extends Widget implements Disposable {
                     batch.setColor(shading.fill.r, shading.fill.g, shading.fill.b, shading.fill.a * parentAlpha);
                     white.draw(batch, r[0], r[1], r[2], r[3]);
                 }
+                if (shading.hatch != null) {
+                    double p = shading.hatchPeriod;
+                    // Kept small, for float precision far from the origin when zoomed in.
+                    double u = ((r[0] - originX) / p) % 1.0, v = ((r[1] - originY) / p) % 1.0;
+                    batch.setColor(1f, 1f, 1f, parentAlpha);
+                    batch.draw(shading.hatch, r[0], r[1], r[2], r[3],
+                            (float) u, (float) v, (float) (u + r[2] / p), (float) (v + r[3] / p));
+                }
                 if (shading.outline != null) {
                     float w = line * shading.thickness;
                     float in = shading.inset * line * 1.5f;
-                    float x = r[0] + in, y = r[1] + in, bw = r[2] - 2 * in, bh = r[3] - 2 * in;
-                    if (bw <= 2 * w || bh <= 2 * w) {
+                    // Inset only on the sides with an outline: along a shared edge the lines of
+                    // the other sides run on to it, and meet the neighbour's.
+                    float left = r[0] + (shared[Shading.WEST] ? 0 : in);
+                    float right = r[0] + r[2] - (shared[Shading.EAST] ? 0 : in);
+                    float bottom = r[1] + (shared[Shading.SOUTH] ? 0 : in);
+                    float top = r[1] + r[3] - (shared[Shading.NORTH] ? 0 : in);
+                    if (right - left <= 2 * w || top - bottom <= 2 * w) {
                         continue;
                     }
                     batch.setColor(shading.outline.r, shading.outline.g, shading.outline.b, shading.outline.a * parentAlpha);
-                    white.draw(batch, x, y, bw, w);
-                    white.draw(batch, x, y + bh - w, bw, w);
-                    white.draw(batch, x, y, w, bh);
-                    white.draw(batch, x + bw - w, y, w, bh);
+                    if (!shared[Shading.SOUTH]) {
+                        white.draw(batch, left, bottom, right - left, w);
+                    }
+                    if (!shared[Shading.NORTH]) {
+                        white.draw(batch, left, top - w, right - left, w);
+                    }
+                    if (!shared[Shading.WEST]) {
+                        white.draw(batch, left, bottom, w, top - bottom);
+                    }
+                    if (!shared[Shading.EAST]) {
+                        white.draw(batch, right - w, bottom, w, top - bottom);
+                    }
                 }
             }
         }

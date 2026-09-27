@@ -20,8 +20,9 @@ import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.imgmapprovider.SatelliteImageProvider;
 
 /**
- * The search screen and the map-data download chooser, drawn with scene2d so that every
- * platform has them: before, only Android did, with osmdroid fragments.
+ * The place screen - searching and choosing what to download, one screen ({@link PlaceScreen}) -
+ * drawn with scene2d so that every platform has it: before, only Android did, with osmdroid
+ * fragments.
  *
  * <p>Each screen is an opaque layer over whichever screen the app is showing - the map, or the
  * welcome screen for the first-run download - and one at a time. Everything here runs on the
@@ -36,16 +37,35 @@ public final class MapScreens {
     private static Base current;
     private static volatile boolean open;
 
+    /** The place screen for searching: the cursor in the box, the point on the map's target. */
     public static void openSearch() {
-        Gdx.app.postRunnable(() -> show(new SearchScreen()));
+        Gdx.app.postRunnable(() -> show(new PlaceScreen(
+                getC().L.getTargetLatitude(), getC().L.getTargetLongitude(), false,
+                PlaceScreen.Purpose.SEARCH)));
     }
 
     /**
+     * The place screen for downloading, the point on the place given.
+     *
+     * @param goToAfterDownload Download also takes the reader there, as Go To does
      * @param wizard the first-run chooser: it starts on the whole world, asks where the reader
      *               is, and has no Back button - there is nowhere to go back to
      */
     public static void openDownloadChooser(double lat, double lon, boolean goToAfterDownload, boolean wizard) {
-        Gdx.app.postRunnable(() -> show(new DownloadAreaScreen(lat, lon, goToAfterDownload, wizard)));
+        Gdx.app.postRunnable(() -> show(new PlaceScreen(lat, lon, goToAfterDownload,
+                wizard ? PlaceScreen.Purpose.WIZARD : PlaceScreen.Purpose.DOWNLOAD)));
+    }
+
+    /**
+     * The device cannot say where it is and the reader chose to search: the first-run chooser,
+     * if it is still waiting for a place, puts the cursor in its search box. Any thread.
+     */
+    public static void offerSearch() {
+        Gdx.app.postRunnable(() -> {
+            if (current instanceof PlaceScreen && ((PlaceScreen) current).isWaitingForPoint()) {
+                ((PlaceScreen) current).offerSearch();
+            }
+        });
     }
 
     /** Whether one of these screens is up: the system Back key closes it rather than the app. */
@@ -98,6 +118,12 @@ public final class MapScreens {
                 : SatelliteImageProvider.SatelliteProviderOptions.LANDSAT.getSatelliteImageProvider();
     }
 
+    /** The place screen's colours: text, a pressed button, and the main action's blue. */
+    static final Color INK = new Color(0.13f, 0.14f, 0.16f, 1f);
+    static final Color PRESSED = new Color(0.85f, 0.90f, 0.98f, 1f);
+    static final Color ACCENT = new Color(0.11f, 0.45f, 0.87f, 1f);
+    static final Color ACCENT_PRESSED = new Color(0.07f, 0.33f, 0.68f, 1f);
+
     static float unit() {
         return Units.getWidgetUnitStep();
     }
@@ -115,7 +141,7 @@ public final class MapScreens {
     }
 
     /**
-     * What both screens share: an opaque layer over the whole stage that keeps every touch, key
+     * What a map screen is: an opaque layer over the whole stage that keeps every touch, key
      * and scroll to itself, a map, and closing.
      */
     abstract static class Base {
@@ -171,6 +197,11 @@ public final class MapScreens {
          * list of imagery providers that opens beside them.
          */
         Table mapControls(float unit, Runnable locate) {
+            return mapControls(unit, locate, null);
+        }
+
+        /** The same, with {@code extra} at the foot of the column when not null. */
+        Table mapControls(float unit, Runnable locate, com.badlogic.gdx.scenes.scene2d.ui.Button extra) {
             Table column = new Table();
             com.badlogic.gdx.scenes.scene2d.ui.Button here =
                     getC().widgetTextures.getButtonWithIcon("icons/icon_here_gps.png");
@@ -192,6 +223,10 @@ public final class MapScreens {
                 }
             });
             column.add(imagery).size(unit);
+            if (extra != null) {
+                column.row();
+                column.add(extra).size(unit).padTop(0.2f * unit);
+            }
 
             providerPanel = new Table();
             providerPanel.top();
@@ -203,7 +238,14 @@ public final class MapScreens {
         }
 
         private TextButton zoomButton(String text, float delta) {
-            TextButton button = button(text);
+            // A round button, like the others down the map's edge, rather than a square box.
+            float unit = unit();
+            TextButton.TextButtonStyle style = new TextButton.TextButtonStyle();
+            style.up = RoundedDrawables.disc(Color.WHITE, unit / 1.18f);
+            style.down = RoundedDrawables.disc(PRESSED, unit / 1.18f);
+            style.font = getC().styleSingleton.getBitmapFontMedium();
+            style.fontColor = INK;
+            TextButton button = new TextButton(text, style);
             button.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, com.badlogic.gdx.scenes.scene2d.Actor actor) {
