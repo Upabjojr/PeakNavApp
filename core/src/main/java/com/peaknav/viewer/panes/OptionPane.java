@@ -1570,6 +1570,18 @@ public class OptionPane {
     public static void applyUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem unitSystem) {
         P.setUnitSystemNoPersist(unitSystem);
         com.peaknav.viewer.labels.DrawLabel.invalidateAllTexts();
+        // The texts are re-measured, but each label's box - its background and the shape the
+        // overlap pass places - was only rebuilt when the labels were next placed, on the next
+        // camera move: until then "7037 ft" sat in the box measured for "2145 m", its end
+        // against the edge. Rebuilt now, as the large-fonts switch does, and placed again,
+        // since every peak label has changed width.
+        if (getC() != null && getC().O != null) {
+            getC().submitExecutorGeneric(() -> {
+                getC().O.iterateOverVisiblePoisUnstoppable(
+                        poiObject -> poiObject.drawLabel.updateLabelPolygonCoordinates());
+                getC().dataRetrieveThreadManager.triggerUpdateVisibilityLabelOverlap();
+            });
+        }
     }
 
     private Table createSelectBoxUnitSystem() {
