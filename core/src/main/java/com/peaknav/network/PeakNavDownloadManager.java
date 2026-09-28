@@ -333,7 +333,17 @@ public class PeakNavDownloadManager {
 
     public Outcome processQueue() {
 
-        List<MapSqlite.QueuedTile> queuedTiles = mapSqlite.getDownloadQueue();
+        List<MapSqlite.QueuedTile> queuedTiles = new ArrayList<>();
+        for (MapSqlite.QueuedTile queued : mapSqlite.getDownloadQueue()) {
+            // A layer this version does not know - a row written by a newer one, or a branch -
+            // has no archive it could fetch. Kept, it threw on every download before a single
+            // tile was fetched, the start-up resume included, and stayed in the queue for good.
+            if (!MapSqlite.LAYER_ELEV.equals(queued.layer) && queued.pbfLayer == null) {
+                mapSqlite.removeDownloadQueueMapData(queued);
+                continue;
+            }
+            queuedTiles.add(queued);
+        }
 
         Timestamp now = new Timestamp(Calendar.getInstance().getTimeInMillis());
 
