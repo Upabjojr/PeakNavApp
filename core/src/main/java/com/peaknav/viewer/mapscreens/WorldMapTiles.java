@@ -76,6 +76,9 @@ final class WorldMapTiles {
         float scale = canvas / part;
 
         Pixmap big = new Pixmap(canvas, canvas, Pixmap.Format.RGBA8888);
+        // Disposed on every way out: the tile is retried every few seconds, and a malformed
+        // one left a megabyte of native memory behind at each attempt.
+        try {
         big.setBlending(Pixmap.Blending.None);
         big.setColor(tile.background);
         big.fill();
@@ -100,7 +103,8 @@ final class WorldMapTiles {
                 List<float[]> rings = new ArrayList<>(shape.parts.size());
                 for (float[] ring : shape.parts) {
                     float[] t = new float[ring.length];
-                    for (int i = 0; i < ring.length; i += 2) {
+                    // In pairs; a stray last number of a malformed path has no partner.
+                    for (int i = 0; i + 1 < ring.length; i += 2) {
                         t[i] = (ring[i] - ox) * scale;
                         t[i + 1] = (ring[i + 1] - oy) * scale;
                     }
@@ -113,8 +117,10 @@ final class WorldMapTiles {
         out.setBlending(Pixmap.Blending.None);
         out.setFilter(Pixmap.Filter.BiLinear);
         out.drawPixmap(big, 0, 0, canvas, canvas, 0, 0, SIZE, SIZE);
-        big.dispose();
         return out;
+        } finally {
+            big.dispose();
+        }
     }
 
     private static Tile parsed(int z, int x, int y) {
