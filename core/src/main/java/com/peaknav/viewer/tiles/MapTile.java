@@ -667,22 +667,27 @@ public class MapTile {
     public Future<?> submitToExecutor(ElevationImageProvider provider) {
         provider.incrementReferenceCounter();
         future = getC().executorEleLoad.submit(() -> {
-            elevationImage = provider.provideForMapTile(MapTile.this);
-            // elevationImageMesh = elevationImageStorage.retrieveMesh();
-            if (elevationImage == null) {
-                // This probably means the elevation file has not been found:
-                setMapTileState(MapTileState.ELEVATION_DATA_NOT_FOUND);
-                return;
+            // The count comes down on every way out. A missing elevation file, or anything
+            // thrown below, left it raised: a provider that could never be evicted or disposed.
+            try {
+                elevationImage = provider.provideForMapTile(MapTile.this);
+                // elevationImageMesh = elevationImageStorage.retrieveMesh();
+                if (elevationImage == null) {
+                    // This probably means the elevation file has not been found:
+                    setMapTileState(MapTileState.ELEVATION_DATA_NOT_FOUND);
+                    return;
+                }
+                callVertexRetrieval();
+                if (tileBoundingBox.toBoundingBox().contains(
+                        getC().L.getTargetLatLong()
+                )) {
+                    float ele = elevationImage.getTileElevationLatitsFromMaxCoords(
+                            getC().L.getTargetLongitude(), getC().L.getTargetLatitude());
+                    getC().L.setCurrentTerrainEle(ele);
+                }
+            } finally {
+                provider.decrementReferenceCounter();
             }
-            callVertexRetrieval();
-            if (tileBoundingBox.toBoundingBox().contains(
-                    getC().L.getTargetLatLong()
-            )) {
-                float ele = elevationImage.getTileElevationLatitsFromMaxCoords(
-                        getC().L.getTargetLongitude(), getC().L.getTargetLatitude());
-                getC().L.setCurrentTerrainEle(ele);
-            }
-            provider.decrementReferenceCounter();
         });
         return future;
     }
