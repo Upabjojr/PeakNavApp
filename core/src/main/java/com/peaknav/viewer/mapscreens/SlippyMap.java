@@ -600,7 +600,15 @@ public class SlippyMap extends Widget implements Disposable {
                 File file = source.getImageFileHandle(z, x, y);
                 if (file.exists()) {
                     byte[] bytes = readAll(file);
-                    pixmap = new Pixmap(bytes, 0, bytes.length);
+                    try {
+                        pixmap = new Pixmap(bytes, 0, bytes.length);
+                    } catch (RuntimeException undecodable) {
+                        // A 200 answer that was no picture - an empty body, an error or login
+                        // page - saved as the tile. Kept, it was found again at every retry and
+                        // failed again, for good; deleted, the next retry fetches it afresh.
+                        file.delete();
+                        throw undecodable;
+                    }
                 }
             } catch (Throwable e) {
                 // A missing, truncated or refused tile: the coarser one stays on show, and the
