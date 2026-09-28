@@ -435,12 +435,17 @@ public class MountainInputController extends CameraInputController {
         zoomByPinchScale(ratio);   // zoom() puts the pin back on its pixel
     }
 
-    /*
-    @Override
-    public boolean scrolled (float amountX, float amountY) {
-        return zoom(amountY * scrollFactor * translateUnits);
-    }
+    /**
+     * The mouse wheel: a fixed ratio of the field of view per notch, as the zoom keys step.
+     * libGDX's own scaled the step by {@code translateUnits}, which the viewer sets to the
+     * camera's height above sea level: a notch changed the view by 7% at 1500 m, next to
+     * nothing on the coast, and the wrong way below sea level.
      */
+    @Override
+    public boolean scrolled(float amountX, float amountY) {
+        float step = lookSlowPressed ? zoomStepAmount * zoomSlowFactor : zoomStepAmount;
+        return amountY != 0f && zoom(-amountY * step);
+    }
 
     /**
      * Drives the camera from the keyboard, so the view can be aimed and raised without
