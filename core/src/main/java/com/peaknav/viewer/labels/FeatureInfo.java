@@ -160,8 +160,7 @@ public final class FeatureInfo {
         }
         whereFrom(rows, marker.latitude, marker.longitude, viewer);
         if (marker.created > 0) {
-            add(rows, "Marker_saved_on", java.text.DateFormat.getDateTimeInstance(
-                    java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(new java.util.Date(marker.created)), null);
+            add(rows, "Marker_saved_on", savedOn(marker.created), null);
         }
         return new FeatureInfo(marker.name, s("Marker_kind"), rows, new ArrayList<Row>(),
                 marker.latitude, marker.longitude, null);
@@ -180,6 +179,34 @@ public final class FeatureInfo {
         add(rows, "Feature_coordinates", GpxTrackStats.formatPosition(lat, lon),
                 String.format(Locale.ROOT, "https://www.openstreetmap.org/?mlat=%.5f&mlon=%.5f#map=15/%.5f/%.5f",
                         lat, lon, lat, lon));
+    }
+
+    /**
+     * When a marker was saved, in the app's language rather than the device's, whose month
+     * names and digits the fonts may not have, and with the narrow spaces recent formats put
+     * before "PM" made plain. A row with a character the fonts lack is left out, and the
+     * date was, for every US English phone on Android 14. Where the language's form still
+     * has one, the date goes as numbers.
+     */
+    static String savedOn(long millis) {
+        java.util.Locale locale = java.util.Locale.ROOT;
+        try {
+            String language = com.peaknav.utils.PeakNavUtils.getC() == null || com.peaknav.utils.PeakNavUtils.getC().i18n == null
+                    ? null : com.peaknav.utils.PeakNavUtils.getC().i18n.getLanguage();
+            if (language != null && !language.isEmpty()) {
+                locale = new java.util.Locale(language);
+            }
+        } catch (RuntimeException noApp) {
+            // the root locale
+        }
+        java.util.Date date = new java.util.Date(millis);
+        String text = java.text.DateFormat.getDateTimeInstance(
+                java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT, locale).format(date)
+                .replace('\u202F', ' ').replace('\u00A0', ' ');
+        if (FontCharacters.containsUnrenderable(text)) {
+            text = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.ROOT).format(date);
+        }
+        return text;
     }
 
     private static void add(List<Row> rows, String key, String value, String url) {
