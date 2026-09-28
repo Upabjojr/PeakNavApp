@@ -163,10 +163,12 @@ public class MountainInputController extends CameraInputController {
 
             if (Math.abs(rotationDeg) > 3.0) {
                 camera.rotateAround(camera.position, camera.direction, -rotationDeg*rotFactor);
-                // Maximum tilt about 8 degrees:
-                if (camera.up.z < 0.995f) {
+                // At most MAX_ROLL_DEGREES of roll. Measured as the roll itself: the test was on
+                // up.z, which is cos(pitch) x cos(roll), so with the camera looking up or down by
+                // more than about 6 degrees every twist was undone - and up.z was then written
+                // over, leaving an up vector neither of unit length nor square to the direction.
+                if (rollDegrees(camera) > MAX_ROLL_DEGREES) {
                     camera.rotateAround(camera.position, camera.direction, rotationDeg*rotFactor);
-                    camera.up.z = 0.99501f;
                     return true;
                 }
                 return false;
@@ -175,6 +177,31 @@ public class MountainInputController extends CameraInputController {
             }
         }
 
+    }
+
+    /** The most the two-finger twist may roll the view: what the old test allowed when level. */
+    static final float MAX_ROLL_DEGREES = 5.8f;
+
+    /**
+     * The camera's roll: the angle between its up vector and the vertical as seen along its
+     * direction. 0 for a level camera, whatever its pitch.
+     */
+    static float rollDegrees(com.badlogic.gdx.graphics.Camera camera) {
+        Vector3 d = camera.direction;
+        // The world's up, less its part along the direction: the up a level camera would have.
+        float along = d.z;
+        float x = -along * d.x, y = -along * d.y, z = 1f - along * d.z;
+        float length = (float) Math.sqrt(x * x + y * y + z * z);
+        if (length < 1e-4f) {
+            return 0f;   // looking straight up or down: no roll to speak of
+        }
+        Vector3 up = camera.up;
+        float upLength = up.len();
+        if (upLength < 1e-6f) {
+            return 0f;
+        }
+        float cos = (x * up.x + y * up.y + z * up.z) / (length * upLength);
+        return (float) Math.toDegrees(Math.acos(Math.max(-1f, Math.min(1f, cos))));
     }
 
     private MountainInputController(MountainGestureListener listener, PerspectiveCameraExt camera, ArrayList<PositionChangeListener> positionChangeListeners, MapViewerScreen mapViewerScreen) {
