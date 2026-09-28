@@ -525,6 +525,17 @@ public class SlippyMap extends Widget implements Disposable {
         }
     }
 
+    /**
+     * Draws the offline world map's tiles, on a thread of its own. Shared with the imagery,
+     * the three loader threads sat in network calls on a slow or silent connection - up to a
+     * minute each - and the map that is there for exactly that case waited behind them.
+     */
+    private static final ExecutorService BASE_LOADER = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "slippy-map-base");
+        t.setDaemon(true);
+        return t;
+    });
+
     private Texture worldBaseOrRequest(int z, int x, int y) {
         String key = WORLD_BASE + '/' + z + '/' + x + '/' + y;
         Texture texture = TILES.get(key);
@@ -536,7 +547,7 @@ public class SlippyMap extends Widget implements Disposable {
             return null;
         }
         final Object context = TILES.context;
-        LOADER.execute(() -> {
+        BASE_LOADER.execute(() -> {
             if (!TILES.stillWanted(key)) {
                 Gdx.app.postRunnable(() -> TILES.dropped(key, context));
                 return;
