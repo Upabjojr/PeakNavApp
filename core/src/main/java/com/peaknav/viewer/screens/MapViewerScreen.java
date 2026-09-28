@@ -2406,12 +2406,28 @@ public class MapViewerScreen implements Screen {
 			// No keyUp arrives for a key that was held when the window went away.
 			controller.clearKeyboardLook();
 		}
+		// The orientation sensor too, while the gyroscope mode is on: only its button stopped
+		// it, and in the background it went on at 50 readings a second, turning the camera of
+		// an app nobody was looking at. It starts again on resume.
+		if (gyroscopeOn()) {
+			mapApp.nativeScreenCaller.getOrientationPointerListener().stop();
+		}
+	}
+
+	private boolean gyroscopeOn() {
+		return tableTool != null && tableTool.buttonOrientation != null
+				&& tableTool.buttonOrientation.isChecked()
+				&& mapApp != null && mapApp.nativeScreenCaller != null
+				&& mapApp.nativeScreenCaller.getOrientationPointerListener() != null;
 	}
 
 	@Override
 	public void resume() {
 		paused = false;
 		idleFrameRate.wake();
+		if (gyroscopeOn()) {
+			mapApp.nativeScreenCaller.getOrientationPointerListener().start();
+		}
 		if (tileBatchRenderer != null) {
 			// Android drops the contents of every frame buffer when the GL context goes
 			// away, so the cached pseudodistances cannot be reused across a resume.
