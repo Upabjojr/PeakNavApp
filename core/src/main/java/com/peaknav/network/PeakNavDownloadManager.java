@@ -435,6 +435,16 @@ public class PeakNavDownloadManager {
 
                             try {
                                 unpackTarGz(localFile, unpackRootFor(target.queuedTile));
+                            } catch (WriteFailed cannotWrite) {
+                                // The device, not the archive: a full disk or a folder that
+                                // cannot be written. Taken for a corrupt archive, the good one
+                                // was deleted, fetched again whole, failed again, and its row
+                                // dropped. Both are kept, and the tile left pending.
+                                pending = true;
+                                failed.incrementAndGet();
+                                getLogger().debug(TAG, "cannot write what " + target.objectKey
+                                        + " holds; left in the queue: " + cannotWrite);
+                                return;
                             } catch (IOException | RuntimeException corrupt) {
                                 // The archive on disk is not to be trusted just because it
                                 // exists: a truncated or stale file (crashes and the
@@ -500,6 +510,13 @@ public class PeakNavDownloadManager {
      */
     private static File unpackRootFor(MapSqlite.QueuedTile queuedTile) {
         return Gdx.files.external(".").file();
+    }
+
+    /** Unpacking failed on the writing side - the device's, not the archive's. */
+    static final class WriteFailed extends IOException {
+        WriteFailed(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     public static void unpackTarGz(File inputFile, File outputDir) throws IOException {
@@ -586,12 +603,12 @@ public class PeakNavDownloadManager {
 
             if (entry.isDirectory()) {
                 if (!outputFile.exists() && !outputFile.mkdirs()) {
-                    throw new IOException("Failed to create directory " + outputFile);
+                    throw new WriteFailed("Failed to create directory " + outputFile, null);
                 }
             } else {
                 File parent = outputFile.getParentFile();
                 if (!parent.exists() && !parent.mkdirs()) {
-                    throw new IOException("Failed to create directory " + parent);
+                    throw new WriteFailed("Failed to create directory " + parent, null);
                 }
 
                 // Unpacked the same way tiles are downloaded: to a private name, renamed
@@ -601,21 +618,49 @@ public class PeakNavDownloadManager {
                 File partialEntry = new File(outputFile.getPath()
                         + ".part-" + java.util.UUID.randomUUID());
                 boolean success = false;
-                try (
-                    FileOutputStream fos = new FileOutputStream(partialEntry)
-                ) {
+                FileOutputStream fos = null;
+                try {
+                    try {
+                        fos = new FileOutputStream(partialEntry);
+                    } catch (IOException cannotCreate) {
+                        throw new WriteFailed("Cannot create " + partialEntry, cannotCreate);
+                    }
                     byte[] buffer = new byte[8192];
                     int len;
+                    // Reading is the archive's side - a failure there is a corrupt archive;
+                    // writing is the device's (see WriteFailed).
                     while ((len = tarInput.read(buffer, 0, buffer.length)) != -1) {
-                        fos.write(buffer, 0, len);
+                        try {
+                            fos.write(buffer, 0, len);
+                        } catch (IOException cannotWrite) {
+                            throw new WriteFailed("Cannot write " + partialEntry, cannotWrite);
+                        }
+                    }
+                    try {
+                        fos.close();
+                        fos = null;
+                    } catch (IOException cannotWrite) {
+                        throw new WriteFailed("Cannot write " + partialEntry, cannotWrite);
                     }
                     success = true;
                 } finally {
+                    if (fos != null) {
+                        try {
+                            fos.close();
+                        } catch (IOException ignored) {
+                            // already failing
+                        }
+                    }
                     if (!success) {
                         partialEntry.delete();
                     }
                 }
-                getLoadFactory().getFileMover().moveIntoPlace(partialEntry, outputFile);
+                try {
+                    getLoadFactory().getFileMover().moveIntoPlace(partialEntry, outputFile);
+                } catch (IOException cannotMove) {
+                    partialEntry.delete();
+                    throw new WriteFailed("Cannot move " + partialEntry + " into place", cannotMove);
+                }
             }
         }
         if (entries == 0) {
