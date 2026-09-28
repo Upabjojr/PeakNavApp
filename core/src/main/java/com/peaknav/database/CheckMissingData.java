@@ -42,9 +42,7 @@ public class CheckMissingData {
     }
 
     public static Tile getMaxZoomTile(double latitude, double longitude) {
-        int tileX = MercatorProjection.longitudeToTileX(longitude, MapTile.ZOOM_LEVEL_MIN);
-        int tileY = MercatorProjection.latitudeToTileY(latitude, MapTile.ZOOM_LEVEL_MIN);
-        return new Tile(tileX, tileY, MapTile.ZOOM_LEVEL_MAX, MapTile.TILE_SIZE);
+        return getTileAtZoomLevel(latitude, longitude, MapTile.ZOOM_LEVEL_MAX);
     }
 
     public static Tile getTileAtZoomLevel(double latitude, double longitude, byte zoomLevel) {

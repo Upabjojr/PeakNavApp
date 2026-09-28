@@ -676,12 +676,9 @@ public final class PhotoSkylineAligner {
     /**
      * The terrain as the viewer has it loaded: NaN where no tile with elevation is in memory.
      *
-     * <p>Not {@code ElevationUtils.getElevationLatitsFromMaxCoords}: that goes through
-     * {@code CheckMissingData.getMaxZoomTile}, which builds its finest-zoom index from
-     * zoom-8 column and row numbers, so the walk up the tile pyramid starts from a tile
-     * that never exists and the lookup always comes back empty. The label loader used it
-     * for every POI lacking an {@code ele} tag, and so dropped them all; it now reads this
-     * sampler instead (MapDataManager, PoiObject.resolveElevation).
+     * <p>Not {@code ElevationUtils.getElevationLatitsFromMaxCoords}: that one reads a tile
+     * whatever its state, which is safe only on the render thread (see below). The label
+     * loader reads this sampler too (MapDataManager, PoiObject.resolveElevation).
      */
     private static final ElevationSampler LOADED_TERRAIN = new ElevationSampler() {
         @Override
