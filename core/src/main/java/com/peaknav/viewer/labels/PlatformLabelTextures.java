@@ -51,6 +51,19 @@ public final class PlatformLabelTextures {
     private static final LinkedHashMap<String, Picture> CACHE = new LinkedHashMap<>(64, 0.75f, true);
     private static long pixels;
     private static final Set<String> PENDING = new HashSet<>();
+    /**
+     * The texts the platform failed to draw, with when to try each again. Asked for again on the
+     * very next frame, a failing one was drawn, and logged, at the frame rate for as long as it
+     * was on screen. Kept to the most recent {@link #FAILED_KEPT}.
+     */
+    private static final LinkedHashMap<String, Long> FAILED = new LinkedHashMap<String, Long>(16, 0.75f, false) {
+        @Override
+        protected boolean removeEldestEntry(java.util.Map.Entry<String, Long> eldest) {
+            return size() > FAILED_KEPT;
+        }
+    };
+    private static final int FAILED_KEPT = 256;
+    private static final long RETRY_FAILED_MILLIS = 30_000L;
     /** The graphics the pictures were made under: Gdx.graphics is replaced with the context. */
     private static Object context;
 
@@ -66,6 +79,7 @@ public final class PlatformLabelTextures {
         if (context != Gdx.graphics) {
             CACHE.clear();
             PENDING.clear();
+            FAILED.clear();
             pixels = 0;
             context = Gdx.graphics;
         }
@@ -96,7 +110,17 @@ public final class PlatformLabelTextures {
 
     private static void request(String key, String text, float textSize, Color color) {
         final LabelTextRasterizer rasterizer = LabelTextRasterizers.get();
-        if (rasterizer == null || !PENDING.add(key)) {
+        if (rasterizer == null) {
+            return;
+        }
+        Long retryAt = FAILED.get(key);
+        if (retryAt != null) {
+            if (System.currentTimeMillis() < retryAt) {
+                return;
+            }
+            FAILED.remove(key);
+        }
+        if (!PENDING.add(key)) {
             return;
         }
         final Object askedUnder = context;
@@ -104,7 +128,9 @@ public final class PlatformLabelTextures {
             LabelTextRasterizer.Rendered rendered;
             try {
                 rendered = rasterizer.draw(text, textSize, color);
-            } catch (RuntimeException failed) {
+            } catch (Throwable failed) {
+                // An Error too - an OutOfMemoryError from the bitmap - or the task ended without
+                // posting back, the key stayed pending, and the label never got its text.
                 Gdx.app.error("PlatformLabelTextures", "cannot draw " + text, failed);
                 rendered = null;
             }
@@ -120,6 +146,7 @@ public final class PlatformLabelTextures {
                 }
                 PENDING.remove(key);
                 if (done == null) {
+                    FAILED.put(key, System.currentTimeMillis() + RETRY_FAILED_MILLIS);
                     return;
                 }
                 Texture texture = new Texture(done.pixmap);
