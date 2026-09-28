@@ -246,6 +246,12 @@ public class SlippyMap extends Widget implements Disposable {
                 if (tapListener != null) {
                     double mx = centerX + (x - getWidth() / 2) / worldSize();
                     double my = centerY - (y - getHeight() / 2) / worldSize();
+                    // Above or below the map, where a zoomed-out world does not reach the
+                    // widget's edges: no place. It was taken for one, at up to 89 degrees,
+                    // beyond the edge of the Mercator tiles everything else is cut in.
+                    if (my < 0 || my > 1) {
+                        return;
+                    }
                     tapListener.tapped(latitudeOf(my), longitudeOf(wrap(mx)));
                 }
             }
