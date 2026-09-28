@@ -58,8 +58,7 @@ public class MapSqliteDesktop extends MapSqlite {
 
     @Override
     public void createTables() {
-        try {
-            Statement statement = connection.createStatement();
+        try (Statement statement = connection.createStatement()) {
 
             statement.execute(sqlCreateTableDownloadQueue);
 
@@ -93,9 +92,8 @@ public class MapSqliteDesktop extends MapSqlite {
     }
 
     public void addToDownloadQueueElevationTile(Tile tile) {
-        try {
-            PreparedStatement statement = connection.prepareStatement(
-                    sqlInsertIntoDownloadQueue);
+        try (PreparedStatement statement = connection.prepareStatement(
+                    sqlInsertIntoDownloadQueue)) {
             statement.setInt(1, tile.tileX);
             statement.setInt(2, tile.tileY);
             statement.setInt(3, tile.zoomLevel);
@@ -108,9 +106,8 @@ public class MapSqliteDesktop extends MapSqlite {
 
     @Override
     public void addToDownloadQueueMapData(int tileX, int tileY, int tileZ, PbfLayer pbfLayer) {
-        try {
-            PreparedStatement statement = connection.prepareStatement(
-                    sqlInsertIntoDownloadQueue);
+        try (PreparedStatement statement = connection.prepareStatement(
+                    sqlInsertIntoDownloadQueue)) {
             statement.setInt(1, tileX);
             statement.setInt(2, tileY);
             statement.setInt(3, tileZ);
@@ -123,9 +120,8 @@ public class MapSqliteDesktop extends MapSqlite {
 
     @Override
     public synchronized void updateDownloadQueueMapDataTimestamp(QueuedTile queuedTile, Timestamp now) {
-        try {
-            PreparedStatement statement = connection.prepareStatement(
-                    sqlUpdateDownloadQueueMapData);
+        try (PreparedStatement statement = connection.prepareStatement(
+                    sqlUpdateDownloadQueueMapData)) {
             statement.setTimestamp(1, now);
             statement.setInt(2, queuedTile.tileX);
             statement.setInt(3, queuedTile.tileY);
@@ -139,8 +135,7 @@ public class MapSqliteDesktop extends MapSqlite {
 
     @Override
     public boolean existDownloadedTiles() {
-        try {
-            PreparedStatement stmt = connection.prepareStatement(countDownloadQueue);
+        try (PreparedStatement stmt = connection.prepareStatement(countDownloadQueue)) {
             ResultSet rs = stmt.executeQuery();
             rs.next();
             int count2 = rs.getInt(1);
@@ -155,8 +150,7 @@ public class MapSqliteDesktop extends MapSqlite {
 
     @Override
     public void removeDownloadQueueMapData(QueuedTile queuedTile) {
-        try {
-            PreparedStatement statement = connection.prepareStatement(sqlRemoveDownloadQueueMapData);
+        try (PreparedStatement statement = connection.prepareStatement(sqlRemoveDownloadQueueMapData)) {
 
             statement.setInt(1, queuedTile.tileX);
             statement.setInt(2, queuedTile.tileY);
@@ -181,9 +175,8 @@ public class MapSqliteDesktop extends MapSqlite {
     @Override
     public List<QueuedTile> getDownloadQueue() {
         List<QueuedTile> queuedTiles = new ArrayList<>(512);
-        try {
-            PreparedStatement statement = connection.prepareStatement(
-                    sqlQueryDownloadQueue);
+        try (PreparedStatement statement = connection.prepareStatement(
+                    sqlQueryDownloadQueue)) {
             ResultSet rs = statement.executeQuery();
             while (rs.next()) {
                 QueuedTile queuedTile = new QueuedTile();
@@ -205,9 +198,8 @@ public class MapSqliteDesktop extends MapSqlite {
     @Override
     public List<Tile> getListOfDownloadedTiles(String layer_name) {
         List<Tile> tiles = new LinkedList<>();
-        try {
-            PreparedStatement statement = connection.prepareStatement(
-                    sqlQueryDownloadedTiles);
+        try (PreparedStatement statement = connection.prepareStatement(
+                    sqlQueryDownloadedTiles)) {
             statement.setString(1, layer_name);
             ResultSet rs = statement.executeQuery();
             while (rs.next()) {
