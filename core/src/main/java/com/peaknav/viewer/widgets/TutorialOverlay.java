@@ -139,9 +139,26 @@ public class TutorialOverlay implements Disposable {
                     // nothing left to close on its coming up, left the app.
                     hide();
                 } else {
-                    return false;
+                    // Every other key stops here too: they went on to the map behind, and
+                    // "?" there started the tutorial again from its first slide.
+                    return keycode != Input.Keys.BACK;
                 }
                 return true;
+            }
+
+            @Override
+            public boolean keyUp(InputEvent event, int keycode) {
+                return keycode != Input.Keys.BACK;
+            }
+
+            @Override
+            public boolean keyTyped(InputEvent event, char character) {
+                return true;
+            }
+
+            @Override
+            public boolean scrolled(InputEvent event, float x, float y, float amountX, float amountY) {
+                return true;   // the wheel zoomed the map behind
             }
         });
     }
@@ -184,6 +201,7 @@ public class TutorialOverlay implements Disposable {
         root.toFront();
         if (root.getStage() != null) {
             root.getStage().setKeyboardFocus(root);
+            root.getStage().setScrollFocus(root);
         }
         layout();
         showSlide();
@@ -193,6 +211,9 @@ public class TutorialOverlay implements Disposable {
         root.setVisible(false);
         if (root.getStage() != null && root.getStage().getKeyboardFocus() == root) {
             root.getStage().setKeyboardFocus(null);
+        }
+        if (root.getStage() != null && root.getStage().getScrollFocus() == root) {
+            root.getStage().setScrollFocus(null);
         }
         // The pictures are worth a few megabytes each: keep none once the tutorial is shut.
         disposePictures();

@@ -40,14 +40,32 @@ public final class SlideShowOverlay {
                 return true;
             }
 
-            /** Escape closes it, as it does the tutorial; Android's Back is AndroidLauncher's. */
+            /**
+             * Escape closes it, as it does the tutorial; Android's Back is AndroidLauncher's.
+             * Every other key, typed character and turn of the wheel stops here: they went on
+             * to the map behind, which flew and zoomed under the pictures.
+             */
             @Override
             public boolean keyDown(InputEvent event, int keycode) {
                 if (keycode == com.badlogic.gdx.Input.Keys.ESCAPE) {
                     hide();
-                    return true;
                 }
-                return false;
+                return keycode != com.badlogic.gdx.Input.Keys.BACK;
+            }
+
+            @Override
+            public boolean keyUp(InputEvent event, int keycode) {
+                return keycode != com.badlogic.gdx.Input.Keys.BACK;
+            }
+
+            @Override
+            public boolean keyTyped(InputEvent event, char character) {
+                return true;
+            }
+
+            @Override
+            public boolean scrolled(InputEvent event, float x, float y, float amountX, float amountY) {
+                return true;
             }
         });
 
@@ -122,6 +140,7 @@ public final class SlideShowOverlay {
         root.toFront();
         if (root.getStage() != null) {
             root.getStage().setKeyboardFocus(root);   // for Escape
+            root.getStage().setScrollFocus(root);
         }
     }
 
@@ -129,6 +148,9 @@ public final class SlideShowOverlay {
         root.setVisible(false);
         if (root.getStage() != null && root.getStage().getKeyboardFocus() == root) {
             root.getStage().setKeyboardFocus(null);
+        }
+        if (root.getStage() != null && root.getStage().getScrollFocus() == root) {
+            root.getStage().setScrollFocus(null);
         }
     }
 
