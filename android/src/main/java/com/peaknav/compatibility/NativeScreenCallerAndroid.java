@@ -589,6 +589,9 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         }
     }
 
+    /** How long a request for the position may keep the location providers searching. */
+    private static final long LOCATION_REQUEST_MILLIS = 90_000L;
+
     public CurrentLocationListener getCurrentLocationListener(Activity locContext) {
         ensureLocationManager();
 
@@ -609,9 +612,16 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     locationSettingsDialog.hide();
                 }
 
+                final int movesAtRequest = getC().L == null ? 0 : getC().L.getMovesByUser();
                 LocationListener locationListener = new LocationListener() {
                     @Override
                     public void onLocationChanged(@NonNull Location location) {
+                        if (getC().L != null && getC().L.getMovesByUser() != movesAtRequest) {
+                            // The user went elsewhere while this waited: a fix now would take
+                            // the camera back. Nothing more is asked for.
+                            locationManager.removeUpdates(this);
+                            return;
+                        }
                         float lon = (float) location.getLongitude();
                         float lat = (float) location.getLatitude();
                         currentLocationCallback.setCurrentLocation(lon, lat);
@@ -677,6 +687,10 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                 if (hasFused) {
                     locationManager.requestSingleUpdate(LocationManager.FUSED_PROVIDER, locationListener, null);
                 }
+                // Bounded: removed only by a GPS fix, which indoors never comes, the request
+                // kept the GPS searching for as long as the app ran.
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                        () -> locationManager.removeUpdates(locationListener), LOCATION_REQUEST_MILLIS);
             }
 
         };

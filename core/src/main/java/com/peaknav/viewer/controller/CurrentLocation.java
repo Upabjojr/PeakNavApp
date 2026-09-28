@@ -109,7 +109,24 @@ public class CurrentLocation {
      */
     private static final double TARGET_MOVED_EPSILON_DEG = 1e-4;
 
+    /**
+     * Counts the times the target was moved somewhere new other than by a position fix: a
+     * search, a tap, a link. A location request remembers it, and a fix arriving after it
+     * changed is dropped - GPS can take minutes, and its fix took the camera back from
+     * wherever the user had gone meanwhile.
+     */
+    private volatile int movesByUser;
+
+    public int getMovesByUser() {
+        return movesByUser;
+    }
+
     public void setCurrentTargetCoords(double lat, double lon, boolean checkMissing, boolean fromGps) {
+        if (!fromGps
+                && (Math.abs(lat - targetLatitude) > TARGET_MOVED_EPSILON_DEG
+                        || Math.abs(lon - targetLongitude) > TARGET_MOVED_EPSILON_DEG)) {
+            movesByUser++;
+        }
         if (!fromGps
                 && (Math.abs(lat - targetLatitude) > TARGET_MOVED_EPSILON_DEG
                         || Math.abs(lon - targetLongitude) > TARGET_MOVED_EPSILON_DEG)
