@@ -54,6 +54,14 @@ public class IOSLauncher extends IOSApplication.Delegate {
             return false;
         }
         byte[] bytes = readFile(url.getPath());
+        // The copy iOS made in Documents/Inbox is the app's to remove, and nothing else does:
+        // every file opened with PeakNav stayed there, taking space for good. Read, it goes.
+        // Only a copy in the Inbox - a file opened in place belongs to whoever shared it.
+        java.io.File opened = new java.io.File(url.getPath());
+        java.io.File parent = opened.getParentFile();
+        if (parent != null && "Inbox".equals(parent.getName())) {
+            opened.delete();
+        }
         if (bytes == null) {
             return false;
         }
