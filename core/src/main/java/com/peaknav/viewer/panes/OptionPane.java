@@ -537,7 +537,9 @@ public class OptionPane {
                 "icons/icon_gpx_share.png", s("Markers_share"), false);
         buttonShare.addClickListener(() -> {
             if (!getC().markerStore.getMarkers().isEmpty()) {
-                getNativeScreenCaller().shareGpx("PeakNav_markers", getC().markerStore.toGpxText());
+                // With its extension, as every other shared track's name has it: without, the phones
+                // shared a file with no type, which apps that know GPX by its name did not offer to open.
+                getNativeScreenCaller().shareGpx("PeakNav_markers.gpx", getC().markerStore.toGpxText());
                 hide();
             }
         });
