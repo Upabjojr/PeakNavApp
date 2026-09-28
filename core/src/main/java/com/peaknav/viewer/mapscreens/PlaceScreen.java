@@ -184,8 +184,22 @@ class PlaceScreen extends MapScreens.Base {
         field.setTextFieldListener((textField, c) -> {
             if (c == '\n' || c == '\r') {
                 onEnter(textField.getText());
-            } else {
-                searchOffline(textField.getText());
+            }
+        });
+        // The search follows the text through the field's change event, which a typed character,
+        // a paste (Ctrl+V) and a cut all fire. It followed typed characters only, from the key
+        // listener above: pasted coordinates or a name showed no result until another key was
+        // pressed. Text set by the app (a tap's coordinates) fires none, and is not searched.
+        field.addListener(new ChangeListener() {
+            private String last = "";
+
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                String text = field.getText();
+                if (!text.equals(last)) {
+                    last = text;
+                    searchOffline(text);
+                }
             }
         });
         field.addListener(new InputListener() {
