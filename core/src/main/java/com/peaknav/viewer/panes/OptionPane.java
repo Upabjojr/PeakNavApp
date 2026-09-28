@@ -167,9 +167,13 @@ public class OptionPane {
         table.setVisible(false);
         tableOneColumn.setVisible(false);
 
-        mainMenu = new OrientedMenu(table, tableOneColumn);
-        labelsMenu = new OrientedMenu(selectLabels, selectLabelsOneColumn);
-        roadsMenu = new OrientedMenu(selectRoads, selectRoadsOneColumn);
+        mainMenu = new OrientedMenu(table, tableOneColumn, this::updateCheckingStates);
+        labelsMenu = new OrientedMenu(selectLabels, selectLabelsOneColumn, this::updateCheckingStates);
+        roadsMenu = new OrientedMenu(selectRoads, selectRoadsOneColumn, () -> {
+            for (Runnable refresher : roadMenuRefreshers) {
+                refresher.run();
+            }
+        });
     }
 
     /**

@@ -17,10 +17,18 @@ final class OrientedMenu {
 
     private final Table wide;
     private final Table tall;
+    private final Runnable refresh;
 
-    OrientedMenu(Table wide, Table tall) {
+    /**
+     * @param refresh sets the menu's switches, sliders and swatches to the settings as they
+     *                stand, in both layouts. Run when the layouts are swapped: the one coming
+     *                on show was last set when it was last opened, and showed a switch still
+     *                on that had been turned off in the other a moment before.
+     */
+    OrientedMenu(Table wide, Table tall, Runnable refresh) {
         this.wide = wide;
         this.tall = tall;
+        this.refresh = refresh;
     }
 
     /** Whether the screen is wider than it is tall. */
@@ -47,6 +55,9 @@ final class OrientedMenu {
     /** After the screen changed shape: the layout that now fits, if the menu is on show. */
     void fit() {
         if (isVisible()) {
+            if (wide.isVisible() != isWideScreen() && refresh != null) {
+                refresh.run();
+            }
             show();
         }
     }
