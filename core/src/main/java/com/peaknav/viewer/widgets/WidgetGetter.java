@@ -1042,14 +1042,12 @@ public class WidgetGetter {
             hereButton.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
-                    mapApp.nativeScreenCaller.ensureLocationPermissions();
-                    mapApp.nativeScreenCaller.getCallOnUIThread(
-                            () -> {
-                                getNativeScreenCaller()
-                                        .getCurrentLocationListener()
-                                        .getCurrentLocation(
-                                                (longitude, latitude) -> getC().L.setCurrentTargetCoordsFromGPS(latitude, longitude));
-                            });
+                    // A request that waits for the permission's answer. Asking for the
+                    // position straight after asking for the permission found none yet,
+                    // returned, and left nothing to answer once it was granted: the press
+                    // that brought the prompt up did nothing, and had to be made again.
+                    mapApp.nativeScreenCaller.requestCurrentLocation(
+                            (longitude, latitude) -> getC().L.setCurrentTargetCoordsFromGPS(latitude, longitude));
                 }
             });
             tableBottomRight.add(hereButton).width(widgetUnitStep)
