@@ -750,9 +750,11 @@ public class MapViewerScreen implements Screen {
 			GpxTourFrame f = gpxTourFrames.get(i);
 			total += f.seconds;
 			if (i == firstFrame && easeIn) {
-				// Ease in from the current view rather than cutting to the new pose.
+				// Ease in from the current view rather than cutting to the new pose. Not an
+				// "immediate" move: that one takes no time at all whatever duration it is given,
+				// and the ease-in was a cut. The queue was cleared above.
 				moveCameraAction.setCameraVectors(f.pos, f.dir, Vector3.Z,
-						true, Interpolation.smooth, false, 0f, 1f,
+						false, Interpolation.smooth, false, 0f, 1f,
 						f.intro ? GPX_TOUR_INTRO_SECONDS : GPX_TOUR_SEEK_SECONDS);
 			} else {
 				moveCameraAction.addFlatStep(f.pos, f.dir, Vector3.Z,
