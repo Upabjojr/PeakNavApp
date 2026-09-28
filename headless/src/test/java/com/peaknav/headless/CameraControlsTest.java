@@ -248,4 +248,22 @@ class CameraControlsTest {
         assertTrue(Math.abs(fineOut) < 0.5f * Math.abs(out), "Shift and '-' was not finer: " + fineOut + " vs " + out);
         assertEquals(0f, zoomStep('*', false), 0f, "'*' without Shift zoomed");
     }
+
+    @Test
+    @Order(6)
+    @DisplayName("a window minimised to 0 x 0 and restored keeps a field of view it can draw with")
+    void minimisedWindow() {
+        final float[] fov = new float[3];
+        renderer.runOnRenderThread(() -> fov[0] = screen().cam.fieldOfView);
+        // What Windows does to a minimised window; resize posts its work to the render thread.
+        renderer.runOnRenderThread(() -> screen().resize(0, 0));
+        renderer.settle(300);
+        renderer.runOnRenderThread(() -> fov[1] = screen().cam.fieldOfView);
+        renderer.runOnRenderThread(() -> screen().resize(WIDTH, HEIGHT));
+        renderer.settle(300);
+        renderer.runOnRenderThread(() -> fov[2] = screen().cam.fieldOfView);
+        assertTrue(!Float.isNaN(fov[1]) && !Float.isInfinite(fov[1]), "minimised: " + fov[1]);
+        assertEquals(fov[0], fov[1], 0f, "a 0 x 0 window changed the field of view");
+        assertTrue(!Float.isNaN(fov[2]) && fov[2] > 0f && fov[2] < 180f, "restored: " + fov[2]);
+    }
 }

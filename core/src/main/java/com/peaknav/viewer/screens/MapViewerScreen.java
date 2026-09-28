@@ -1908,6 +1908,13 @@ public class MapViewerScreen implements Screen {
 
 	@Override
 	public void resize(int width, int height) {
+		// A window minimised on Windows is resized to 0 x 0. Taken as a size, the field of view
+		// was scaled by an angle of NaN, and stayed NaN - every later scaling of it keeps it
+		// so - and the view was blank until the app was restarted. Nothing to fit to: the
+		// window gets its real size back when it is restored.
+		if (width <= 0 || height <= 0) {
+			return;
+		}
 		// spriteBatch = new SpriteBatch();
 		Gdx.app.postRunnable(() -> {
 			cam.viewportWidth = width;
