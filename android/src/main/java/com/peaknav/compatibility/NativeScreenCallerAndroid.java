@@ -702,21 +702,17 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         PixmapIO.PNG writer = new PixmapIO.PNG(pixmap.getWidth() * pixmap.getHeight());
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try {
-            writer.write(outputStream, pixmap);
-            writer.dispose();
-            pixmap.dispose();
+            try {
+                writer.write(outputStream, pixmap);
+            } finally {
+                writer.dispose();
+                pixmap.dispose();
+            }
             byte[] bytesPng = outputStream.toByteArray();
             Bitmap bitmap = BitmapFactory.decodeByteArray(bytesPng, 0, bytesPng.length);
-
-            Intent intentShare = new Intent(Intent.ACTION_SEND);
-            intentShare.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            intentShare.setType("image/jpeg");
-
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Images.Media.TITLE, "title");
-            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-            Uri uri = context.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    values);
+            if (bitmap == null) {
+                throw new IOException("the snapshot could not be decoded");
+            }
 
             // Encoded to memory first, so the view's position and pose go into the file's
             // EXIF block before it is written out.
@@ -726,20 +722,77 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             if (info != null) {
                 jpeg = com.peaknav.utils.ExifWriter.embedInJpeg(jpeg, info);
             }
-            OutputStream bytes = context.getContentResolver().openOutputStream(uri);
-            try {
-                bytes.write(jpeg);
-            } finally {
-                bytes.close();
-            }
+
+            Intent intentShare = new Intent(Intent.ACTION_SEND);
+            intentShare.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intentShare.setType("image/jpeg");
+
+            Uri uri = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
+                    ? snapshotInMediaStore(jpeg) : snapshotInCache(jpeg);
 
             intentShare.putExtra(Intent.EXTRA_STREAM, uri);
+            intentShare.setClipData(android.content.ClipData.newRawUri("", uri));
+            intentShare.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             Intent intentChooser = Intent.createChooser(intentShare, "Share This Image");
-            intentChooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intentChooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivityAndPause(intentChooser);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } catch (IOException | RuntimeException e) {
+            // Said, not thrown: this runs on a worker, where an exception went nowhere, and
+            // the share button showed "Loading..." and then nothing.
+            e.printStackTrace();
+            makeToast(s("Save_failed"));
         }
+    }
+
+    /** Android 10 and later: the picture among the device's images, which needs no permission there. */
+    private Uri snapshotInMediaStore(byte[] jpeg) throws IOException {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Images.Media.TITLE, "title");
+        values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+        Uri uri = context.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                values);
+        if (uri == null) {
+            throw new IOException("no place for the snapshot among the images");
+        }
+        OutputStream bytes = context.getContentResolver().openOutputStream(uri);
+        if (bytes == null) {
+            throw new IOException("the snapshot's place cannot be written");
+        }
+        try {
+            bytes.write(jpeg);
+        } finally {
+            bytes.close();
+        }
+        return uri;
+    }
+
+    /**
+     * Android 9 and older, where writing among the device's images takes a storage permission
+     * the app does not ask for: the picture in the cache's "shared" folder, handed over through
+     * the app's FileProvider as a shared GPX is. The one before it is removed.
+     */
+    private Uri snapshotInCache(byte[] jpeg) throws IOException {
+        java.io.File dir = new java.io.File(context.getCacheDir(), "shared");
+        dir.mkdirs();
+        java.io.File[] old = dir.listFiles();
+        if (old != null) {
+            for (java.io.File file : old) {
+                if (file.getName().startsWith("PeakNav_") && file.getName().endsWith(".jpg")) {
+                    file.delete();
+                }
+            }
+        }
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.ENGLISH)
+                .format(new java.util.Date());
+        java.io.File file = new java.io.File(dir, "PeakNav_" + stamp + ".jpg");
+        OutputStream out = new java.io.FileOutputStream(file);
+        try {
+            out.write(jpeg);
+        } finally {
+            out.close();
+        }
+        return androidx.core.content.FileProvider.getUriForFile(
+                context, context.getPackageName() + ".fileprovider", file);
     }
 
     /**
