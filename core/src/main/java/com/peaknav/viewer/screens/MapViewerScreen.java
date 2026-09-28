@@ -2511,11 +2511,8 @@ public class MapViewerScreen implements Screen {
 			featureInfoPane.hide();
 			return false;
 		}
-		com.peaknav.viewer.labels.FeatureInfo.Viewer viewer = new com.peaknav.viewer.labels.FeatureInfo.Viewer(
-				cam.position.y,
-				Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude()),
-				getC().i18n != null ? getC().i18n.getLanguage() : null,
-				P.getUnitSystem());
+		com.peaknav.viewer.labels.FeatureInfo.Viewer viewer = featureViewer();
+		featureShown = feature;
 		if (feature instanceof com.peaknav.markers.Marker) {
 			showMarkerPane((com.peaknav.markers.Marker) feature, viewer);
 		} else if (feature instanceof PoiObject) {
@@ -2552,11 +2549,45 @@ public class MapViewerScreen implements Screen {
 		return true;
 	}
 
+	/** Where the pane's distances and directions are measured from, and in which units. */
+	private com.peaknav.viewer.labels.FeatureInfo.Viewer featureViewer() {
+		return new com.peaknav.viewer.labels.FeatureInfo.Viewer(
+				cam.position.y,
+				Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude()),
+				getC().i18n != null ? getC().i18n.getLanguage() : null,
+				P.getUnitSystem());
+	}
+
+	/** What the feature pane was last opened on: a PoiObject, a MapArea or a Marker. */
+	private Object featureShown;
+
+	/**
+	 * The units were switched: the open pane described again in the new ones. Its text is built
+	 * once, when it opens, and kept "2145 m" and kilometres after a switch to feet and miles until
+	 * it was opened again. Render thread.
+	 */
+	public void refreshFeaturePaneUnits() {
+		if (featureInfoPane == null || !featureInfoPane.isShown() || featureShown == null) {
+			return;
+		}
+		com.peaknav.viewer.labels.FeatureInfo.Viewer viewer = featureViewer();
+		com.peaknav.viewer.labels.FeatureInfo info;
+		if (featureShown instanceof com.peaknav.markers.Marker) {
+			info = com.peaknav.viewer.labels.FeatureInfo.of((com.peaknav.markers.Marker) featureShown, viewer);
+		} else if (featureShown instanceof PoiObject) {
+			info = com.peaknav.viewer.labels.FeatureInfo.of((PoiObject) featureShown, viewer);
+		} else {
+			info = com.peaknav.viewer.labels.FeatureInfo.of((com.peaknav.areas.MapArea) featureShown, viewer);
+		}
+		featureInfoPane.replaceInfo(info);
+	}
+
 	/**
 	 * A marker's pane, and the pin on it: its colours to pick from, the flag recoloured at once,
 	 * and Rename and Delete buttons.
 	 */
 	private void showMarkerPane(final com.peaknav.markers.Marker marker, final com.peaknav.viewer.labels.FeatureInfo.Viewer viewer) {
+		featureShown = marker;   // recoloured or renamed, the marker the pane now shows
 		final com.peaknav.markers.MarkerColor[] colors = com.peaknav.markers.MarkerColor.values();
 		String[] swatches = new String[colors.length];
 		for (int i = 0; i < colors.length; i++) {

@@ -1945,6 +1945,9 @@ public class OptionPane {
      */
     public static void applyUnitSystem(com.peaknav.utils.PreferencesManager.UnitSystem unitSystem) {
         P.setUnitSystemNoPersist(unitSystem);
+        if (getC() != null && getC().getMapViewerScreen() != null) {
+            Gdx.app.postRunnable(() -> getC().getMapViewerScreen().refreshFeaturePaneUnits());
+        }
         com.peaknav.viewer.labels.DrawLabel.invalidateAllTexts();
         // The texts are re-measured, but each label's box - its background and the shape the
         // overlap pass places - was only rebuilt when the labels were next placed, on the next

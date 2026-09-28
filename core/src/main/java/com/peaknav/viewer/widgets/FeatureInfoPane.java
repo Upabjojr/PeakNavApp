@@ -207,6 +207,21 @@ public class FeatureInfoPane {
     }
 
     /**
+     * The same thing described again - its heights and distances in other units - with the
+     * pane's buttons, picture and scroll position as they are. Render thread.
+     */
+    public void replaceInfo(FeatureInfo info) {
+        if (!isShown() || info == null) {
+            return;
+        }
+        shown = info;
+        float y = scroll.getScrollY();
+        layoutPanel();
+        scroll.layout();
+        scroll.setScrollY(y);
+    }
+
+    /**
      * Asks for the picture of the Wikidata entry, when there is one and a connection: it
      * arrives later, on the render thread, and goes at the top of the pane if the pane still
      * shows the same thing.
