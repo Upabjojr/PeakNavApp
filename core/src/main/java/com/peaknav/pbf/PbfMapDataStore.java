@@ -127,6 +127,22 @@ public class PbfMapDataStore {
         return false;
     }
 
+    /**
+     * The tile {@code dx} columns and {@code dy} rows from {@code center}: round the world
+     * across the antimeridian, and null above the first row or below the last. Built without
+     * this, a column of -1 or past the last one made Tile's constructor throw, and within two
+     * tiles of 180 degrees - Fiji, the Aleutians - no label was read at all.
+     */
+    static Tile neighbour(Tile center, int dx, int dy) {
+        int count = 1 << center.zoomLevel;
+        int row = center.tileY + dy;
+        if (row < 0 || row >= count) {
+            return null;
+        }
+        int column = ((center.tileX + dx) % count + count) % count;
+        return new Tile(column, row, center.zoomLevel, center.tileSize);
+    }
+
     public void readPoiDataByRangeLazy(Tile tileCenter, int range, CallbackMapResult callbackMapResult) {
 
         Set<Tile> tileSet = new HashSet<>();
@@ -135,10 +151,9 @@ public class PbfMapDataStore {
                 for (int y = -i; y <= i; y++) {
                     if (Math.abs(x) != i && Math.abs(y) != i)
                         continue;
-                    Tile current = new Tile(
-                            tileCenter.tileX + x,
-                            tileCenter.tileY + y,
-                            tileCenter.zoomLevel, tileCenter.tileSize);
+                    Tile current = neighbour(tileCenter, x, y);
+                    if (current == null)
+                        continue;
                     Tile supTile = findTileWithDataByZoomingOut(current, PbfLayer.PBF_POI);
                     if (supTile != null)
                         tileSet.add(supTile);
@@ -166,10 +181,9 @@ public class PbfMapDataStore {
                         continue;
                     if (x*x + y*y > i*i)
                         continue;
-                    Tile current = new Tile(
-                            tileCenter.tileX + x,
-                            tileCenter.tileY + y,
-                            tileCenter.zoomLevel, tileCenter.tileSize);
+                    Tile current = neighbour(tileCenter, x, y);
+                    if (current == null)
+                        continue;
                     result.add(readPoiData(current));
                 }
             }
