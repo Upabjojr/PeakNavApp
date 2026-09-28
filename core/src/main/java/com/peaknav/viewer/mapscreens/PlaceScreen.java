@@ -469,7 +469,12 @@ class PlaceScreen extends MapScreens.Base {
         style.up = background(fill, unit);
         style.down = background(pressed, unit);
         style.checked = null;
-        style.fontColor = ink;
+        // The small font is baked black, and a colour only tints it: white asked of it came out
+        // black, dark on the blue and red buttons. The white one is baked at the same size.
+        boolean light = ink.r + ink.g + ink.b > 1.5f;
+        style.font = light ? getC().styleSingleton.getBitmapFontSmallWhite()
+                : getC().styleSingleton.getBitmapFontSmall();
+        style.fontColor = light ? Color.WHITE : ink;
         button.setStyle(style);
         button.center();
         button.getImageCell().size(0.68f * unit);
