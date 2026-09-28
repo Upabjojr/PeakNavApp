@@ -293,15 +293,50 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 			}
 			return;
 		}
-		byte[] data = readShareBytes(uri);
-		if (data == null || data.length == 0) {
-			return;
-		}
-		pendingShareData = data;
-		// The bytes themselves are the reliable signal: JPEG/PNG magic means image, anything else
-		// (GPX is XML text) is treated as a track.
-		pendingShareIsGpx = !looksLikeImage(data);
-		processPendingShare(0);
+		// Read on a thread of its own, not here on the main thread: a file in Drive or a mail
+		// attachment is fetched over the network as it is read, and a large one held the app
+		// unresponsive, or ran it out of memory. The read starts now, while the grant holds.
+		final Uri shared = uri;
+		Thread reader = new Thread(() -> {
+			String problem = null;
+			byte[] data = null;
+			boolean gpx = false;
+			try {
+				data = readShareBytes(shared);
+				if (data != null && data.length > 0) {
+					// Decided by the bytes: a picture Android can decode is a picture, text that
+					// starts like XML is a track, anything else is neither. Everything that was
+					// not a JPEG or a PNG used to be taken for a track.
+					byte[] image = com.peaknav.utils.ImportedFiles.asReadableImage(this, data);
+					if (image != null) {
+						data = image;
+					} else if (com.peaknav.utils.ImportedFiles.looksLikeXml(data)) {
+						gpx = true;
+					} else {
+						problem = "Share_unreadable";
+					}
+				}
+			} catch (com.peaknav.utils.ImportedFiles.TooLarge tooLarge) {
+				problem = "Share_too_large";
+			}
+			final byte[] read = data;
+			final boolean isGpx = gpx;
+			final String message = problem;
+			shareHandler.post(() -> {
+				if (message != null) {
+					android.widget.Toast.makeText(this, com.peaknav.utils.PeakNavUtils.s(message), android.widget.Toast.LENGTH_LONG).show();
+					return;
+				}
+				if (read == null || read.length == 0) {
+					return;
+				}
+				pendingShareData = read;
+				pendingShareIsGpx = isGpx;
+				processPendingShare(0);
+			});
+		}, "share-reader");
+		reader.setDaemon(true);
+		reader.start();
 	}
 
 	/** Applies the pending share once the map controller and its screen exist, retrying briefly. */
@@ -319,11 +354,15 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		boolean isGpx = pendingShareIsGpx;
 		pendingShareData = null;
 		if (isGpx) {
-			try {
-				getC().gpxManager.loadFromXml(new String(data, java.nio.charset.StandardCharsets.UTF_8));
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+			// On the render thread, as the other platforms do: it toasts and moves the camera.
+			final String xml = new String(data, java.nio.charset.StandardCharsets.UTF_8);
+			com.badlogic.gdx.Gdx.app.postRunnable(() -> {
+				try {
+					getC().gpxManager.loadFromXml(xml);
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			});
 			return;
 		}
 		// Decoded on a worker with the "Loading..." screen up, as a picked photo is.
@@ -386,21 +425,10 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 
 	/** Every byte of a picked picture, or null if the provider has no stream for it. */
 	private byte[] readPickedBytes(Uri uri) throws java.io.IOException {
-		try (InputStream inputStream = getContentResolver().openInputStream(uri)) {
-			if (inputStream == null) {
-				return null;
-			}
-			ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-			int numRead;
-			byte[] d = new byte[16384];
-			while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
-				buffer.write(d, 0, numRead);
-			}
-			return buffer.toByteArray();
-		}
+		return com.peaknav.utils.ImportedFiles.read(getContentResolver(), uri);
 	}
 
-	private byte[] readShareBytes(Uri uri) {
+	private byte[] readShareBytes(Uri uri) throws com.peaknav.utils.ImportedFiles.TooLarge {
 		Uri readUri = uri;
 		// On Android 10+ ask for the un-redacted original so an image's GPS EXIF survives; harmless
 		// (and reversible) if the URI isn't a MediaStore item.
@@ -418,18 +446,11 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		return bytes;
 	}
 
-	private byte[] readAllBytes(Uri uri) {
-		try (InputStream inputStream = getContentResolver().openInputStream(uri)) {
-			if (inputStream == null) {
-				return null;
-			}
-			ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-			byte[] chunk = new byte[16384];
-			int numRead;
-			while ((numRead = inputStream.read(chunk, 0, chunk.length)) != -1) {
-				buffer.write(chunk, 0, numRead);
-			}
-			return buffer.toByteArray();
+	private byte[] readAllBytes(Uri uri) throws com.peaknav.utils.ImportedFiles.TooLarge {
+		try {
+			return com.peaknav.utils.ImportedFiles.read(getContentResolver(), uri);
+		} catch (com.peaknav.utils.ImportedFiles.TooLarge tooLarge) {
+			throw tooLarge;
 		} catch (Exception e) {
 			return null;
 		}
@@ -486,6 +507,14 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 						setPhotoLoading(false);
 						return;
 					}
+					byte[] readable = com.peaknav.utils.ImportedFiles.asReadableImage(this, b);
+					if (readable == null) {
+						setPhotoLoading(false);
+						runOnUiThread(() -> android.widget.Toast.makeText(this, com.peaknav.utils.PeakNavUtils.s("Share_unreadable"),
+								android.widget.Toast.LENGTH_LONG).show());
+						return;
+					}
+					b = readable;
 
 					setBytesAsBackgroundImage(b);
 					checkImageGpsAndPrompt(b);
@@ -498,22 +527,24 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 
 		if (requestCode == PICK_GPX && resultCode == RESULT_OK
 				&& data != null && data.getData() != null) {
-			try (InputStream inputStream = getContentResolver().openInputStream(data.getData())) {
-				if (inputStream == null) {
-					return;
+			// Read on a worker and parsed on the render thread, as a shared track is: here on
+			// the main thread a large file, or one fetched from Drive, held the app unresponsive.
+			final Uri picked = data.getData();
+			getC().submitExecutorGeneric(() -> {
+				try {
+					byte[] bytes = com.peaknav.utils.ImportedFiles.read(getContentResolver(), picked);
+					if (bytes == null) {
+						return;
+					}
+					final String xml = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+					com.badlogic.gdx.Gdx.app.postRunnable(() -> getC().gpxManager.loadFromXml(xml));
+				} catch (com.peaknav.utils.ImportedFiles.TooLarge tooLarge) {
+					runOnUiThread(() -> android.widget.Toast.makeText(this,
+							com.peaknav.utils.PeakNavUtils.s("Share_too_large"), android.widget.Toast.LENGTH_LONG).show());
+				} catch (Exception e) {
+					e.printStackTrace();
 				}
-				ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-				int numRead;
-				byte[] d = new byte[16384];
-				while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
-					buffer.write(d, 0, numRead);
-				}
-				String xml = new String(buffer.toByteArray(),
-						java.nio.charset.StandardCharsets.UTF_8);
-				getC().gpxManager.loadFromXml(xml);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+			});
 		}
 	}
 

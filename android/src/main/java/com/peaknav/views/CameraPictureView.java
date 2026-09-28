@@ -80,24 +80,29 @@ public class CameraPictureView extends Fragment {
                     // Any failure here (detached fragment, unreadable URI, corrupt
                     // image) must not escape: an uncaught exception on this worker
                     // thread would trip the app's global handler and System.exit.
-                    try (InputStream inputStream =
-                                 activity.getContentResolver().openInputStream(data.getData())) {
-                        if (inputStream == null) {
+                    try {
+                        byte[] bytes = com.peaknav.utils.ImportedFiles.read(
+                                activity.getContentResolver(), data.getData());
+                        byte[] readable = bytes == null ? null
+                                : com.peaknav.utils.ImportedFiles.asReadableImage(activity, bytes);
+                        if (readable == null) {
+                            // No stream, or no picture: said, and "Loading..." taken down -
+                            // it stayed up for good.
+                            if (getC().getMapViewerScreen() != null) {
+                                getC().getMapViewerScreen().setPhotoLoading(false);
+                            }
+                            activity.runOnUiThread(() -> android.widget.Toast.makeText(activity,
+                                    com.peaknav.utils.PeakNavUtils.s("Share_unreadable"),
+                                    android.widget.Toast.LENGTH_LONG).show());
                             return;
                         }
-                        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-
-                        int numRead;
-                        byte[] d = new byte[16384];
-
-                        while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
-                            buffer.write(d, 0, numRead);
-                        }
-
-                        setBytesAsBackgroundImage(buffer.toByteArray());
+                        setBytesAsBackgroundImage(readable);
                         com.peaknav.viewer.PhotoSkylineAligner.photoTakenHere();
                     } catch (Exception e) {
                         e.printStackTrace();
+                        if (getC().getMapViewerScreen() != null) {
+                            getC().getMapViewerScreen().setPhotoLoading(false);
+                        }
                     }
                 });
             }
