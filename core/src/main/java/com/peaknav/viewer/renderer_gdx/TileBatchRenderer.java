@@ -573,21 +573,49 @@ public class TileBatchRenderer {
     }
     */
 
+    /** A welding pass is submitted or running: one at a time. */
+    private final java.util.concurrent.atomic.AtomicBoolean weldingScheduled =
+            new java.util.concurrent.atomic.AtomicBoolean();
+    /** What the last pass saw: the tiles' state count, and how many welders it left waiting. */
+    private volatile int weldingSeenChanges = -1, weldingLeftWaiting = -1;
+
+    /**
+     * Welds what can be welded, in a pass off the render thread. Only when something changed
+     * since the last pass: a welder waits on its two tiles' states, so with no new welder and
+     * no tile changed, the last pass's answer stands. This ran on every frame while any welder
+     * waited - forever, for a tile stuck loading - and stamped the tiles as changed each time,
+     * which redrew the pseudodistance buffer and held up the road and piste rasterisers.
+     * The welders that weld stamp that themselves (MapTileWelder.weldLockPositions).
+     */
     private void weldMapTiles() {
+        if (MapTile.stateChanges() == weldingSeenChanges
+                && getC().weldingQueue.size() == weldingLeftWaiting) {
+            return;
+        }
+        if (!weldingScheduled.compareAndSet(false, true)) {
+            return;
+        }
         executorMapTileFixer.submit(() -> {
-            getAppState().setLastAnyMapTileUpdateTimeToNow();
-            List<MapTileWelder> readd = new LinkedList<>();
-            while (!getC().weldingQueue.isEmpty()) {
-                MapTileWelder welder = getC().weldingQueue.remove();
-                if (welder.canWeldIsDrawn()) {
-                    welder.weldLockPositions();
-                } else if (!welder.isTileDisposed() && !welder.isElevationDataNotFound()) {
-                    if (!getC().weldingQueue.contains(welder)) {
-                        readd.add(welder);
+            try {
+                // Before the pass: a tile that changes during it is looked at again.
+                int changes = MapTile.stateChanges();
+                List<MapTileWelder> readd = new LinkedList<>();
+                while (!getC().weldingQueue.isEmpty()) {
+                    MapTileWelder welder = getC().weldingQueue.remove();
+                    if (welder.canWeldIsDrawn()) {
+                        welder.weldLockPositions();
+                    } else if (!welder.isTileDisposed() && !welder.isElevationDataNotFound()) {
+                        if (!getC().weldingQueue.contains(welder)) {
+                            readd.add(welder);
+                        }
                     }
                 }
+                getC().weldingQueue.addAll(readd);
+                weldingLeftWaiting = readd.size();
+                weldingSeenChanges = changes;
+            } finally {
+                weldingScheduled.set(false);
             }
-            getC().weldingQueue.addAll(readd);
         });
     }
 

@@ -313,7 +313,18 @@ public class MapTile {
     }
 
     public synchronized void setMapTileState(MapTileState mapTileState) {
+        if (this.mapTileState != mapTileState) {
+            STATE_CHANGES.incrementAndGet();
+        }
         this.mapTileState = mapTileState;
+    }
+
+    /** Counts every change of any tile's state: the welders wait on those (TileBatchRenderer). */
+    private static final java.util.concurrent.atomic.AtomicInteger STATE_CHANGES =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    public static int stateChanges() {
+        return STATE_CHANGES.get();
     }
 
     public void setMapTileStateNoData() {
