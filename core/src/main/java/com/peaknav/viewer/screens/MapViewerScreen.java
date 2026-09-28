@@ -2280,6 +2280,12 @@ public class MapViewerScreen implements Screen {
 		// viewport itself - without this the widgets would still be drawn across
 		// the full glViewport while touch handling used the inset bounds.
 		stageViewport.apply();
+		// The "no data" and "loading" plate is added to the stage after the menus, so it was
+		// drawn over an open one, across its second row. Faded out under a menu, not hidden:
+		// its visibility is the loading state's, which other things read.
+		if (labelLoading != null && optionPane != null) {
+			labelLoading.getTableCenterNoData().getColor().a = optionPane.isAnyMenuVisible() ? 0f : 1f;
+		}
 		stage.act();
 		try {
 			stage.draw();
