@@ -129,6 +129,13 @@ class PlaceScreen extends MapScreens.Base {
      * search or a tap gives one. A fix arriving late does not move a point already chosen.
      */
     private boolean pointChosen;
+    /**
+     * Whether the point is the reader's own - tapped, picked from the results, typed - and not
+     * one a fix placed. Only the reader's own is kept from a fix arriving late. The phones
+     * give the last position they knew first, which can be hours and a journey old, and the
+     * real one after it: kept from that as well, the wizard stayed on the old place.
+     */
+    private boolean pointFromReader;
     private final List<SlippyMap.Shading> downloaded = new ArrayList<>();
     /**
      * Whether what is on the device is shaded, with the legend: on unless switched off, and
@@ -154,6 +161,8 @@ class PlaceScreen extends MapScreens.Base {
         this.pointLon = lon;
         // The wizard is handed the target when the platform knows one, and 0° 0° when not.
         this.pointChosen = !wizard || lat != 0 || lon != 0;
+        // In the wizard the point comes from the platform, which a better fix may still move.
+        this.pointFromReader = !wizard;
         float unit = MapScreens.unit();
 
         field = new TextField("", fieldStyle(unit));
@@ -346,10 +355,11 @@ class PlaceScreen extends MapScreens.Base {
                     if (!isShowing() || (latitude == 0 && longitude == 0)) {
                         return;
                     }
-                    if (!pressed && pointChosen && wizard) {
+                    if (!pressed && pointChosen && pointFromReader && wizard) {
                         return;
                     }
                     choose(latitude, longitude, true);
+                    pointFromReader = false;
                 }));
     }
 
@@ -365,6 +375,7 @@ class PlaceScreen extends MapScreens.Base {
         pointLat = lat;
         pointLon = lon;
         pointChosen = true;
+        pointFromReader = true;   // askForFix says otherwise after the call
         showPoint();
         if (center && !map.fit(downloadBlock(), 0.08f)) {
             map.setCenter(lat, lon);
