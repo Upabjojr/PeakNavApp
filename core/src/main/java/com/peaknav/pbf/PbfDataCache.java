@@ -63,8 +63,11 @@ public class PbfDataCache {
             return new MapReadResult();
         }
 
+        // Closed here: BlockInputStream.process() reads to the end and leaves the stream open,
+        // so every tile parsed held a file descriptor until the collector got to it.
+        InputStream inputStream = null;
         try {
-            InputStream inputStream = new FileInputStream(file);
+            inputStream = new FileInputStream(file);
             BlockReaderAdapter adapter = new PbfTileBinaryParser(dataTile, mapReadResult);
             BlockInputStream blockInputStream = new BlockInputStream(inputStream, adapter);
             blockInputStream.process();
@@ -72,6 +75,14 @@ public class PbfDataCache {
             // mapSqlite.removeMapPbfData(externalFilePath);
         } catch (IOException e) {
             e.printStackTrace();
+        } finally {
+            if (inputStream != null) {
+                try {
+                    inputStream.close();
+                } catch (IOException ignored) {
+                    // read to the end already
+                }
+            }
         }
         return mapReadResult;
     }
