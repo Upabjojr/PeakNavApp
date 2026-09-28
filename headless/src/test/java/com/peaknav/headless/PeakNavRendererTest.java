@@ -1196,13 +1196,19 @@ class PeakNavRendererTest {
         assertTrue(pulsing[0], "the match button should be pulsing once the photo is ready");
 
         // ... and it must settle back exactly as it was, or it stays big and amber for ever.
-        renderer.settle(4500);
-        renderer.runOnRenderThread(() -> {
-            com.badlogic.gdx.scenes.scene2d.ui.Button b = com.peaknav.viewer.MapViewerSingleton
-                    .getViewerInstance().tableTool.buttonMatchPhoto;
-            pulsing[0] = b.getActions().size > 0;
-            scale[0] = b.getScaleX();
-        });
+        // Waited for, not timed: the stage advances its actions by at most 1/30 s a frame, and
+        // the renderer here draws a few frames a second, so the 3.6 s pulse takes longer than
+        // 3.6 s of wall time. What matters is that it ends by itself.
+        long deadline = System.currentTimeMillis() + 30_000;
+        do {
+            renderer.settle(500);
+            renderer.runOnRenderThread(() -> {
+                com.badlogic.gdx.scenes.scene2d.ui.Button b = com.peaknav.viewer.MapViewerSingleton
+                        .getViewerInstance().tableTool.buttonMatchPhoto;
+                pulsing[0] = b.getActions().size > 0;
+                scale[0] = b.getScaleX();
+            });
+        } while (pulsing[0] && System.currentTimeMillis() < deadline);
         assertTrue(!pulsing[0], "the pulse should have finished by itself");
         assertEquals(1f, scale[0], 0.001f, "and left the button at its normal size");
         renderer.clearPhoto();
@@ -1705,8 +1711,10 @@ class PeakNavRendererTest {
             renderer.captureWithUi(large);
             float[] largeBounds = renderer.gpxInfoBounds();
             float[] largeGraphs = renderer.gpxInfoGraphSizes();
+            // Within a pixel of the small graph's height: it is some thirty pixels tall, and laid
+            // out to whole pixels, so one pixel of rounding is already over 3 %.
             assertTrue(Math.abs(largeGraphs[2] / largeGraphs[3] - smallGraphs[2] / smallGraphs[3])
-                            < 0.02f * smallGraphs[2] / smallGraphs[3],
+                            <= (smallGraphs[2] / smallGraphs[3]) * (1.5f / smallGraphs[3]),
                     "the speed graph keeps its proportions too: " + java.util.Arrays.toString(smallGraphs)
                             + " vs " + java.util.Arrays.toString(largeGraphs));
             assertTrue(largeBounds[1] >= 0 && largeBounds[1] + largeBounds[3] <= largeBounds[5],
