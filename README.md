@@ -65,7 +65,7 @@ Three modules, in increasing order of what they need from the machine:
   ```python
   >>> from peaknav.terrain import elevation_at
   >>> elevation_at(45.9417, 7.7480)          # the Breithorn
-  4160
+  4156
   ```
 
 * **`peaknav.headless`** — the real PeakNav renderer running off-screen, driven
@@ -80,7 +80,7 @@ Three modules, in increasing order of what they need from the machine:
   ```python
   from peaknav.headless import PeakNavHeadless
 
-  with PeakNavHeadless(45.9763, 7.6586) as nav:
+  with PeakNavHeadless(46.0207, 7.7491) as nav:   # above Zermatt, facing the Matterhorn
       nav.look(bearing_deg=230, pitch_deg=-4)
       nav.set_altitude_asl(3200)
       nav.save_frame("matterhorn.png")
