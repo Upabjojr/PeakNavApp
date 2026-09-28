@@ -413,6 +413,7 @@ public final class SlideShow {
         }
     }
 
+    /** Frees the pictures; the next {@link #update} after {@link #restart} loads one again. */
     public void dispose() {
         if (texture != null) {
             texture.dispose();
@@ -423,5 +424,8 @@ public final class SlideShow {
             textureLeaving.dispose();
             textureLeaving = null;
         }
+        // Not left pointing at the textures just freed.
+        image.setDrawable(null);
+        imageLeaving.setDrawable(null);
     }
 }

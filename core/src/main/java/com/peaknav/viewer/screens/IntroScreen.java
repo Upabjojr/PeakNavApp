@@ -712,8 +712,20 @@ public class IntroScreen implements Screen {
 
     }
 
+    /**
+     * Once the map has taken over, what show() made goes: the stage, the batches, the logo and
+     * the slide show stayed allocated for the session. Next frame, not now: the switch is made
+     * from inside this screen's own frame, which goes on drawing after it.
+     */
     @Override
     public void hide() {
+        Gdx.app.postRunnable(() -> {
+            if (mapApp.getScreen() != this) {
+                // A place screen opened over this one goes to the map's stage first.
+                com.peaknav.viewer.mapscreens.MapScreens.screenChanged();
+                dispose();
+            }
+        });
     }
 
     /** See {@link MapViewerScreen#recoverFromRenderError()} — same blank-screen safeguard. */
@@ -739,13 +751,20 @@ public class IntroScreen implements Screen {
         }
         if (slideShow != null) {
             slideShow.dispose();
+            slideShow = null;
         }
-        if (shapeRenderer != null)
+        if (shapeRenderer != null) {
             shapeRenderer.dispose();
-        if (spriteBatch != null)
+            shapeRenderer = null;
+        }
+        if (spriteBatch != null) {
             spriteBatch.dispose();
-        if (stage != null)
+            spriteBatch = null;
+        }
+        if (stage != null) {
             stage.dispose();
+            stage = null;
+        }
     }
 
 }

@@ -146,6 +146,8 @@ public final class SlideShowOverlay {
 
     public void hide() {
         root.setVisible(false);
+        // Its one or two pictures were kept until it was opened again; show() starts afresh.
+        slideShow.dispose();
         if (root.getStage() != null && root.getStage().getKeyboardFocus() == root) {
             root.getStage().setKeyboardFocus(null);
         }

@@ -121,6 +121,19 @@ public final class MapScreens {
         screen.attach(stage);
     }
 
+    /**
+     * The app has gone from one screen to another: a map screen open on the old one's stage is
+     * moved to the new one's, as it was. Left there, it was invisible and still counted as
+     * open - the next Back was spent closing it, and touchpad pinches were ignored until then.
+     * Render thread.
+     */
+    public static void screenChanged() {
+        Stage stage = currentStage();
+        if (current != null && stage != null && current.stage() != stage) {
+            current.moveTo(stage);
+        }
+    }
+
     /** The stage of the screen on show: the welcome screen's for the wizard, else the map's. */
     private static Stage currentStage() {
         MapApp app = MapViewerSingleton.getAppInstance();
@@ -355,6 +368,24 @@ public final class MapScreens {
                 stage.setScrollFocus(map);
             }
             onShown();
+        }
+
+        /** To another stage, as it is: not shown afresh. */
+        void moveTo(Stage to) {
+            if (stage != null) {
+                stage.unfocus(root);
+                if (map != null) {
+                    stage.unfocus(map);
+                }
+            }
+            root.remove();
+            stage = to;
+            to.addActor(root);
+            root.toFront();
+            to.setKeyboardFocus(root);
+            if (map != null) {
+                to.setScrollFocus(map);
+            }
         }
 
         /** Called once the layer is on the stage. */
