@@ -384,6 +384,22 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		}
 	}
 
+	/** Every byte of a picked picture, or null if the provider has no stream for it. */
+	private byte[] readPickedBytes(Uri uri) throws java.io.IOException {
+		try (InputStream inputStream = getContentResolver().openInputStream(uri)) {
+			if (inputStream == null) {
+				return null;
+			}
+			ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+			int numRead;
+			byte[] d = new byte[16384];
+			while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
+				buffer.write(d, 0, numRead);
+			}
+			return buffer.toByteArray();
+		}
+	}
+
 	private byte[] readShareBytes(Uri uri) {
 		Uri readUri = uri;
 		// On Android 10+ ask for the un-redacted original so an image's GPS EXIF survives; harmless
@@ -447,25 +463,29 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 			// so the render thread is still paused and would show nothing - not even the
 			// "Loading..." screen - until the whole file had been read and decoded.
 			final Uri pickedUri = imageUri;
+			final Uri plainUri = data.getData();
 			setPhotoLoading(true);
 			getC().submitExecutorGeneric(() -> {
 				// A deleted file, revoked permission, or corrupt image must fail
 				// gracefully here rather than crash the app.
-				try (InputStream inputStream = getContentResolver().openInputStream(pickedUri)) {
-					if (inputStream == null) {
+				try {
+					byte[] b;
+					try {
+						b = readPickedBytes(pickedUri);
+					} catch (Exception withoutPermission) {
+						// The original bytes are refused without ACCESS_MEDIA_LOCATION, by an
+						// exception from openInputStream. The photo was then not shown at all,
+						// with nothing said. The plain uri gives it without its location,
+						// which checkImageGpsAndPrompt then asks for.
+						if (pickedUri.equals(plainUri)) {
+							throw withoutPermission;
+						}
+						b = readPickedBytes(plainUri);
+					}
+					if (b == null) {
 						setPhotoLoading(false);
 						return;
 					}
-					ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-
-					int numRead;
-					byte[] d = new byte[16384];
-
-					while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
-						buffer.write(d, 0, numRead);
-					}
-
-					byte[] b = buffer.toByteArray();
 
 					setBytesAsBackgroundImage(b);
 					checkImageGpsAndPrompt(b);
