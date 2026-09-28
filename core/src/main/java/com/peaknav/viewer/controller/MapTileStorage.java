@@ -7,13 +7,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Deque;
-import java.util.LinkedList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
@@ -26,27 +26,34 @@ public class MapTileStorage {
 
     // public ReentrantLock mapTilesLock = new ReentrantLock();
     public final Deque<MapTile> mapTilesForDisposal = new ConcurrentLinkedDeque<>();
-    public boolean readyToDispose = false;
+    public volatile boolean readyToDispose = false;
 
-    // TODO: this should be a CopyOnWriteArrayList:
-    private final CopyOnWriteArrayList<MapTile> mapTiles = new CopyOnWriteArrayList<>();
-    private final ConcurrentHashMap<Tile, MapTile> mapTileMap = new ConcurrentHashMap<>();
-    private final ExecutorService disposeOldMapTiles = Executors.newSingleThreadExecutor();
+    /**
+     * The tiles, and the same by their index: each replaced whole, never changed in place.
+     * They were cleared and then filled, and a frame drawn in between had no terrain, a lookup
+     * made in between found no tile.
+     */
+    private volatile List<MapTile> mapTiles = new CopyOnWriteArrayList<>();
+    private volatile Map<Tile, MapTile> mapTileMap = new ConcurrentHashMap<>();
 
     public synchronized void setMapTileList(List<MapTile> mapTiles) {
-        List<MapTile> previousMapTiles = new LinkedList<>(this.mapTiles);
-        this.mapTiles.clear();
-        this.mapTiles.addAll(mapTiles);
-        this.mapTileMap.clear();
+        List<MapTile> previousMapTiles = this.mapTiles;
+        Map<Tile, MapTile> byIndex = new ConcurrentHashMap<>();
         for (MapTile mapTile : mapTiles) {
-            this.mapTileMap.put(
-                    mapTile.tile,
-                    mapTile);
+            byIndex.put(mapTile.tile, mapTile);
         }
-        disposeOldMapTiles.execute(() -> {
-            previousMapTiles.removeAll(mapTiles);
-            mapTilesForDisposal.addAll(previousMapTiles);
-        });
+        this.mapTileMap = byIndex;
+        this.mapTiles = new CopyOnWriteArrayList<>(mapTiles);
+        // The tiles left out go for disposal now, before the caller says they are ready to
+        // be: queued from another thread, as they were, the render thread could take the
+        // flag and find the queue still empty, and they kept their meshes and textures
+        // until the next update - which standing still never comes.
+        Set<MapTile> kept = new HashSet<>(mapTiles);
+        for (MapTile previous : previousMapTiles) {
+            if (!kept.contains(previous)) {
+                mapTilesForDisposal.add(previous);
+            }
+        }
     }
 
     public MapTile getFromMapIndexLessEq(final Tile tile1) {
