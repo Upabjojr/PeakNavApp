@@ -145,8 +145,7 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             alertBuilder.setMessage(message)
                     .setPositiveButton(s("OK"), (dialogInterface, i) -> {})
                     .setCancelable(false);
-            AlertDialog alert = alertBuilder.create();
-            alert.show();
+            show(alertBuilder);
         });
     }
 
@@ -196,7 +195,9 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     })
                     .setNegativeButton(s("Cancel"), (dialogInterface, i) -> callback.onCancelled())
                     .setOnCancelListener(dialogInterface -> callback.onCancelled());
-            builder.create().show();
+            if (show(builder) == null) {
+                callback.onCancelled();
+            }
         });
     }
 
@@ -216,7 +217,10 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         FrameLayout mapOverlay = mainActivity.findViewById(R.id.map_container);
         mapOverlay.setVisibility(View.VISIBLE);
 
-        mainActivity.getSupportFragmentManager().popBackStack();
+        FragmentManager fm = mainActivity.getSupportFragmentManager();
+        if (!fm.isStateSaved()) {
+            fm.popBackStack();
+        }
 
         MapViewerSingleton.getAppInstance().resume();
     }
@@ -292,6 +296,13 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
 
     private void openFragmentWithTransaction(Fragment fragment, String name) {
         FragmentManager fm = mainActivity.getSupportFragmentManager();
+        // Asked for from a late callback after the app was left: a transaction committed
+        // once the activity has saved its state throws IllegalStateException on the main
+        // thread, which ended the app. Nothing is opened then - the renderer is not paused and
+        // the map not hidden for a screen that would never come.
+        if (fm.isStateSaved() || mainActivity.isFinishing() || mainActivity.isDestroyed()) {
+            return;
+        }
 
         FrameLayout overlay = mainActivity.findViewById(R.id.ui_overlay);
         overlay.setVisibility(View.VISIBLE);
@@ -404,7 +415,7 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             alertBuilder.setTitle(s("Image_location_missing_title"))
                     .setMessage(s("Image_location_missing"))
                     .setPositiveButton(android.R.string.ok, null);
-            alertBuilder.create().show();
+            show(alertBuilder);
         });
     }
 
@@ -417,7 +428,7 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     .setPositiveButton(s("Yes"),
                             (dialogInterface, i) -> getC().L.setCurrentTargetCoords(lat, lon))
                     .setNegativeButton(s("No"), null);
-            alertBuilder.create().show();
+            show(alertBuilder);
         });
     }
 
@@ -429,21 +440,20 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     .setMessage(message)
                     .setPositiveButton(s("Yes"), (dialogInterface, i) -> onYes.run())
                     .setNegativeButton(s("No"), null);
-            alertBuilder.create().show();
+            show(alertBuilder);
         });
     }
 
     @Override
     public void promptChoice(String title, String message, String first, String second,
                              Runnable onFirst, Runnable onSecond) {
-        mainActivity.runOnUiThread(() -> new AlertDialog.Builder(mainActivity)
+        mainActivity.runOnUiThread(() -> show(new AlertDialog.Builder(mainActivity)
                 .setTitle(title)
                 .setMessage(message)
                 .setPositiveButton(first, (dialogInterface, i) -> onFirst.run())
                 .setNegativeButton(second, (dialogInterface, i) -> onSecond.run())
                 // Back, or a tap beside the dialog, counts as the second answer.
-                .setOnCancelListener(dialogInterface -> onSecond.run())
-                .create().show());
+                .setOnCancelListener(dialogInterface -> onSecond.run())));
     }
 
     @Override
@@ -504,7 +514,7 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         boolean has_network_loc = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
 
         if(!(has_gps_loc || has_network_loc)) {
-            new AlertDialog.Builder((locContext == null)? mainActivity : locContext)
+            show(new AlertDialog.Builder((locContext == null)? mainActivity : locContext)
                     .setMessage(s("Location_not_enabled"))
                     .setPositiveButton(
                             s("ask_open_location_settings"),
@@ -513,8 +523,7 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                                 context.startActivity(intent);
                             })
-                    .setNegativeButton(s("Cancel"), null)
-                    .show();
+                    .setNegativeButton(s("Cancel"), null));
         }
     }
 
@@ -537,7 +546,7 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             context.startActivity(intent);
         });
         dialogBuilder.setNegativeButton(s("Cancel"), (dialog, which) -> dialog.dismiss());
-        locationSettingsDialog = dialogBuilder.show();
+        locationSettingsDialog = show(dialogBuilder);
     }
 
     public static void showCameraSettingsDialog(Context context) {
@@ -551,7 +560,33 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             context.startActivity(intent);
         });
         dialogBuilder.setNegativeButton(s("Cancel"), (dialog, which) -> dialog.dismiss());
-        dialogBuilder.show();
+        show(dialogBuilder);
+    }
+
+    /**
+     * Shows a dialog if its activity can still show one; null if not. A dialog asked for from
+     * a late callback - a position fix, a photo decoded after the user left the app - came
+     * to an activity already finished or destroyed, and show() threw BadTokenException on the
+     * main thread: the app ended.
+     */
+    public static AlertDialog show(AlertDialog.Builder builder) {
+        Context owner = builder.getContext();
+        while (owner instanceof android.content.ContextWrapper && !(owner instanceof Activity)) {
+            owner = ((android.content.ContextWrapper) owner).getBaseContext();
+        }
+        if (owner instanceof Activity) {
+            Activity activity = (Activity) owner;
+            if (activity.isFinishing() || activity.isDestroyed()) {
+                return null;
+            }
+        }
+        try {
+            AlertDialog dialog = builder.create();
+            dialog.show();
+            return dialog;
+        } catch (android.view.WindowManager.BadTokenException gone) {
+            return null;
+        }
     }
 
     public CurrentLocationListener getCurrentLocationListener(Activity locContext) {
