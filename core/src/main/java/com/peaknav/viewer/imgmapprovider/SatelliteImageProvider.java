@@ -31,7 +31,7 @@ public class SatelliteImageProvider {
         // The tile matrix set is GoogleMapsCompatible_Level12, so the service only serves up to
         // zoom 12 and answers 400 above it. Anything higher has to be scaled up from a zoom 12
         // tile, which is what downloadTileImageIfNotExists does for zoom levels beyond maxZoom.
-        LANDSAT("https://gitc.earthdata.nasa.gov/wmts/epsg3857/best/Landsat_WELD_CorrectedReflectance_TrueColor_Global_Annual/default/default//GoogleMapsCompatible_Level12/{z}/{y}/{x}.jpeg", s("Satellite"), "USGS/Nasa", "jpeg", (byte) 12);
+        LANDSAT("https://gitc.earthdata.nasa.gov/wmts/epsg3857/best/Landsat_WELD_CorrectedReflectance_TrueColor_Global_Annual/default/default//GoogleMapsCompatible_Level12/{z}/{y}/{x}.jpeg", TRANSLATED + "Satellite", "USGS/Nasa", "jpeg", (byte) 12);
 
         // These ones probably need a license in order to be used, DO NOT UNCOMMENT:
 
@@ -126,8 +126,19 @@ public class SatelliteImageProvider {
     }
 
     public String getProviderName() {
+        if (!custom && providerName.startsWith(TRANSLATED)) {
+            return s(providerName.substring(TRANSLATED.length()));
+        }
         return providerName;
     }
+
+    /**
+     * Marks a built-in provider's name as a key of the translations, looked up when the name is
+     * read. Translated where the enum is built, the name was fixed before the translations were
+     * loaded - the enum is first touched while the preferences are read, at start-up - and the
+     * Landsat source read "Satellite" in every language.
+     */
+    private static final String TRANSLATED = "i18n:";
 
     public String getUrlTemplate() {
         return urlTemplate.getTemplate();
