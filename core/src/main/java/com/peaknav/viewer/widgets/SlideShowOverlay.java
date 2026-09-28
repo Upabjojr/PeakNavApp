@@ -39,6 +39,16 @@ public final class SlideShowOverlay {
             public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
                 return true;
             }
+
+            /** Escape closes it, as it does the tutorial; Android's Back is AndroidLauncher's. */
+            @Override
+            public boolean keyDown(InputEvent event, int keycode) {
+                if (keycode == com.badlogic.gdx.Input.Keys.ESCAPE) {
+                    hide();
+                    return true;
+                }
+                return false;
+            }
         });
 
         Button close = getC().widgetTextures.getButtonWithIcon("icons/icon_x.png");
@@ -110,10 +120,16 @@ public final class SlideShowOverlay {
         slideShow.restart();   // a different run of pictures every time it is opened
         root.setVisible(true);
         root.toFront();
+        if (root.getStage() != null) {
+            root.getStage().setKeyboardFocus(root);   // for Escape
+        }
     }
 
     public void hide() {
         root.setVisible(false);
+        if (root.getStage() != null && root.getStage().getKeyboardFocus() == root) {
+            root.getStage().setKeyboardFocus(null);
+        }
     }
 
     /** Advances the pictures while the viewer is open. Render thread, every frame. */

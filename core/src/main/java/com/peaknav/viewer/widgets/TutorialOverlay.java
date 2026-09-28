@@ -132,7 +132,11 @@ public class TutorialOverlay implements Disposable {
                     goTo(index - 1);
                 } else if (keycode == Input.Keys.RIGHT || keycode == Input.Keys.SPACE) {
                     goTo(index + 1);
-                } else if (keycode == Input.Keys.ESCAPE || keycode == Input.Keys.BACK) {
+                } else if (keycode == Input.Keys.ESCAPE) {
+                    // Android's Back is not here but in AndroidLauncher's back callback. On
+                    // Android 15 and older the press reaches both: handled here as well, the
+                    // tutorial closed on the key going down, and the callback, finding
+                    // nothing left to close on its coming up, left the app.
                     hide();
                 } else {
                     return false;

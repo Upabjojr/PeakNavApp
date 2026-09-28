@@ -182,7 +182,10 @@ public final class MapScreens {
 
                 @Override
                 public boolean keyDown(InputEvent event, int keycode) {
-                    if (keycode == Input.Keys.ESCAPE || keycode == Input.Keys.BACK) {
+                    // Escape only: Android's Back is AndroidLauncher's back callback's. On
+                    // Android 15 and older the press reaches both, and taken here as well it
+                    // closed the screen and then, through the callback, left the app.
+                    if (keycode == Input.Keys.ESCAPE) {
                         back();
                     }
                     return true;

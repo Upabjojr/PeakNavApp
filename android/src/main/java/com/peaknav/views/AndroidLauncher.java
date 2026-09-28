@@ -133,6 +133,13 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 					com.badlogic.gdx.Gdx.app.postRunnable(() -> app.mapViewerScreen.tutorialOverlay.hide());
 					return;
 				}
+				// Nor is the slideshow, which hides the menu it was opened from: with no menu
+				// on show, Back fell through to the end and left the app.
+				if (app != null && app.mapViewerScreen != null && app.mapViewerScreen.slideShowOverlay != null
+						&& app.mapViewerScreen.slideShowOverlay.isVisible()) {
+					com.badlogic.gdx.Gdx.app.postRunnable(() -> app.mapViewerScreen.slideShowOverlay.hide());
+					return;
+				}
 				// Nor are the options menu and its submenus: Back does what their own Back
 				// button does - a submenu back to its menu, the menu closed - instead of
 				// leaving the app.
