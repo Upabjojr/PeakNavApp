@@ -2038,7 +2038,8 @@ public class MapViewerScreen implements Screen {
 		}
 
 		idleFrameRate.update(deltaTime, cam, stage != null ? stage.getRoot() : null,
-				labelLoading != null && labelLoading.getTableCenterNoData().isVisible());
+				labelLoading != null && labelLoading.getTableCenterNoData().isVisible()
+						&& labelLoading.isAnimating());
 
 		advanceOrbit(deltaTime);
 		refineGpxFramingWhenTerrainArrives();

@@ -17,6 +17,16 @@ public class LabelLoading {
         return state;
     }
 
+    /**
+     * Whether what the plate shows is still changing: data loading, or a download's percentage
+     * and pictures. Not "no data here", a still message: the plate stays visible for it, and
+     * the frame rate taken from its visibility never went down to idle while it showed.
+     */
+    public boolean isAnimating() {
+        return state == State.LOADING || state == State.LOADING_UPDATING
+                || (downloadPercent >= 0 && state != State.LOADED);
+    }
+
     public void setState(State state) {
         this.state = state;
         switch (state) {
