@@ -59,9 +59,10 @@ public class ElevationUtils {
             return null;
         if (mapTile.isDisposed())
             return null;
-        if (mapTile.elevationImage == null)
+        ElevationImageAbstract image = mapTile.elevationImage;   // once: dispose() sets it to null
+        if (image == null)
             return null;
-        return mapTile.elevationImage.getTileElevationLatitsFromMaxCoords(lon, lat);
+        return image.getTileElevationLatitsFromMaxCoords(lon, lat);
     }
 
     public static Float getElevationLatitsFromMaxCoords(double lon, double lat) {

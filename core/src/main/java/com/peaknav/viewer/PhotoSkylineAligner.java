@@ -685,7 +685,10 @@ public final class PhotoSkylineAligner {
         public float elevationMeters(double latitude, double longitude) {
             Tile index = CheckMissingData.getTileAtZoomLevel(latitude, longitude, MapTile.ZOOM_LEVEL_MAX);
             MapTile mapTile = getC().mapTileStorage.getFromMapIndexLessEq(index);
-            if (mapTile == null || mapTile.isDisposed() || mapTile.elevationImage == null) {
+            // Read once: the render thread sets it to null when it disposes the tile, and a
+            // second read after the check threw in the middle of a horizon's lookups.
+            com.peaknav.elevation.ElevationImageAbstract image = mapTile == null ? null : mapTile.elevationImage;
+            if (image == null || mapTile.isDisposed()) {
                 return Float.NaN;
             }
             // Only tiles whose elevations are already decoded: a tile still loading would
@@ -696,7 +699,7 @@ public final class PhotoSkylineAligner {
                 return Float.NaN;
             }
             return Units.convertLatitsToMeters(
-                    mapTile.elevationImage.getTileElevationLatitsFromMaxCoords(longitude, latitude));
+                    image.getTileElevationLatitsFromMaxCoords(longitude, latitude));
         }
     };
 

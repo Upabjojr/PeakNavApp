@@ -58,7 +58,7 @@ public class MapTile {
     public final Tile tile;
     public final Tile tileMinZoom;
     private final int edgeLength;
-    public transient ElevationImageAbstract elevationImage = null;
+    public transient volatile ElevationImageAbstract elevationImage = null;
     // public ReentrantReadWriteLock tileLock = new ReentrantReadWriteLock();
     public final PixmapLayers pixmapLayers;
     // public boolean[] welded = {false, false, false, false};
