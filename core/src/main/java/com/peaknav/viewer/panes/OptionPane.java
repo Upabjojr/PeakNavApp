@@ -2160,36 +2160,21 @@ public class OptionPane {
         });
         buttons.add(buttonUnits);
 
-        Table tableInfo = new Table();
-        String textInfo = s("App_info");
-        ImageTextButtonOptionPane buttonAppInfo = getC().widgetGetter.getImageTextButton(
-                "icons/icon_info.png", textInfo, false);
-        addCheckingStateProperty(
-                buttonAppInfo, () -> {
-                    buttonAppInfo.getLabel().setText(textInfo);
-                    return true;
-                }
-        );
-        buttonAppInfo.addListener(new ChangeListener() {
-            @Override
-            public void changed(ChangeEvent event, Actor actor) {
-                // tableAppInfo.setVisible(true);
-                buttonAppInfo.getLabel().setText(textInfo);
-                getNativeScreenCaller().openAppInfoScreen();
-                hide();
-            }
-        });
-        tableInfo.add(buttonAppInfo).width(buttonWidth*0.8f).height(height);
-        TextButton buttonInfoOptions = getC().widgetGetter.getTextButton("...", false);
-        buttonInfoOptions.addListener(new ChangeListener() {
+        // More: what is about the app rather than the view - its information, the slideshow,
+        // the language, the storage. One button that opens them. It used to be the information
+        // with a "..." beside it, and the information was then there twice, here and in the menu
+        // the "..." opened.
+        ImageTextButtonOptionPane buttonMore = getC().widgetGetter.getImageTextButton(
+                "icons/icon_more.png", s("More"), false);
+        buttonMore.setName("options_more");
+        buttonMore.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
                 selectInfoOpts.setVisible(true);
                 table.setVisible(false);
             }
         });
-        tableInfo.add(buttonInfoOptions).width(buttonWidth*0.2f).height(height);
-        buttons.add(tableInfo);
+        buttons.add(buttonMore);
 
         ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton("icons/icon_back.png", s("Back"), false);
         back.addClickListener(this::hide);
