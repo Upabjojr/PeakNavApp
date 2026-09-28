@@ -25,6 +25,22 @@ final class Hatching {
 
     private static final Map<String, Texture> TEXTURES = new HashMap<>();
 
+    /** The graphics the textures were made under: Gdx.graphics is replaced with the context. */
+    private static Object context;
+
+    /**
+     * A texture belongs to the graphics context that made it, and this cache, being static,
+     * outlives one: Android rebuilds the activity and the process lives on. The textures of a
+     * context that has gone draw as whatever now has their number, or as nothing, so the cache
+     * starts again. They are not disposed, their context having taken them with it.
+     */
+    private static void checkContext() {
+        if (context != com.badlogic.gdx.Gdx.graphics) {
+            TEXTURES.clear();
+            context = com.badlogic.gdx.Gdx.graphics;
+        }
+    }
+
     /** How opaque a stripe is: the imagery shows through it, and between the stripes. */
     static final float ALPHA = 0.4f;
 
@@ -43,6 +59,7 @@ final class Hatching {
      * the period wide, each kind shifted along by its own share, antialiased.
      */
     static Texture texture(Color color, int index, int count, int period) {
+        checkContext();
         String key = color + "/" + index + "/" + count + "/" + period;
         Texture texture = TEXTURES.get(key);
         if (texture != null) {

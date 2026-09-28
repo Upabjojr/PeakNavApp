@@ -51,6 +51,25 @@ public final class PlatformLabelTextures {
     private static final LinkedHashMap<String, Picture> CACHE = new LinkedHashMap<>(64, 0.75f, true);
     private static long pixels;
     private static final Set<String> PENDING = new HashSet<>();
+    /** The graphics the pictures were made under: Gdx.graphics is replaced with the context. */
+    private static Object context;
+
+    /**
+     * A texture belongs to the graphics context that made it, and this cache, being static,
+     * outlives one: Android rebuilds the activity and the process lives on. Kept, the pictures
+     * of a context that has gone drew as whatever now had their number, and dropping one from
+     * the cache deleted that other texture. So the cache starts again, without disposing them:
+     * their context took them with it. The pictures being made go too - one posted to the app
+     * that has gone never lands, and its label would have waited for it for good.
+     */
+    private static void checkContext() {
+        if (context != Gdx.graphics) {
+            CACHE.clear();
+            PENDING.clear();
+            pixels = 0;
+            context = Gdx.graphics;
+        }
+    }
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "platform-labels");
         t.setDaemon(true);
@@ -63,6 +82,7 @@ public final class PlatformLabelTextures {
      * is still being made.
      */
     public static void draw(SpriteBatch batch, String text, float textSize, Color color, float x, float baselineY) {
+        checkContext();
         String key = Math.round(textSize * 4f) + "|" + color.toIntBits() + "|" + text;
         Picture entry = CACHE.get(key);
         if (entry == null) {
@@ -79,6 +99,7 @@ public final class PlatformLabelTextures {
         if (rasterizer == null || !PENDING.add(key)) {
             return;
         }
+        final Object askedUnder = context;
         WORKER.execute(() -> {
             LabelTextRasterizer.Rendered rendered;
             try {
@@ -89,6 +110,14 @@ public final class PlatformLabelTextures {
             }
             final LabelTextRasterizer.Rendered done = rendered;
             Gdx.app.postRunnable(() -> {
+                checkContext();
+                if (askedUnder != context) {
+                    // Asked for under a context that has gone; its bookkeeping went with it.
+                    if (done != null) {
+                        done.pixmap.dispose();
+                    }
+                    return;
+                }
                 PENDING.remove(key);
                 if (done == null) {
                     return;

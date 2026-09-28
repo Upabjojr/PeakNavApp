@@ -23,6 +23,22 @@ final class RoundedDrawables {
 
     private static final Map<String, Texture> TEXTURES = new HashMap<>();
 
+    /** The graphics the textures were made under: Gdx.graphics is replaced with the context. */
+    private static Object context;
+
+    /**
+     * A texture belongs to the graphics context that made it, and this cache, being static,
+     * outlives one: Android rebuilds the activity and the process lives on. The textures of a
+     * context that has gone draw as whatever now has their number, or as nothing, so the cache
+     * starts again. They are not disposed, their context having taken them with it.
+     */
+    private static void checkContext() {
+        if (context != com.badlogic.gdx.Gdx.graphics) {
+            TEXTURES.clear();
+            context = com.badlogic.gdx.Gdx.graphics;
+        }
+    }
+
     /** How dark the shadow is where it meets the shape, fading to nothing over its width. */
     private static final float SHADOW_ALPHA = 0.22f;
 
@@ -58,6 +74,7 @@ final class RoundedDrawables {
     }
 
     private static Texture texture(String kind, Color fill, int r, int w, int h, int s) {
+        checkContext();
         String key = kind + fill + r + "x" + w + "x" + h;
         Texture texture = TEXTURES.get(key);
         if (texture == null) {
