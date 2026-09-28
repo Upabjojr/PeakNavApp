@@ -250,7 +250,13 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		trans.commit();
 
 		// A photo or GPX may have launched us via the share sheet.
-		handleIncomingShare(getIntent());
+		// Not an intent the app is being relaunched with from Recents: that is the one it was
+		// first started with, and its share or geo: link was applied again at every relaunch.
+		Intent launch = getIntent();
+		if (launch != null && (launch.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0
+				&& savedInstanceState == null) {
+			handleIncomingShare(launch);
+		}
 	}
 
 	@Override
@@ -347,6 +353,11 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		if (!mapReady()) {
 			if (attempt < 120) {
 				shareHandler.postDelayed(() -> processPendingShare(attempt + 1), 250);
+			} else {
+				// Given up on: said, and the bytes let go. They were kept, and nothing said.
+				pendingShareData = null;
+				android.widget.Toast.makeText(this, com.peaknav.utils.PeakNavUtils.s("Share_not_ready"),
+						android.widget.Toast.LENGTH_LONG).show();
 			}
 			return;
 		}
@@ -407,6 +418,11 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		if (!mapReady()) {
 			if (attempt < 120) {
 				shareHandler.postDelayed(() -> processPendingGeo(attempt + 1), 250);
+			} else {
+				pendingGeoLat = null;
+				pendingGeoLon = null;
+				android.widget.Toast.makeText(this, com.peaknav.utils.PeakNavUtils.s("Share_not_ready"),
+						android.widget.Toast.LENGTH_LONG).show();
 			}
 			return;
 		}
