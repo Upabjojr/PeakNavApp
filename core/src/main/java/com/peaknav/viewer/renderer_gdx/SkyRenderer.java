@@ -340,7 +340,7 @@ public final class SkyRenderer {
         int pct = (int) Math.round(moon.phase * 100.0);
         if (moonLabelCache == null || pct != moonLabelPct) {
             moonLabelPct = pct;
-            moonLabelCache = String.format(java.util.Locale.getDefault(), "%s %d%%", name, pct);
+            moonLabelCache = String.format(java.util.Locale.ROOT, "%s %d%%", name, pct);   // Latin digits: see LabelRenderer's clock
         }
         return moonLabelCache;
     }

@@ -280,8 +280,11 @@ public class LabelRenderer {
     // The clock text is rebuilt only when the minute changes: constructing a SimpleDateFormat is
     // expensive (pattern compile + Calendar + locale data) and doing it every frame at 60 fps was
     // significant steady-state garbage while a custom sky time was set.
+    // Locale.ROOT for the digits: a device set to Arabic, Persian or Bengali formats them in its
+    // own script, which the fonts do not have, and the clock was a row of boxes. The time zone
+    // is still the device's.
     private final java.text.SimpleDateFormat clockFormat =
-            new java.text.SimpleDateFormat("yyyy-MM-dd  HH:mm", java.util.Locale.getDefault());
+            new java.text.SimpleDateFormat("yyyy-MM-dd  HH:mm", java.util.Locale.ROOT);
     private final java.util.Date clockDate = new java.util.Date();
     private long clockCachedMinute = Long.MIN_VALUE;
     private String clockText = "";
