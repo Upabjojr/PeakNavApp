@@ -470,10 +470,23 @@ public class MountainInputController extends CameraInputController {
             return;
 
         float amount = lookScreensPerSecond * scaledDeltaTime;
+        if (PhotoPin.isActive()) {
+            // With a photo pinned, the drag turns about the pin, by the angle the mouse swept
+            // round it - which the keys do not sweep: going through process() repeated the last
+            // drag's angle on every frame, whichever key. Left and right turn the terrain about
+            // the pin instead, at a fixed rate; up and down have nothing to do there.
+            if (deltaX != 0f) {
+                turnAboutPin(-deltaX * PIN_TURN_DEGREES_PER_SECOND * scaledDeltaTime);
+            }
+            return;
+        }
         // Reuse the drag path so that the guard against tipping the camera over the
         // vertical applies to the keyboard exactly as it does to the mouse.
         process(deltaX * amount, deltaY * amount, rotateButton);
     }
+
+    /** How fast the arrow keys turn the terrain about a pinned photo point. */
+    private static final float PIN_TURN_DEGREES_PER_SECOND = 20f;
 
     private void updateKeyboardAltitude(float scaledDeltaTime) {
         float delta = (altitudeUpPressed ? 1f : 0f) - (altitudeDownPressed ? 1f : 0f);
