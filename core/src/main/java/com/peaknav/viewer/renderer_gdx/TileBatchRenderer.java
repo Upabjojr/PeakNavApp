@@ -507,15 +507,13 @@ public class TileBatchRenderer {
                         modelBatch.render(mapTile.instance, environment);
                     }
                 } catch (Throwable throwable) {
-                    // CrashLogger crashLogger = getLoadFactory().getCrashLogger(throwable, "TileBatchRenderer.modelBatch.render(...)");
-                    // crashLogger.logToFile();
+                    logOnce("tile", throwable);
                 }
 
             }
 
         } catch (Throwable throwable) {
-            // CrashLogger crashLogger = getLoadFactory().getCrashLogger(throwable, "modelBatch");
-            // crashLogger.logToFile();
+            logOnce("modelBatch", throwable);
         } finally {
             modelBatch.end();
         }
@@ -541,12 +539,13 @@ public class TileBatchRenderer {
                     if (!mapTile.isDisposed() && mapTile.instance != null) {
                         modelBatchRoadsOverlay.render(mapTile.instance, environmentRoadsOverlay);
                     }
-                } catch (Throwable ignored) {
+                } catch (Throwable throwable) {
                     // As in render(): one bad tile must not take the frame down.
+                    logOnce("roads overlay tile", throwable);
                 }
             }
-        } catch (Throwable ignored) {
-            // ditto
+        } catch (Throwable throwable) {
+            logOnce("roads overlay", throwable);
         } finally {
             modelBatchRoadsOverlay.end();
         }
@@ -665,8 +664,7 @@ public class TileBatchRenderer {
                 }
             }
         } catch (Throwable throwable) {
-            // CrashLogger crashLogger = getLoadFactory().getCrashLogger(throwable, "fbo.modelBatch");
-            // crashLogger.logToFile();
+            logOnce("pseudodistances", throwable);
         } finally {
             modelBatchPseudodistances.end();
         }
@@ -699,8 +697,7 @@ public class TileBatchRenderer {
                 }
             }
         } catch (Throwable throwable) {
-            // CrashLogger crashLogger = getLoadFactory().getCrashLogger(throwable, "fbo.modelBatch");
-            // crashLogger.logToFile();
+            logOnce("pseudodistances", throwable);
         } finally {
             modelBatchPseudodistances.end();
         }
@@ -773,4 +770,20 @@ public class TileBatchRenderer {
         modelBatchRoadsOverlay.dispose();   // left out when it was added
     }
 
+
+    /** The errors already logged, by where and what: each distinct one once. */
+    private final java.util.Set<String> loggedErrors = new java.util.HashSet<>();
+
+    /**
+     * An error the frame goes on after, said once. They were swallowed with their logging
+     * commented out: a shader that failed to compile showed as blank terrain with nothing to
+     * say why, and was tried again for every tile of every frame.
+     */
+    private void logOnce(String where, Throwable throwable) {
+        String key = where + ": " + throwable;
+        if (loggedErrors.size() < 100 && loggedErrors.add(key)) {
+            com.peaknav.utils.PeakNavUtils.getLogger().error("TileBatchRenderer", key);
+            throwable.printStackTrace();
+        }
+    }
 }
