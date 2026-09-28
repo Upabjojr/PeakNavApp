@@ -166,7 +166,7 @@ public class SlippyMap extends Widget implements Disposable {
         return t;
     });
 
-    /** Textures kept in memory; a phone screen shows about 30, and this keeps a few screens' worth. */
+    /** Textures kept in memory at least; a phone screen shows about 30, and this keeps a few screens' worth. */
     private static final int MAX_TEXTURES = 320;   // imagery and the world map under it
     /** A tile that failed is not asked for again until this long has passed. */
     private static final long RETRY_MILLIS = 15_000;
@@ -467,6 +467,7 @@ public class SlippyMap extends Widget implements Disposable {
                 order.add(new int[]{tx, ty});
             }
         }
+        TILES.shows(order.size());
         java.util.Collections.sort(order, (a, b) -> Double.compare(
                 distance2(a[0] + 0.5 - ctx, a[1] + 0.5 - cty), distance2(b[0] + 0.5 - ctx, b[1] + 0.5 - cty)));
         for (int[] t : order) {
@@ -659,7 +660,7 @@ public class SlippyMap extends Widget implements Disposable {
         private final LinkedHashMap<String, Texture> textures = new LinkedHashMap<String, Texture>(128, 0.75f, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<String, Texture> eldest) {
-                if (size() > MAX_TEXTURES) {
+                if (size() > limit) {
                     eldest.getValue().dispose();
                     return true;
                 }
@@ -673,6 +674,17 @@ public class SlippyMap extends Widget implements Disposable {
         private final Map<String, Long> failedAt = new HashMap<>();
         /** The context the textures were made under (GlContext). */
         Object context;
+        /**
+         * How many textures are kept: {@link #MAX_TEXTURES}, or more for a map showing more
+         * tiles than that holds - a 5K window shows some 250, two textures each, and at 320
+         * the cache dropped tiles still on screen and loaded them again every frame.
+         */
+        private int limit = MAX_TEXTURES;
+
+        /** A map shows this many tiles: room for two textures each, twice over. */
+        void shows(int tiles) {
+            limit = Math.max(limit, tiles * 4);
+        }
 
         private void checkContext() {
             Object current = com.peaknav.utils.GlContext.current();
