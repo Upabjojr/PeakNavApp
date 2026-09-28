@@ -328,8 +328,14 @@ public final class MapScreens {
             map.setProvider(provider);
             getC().submitExecutorGeneric(() -> {
                 com.peaknav.utils.PreferencesManager.P.setUnderlayImageProvider(provider);
-                getC().widgetGetter.setCopyrightLabel(provider.getCopyrightNotice());
-                getC().tileManager.tileRenderer.drawSatelliteLayer();
+                // The label on the render thread, which draws it; and the 3D view's imagery only
+                // while its layer is shown: it fetched every tile's imagery for a layer switched
+                // off. Switched on later, the layer draws with the provider chosen here.
+                final String notice = provider.getCopyrightNotice();
+                Gdx.app.postRunnable(() -> getC().widgetGetter.setCopyrightLabel(notice));
+                if (com.peaknav.utils.PreferencesManager.P.isLayerVisibleUnderlayLayer()) {
+                    getC().tileManager.tileRenderer.drawSatelliteLayer();
+                }
             });
         }
 
