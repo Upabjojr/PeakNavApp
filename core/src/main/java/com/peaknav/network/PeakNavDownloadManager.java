@@ -509,10 +509,53 @@ public class PeakNavDownloadManager {
         }
     }
 
+    /**
+     * Where an archive's entry is written: inside {@code outputDir}, or nowhere. An entry's
+     * name comes from whoever served the archive - a provider the user added, or a mirror
+     * over plain http - and was joined to the folder as it came: "../" or an absolute name
+     * wrote wherever the app can write. Such an archive is refused whole, as a corrupt one is.
+     *
+     * <p>The name is judged by itself, step by step, not by where the path finally resolves
+     * to. An archive cannot make a link here - TarReader skips every entry that is neither a
+     * file nor a folder - so a link on the way is one the user made, a data folder moved to
+     * another disk, and is followed as before.
+     */
+    static File entryTarget(File outputDir, String name) throws IOException {
+        if (name == null || name.isEmpty() || name.indexOf('\0') >= 0) {
+            throw new IOException("archive entry with no usable name");
+        }
+        String relative = name.replace('\\', '/');
+        if (relative.startsWith("/") || (relative.length() > 1 && relative.charAt(1) == ':')) {
+            throw new IOException("archive entry with an absolute name: " + name);
+        }
+        java.util.ArrayList<String> parts = new java.util.ArrayList<>();
+        for (String part : relative.split("/")) {
+            if (part.isEmpty() || part.equals(".")) {
+                continue;
+            }
+            if (part.equals("..")) {
+                if (parts.isEmpty()) {
+                    throw new IOException("archive entry outside the data folder: " + name);
+                }
+                parts.remove(parts.size() - 1);
+            } else {
+                parts.add(part);
+            }
+        }
+        if (parts.isEmpty()) {
+            throw new IOException("archive entry naming the data folder itself: " + name);
+        }
+        File target = outputDir;
+        for (String part : parts) {
+            target = new File(target, part);
+        }
+        return target;
+    }
+
     private static void unpackEntries(TarReader tarInput, File outputDir) throws IOException {
         TarReader.Entry entry;
         while ((entry = tarInput.next()) != null) {
-            File outputFile = new File(outputDir, entry.getName());
+            File outputFile = entryTarget(outputDir, entry.getName());
 
             if (entry.isDirectory()) {
                 if (!outputFile.exists() && !outputFile.mkdirs()) {
