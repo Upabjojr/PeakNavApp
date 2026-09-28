@@ -271,7 +271,21 @@ public class OptionPane {
         return false;
     }
 
+    /**
+     * A menu's Back button: the one named so, else the first whose caption reads "Back". By the
+     * caption alone, a marker or an imagery source named exactly the translated word - listed
+     * before Back in its menu - was pressed instead: the app flew to the marker or chose the
+     * source.
+     */
     private static Button findBackButton(com.badlogic.gdx.scenes.scene2d.Group group, String caption) {
+        Actor named = group.findActor(WidgetGetter.BACK_BUTTON_NAME);
+        if (named instanceof Button) {
+            return (Button) named;
+        }
+        return findBackButtonByCaption(group, caption);
+    }
+
+    private static Button findBackButtonByCaption(com.badlogic.gdx.scenes.scene2d.Group group, String caption) {
         for (Actor child : group.getChildren()) {
             if (child instanceof TextButton && caption.equals(String.valueOf(((TextButton) child).getText()))) {
                 return (Button) child;
@@ -281,7 +295,7 @@ public class OptionPane {
                 return (Button) child;
             }
             if (child instanceof com.badlogic.gdx.scenes.scene2d.Group) {
-                Button found = findBackButton((com.badlogic.gdx.scenes.scene2d.Group) child, caption);
+                Button found = findBackButtonByCaption((com.badlogic.gdx.scenes.scene2d.Group) child, caption);
                 if (found != null) {
                     return found;
                 }

@@ -155,6 +155,10 @@ public class WidgetGetter {
         }
     }
 
+    public static final String BACK_ICON = "icons/icon_back.png";
+    /** The name every menu's Back button carries. */
+    public static final String BACK_BUTTON_NAME = "menu_back";
+
     public ImageTextButtonOptionPane getImageTextButton(String internalPath, String text, boolean toggable) {
         ImageTextButton.ImageTextButtonStyle style = new ImageTextButton.ImageTextButtonStyle();
 
@@ -184,6 +188,10 @@ public class WidgetGetter {
         style.imageChecked = drawable;
         style.imageUp = drawable;
         ImageTextButtonOptionPane button = new ImageTextButtonOptionPane(text, style);
+        if (BACK_ICON.equals(internalPath)) {
+            // How the system Back key finds a menu's own Back button (OptionPane.pressBack).
+            button.setName(BACK_BUTTON_NAME);
+        }
         // Consistent layout across every menu button: content hugs the left edge, the icon sits in a
         // fixed square cell (scaled to fit so non-square icons are not stretched), and the label is
         // left-aligned in the remaining width — so icons line up in one column and text in another,
