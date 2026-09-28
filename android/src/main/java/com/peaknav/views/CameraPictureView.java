@@ -174,6 +174,31 @@ public class CameraPictureView extends Fragment {
         surfaceHolder.addCallback(new SurfaceHolder.Callback() {
             @Override
             public void surfaceCreated(@NonNull SurfaceHolder holder) {
+                // Camera.open() does not only return null: with the camera held by another
+                // app (a video call in a window) or switched off by the device's policy it
+                // throws, and so can every call after it. Unhandled here, that ended the app.
+                try {
+                    startCamera();
+                } catch (RuntimeException unavailable) {
+                    unavailable.printStackTrace();
+                    if (camera != null) {
+                        try {
+                            camera.release();
+                        } catch (RuntimeException ignored) {
+                            // already gone
+                        }
+                        camera = null;
+                    }
+                    if (getActivity() != null) {
+                        android.widget.Toast.makeText(getActivity(),
+                                com.peaknav.utils.PeakNavUtils.s("Camera_unavailable"),
+                                android.widget.Toast.LENGTH_LONG).show();
+                    }
+                    finish();
+                }
+            }
+
+            private void startCamera() {
                 camera = Camera.open();
                 if (camera == null) {
                     // Camera unavailable or in use by another app.
@@ -253,12 +278,13 @@ public class CameraPictureView extends Fragment {
                 if (camera == null) {
                     return;
                 }
-                camera.stopPreview();
                 try {
+                    camera.stopPreview();
                     camera.setPreviewDisplay(holder);
                     camera.startPreview();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
+                } catch (IOException | RuntimeException e) {
+                    // The preview stays as it was; the camera is released with the surface.
+                    e.printStackTrace();
                 }
             }
 
@@ -267,8 +293,12 @@ public class CameraPictureView extends Fragment {
                 if (camera == null) {
                     return;
                 }
-                camera.stopPreview();
-                camera.release();
+                try {
+                    camera.stopPreview();
+                    camera.release();
+                } catch (RuntimeException e) {
+                    e.printStackTrace();
+                }
                 camera = null;
             }
         });
