@@ -101,27 +101,47 @@ public class ObjectManager {
         }
     }
 
+    // The locks below are released in finally. They were released on the normal path only:
+    // one exception from a callback - the label worker, or a menu's handler on the render
+    // thread - left the lock held, and the next thread to ask for it waited for good, the
+    // labels never updated again or the render thread froze.
+
     public void iterateOverVisiblePoisUnstoppable(RunOnPoiObject runnable) {
         lockVisible.lock();
-        for (PoiObject poiObject : listOfVisiblePOIs) {
-            runnable.run(poiObject);
+        try {
+            for (PoiObject poiObject : listOfVisiblePOIs) {
+                runnable.run(poiObject);
+            }
+        } finally {
+            lockVisible.unlock();
         }
-        lockVisible.unlock();
     }
 
     public void setVisiblePoiList(List<PoiObject> newVisiblePoiObjects) {
         lockVisible.lock();
-        listOfVisiblePOIs.clear();
-        setOfVisiblePOIs.clear();
-        if (newVisiblePoiObjects != null) {
-            listOfVisiblePOIs.addAll(newVisiblePoiObjects);
-            setOfVisiblePOIs.addAll(newVisiblePoiObjects);
+        try {
+            listOfVisiblePOIs.clear();
+            setOfVisiblePOIs.clear();
+            if (newVisiblePoiObjects != null) {
+                listOfVisiblePOIs.addAll(newVisiblePoiObjects);
+                setOfVisiblePOIs.addAll(newVisiblePoiObjects);
+            }
+        } finally {
+            lockVisible.unlock();
         }
-        lockVisible.unlock();
     }
 
     public void setDisplayablePoiList(List<PoiObject> displayablePois) {
         lockDisplayable.lock();
+        try {
+            fillDisplayable(displayablePois);
+        } finally {
+            lockDisplayable.unlock();
+        }
+    }
+
+    /** Called with lockDisplayable held. */
+    private void fillDisplayable(List<PoiObject> displayablePois) {
         listOfDisplayablePOIs.clear();
         // setOfDisplayablePOIs.clear();
         // Empty the angle buckets but keep the list objects so we don't reallocate every rebuild.
@@ -142,11 +162,16 @@ public class ObjectManager {
                 bucket.add(poiObject);
             }
         }
-        lockDisplayable.unlock();
     }
 
+    /** Under the lock that setVisiblePoiList rewrites the set with. */
     public boolean isPoiInVisibleList(PoiObject poiObject) {
-        return setOfVisiblePOIs.contains(poiObject);
+        lockVisible.lock();
+        try {
+            return setOfVisiblePOIs.contains(poiObject);
+        } finally {
+            lockVisible.unlock();
+        }
     }
 
     /*
