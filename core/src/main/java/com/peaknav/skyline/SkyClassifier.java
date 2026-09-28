@@ -20,8 +20,11 @@ import java.io.InputStream;
  */
 public final class SkyClassifier {
 
-    private static final String RESOURCE = "sky_model.bin";
-    private static final String BOUNDARY_RESOURCE = "boundary_model.bin";
+    // By their full path, not relative to this class: a release build renames the class and
+    // its package (R8, to "T.b"), the files stay where they are, and a relative name was then
+    // looked for in "T/". Neither model loaded in any release, with nothing to say so.
+    private static final String RESOURCE = "/com/peaknav/skyline/sky_model.bin";
+    private static final String BOUNDARY_RESOURCE = "/com/peaknav/skyline/boundary_model.bin";
     private static SkyClassifier shipped;
     private static SkyClassifier shippedBoundary;
     private static boolean lookedForShipped;
@@ -69,6 +72,7 @@ public final class SkyClassifier {
     private static SkyClassifier load(String resource, int expectedFeatures) {
         InputStream in = SkyClassifier.class.getResourceAsStream(resource);
         if (in == null) {
+            System.err.println("[SkyClassifier] model not found: " + resource);
             return null;
         }
         try {
