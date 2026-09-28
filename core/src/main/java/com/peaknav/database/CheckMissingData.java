@@ -154,7 +154,13 @@ public class CheckMissingData {
                 checkMissingHighwaysForCoord(lat, lon)
         ) {
             getC().missingDataDownloader.setCoords(lat, lon);
-            getC().missingDataDownloader.doDownload();
+            com.peaknav.network.PeakNavDownloadManager.Outcome outcome =
+                    getC().missingDataDownloader.doDownload();
+            if (outcome.failed > 0) {
+                com.peaknav.utils.PeakNavUtils.getNativeScreenCaller().makeToast(
+                        com.peaknav.utils.PeakNavUtils.s(
+                                outcome.nothingFetched() ? "Download_failed" : "Download_incomplete"));
+            }
         }
     }
 

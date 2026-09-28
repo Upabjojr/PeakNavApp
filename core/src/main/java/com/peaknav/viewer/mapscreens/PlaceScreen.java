@@ -547,13 +547,14 @@ class PlaceScreen extends MapScreens.Base {
         }
         DOWNLOADER.execute(() -> {
             MissingDataDownloader downloader = getC().missingDataDownloader;
+            PeakNavDownloadManager.Outcome outcome = null;
             try {
                 downloader.setCoords(lat, lon);
-                downloader.doDownload(goTo);
+                outcome = downloader.doDownload(goTo);
             } finally {
                 getAppState().setMapDataDownloadStarted(false);
+                getAppState().mapDataDownloadEnded(outcome, true);
             }
-            getAppState().setMapDataDownloaded(true);
         });
         close();
     }

@@ -1841,12 +1841,13 @@ public class MapViewerScreen implements Screen {
 	 */
 	private void resumeInterruptedDownload() {
 		Thread thread = new Thread(() -> {
+			com.peaknav.network.PeakNavDownloadManager.Outcome outcome = null;
 			try {
-				getC().missingDataDownloader.resumeQueued();
+				outcome = getC().missingDataDownloader.resumeQueued();
 			} finally {
 				com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloadStarted(false);
+				com.peaknav.compatibility.PeakNavAppState.getAppState().mapDataDownloadEnded(outcome, false);
 			}
-			com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloaded(true);
 		}, "download-resume");
 		thread.setDaemon(true);
 		thread.start();

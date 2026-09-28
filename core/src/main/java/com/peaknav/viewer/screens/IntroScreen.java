@@ -73,6 +73,22 @@ public class IntroScreen implements Screen {
         }
     }
 
+    /**
+     * Nothing could be fetched: the screen as it was before the download, its button there to
+     * try again, with the reason under it. Render thread.
+     */
+    public void triggerMapDataDownloadFailed() {
+        downloadStarted = false;
+        downloadPercentShown = -1;
+        if (labelDownloadState != null) {
+            labelDownloadState.setText(s("Download_failed"));
+            refreshStatePlate();
+        }
+        if (tableDownloadMap != null) {
+            tableDownloadMap.setVisible(true);
+        }
+    }
+
     public void triggerMapDataDownloadStarted() {
         if (labelDownloadState != null) {
             labelDownloadState.setText(s("Download_in_progress"));

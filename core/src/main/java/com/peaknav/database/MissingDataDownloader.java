@@ -45,23 +45,23 @@ public class MissingDataDownloader {
         return bb;
     }
 
-    public void doDownload() {
-        doDownload(false);
+    public PeakNavDownloadManager.Outcome doDownload() {
+        return doDownload(false);
     }
 
-    public void doDownload(boolean goToLocation) {
-        download(true, goToLocation);
+    public PeakNavDownloadManager.Outcome doDownload(boolean goToLocation) {
+        return download(true, goToLocation);
     }
 
     /**
      * Takes up a download the app was closed during: the tiles still queued from it, and no new
      * area. They are fetched and the map refreshed as any download does.
      */
-    public void resumeQueued() {
-        download(false, false);
+    public PeakNavDownloadManager.Outcome resumeQueued() {
+        return download(false, false);
     }
 
-    private void download(boolean queueArea, boolean goToLocation) {
+    private PeakNavDownloadManager.Outcome download(boolean queueArea, boolean goToLocation) {
 
         // TODO: add checks to avoid re-downloading the same file multiple times:
 
@@ -75,7 +75,7 @@ public class MissingDataDownloader {
             peakNavDownloadManager.addDataToQueue(lat, lon);
         }
 
-        peakNavDownloadManager.processQueue();
+        PeakNavDownloadManager.Outcome outcome = peakNavDownloadManager.processQueue();
 
         // This should be able to redraw the missing tiles after downloading
         // more data from the internet:
@@ -90,6 +90,7 @@ public class MissingDataDownloader {
 
         getC().tileManager.updateMapTiles(true);
 
+        return outcome;
     }
 
     public double getLongitude() {

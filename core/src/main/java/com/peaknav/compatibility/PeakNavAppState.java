@@ -77,6 +77,34 @@ public class PeakNavAppState {
         }
     }
 
+    /**
+     * A download has ended, one way or another: says what it came to, and "downloaded" only if
+     * something was.
+     *
+     * @param outcome what the queue's run came to; null if it threw
+     * @param asked   whether someone asked for this download just now. One taken up at the
+     *                start says nothing of failing: the device is offline, as it usually is
+     *                where the app is used, and what was not fetched is still in the queue.
+     */
+    public void mapDataDownloadEnded(com.peaknav.network.PeakNavDownloadManager.Outcome outcome,
+                                     boolean asked) {
+        boolean nothing = outcome == null || outcome.nothingFetched();
+        if (nothing) {
+            if (asked) {
+                com.badlogic.gdx.Gdx.app.postRunnable(
+                        () -> getAppInstance().introScreen.triggerMapDataDownloadFailed());
+                com.peaknav.utils.PeakNavUtils.getNativeScreenCaller().makeToast(
+                        com.peaknav.utils.PeakNavUtils.s("Download_failed"));
+            }
+            return;
+        }
+        setMapDataDownloaded(true);
+        if (outcome.failed > 0 && asked) {
+            com.peaknav.utils.PeakNavUtils.getNativeScreenCaller().makeToast(
+                    com.peaknav.utils.PeakNavUtils.s("Download_incomplete"));
+        }
+    }
+
     public void setMapDataDownloadStarted(boolean mapDataDownloadStarted) {
         this.mapDataDownloadStarted = mapDataDownloadStarted;
         if (mapDataDownloadStarted) {

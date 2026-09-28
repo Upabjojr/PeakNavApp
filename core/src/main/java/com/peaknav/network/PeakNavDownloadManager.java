@@ -301,7 +301,37 @@ public class PeakNavDownloadManager {
         throw lastFailure;
     }
 
-    public void processQueue() {
+    /**
+     * What a run through the queue came to. Until this was returned, a run in which every
+     * archive failed ended as one that fetched them all: on a first run with no connection the
+     * welcome screen said "Download complete!" and opened a map with nothing on it.
+     */
+    public static final class Outcome {
+        /** Archives the queue held. */
+        public final int wanted;
+        /** Of those, the ones that could not be fetched or unpacked. Not the ones the server
+         * does not have: a region without area labels has no archive for them. */
+        public final int failed;
+
+        Outcome(int wanted, int failed) {
+            this.wanted = wanted;
+            this.failed = failed;
+        }
+
+        /** Every archive failed: nothing on the device has changed. */
+        public boolean nothingFetched() {
+            return wanted > 0 && failed >= wanted;
+        }
+    }
+
+    /** The host was not found or did not answer: no connection, as far as one archive can tell. */
+    private static boolean isUnreachable(IOException failure) {
+        return failure instanceof java.net.UnknownHostException
+                || failure instanceof java.net.ConnectException
+                || failure instanceof java.net.NoRouteToHostException;
+    }
+
+    public Outcome processQueue() {
 
         List<MapSqlite.QueuedTile> queuedTiles = mapSqlite.getDownloadQueue();
 
@@ -310,6 +340,11 @@ public class PeakNavDownloadManager {
         List<PeakNavHttpCompressDownloader.DownloadTarget> targets = eleDown.getDownloadTargets(queuedTiles);
 
         final AtomicInteger counterMapData = new AtomicInteger(0);
+        final AtomicInteger failed = new AtomicInteger(0);
+        // Set by the first archive that finds no connection: the ones after it are not tried,
+        // each of which would take its attempts and the waits between them to say the same.
+        final java.util.concurrent.atomic.AtomicBoolean unreachable =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
 
         List<Future<?>> futures = new LinkedList<>();
         int downloadSize = targets.size();
@@ -318,6 +353,10 @@ public class PeakNavDownloadManager {
             Future<?> e = downloadExecutor.submit(
                     () -> {
                         boolean ok = false;
+                        // Not fetched for want of a connection: the row stays in the queue, to
+                        // be taken up at the next start or the next download. It used to be
+                        // dropped like any failure, and the queue forgot what it still owed.
+                        boolean pending = false;
                         boolean okDownload = false;
                         File localFile = null;
                         try {
@@ -336,6 +375,11 @@ public class PeakNavDownloadManager {
                             localFile = Gdx.files.external("peaknav_downloads/" + target.objectKey).file();
 
                             if (!localFile.exists()) {
+                                if (unreachable.get()) {
+                                    pending = true;
+                                    failed.incrementAndGet();
+                                    return;
+                                }
                                 List<String> dirs = Arrays.asList(target.objectKey.split("/"));
                                 dirs = dirs.subList(0, dirs.size() - 1);
                                 createRecurrentPathsForOsmTilesInExternal(dirs);
@@ -345,7 +389,21 @@ public class PeakNavDownloadManager {
                                     localFile.getParentFile().mkdirs();
                                 }
 
-                                downloadFromProviders(target.candidateUrls, localFile);
+                                try {
+                                    downloadFromProviders(target.candidateUrls, localFile);
+                                } catch (java.io.FileNotFoundException notOnServer) {
+                                    // Not a failure: there is no such archive. The row goes.
+                                    return;
+                                } catch (IOException notFetched) {
+                                    pending = true;
+                                    failed.incrementAndGet();
+                                    if (isUnreachable(notFetched)) {
+                                        unreachable.set(true);
+                                    }
+                                    getLogger().debug(TAG, "not fetched, left in the queue: "
+                                            + target.objectKey + ": " + notFetched);
+                                    return;
+                                }
                             }
 
                             okDownload = true;
@@ -368,12 +426,15 @@ public class PeakNavDownloadManager {
                             }
 
                             ok = true;
-                        } catch (IOException ex) {
-                            throw new RuntimeException(ex);
+                        } catch (IOException | RuntimeException ex) {
+                            // Counted, and said by the caller; thrown from here it went into
+                            // the Future, which nothing read but to print it.
+                            failed.incrementAndGet();
+                            getLogger().debug(TAG, "failed: " + target.objectKey + ": " + ex);
                         } finally {
                             if (ok) {
                                 mapSqlite.updateDownloadQueueMapDataTimestamp(target.queuedTile, now);
-                            } else {
+                            } else if (!pending) {
                                 if (localFile != null && localFile.exists()) {
                                     localFile.delete();
                                 }
@@ -402,6 +463,7 @@ public class PeakNavDownloadManager {
         if (notificationManager != null) {
             notificationManager.clear();
         }
+        return new Outcome(downloadSize, failed.get());
     }
 
     /**
