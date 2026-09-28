@@ -258,16 +258,28 @@ public class PeakNavDownloadManager {
                 // and both leave a whole file.
                 File partial = new File(localFile.getPath()
                         + ".part-" + java.util.UUID.randomUUID());
+                long expected = conn.getContentLengthLong();
+                long received = 0;
                 try (InputStream in = conn.getInputStream();
                      FileOutputStream fos = new FileOutputStream(partial)) {
                     byte[] readBuf = new byte[8192];
                     int readLen;
                     while ((readLen = in.read(readBuf)) > 0) {
                         fos.write(readBuf, 0, readLen);
+                        received += readLen;
                     }
                 } catch (IOException e) {
                     partial.delete();
                     throw e;
+                }
+                // Nothing, or less than the server announced, is no archive: an empty body
+                // (a proxy, a mirror answering 200 with nothing) was renamed into place and,
+                // for the .tar layers, unpacked as an archive with no entries - the tile
+                // stamped downloaded with nothing on disk.
+                if (received == 0 || (expected >= 0 && received != expected)) {
+                    partial.delete();
+                    throw new IOException("incomplete download of " + urlString + ": "
+                            + received + " of " + (expected >= 0 ? expected : "?") + " bytes");
                 }
                 getLoadFactory().getFileMover().moveIntoPlace(partial, localFile);
                 return;
@@ -567,7 +579,9 @@ public class PeakNavDownloadManager {
 
     private static void unpackEntries(TarReader tarInput, File outputDir) throws IOException {
         TarReader.Entry entry;
+        int entries = 0;
         while ((entry = tarInput.next()) != null) {
+            entries++;
             File outputFile = entryTarget(outputDir, entry.getName());
 
             if (entry.isDirectory()) {
@@ -603,6 +617,11 @@ public class PeakNavDownloadManager {
                 }
                 getLoadFactory().getFileMover().moveIntoPlace(partialEntry, outputFile);
             }
+        }
+        if (entries == 0) {
+            // An archive with nothing in it is no archive of ours: every one carries at least
+            // its tile. Refused as a corrupt one is - fetched again once, then counted failed.
+            throw new IOException("empty archive");
         }
     }
 
