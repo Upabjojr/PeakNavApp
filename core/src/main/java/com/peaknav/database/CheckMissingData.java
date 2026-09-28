@@ -87,10 +87,35 @@ public class CheckMissingData {
         int y = MercatorProjection.latitudeToTileY(lat, zoomLevel);
         Tile tile = new Tile(x, y, zoomLevel, 256);
         Tile dataTile = findTileWithDataByZoomingOut(tile, pbfLayer);
-        boolean missing = (dataTile == null);
+        boolean missing = (dataTile == null) && !isArchiveDownloaded(lat, lon, pbfLayer);
         getLogger().debug(TAG, "checkMissingByLayerForCoord for " + lat + ", " + lon +
                     " missing is " + missing);
         return missing;
+    }
+
+    /**
+     * Whether the archive that covers a place was downloaded. An archive carries no file for a
+     * tile with nothing in it - no road in a stretch of tundra, no peak on a plain - so a
+     * missing file is not always missing data. Judged by the file alone, such a place was
+     * offered for download for ever: downloaded, and offered again on the next arrival.
+     */
+    private boolean isArchiveDownloaded(double lat, double lon, PbfLayer pbfLayer) {
+        if (mapSqlite == null) {
+            return false;
+        }
+        byte zoom = pbfLayer.getArchiveZoom();
+        int x = MercatorProjection.longitudeToTileX(lon, zoom);
+        int y = MercatorProjection.latitudeToTileY(lat, zoom);
+        try {
+            for (Tile archive : mapSqlite.getListOfDownloadedTiles(pbfLayer)) {
+                if (archive.zoomLevel == zoom && archive.tileX == x && archive.tileY == y) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException noDatabaseYet) {
+            // A first run, before the database: nothing is downloaded.
+        }
+        return false;
     }
 
     private boolean checkMissingHighwaysForCoord(double lat, double lon) {
