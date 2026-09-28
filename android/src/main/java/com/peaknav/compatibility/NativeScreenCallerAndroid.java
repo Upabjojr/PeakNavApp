@@ -507,24 +507,39 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         }
     }
 
-    public void promptIfLocationNotEnabled(Context locContext) {
+    /**
+     * Offers the location settings if location is switched off on the device. {@code onCancel}
+     * runs if the reader declines, or dismisses the dialog.
+     *
+     * @return whether the dialog was shown
+     */
+    public boolean promptIfLocationNotEnabled(Context locContext, Runnable onCancel) {
         ensureLocationManager();
 
         boolean has_gps_loc = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
         boolean has_network_loc = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
 
         if(!(has_gps_loc || has_network_loc)) {
-            show(new AlertDialog.Builder((locContext == null)? mainActivity : locContext)
+            final boolean[] toSettings = {false};
+            AlertDialog dialog = show(new AlertDialog.Builder((locContext == null)? mainActivity : locContext)
                     .setMessage(s("Location_not_enabled"))
                     .setPositiveButton(
                             s("ask_open_location_settings"),
                             (paramDialogInterface, paramInt) -> {
+                                toSettings[0] = true;
                                 Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
                                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                                 context.startActivity(intent);
                             })
-                    .setNegativeButton(s("Cancel"), null));
+                    .setNegativeButton(s("Cancel"), null)
+                    .setOnDismissListener(d -> {
+                        if (!toSettings[0]) {
+                            onCancel.run();
+                        }
+                    }));
+            return dialog != null;
         }
+        return false;
     }
 
     @Override
@@ -595,6 +610,9 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
     /** How long a request for the position may keep the location providers searching. */
     private static final long LOCATION_REQUEST_MILLIS = 90_000L;
 
+    /** How long a request waits for a first position before the reader is told there is none. */
+    private static final long NO_FIX_MILLIS = 15_000L;
+
     public CurrentLocationListener getCurrentLocationListener(Activity locContext) {
         ensureLocationManager();
 
@@ -609,13 +627,25 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     return;
                 }
 
-                promptIfLocationNotEnabled(locContext);
+                final int movesAtRequest = getC().L == null ? 0 : getC().L.getMovesByUser();
+                // Whether a position was handed over, or the question otherwise settled; set
+                // and read on the main thread, where both the fixes and the timeout arrive.
+                final boolean[] answered = {false};
+                final Runnable unavailable = () -> {
+                    if (answered[0] || (getC().L != null && getC().L.getMovesByUser() != movesAtRequest)) {
+                        return;
+                    }
+                    answered[0] = true;
+                    locationUnavailable(currentLocationCallback);
+                };
+
+                // Location switched off: declining to switch it on is the same as no fix.
+                boolean offSettingsShown = promptIfLocationNotEnabled(locContext, unavailable);
 
                 if (locationSettingsDialog != null) {
                     locationSettingsDialog.hide();
                 }
 
-                final int movesAtRequest = getC().L == null ? 0 : getC().L.getMovesByUser();
                 LocationListener locationListener = new LocationListener() {
                     @Override
                     public void onLocationChanged(@NonNull Location location) {
@@ -625,6 +655,7 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                             locationManager.removeUpdates(this);
                             return;
                         }
+                        answered[0] = true;
                         float lon = (float) location.getLongitude();
                         float lat = (float) location.getLatitude();
                         currentLocationCallback.setCurrentLocation(lon, lat);
@@ -692,8 +723,13 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                 }
                 // Bounded: removed only by a GPS fix, which indoors never comes, the request
                 // kept the GPS searching for as long as the app ran.
-                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
-                        () -> locationManager.removeUpdates(locationListener), LOCATION_REQUEST_MILLIS);
+                android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+                main.postDelayed(() -> locationManager.removeUpdates(locationListener), LOCATION_REQUEST_MILLIS);
+                // No position in a while, and none known from before: the reader is not left
+                // waiting in silence. With location off, the dialog above settles it instead.
+                if (!offSettingsShown) {
+                    main.postDelayed(unavailable, NO_FIX_MILLIS);
+                }
             }
 
         };

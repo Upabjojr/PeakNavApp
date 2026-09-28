@@ -140,6 +140,20 @@ public abstract class NativeScreenCaller {
     }
 
     /**
+     * Location access is granted, but no position came: location is switched off, or there
+     * is no signal. On a first run the reader is offered the same choice as after a refusal,
+     * rather than waiting forever for a fix; after that, a toast says so, and the reader
+     * searches or taps the map.
+     */
+    public void locationUnavailable(CurrentLocationCallback callback) {
+        if (isFirstRun()) {
+            offerEstimateOrSearch(callback, "Ip_location_choice_no_fix");
+        } else {
+            makeToast(s("Position_not_found"));
+        }
+    }
+
+    /**
      * No position from the device: the reader chooses between an estimate from the internet
      * connection and searching for the place. The estimate leaves the device's address with
      * an online service, so choosing it is the consent to that, remembered; once given, the
