@@ -86,7 +86,9 @@ public final class CoordinateLinks {
         try {
             double lat = Double.parseDouble(parts[0].trim());
             double lon = Double.parseDouble(parts[1].trim());
-            if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+            // Written as what is accepted, not what is refused: parseDouble reads "NaN", and
+            // NaN is neither below -90 nor above 90.
+            if (!(lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180)) {
                 return null;
             }
             return new double[]{lat, lon};
@@ -118,6 +120,10 @@ public final class CoordinateLinks {
         try {
             return java.net.URLDecoder.decode(s, "UTF-8");
         } catch (java.io.UnsupportedEncodingException impossible) {
+            return s;
+        } catch (IllegalArgumentException malformed) {
+            // "%" with no two hex digits after it, as "q=46.02%" is on the way to "%2C" being
+            // typed: thrown from the search box's key listener, it ended the app.
             return s;
         }
     }
