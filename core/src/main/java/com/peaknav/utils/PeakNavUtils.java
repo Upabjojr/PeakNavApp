@@ -279,15 +279,21 @@ public class PeakNavUtils {
         try {
             pixmap = new Pixmap(bytesJpeg, 0, bytesJpeg.length);
             // Down to what a texture can hold before anything else copies it (see below).
+            // Each step disposes what it was given, having failed or not: a picture that
+            // decoded and then could not be copied was left in native memory for good.
             pixmap = fitPhotoEdge(pixmap, MAX_PHOTO_EDGE);
             pixmap = withColour(pixmap);
             // libGDX's decoder ignores the EXIF orientation tag, so a portrait photo (stored
             // as landscape pixels + a rotate tag) would come out sideways. Apply it here.
             pixmap = applyExifOrientation(pixmap, ExifReader.extractOrientation(bytesJpeg));
-        } catch (RuntimeException e) {
-            // an unreadable file: no picture, and no "Loading..." left on screen
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // an unreadable file, or one too large to hold: no picture, and no "Loading..."
+            // left on screen. An OutOfMemoryError is not an Exception, and went past both.
             MapViewerSingleton.getViewerInstance().setPhotoLoading(false);
-            throw e;
+            if (e instanceof OutOfMemoryError) {
+                throw new RuntimeException("photo too large to decode", e);
+            }
+            throw (RuntimeException) e;
         }
         MapViewerSingleton.getViewerInstance().backgroundPicManager.setBackgroundPixmap(pixmap);
         // Keep a reduced copy for the skyline match, before anything can dispose the pixmap.
@@ -320,7 +326,13 @@ public class PeakNavUtils {
             return source;
         }
         int w = source.getWidth(), h = source.getHeight();
-        Pixmap coloured = new Pixmap(w, h, Pixmap.Format.RGB888);
+        Pixmap coloured;
+        try {
+            coloured = new Pixmap(w, h, Pixmap.Format.RGB888);
+        } catch (RuntimeException | OutOfMemoryError e) {
+            source.dispose();
+            throw e;
+        }
         java.nio.ByteBuffer from = source.getPixels();
         java.nio.ByteBuffer to = coloured.getPixels();
         int n = w * h;
@@ -349,7 +361,13 @@ public class PeakNavUtils {
             float scale = Math.max(0.5f, (float) maxEdge / Math.max(w, h));
             int nw = Math.max(1, Math.round(w * scale));
             int nh = Math.max(1, Math.round(h * scale));
-            Pixmap dst = new Pixmap(nw, nh, src.getFormat());
+            Pixmap dst;
+            try {
+                dst = new Pixmap(nw, nh, src.getFormat());
+            } catch (RuntimeException | OutOfMemoryError e) {
+                src.dispose();
+                throw e;
+            }
             dst.setBlending(Pixmap.Blending.None);
             dst.setFilter(Pixmap.Filter.BiLinear);
             dst.drawPixmap(src, 0, 0, w, h, 0, 0, nw, nh);
@@ -370,7 +388,13 @@ public class PeakNavUtils {
         int w = src.getWidth();
         int h = src.getHeight();
         boolean quarterTurn = orientation >= 5; // 5,6,7,8 transpose the axes
-        Pixmap dst = new Pixmap(quarterTurn ? h : w, quarterTurn ? w : h, src.getFormat());
+        Pixmap dst;
+        try {
+            dst = new Pixmap(quarterTurn ? h : w, quarterTurn ? w : h, src.getFormat());
+        } catch (RuntimeException | OutOfMemoryError e) {
+            src.dispose();
+            throw e;
+        }
         dst.setBlending(Pixmap.Blending.None);
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
