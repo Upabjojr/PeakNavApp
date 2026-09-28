@@ -231,7 +231,7 @@ public class PreferencesManager {
 
     public PreferencesManager() {
         Preferences stored = Gdx.app.getPreferences(PREF_NAME);
-        preferences = ephemeral ? new EphemeralPreferences(stored) : stored;
+        preferences = new SynchronizedPreferences(ephemeral ? new EphemeralPreferences(stored) : stored);
         updatePreferences();
     }
 
