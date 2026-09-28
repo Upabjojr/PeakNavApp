@@ -25,7 +25,7 @@ final class Hatching {
 
     private static final Map<String, Texture> TEXTURES = new HashMap<>();
 
-    /** The graphics the textures were made under: Gdx.graphics is replaced with the context. */
+    /** The context the textures were made under (GlContext): replaced with the activity, or when lost. */
     private static Object context;
 
     /**
@@ -35,9 +35,10 @@ final class Hatching {
      * starts again. They are not disposed, their context having taken them with it.
      */
     private static void checkContext() {
-        if (context != com.badlogic.gdx.Gdx.graphics) {
+        Object current = com.peaknav.utils.GlContext.current();
+        if (context != current) {
             TEXTURES.clear();
-            context = com.badlogic.gdx.Gdx.graphics;
+            context = current;
         }
     }
 

@@ -671,16 +671,17 @@ public class SlippyMap extends Widget implements Disposable {
         private final java.util.concurrent.ConcurrentHashMap<String, Long> lastWanted =
                 new java.util.concurrent.ConcurrentHashMap<>();
         private final Map<String, Long> failedAt = new HashMap<>();
-        /** The graphics the textures were made under: Gdx.graphics is replaced with the context. */
+        /** The context the textures were made under (GlContext). */
         Object context;
 
         private void checkContext() {
-            if (context != Gdx.graphics) {
+            Object current = com.peaknav.utils.GlContext.current();
+            if (context != current) {
                 textures.clear();
                 pending.clear();
                 failedAt.clear();
                 lastWanted.clear();
-                context = Gdx.graphics;
+                context = current;
             }
         }
 
@@ -700,6 +701,7 @@ public class SlippyMap extends Widget implements Disposable {
         }
 
         void dropped(String key, Object loadedUnder) {
+            checkContext();
             if (loadedUnder == context) {
                 pending.remove(key);
                 // Forgotten unless a map has wanted it again since: the marks would pile up.
@@ -723,6 +725,9 @@ public class SlippyMap extends Widget implements Disposable {
         }
 
         void landed(String key, Pixmap decoded, Object loadedUnder) {
+            // Here too: a tile landing before the next get() would make its texture in the new
+            // context, and then be cleared with the old ones, never disposed.
+            checkContext();
             if (loadedUnder != context) {
                 // Asked for under a context that has gone; its bookkeeping went with it.
                 if (decoded != null) {

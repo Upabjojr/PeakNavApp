@@ -64,7 +64,7 @@ public final class PlatformLabelTextures {
     };
     private static final int FAILED_KEPT = 256;
     private static final long RETRY_FAILED_MILLIS = 30_000L;
-    /** The graphics the pictures were made under: Gdx.graphics is replaced with the context. */
+    /** The context the pictures were made under (GlContext). */
     private static Object context;
 
     /**
@@ -76,12 +76,13 @@ public final class PlatformLabelTextures {
      * that has gone never lands, and its label would have waited for it for good.
      */
     private static void checkContext() {
-        if (context != Gdx.graphics) {
+        Object current = com.peaknav.utils.GlContext.current();
+        if (context != current) {
             CACHE.clear();
             PENDING.clear();
             FAILED.clear();
             pixels = 0;
-            context = Gdx.graphics;
+            context = current;
         }
     }
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(r -> {
