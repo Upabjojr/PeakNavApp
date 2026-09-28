@@ -280,6 +280,7 @@ public class PeakNavUtils {
             pixmap = new Pixmap(bytesJpeg, 0, bytesJpeg.length);
             // Down to what a texture can hold before anything else copies it (see below).
             pixmap = fitPhotoEdge(pixmap, MAX_PHOTO_EDGE);
+            pixmap = withColour(pixmap);
             // libGDX's decoder ignores the EXIF orientation tag, so a portrait photo (stored
             // as landscape pixels + a rotate tag) would come out sideways. Apply it here.
             pixmap = applyExifOrientation(pixmap, ExifReader.extractOrientation(bytesJpeg));
@@ -301,6 +302,37 @@ public class PeakNavUtils {
      * screen's height, and keeps the decoded photo near 12 MB.
      */
     static final int MAX_PHOTO_EDGE = 2048;
+
+    /**
+     * A picture in colour channels. A greyscale JPEG decodes to one channel, which libGDX calls
+     * Alpha, and its grey levels went through as transparency: the photo drew as a black mask.
+     * The grey level goes into red, green and blue. Anything already in colour is returned as it
+     * is; the one converted is disposed.
+     */
+    static Pixmap withColour(Pixmap source) {
+        Pixmap.Format format = source.getFormat();
+        int step;
+        if (format == Pixmap.Format.Alpha || format == Pixmap.Format.Intensity) {
+            step = 1;
+        } else if (format == Pixmap.Format.LuminanceAlpha) {
+            step = 2;
+        } else {
+            return source;
+        }
+        int w = source.getWidth(), h = source.getHeight();
+        Pixmap coloured = new Pixmap(w, h, Pixmap.Format.RGB888);
+        java.nio.ByteBuffer from = source.getPixels();
+        java.nio.ByteBuffer to = coloured.getPixels();
+        int n = w * h;
+        for (int i = 0; i < n; i++) {
+            byte grey = from.get(i * step);
+            to.put(i * 3, grey);
+            to.put(i * 3 + 1, grey);
+            to.put(i * 3 + 2, grey);
+        }
+        source.dispose();
+        return coloured;
+    }
 
     /**
      * Returns the pixmap scaled down, keeping its proportions, so that neither side exceeds
