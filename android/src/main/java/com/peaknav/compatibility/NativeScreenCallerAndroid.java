@@ -542,7 +542,10 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         dialogBuilder.setTitle(s("Location_permission_missing"));
         dialogBuilder.setMessage(s("Location_permissions_in_device_settings_are_advised_to_use_app"));
         dialogBuilder.setPositiveButton(s("Open_settings"), (dialog, which) -> {
-            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            // The app's own page, where its permissions are: the device's location page, which
+            // this opened, only switches location on and off, and grants nothing.
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.fromParts("package", context.getPackageName(), null));
             context.startActivity(intent);
         });
         dialogBuilder.setNegativeButton(s("Cancel"), (dialog, which) -> dialog.dismiss());
