@@ -22,6 +22,9 @@ This application includes links to external applications and makes use of extern
   [GHS Urban Centre Database](https://human-settlement.emergency.copernicus.eu/) of the
   European Commission Joint Research Centre, available under
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+* The offline world map under the search and download screens' imagery is drawn from
+  [Natural Earth](https://www.naturalearthdata.com) (land, lakes, glaciers, regions and
+  boundaries), which is in the public domain. Made with Natural Earth.
 * Star positions are taken from the **Yale Bright Star Catalogue, 5th Revised Edition**
   (Hoffleit & Warren, 1991), which is in the public domain.
 * Constellation figures and names are derived from **d3-celestial** by Olaf Frohn
