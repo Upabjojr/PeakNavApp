@@ -178,9 +178,15 @@ public class CheckMissingData {
                 checkMissingPoiForCoord(lat, lon) ||
                 checkMissingHighwaysForCoord(lat, lon)
         ) {
-            getC().missingDataDownloader.setCoords(lat, lon);
-            com.peaknav.network.PeakNavDownloadManager.Outcome outcome =
-                    getC().missingDataDownloader.doDownload();
+            // Counted as running, as the place screen's download is: without, the app offered
+            // to download this very area again while it was being fetched.
+            com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloadStarted(true);
+            com.peaknav.network.PeakNavDownloadManager.Outcome outcome;
+            try {
+                outcome = getC().missingDataDownloader.download(lat, lon, false);
+            } finally {
+                com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloadStarted(false);
+            }
             if (outcome.failed > 0) {
                 com.peaknav.utils.PeakNavUtils.getNativeScreenCaller().makeToast(
                         com.peaknav.utils.PeakNavUtils.s(

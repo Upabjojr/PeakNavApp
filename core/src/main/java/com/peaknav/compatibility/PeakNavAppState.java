@@ -10,7 +10,13 @@ import com.peaknav.viewer.widgets.WidgetGetter;
 public class PeakNavAppState {
 
     private static final PeakNavAppState instance = new PeakNavAppState();
-    private volatile boolean mapDataDownloadStarted;
+    /**
+     * How many downloads are running. A flag, set by one and cleared by whichever ended first,
+     * said "none" while another still ran: the app then offered to download what was already
+     * downloading.
+     */
+    private final java.util.concurrent.atomic.AtomicInteger mapDataDownloadsRunning =
+            new java.util.concurrent.atomic.AtomicInteger();
     private float mapDataDownloadProgressRatio = 0f;
     private boolean loadingMapData;
     private long lastAnyMapTileUpdateTime = System.currentTimeMillis();
@@ -105,17 +111,38 @@ public class PeakNavAppState {
         }
     }
 
+    /** A download began (true) or ended (false); each start is paired with one end. */
     public void setMapDataDownloadStarted(boolean mapDataDownloadStarted) {
-        this.mapDataDownloadStarted = mapDataDownloadStarted;
         if (mapDataDownloadStarted) {
-            getAppInstance().introScreen.triggerMapDataDownloadStarted();
+            mapDataDownloadsRunning.incrementAndGet();
+        } else {
+            // Never below none: an end with no start (the tests reset the state this way).
+            int left;
+            do {
+                left = mapDataDownloadsRunning.get();
+            } while (left > 0 && !mapDataDownloadsRunning.compareAndSet(left, left - 1));
+            if (left > 1) {
+                return;   // another is still running
+            }
+        }
+        if (mapDataDownloadStarted) {
+            onRenderThread(() -> getAppInstance().introScreen.triggerMapDataDownloadStarted());
         } else {
             mapDataDownloadFinishedTime = System.currentTimeMillis();
         }
     }
 
+    /** Posted to the render thread; run at once where there is no app (the tests). */
+    private static void onRenderThread(Runnable work) {
+        if (com.badlogic.gdx.Gdx.app != null) {
+            com.badlogic.gdx.Gdx.app.postRunnable(work);
+        } else {
+            work.run();
+        }
+    }
+
     public boolean isMapDataDownloadStarted() {
-        return mapDataDownloadStarted;
+        return mapDataDownloadsRunning.get() > 0;
     }
 
     private volatile long mapDataDownloadFinishedTime = 0L;

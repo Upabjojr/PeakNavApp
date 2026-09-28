@@ -703,8 +703,7 @@ class PlaceScreen extends MapScreens.Base {
             MissingDataDownloader downloader = getC().missingDataDownloader;
             PeakNavDownloadManager.Outcome outcome = null;
             try {
-                downloader.setCoords(lat, lon);
-                outcome = downloader.doDownload(goTo);
+                outcome = downloader.download(lat, lon, goTo);
             } finally {
                 getAppState().setMapDataDownloadStarted(false);
                 getAppState().mapDataDownloadEnded(outcome, true);

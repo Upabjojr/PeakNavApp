@@ -506,6 +506,14 @@ public class WidgetGetter {
 
     public class TableDownloadData extends TableContainer {
 
+        /** The banner's downloads, one after another; MissingDataDownloader runs one at a time anyway. */
+        private final java.util.concurrent.ExecutorService BANNER_DOWNLOADS =
+                java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                    Thread t = new Thread(r, "banner-download");
+                    t.setDaemon(true);
+                    return t;
+                });
+
         public TableDownloadData() {
 
             Button textButton = getImageTextButton(
@@ -514,14 +522,11 @@ public class WidgetGetter {
             textButton.addListener(new ChangeListener() {
                 @Override
                 public void changed(ChangeEvent event, Actor actor) {
-                    Executor executor = Executors.newSingleThreadExecutor();
-                    executor.execute(() -> {
-                        getC().checkMissingData.downloadMissingData(
-                                getC().L.getTargetLatitude(),
-                                getC().L.getTargetLongitude()
-                        );
-                        table.setVisible(false);
-                    });
+                    final double lat = getC().L.getTargetLatitude();
+                    final double lon = getC().L.getTargetLongitude();
+                    // One thread for these, not a new one per press, never shut down; and the
+                    // banner hidden here, on the render thread, not from the download's.
+                    BANNER_DOWNLOADS.execute(() -> getC().checkMissingData.downloadMissingData(lat, lon));
                     table.setVisible(false);
                 }
             });

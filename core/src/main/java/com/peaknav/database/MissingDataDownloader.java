@@ -21,8 +21,8 @@ public class MissingDataDownloader {
     }
 
     public final PeakNavDownloadManager peakNavDownloadManager;
-    private double lat;
-    private double lon;
+    private volatile double lat;
+    private volatile double lon;
 
     public MissingDataDownloader(PeakNavHttpCompressDownloader eleDown, MapSqlite mapSqlite) {
         this.peakNavDownloadManager = new PeakNavDownloadManager(
@@ -49,19 +49,35 @@ public class MissingDataDownloader {
         return doDownload(false);
     }
 
+    /** The area around the coordinates last set with {@link #setCoords}; see {@link #download(double, double, boolean)}. */
     public PeakNavDownloadManager.Outcome doDownload(boolean goToLocation) {
-        return download(true, goToLocation);
+        return download(lat, lon, goToLocation);
+    }
+
+    /**
+     * Queues the area around a place, fetches the queue, and optionally goes there.
+     *
+     * <p>The place is this call's own, not fields set beforehand, and one download runs at a
+     * time: the place screen's, the banner's and the one taken up at start could overlap, and
+     * with shared coordinates one queued or went to the other's area; on iOS their database
+     * transactions nested, and the exception that threw from the inner one's end aborted both.
+     */
+    public synchronized PeakNavDownloadManager.Outcome download(double lat, double lon, boolean goToLocation) {
+        this.lat = lat;
+        this.lon = lon;
+        return download(true, goToLocation, lat, lon);
     }
 
     /**
      * Takes up a download the app was closed during: the tiles still queued from it, and no new
      * area. They are fetched and the map refreshed as any download does.
      */
-    public PeakNavDownloadManager.Outcome resumeQueued() {
-        return download(false, false);
+    public synchronized PeakNavDownloadManager.Outcome resumeQueued() {
+        return download(false, false, lat, lon);
     }
 
-    private PeakNavDownloadManager.Outcome download(boolean queueArea, boolean goToLocation) {
+    private PeakNavDownloadManager.Outcome download(boolean queueArea, boolean goToLocation,
+                                                    double lat, double lon) {
 
         // TODO: add checks to avoid re-downloading the same file multiple times:
 
