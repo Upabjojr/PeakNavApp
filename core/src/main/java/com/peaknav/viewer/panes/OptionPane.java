@@ -1397,16 +1397,50 @@ public class OptionPane {
 
     /** Measured off the render thread - the folders hold thousands of files - and shown on it. */
     private void measureStorage() {
+        final int generation = ++storageMeasure;
+        // Counting takes seconds where much is downloaded - some thousands of files - and the
+        // buttons had only their names meanwhile, as if there were nothing to count. Each one
+        // counts dots until its own size is known, and shows it as soon as it is.
+        measuring(buttonArchives, "Storage_archives");
+        measuring(buttonImagery, "Storage_imagery");
+        measuring(buttonAllData, "Storage_all");
         getC().submitExecutorGeneric(() -> {
             com.peaknav.database.DownloadedData data = com.peaknav.database.DownloadedData.ofTheApp();
-            final String archives = com.peaknav.database.DownloadedData.readable(data.archivesBytes());
-            final String imagery = com.peaknav.database.DownloadedData.readable(data.imageryBytes());
-            final String all = com.peaknav.database.DownloadedData.readable(data.mapDataBytes());
-            Gdx.app.postRunnable(() -> {
-                buttonArchives.setText(s("Storage_archives") + ": " + archives);
-                buttonImagery.setText(s("Storage_imagery") + ": " + imagery);
-                buttonAllData.setText(s("Storage_all") + ": " + all);
-            });
+            measured(generation, buttonArchives, "Storage_archives", data.archivesBytes());
+            measured(generation, buttonImagery, "Storage_imagery", data.imageryBytes());
+            measured(generation, buttonAllData, "Storage_all", data.mapDataBytes());
+        });
+    }
+
+    /** Distinguishes the latest measurement from one still counting when the menu was opened again. */
+    private int storageMeasure;
+
+    /** The caption with dots that count up while the size is being measured. Render thread. */
+    private static void measuring(final ImageTextButtonOptionPane button, final String key) {
+        final String name = s(key) + ": ";
+        final String[] frames = {"\u2022", "\u2022 \u2022", "\u2022 \u2022 \u2022", "\u2022 \u2022"};
+        final int[] frame = {0};
+        button.clearActions();
+        button.setText(name + frames[0]);
+        button.addAction(com.badlogic.gdx.scenes.scene2d.actions.Actions.forever(
+                com.badlogic.gdx.scenes.scene2d.actions.Actions.sequence(
+                        com.badlogic.gdx.scenes.scene2d.actions.Actions.delay(0.3f),
+                        com.badlogic.gdx.scenes.scene2d.actions.Actions.run(() -> {
+                            frame[0] = (frame[0] + 1) % frames.length;
+                            button.setText(name + frames[frame[0]]);
+                        }))));
+    }
+
+    /** One size known: the dots stop and the size takes their place. Any thread. */
+    private void measured(final int generation, final ImageTextButtonOptionPane button,
+                          final String key, final long bytes) {
+        final String size = com.peaknav.database.DownloadedData.readable(bytes);
+        Gdx.app.postRunnable(() -> {
+            if (generation != storageMeasure) {
+                return;   // a newer count is running, with its own dots
+            }
+            button.clearActions();
+            button.setText(s(key) + ": " + size);
         });
     }
 

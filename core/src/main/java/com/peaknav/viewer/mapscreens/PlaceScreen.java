@@ -544,7 +544,19 @@ class PlaceScreen extends MapScreens.Base {
         final int generation = ++measureGeneration;
         final Tile block = com.peaknav.database.DownloadedData.blockAt(pointLat, pointLon);
         blockBytes = -1;
-        deleteButton.setText(s("Storage_delete_area"));
+        // Dots that count up until the block's size is known, as the storage menu's do.
+        final String name = s("Storage_delete_area") + ": ";
+        final String[] frames = {"\u2022", "\u2022 \u2022", "\u2022 \u2022 \u2022", "\u2022 \u2022"};
+        final int[] frame = {0};
+        deleteButton.clearActions();
+        deleteButton.setText(name + frames[0]);
+        deleteButton.addAction(com.badlogic.gdx.scenes.scene2d.actions.Actions.forever(
+                com.badlogic.gdx.scenes.scene2d.actions.Actions.sequence(
+                        com.badlogic.gdx.scenes.scene2d.actions.Actions.delay(0.3f),
+                        com.badlogic.gdx.scenes.scene2d.actions.Actions.run(() -> {
+                            frame[0] = (frame[0] + 1) % frames.length;
+                            deleteButton.setText(name + frames[frame[0]]);
+                        }))));
         getC().submitExecutorGeneric(() -> {
             final long bytes = com.peaknav.database.DownloadedData.ofTheApp().blockBytes(block);
             Gdx.app.postRunnable(() -> {
@@ -552,6 +564,7 @@ class PlaceScreen extends MapScreens.Base {
                     return;
                 }
                 blockBytes = bytes;
+                deleteButton.clearActions();
                 deleteButton.setText(s("Storage_delete_area") + ": "
                         + com.peaknav.database.DownloadedData.readable(bytes));
             });
