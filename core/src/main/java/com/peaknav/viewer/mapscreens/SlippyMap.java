@@ -881,7 +881,14 @@ public class SlippyMap extends Widget implements Disposable {
         if (attributionFont == null) {
             return;
         }
-        String notice = provider.getCopyrightNotice();   // it carries its own © already
+        // The imagery's own credit, always. getCopyrightNotice() is the 3D view's line: it names
+        // the imagery only while that view's satellite layer is on, and adds OpenStreetMap for
+        // labels this map does not draw - with the layer off, the imagery here went uncredited.
+        String raw = provider.getRawCopyrightNotice();
+        if (raw == null || raw.trim().isEmpty()) {
+            return;
+        }
+        String notice = raw.startsWith("\u00a9") ? raw : "\u00a9" + raw;
         attributionLayout.setText(attributionFont, notice);
         float pad = markerSize * 0.12f;
         batch.setColor(0, 0, 0, 0.45f * parentAlpha);
