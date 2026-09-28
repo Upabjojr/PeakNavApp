@@ -430,13 +430,16 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		double lon = pendingGeoLon;
 		pendingGeoLat = null;
 		pendingGeoLon = null;
-		try {
-			// Ask about missing data for this area, as a tap on the map would: arriving from
-			// another app is exactly when the region is likely to be one never visited.
-			getC().L.setCurrentTargetCoords(lat, lon);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		// Ask about missing data for this area, as a tap on the map would: arriving from
+		// another app is exactly when the region is likely to be one never visited. On the
+		// render thread, which core's state belongs to.
+		com.badlogic.gdx.Gdx.app.postRunnable(() -> {
+			try {
+				getC().L.setCurrentTargetCoords(lat, lon);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		});
 	}
 
 	/** Every byte of a picked picture, or null if the provider has no stream for it. */

@@ -426,7 +426,10 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             alertBuilder.setTitle(s("Image_location_found"))
                     .setMessage(s("Go_to_image_location_prompt"))
                     .setPositiveButton(s("Yes"),
-                            (dialogInterface, i) -> getC().L.setCurrentTargetCoords(lat, lon))
+                            (dialogInterface, i) ->
+                                    // Core's state belongs to the render thread, as on the other
+                                    // platforms: a GPX tour's frames were cleared under it.
+                                    com.badlogic.gdx.Gdx.app.postRunnable(() -> getC().L.setCurrentTargetCoords(lat, lon)))
                     .setNegativeButton(s("No"), null);
             show(alertBuilder);
         });
@@ -658,7 +661,8 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                         answered[0] = true;
                         float lon = (float) location.getLongitude();
                         float lat = (float) location.getLatitude();
-                        currentLocationCallback.setCurrentLocation(lon, lat);
+                        // On the render thread, as iOS delivers: the callbacks move the camera.
+                        com.badlogic.gdx.Gdx.app.postRunnable(() -> currentLocationCallback.setCurrentLocation(lon, lat));
                         if (location.getProvider().equals(LocationManager.GPS_PROVIDER)) {
                             locationManager.removeUpdates(this);
                         }
