@@ -298,8 +298,9 @@ public class PreferencesManager {
         try {
             unitSystem = UnitSystem.valueOf(prefUnitSystem);
         } catch (IllegalArgumentException iae) {
-            unitSystem = UnitSystem.METRIC;
-            P.setUnitSystem(unitSystem);
+            // On this, not on P: P is this very object, assigned only once the constructor
+            // has returned, and still null here - the repair threw, at every start.
+            setUnitSystem(UnitSystem.METRIC);
         }
     }
 
