@@ -277,9 +277,21 @@ public class DrawLabel {
     private final Vector3 mPosition = new Vector3();
     private final Vector3 tempVec4 = new Vector3();
 
+    /**
+     * Under the label's own lock, as the polygon's rebuild is: the render thread (moving camera)
+     * and the visibility worker call this on the same label at once, under locks of their own,
+     * and shared the scratch vectors below - one set mPosition while the other read it back,
+     * and a label jumped to the corner of the screen, or was placed by the overlap pass on the
+     * wrong shape.
+     */
     public void updatePosition() {
-        updatePosition(poiObject.getPosition3D(tempVec2));
-        updateLabelPolygonCoordinates();
+        lock.lock();
+        try {
+            updatePosition(poiObject.getPosition3D(tempVec2));
+            updateLabelPolygonCoordinates();
+        } finally {
+            lock.unlock();
+        }
     }
 
     private void updatePosition(Vector3 tempVec) {
@@ -321,6 +333,15 @@ public class DrawLabel {
     }
 
     public void updateLabelPolygonCoordinates() {
+        lock.lock();
+        try {
+            rebuildPolygon();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private void rebuildPolygon() {
         float textHeight = getCurrentTextHeight();
 
         rectangleHeight = 1.3f * textHeight;
