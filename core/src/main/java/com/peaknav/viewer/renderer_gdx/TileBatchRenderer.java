@@ -467,10 +467,14 @@ public class TileBatchRenderer {
                     neededProviders, targetTileX, targetTileY);
             // Paint the GPX paths onto the tiles (cheap once a tile is up to date with the current
             // paths version; draws newly-loaded tiles and redraws all tiles when paths change).
+            // The version before the tracks: a load in between then leaves tiles marked with the
+            // older version, drawn again on the next pass. The other way round, they were marked
+            // with the newer version and drawn without its track, for good.
+            int gpxVersion = getC().gpxManager.getVersion();
             com.peaknav.gpx.GpxTileRasterizer.updateTiles(
                     getC().mapTileStorage.getMapTiles(),
                     getC().gpxManager.getTracks(),
-                    getC().gpxManager.getVersion());
+                    gpxVersion);
             if (flag && MapViewerSingleton.getViewerInstance().labelLoading.getState() == LabelLoading.State.LOADING) {
                 MapViewerSingleton.getViewerInstance().labelLoading.setState(LabelLoading.State.LOADED);
             }

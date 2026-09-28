@@ -767,7 +767,8 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                                     java.util.Calendar c = java.util.Calendar.getInstance();
                                     c.set(year, month, day, hour, minute, 0);
                                     c.set(java.util.Calendar.MILLISECOND, 0);
-                                    sky.setCustomTimeMillis(c.getTimeInMillis());
+                                    long millis = c.getTimeInMillis();
+                                    com.badlogic.gdx.Gdx.app.postRunnable(() -> sky.setCustomTimeMillis(millis));
                                 },
                                 cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE), true);
                         timeDlg.show();
@@ -775,7 +776,8 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH),
                     cal.get(java.util.Calendar.DAY_OF_MONTH));
             dateDlg.setButton(android.app.DatePickerDialog.BUTTON_NEUTRAL,
-                    s("Sky_time_device_clock"), (dialog, which) -> sky.clearCustomTime());
+                    s("Sky_time_device_clock"), (dialog, which) ->
+                            com.badlogic.gdx.Gdx.app.postRunnable(sky::clearCustomTime));
             dateDlg.show();
         });
     }

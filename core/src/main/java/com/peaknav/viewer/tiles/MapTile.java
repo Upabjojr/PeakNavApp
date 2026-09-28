@@ -287,7 +287,9 @@ public class MapTile {
 
     private final ConcurrentHashMap<PixmapLayerName, Texture> textureMap = new ConcurrentHashMap<>();
     private final Queue<DrawingPair> texturePixmapMap = new LinkedBlockingQueue<>();
-    private final Set<PixmapLayerName> textureLayerAdded = new HashSet<>();
+    /** Added to by the road executor and the two satellite threads at once: a concurrent set. */
+    private final Set<PixmapLayerName> textureLayerAdded =
+            Collections.newSetFromMap(new ConcurrentHashMap<PixmapLayerName, Boolean>());
 
     // Version of the GPX paths this tile's GPX_PATH texture was drawn for (see GpxTileRasterizer);
     // -1 means never drawn, so a tile picks the paths up as it loads.

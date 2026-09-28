@@ -507,12 +507,24 @@ public class PeakNavDownloadManager {
             futures.add(e);
         }
 
+        // Every archive is waited for, as before; an interrupt meanwhile is kept for whoever
+        // asked for it, which the swallowed exception lost.
+        boolean interrupted = false;
         for (Future<?> e : futures) {
-            try {
-                e.get();
-            } catch (InterruptedException | ExecutionException ex) {
-                ex.printStackTrace();
+            while (true) {
+                try {
+                    e.get();
+                    break;
+                } catch (InterruptedException ex) {
+                    interrupted = true;
+                } catch (ExecutionException ex) {
+                    ex.printStackTrace();
+                    break;
+                }
             }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
         }
         // Finished, whatever the queue held. With nothing left to fetch - every tile already
         // downloaded - no worker ever reported progress, so the bar the download showed stayed

@@ -24,8 +24,9 @@ public class CurrentLocation {
 
     private volatile float currentLatitude;
     private volatile float currentLongitude;
-    private Double targetAfterUpdateLat = null;
-    private Double targetAfterUpdateLon = null;
+    /** Where to go once the tiles are updated, latitude and longitude, or null: set and taken whole. */
+    private final java.util.concurrent.atomic.AtomicReference<double[]> targetAfterUpdate =
+            new java.util.concurrent.atomic.AtomicReference<>();
 
     private enum LocationState {
         NEVER_SET,
@@ -370,16 +371,14 @@ public class CurrentLocation {
     }
 
     public void setCurrentTargetCoordsAfterTileUpdates(double lat, double lon) {
-        this.targetAfterUpdateLat = lat;
-        this.targetAfterUpdateLon = lon;
+        targetAfterUpdate.set(new double[]{lat, lon});
     }
 
     public void checkTargetCoordsAfterTileUpdates() {
-        if (targetAfterUpdateLat != null && targetAfterUpdateLon != null) {
-            setCurrentTargetCoords(targetAfterUpdateLat, targetAfterUpdateLon);
+        double[] target = targetAfterUpdate.getAndSet(null);
+        if (target != null) {
+            setCurrentTargetCoords(target[0], target[1]);
         }
-        targetAfterUpdateLon = null;
-        targetAfterUpdateLat = null;
     }
 
 }
