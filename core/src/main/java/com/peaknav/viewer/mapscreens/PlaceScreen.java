@@ -68,11 +68,15 @@ class PlaceScreen extends MapScreens.Base {
         /** From the menu's download, or a place with no data: the point on the given place. */
         DOWNLOAD,
         /** The first run: the whole world, no point, and the device asked where it is. */
-        WIZARD
+        WIZARD,
+        /** From the menu's storage: no point, and the block a point is in deleted, not fetched. */
+        DELETE
     }
 
     private static final float ZOOM_WORLD = 3.5f;
     private static final float ZOOM_CLOSE = 9.5f;
+    /** Deleting starts on the country around the target: the blocks there are, at a glance. */
+    private static final float ZOOM_REGION = 5f;
 
     /** One download at a time, off the render thread. */
     private static final ExecutorService DOWNLOADER = Executors.newSingleThreadExecutor(r -> {
@@ -115,6 +119,8 @@ class PlaceScreen extends MapScreens.Base {
     }
 
     private static final Color SELECTED = new Color(0.9f, 0.05f, 0.05f, 1f);
+    private static final Color DANGER = new Color(0.8f, 0.12f, 0.1f, 1f);
+    private static final Color DANGER_PRESSED = new Color(0.62f, 0.08f, 0.07f, 1f);
     private static final Color SELECTED_ROW = new Color(0.78f, 0.87f, 1f, 1f);
 
     private final Purpose purpose;
@@ -146,6 +152,12 @@ class PlaceScreen extends MapScreens.Base {
     private Table legendLayer;
     /** Distinguishes the latest online search from older ones still on their way back. */
     private int searchGeneration = 0;
+    /** Deleting: the button that does it, whose caption says how much the chosen block holds. */
+    private com.badlogic.gdx.scenes.scene2d.ui.ImageTextButton deleteButton;
+    /** The bytes the chosen block holds, once measured; -1 until then. */
+    private volatile long blockBytes = -1;
+    /** Distinguishes the latest measurement from older ones still on their way back. */
+    private int measureGeneration = 0;
     /** The result rows in list order, and where each one points, for the arrow keys. */
     private final List<Table> resultRows = new ArrayList<>();
     private final List<double[]> resultPoints = new ArrayList<>();
@@ -160,7 +172,9 @@ class PlaceScreen extends MapScreens.Base {
         this.pointLat = lat;
         this.pointLon = lon;
         // The wizard is handed the target when the platform knows one, and 0° 0° when not.
-        this.pointChosen = !wizard || lat != 0 || lon != 0;
+        // Deleting starts with no point: what goes is the reader's to choose, not the place
+        // the map happens to be on.
+        this.pointChosen = purpose != Purpose.DELETE && (!wizard || lat != 0 || lon != 0);
         // In the wizard the point comes from the platform, which a better fix may still move.
         this.pointFromReader = !wizard;
         float unit = MapScreens.unit();
@@ -218,6 +232,8 @@ class PlaceScreen extends MapScreens.Base {
                 }
             });
             bottom.add(back);
+        }
+        if (!wizard && this.purpose != Purpose.DELETE) {
             com.badlogic.gdx.scenes.scene2d.ui.Button goTo = iconButton("icons/icon_go_to_dest.png", s("Go_To"), false);
             goTo.addListener(new ChangeListener() {
                 @Override
@@ -227,22 +243,36 @@ class PlaceScreen extends MapScreens.Base {
             });
             bottom.add(goTo);
         }
-        // In the wizard Download is the one button, and has the row to itself.
-        com.badlogic.gdx.scenes.scene2d.ui.Button download =
-                iconButton("icons/icon_checkbox_download_data.png", s("download_selected_area"), true);
-        download.addListener(new ChangeListener() {
-            @Override
-            public void changed(ChangeEvent event, Actor actor) {
-                downloadPressed();
-            }
-        });
-        bottom.add(download);
+        if (this.purpose == Purpose.DELETE) {
+            // Red, not the blue of a main action: what it does cannot be taken back.
+            com.badlogic.gdx.scenes.scene2d.ui.Button delete = iconButton(
+                    "icons/icon_x.png", s("Storage_delete_area"), DANGER, DANGER_PRESSED, Color.WHITE);
+            deleteButton = (com.badlogic.gdx.scenes.scene2d.ui.ImageTextButton) delete;
+            delete.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    deletePressed();
+                }
+            });
+            bottom.add(delete);
+        } else {
+            // In the wizard Download is the one button, and has the row to itself.
+            com.badlogic.gdx.scenes.scene2d.ui.Button download =
+                    iconButton("icons/icon_checkbox_download_data.png", s("download_selected_area"), true);
+            download.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    downloadPressed();
+                }
+            });
+            bottom.add(download);
+        }
         root.add(bottom).growX().pad(0, 0.1f * unit, 0.2f * unit, 0.1f * unit).row();
 
         SlippyMap map = newMap();
         map.setZoomRange(1f, 14f);
         map.setCenter(lat, lon);
-        map.setZoom(pointChosen ? ZOOM_CLOSE : ZOOM_WORLD);
+        map.setZoom(pointChosen ? ZOOM_CLOSE : purpose == Purpose.DELETE ? ZOOM_REGION : ZOOM_WORLD);
         map.setTapListener((tapLat, tapLon) -> {
             // A point picked on the map is an answer, as a result from the list is: the list
             // and the keyboard have nothing more to do, and they cover the map the point is on.
@@ -281,10 +311,10 @@ class PlaceScreen extends MapScreens.Base {
         // keep room for the imagery list that opens beside them - came to thirteen, pushing
         // the controls off the right edge.
         legendLayer = new Table();
-        legendLayer.setVisible(showDownloaded);
+        legendLayer.setVisible(showsDownloaded());
         legendLayer.setTouchable(Touchable.childrenOnly);
         // Bottom left, clear of the imagery's credit in the bottom right corner.
-        legendLayer.add(legend(unit)).expand().bottom().left().pad(0.2f * unit, 0.2f * unit, 1.1f * unit, 0.2f * unit);
+        legendLayer.add(legend(unit, purpose == Purpose.DELETE)).expand().bottom().left().pad(0.2f * unit, 0.2f * unit, 1.1f * unit, 0.2f * unit);
         Table controlsLayer = new Table();
         controlsLayer.setTouchable(Touchable.childrenOnly);
         controlsLayer.add(mapControls(unit, () -> askForFix(true), downloadedSwitch())).expand().top().right().minWidth(0).pad(0.2f * unit);
@@ -380,6 +410,7 @@ class PlaceScreen extends MapScreens.Base {
         pointChosen = true;
         pointFromReader = true;   // askForFix says otherwise after the call
         showPoint();
+        measureBlock();
         if (center && !map.fit(downloadBlock(), 0.08f)) {
             map.setCenter(lat, lon);
             map.setZoom(ZOOM_CLOSE);
@@ -392,6 +423,10 @@ class PlaceScreen extends MapScreens.Base {
      * to be shown at, and all there was to see of it was a faint red wash.
      */
     private BoundingBox downloadBlock() {
+        if (purpose == Purpose.DELETE) {
+            // What Delete would delete: the block the point is in.
+            return com.peaknav.database.DownloadedData.blockAt(pointLat, pointLon).getBoundingBox();
+        }
         PeakNavDownloadManager manager = getC().missingDataDownloader.getPeakNavDownloadManager();
         List<Tile> tiles = manager.getQueueMapData(pointLat, pointLon, manager.getZoomPoi(), manager.getRangePoi());
         return MissingDataDownloader.getBoundingBoxOfTargetTiles(tiles);
@@ -400,7 +435,7 @@ class PlaceScreen extends MapScreens.Base {
     /** The marker and the red block, when there is a point; what is downloaded, always. */
     private void showPoint() {
         List<SlippyMap.Shading> shadings = new ArrayList<>();
-        if (showDownloaded) {
+        if (showsDownloaded()) {
             shadings.addAll(downloaded);
         }
         if (pointChosen) {
@@ -418,15 +453,23 @@ class PlaceScreen extends MapScreens.Base {
      * long for the button slides (MarqueeLabel).
      */
     private static com.badlogic.gdx.scenes.scene2d.ui.Button iconButton(String icon, String caption, boolean accent) {
+        return iconButton(icon, caption,
+                accent ? MapScreens.ACCENT : Color.WHITE,
+                accent ? MapScreens.ACCENT_PRESSED : MapScreens.PRESSED,
+                accent ? Color.WHITE : MapScreens.INK);
+    }
+
+    private static com.badlogic.gdx.scenes.scene2d.ui.Button iconButton(
+            String icon, String caption, Color fill, Color pressed, Color ink) {
         float unit = MapScreens.unit();
         com.badlogic.gdx.scenes.scene2d.ui.ImageTextButton button =
                 getC().widgetGetter.getImageTextButton(icon, caption, false);
         com.badlogic.gdx.scenes.scene2d.ui.ImageTextButton.ImageTextButtonStyle style =
                 new com.badlogic.gdx.scenes.scene2d.ui.ImageTextButton.ImageTextButtonStyle(button.getStyle());
-        style.up = background(accent ? MapScreens.ACCENT : Color.WHITE, unit);
-        style.down = background(accent ? MapScreens.ACCENT_PRESSED : MapScreens.PRESSED, unit);
+        style.up = background(fill, unit);
+        style.down = background(pressed, unit);
         style.checked = null;
-        style.fontColor = accent ? Color.WHITE : MapScreens.INK;
+        style.fontColor = ink;
         button.setStyle(style);
         button.center();
         button.getImageCell().size(0.68f * unit);
@@ -472,11 +515,76 @@ class PlaceScreen extends MapScreens.Base {
             public void changed(ChangeEvent event, Actor actor) {
                 showDownloaded = !showDownloaded;
                 button.getColor().a = showDownloaded ? 1f : 0.4f;
-                legendLayer.setVisible(showDownloaded);
+                legendLayer.setVisible(showsDownloaded());
                 showPoint();
             }
         });
         return button;
+    }
+
+    /** What is downloaded is shaded unless switched off - and always where it is there to be deleted. */
+    private boolean showsDownloaded() {
+        return showDownloaded || purpose == Purpose.DELETE;
+    }
+
+    /**
+     * Deleting: how much the block chosen would free, on the button that frees it. Measured
+     * off the render thread - a block is some thousands of files - and shown when it is
+     * known, unless another block has been chosen meanwhile.
+     */
+    private void measureBlock() {
+        if (purpose != Purpose.DELETE || deleteButton == null || !pointChosen) {
+            return;
+        }
+        final int generation = ++measureGeneration;
+        final Tile block = com.peaknav.database.DownloadedData.blockAt(pointLat, pointLon);
+        blockBytes = -1;
+        deleteButton.setText(s("Storage_delete_area"));
+        getC().submitExecutorGeneric(() -> {
+            final long bytes = com.peaknav.database.DownloadedData.ofTheApp().blockBytes(block);
+            Gdx.app.postRunnable(() -> {
+                if (generation != measureGeneration || !isShowing()) {
+                    return;
+                }
+                blockBytes = bytes;
+                deleteButton.setText(s("Storage_delete_area") + ": "
+                        + com.peaknav.database.DownloadedData.readable(bytes));
+            });
+        });
+    }
+
+    /**
+     * Delete: the block the point is in, after a question; the map then shows what is left.
+     * Not while a download runs, which is writing into the folders this would empty.
+     */
+    private void deletePressed() {
+        if (!requirePoint()) {
+            return;
+        }
+        if (getAppState().isMapDataDownloadStarted()) {
+            getNativeScreenCaller().makeToast(s("Download_in_progress"));
+            return;
+        }
+        final Tile block = com.peaknav.database.DownloadedData.blockAt(pointLat, pointLon);
+        getC().submitExecutorGeneric(() -> {
+            if (!com.peaknav.database.DownloadedData.ofTheApp().isDownloaded(block)) {
+                getNativeScreenCaller().makeToast(s("Storage_nothing_here"));
+                return;
+            }
+            // The question says how much goes, measured here if the button's count is not in yet.
+            long holds = blockBytes >= 0 ? blockBytes
+                    : com.peaknav.database.DownloadedData.ofTheApp().blockBytes(block);
+            String question = s("Storage_delete_area_prompt") + " ("
+                    + com.peaknav.database.DownloadedData.readable(holds) + ")";
+            getNativeScreenCaller().promptYesNo("", question, () ->
+                    getC().submitExecutorGeneric(() -> {
+                        long freed = com.peaknav.database.DownloadedData.ofTheApp().deleteBlock(block);
+                        com.peaknav.database.DownloadedData.tellTheApp();
+                        getNativeScreenCaller().makeToast(s("Storage_freed") + " "
+                                + com.peaknav.database.DownloadedData.readable(freed));
+                        Gdx.app.postRunnable(this::measureBlock);
+                    }));
+        });
     }
 
     /** With no point yet, the buttons that need one say how to get one instead. */
@@ -765,7 +873,7 @@ class PlaceScreen extends MapScreens.Base {
     }
 
     /** What each colour on the map means, on a light plate over the map's corner. */
-    private static Table legend(float unit) {
+    private static Table legend(float unit, boolean deleting) {
         Table legend = new Table();
         legend.setBackground(getC().widgetTextures.getUniformDrawable(new Color(1f, 1f, 1f, 0.85f)));
         legend.pad(0.15f * unit, 0.25f * unit, 0.15f * unit, 0.25f * unit);
@@ -780,7 +888,8 @@ class PlaceScreen extends MapScreens.Base {
             legendRow(legend, new com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable(stripes),
                     layer.color, s(layer.caption), unit);
         }
-        legendRow(legend, getC().widgetTextures.getUniformDrawable(SELECTED), SELECTED, s("Legend_selected"), unit);
+        legendRow(legend, getC().widgetTextures.getUniformDrawable(SELECTED), SELECTED,
+                s(deleting ? "Legend_to_delete" : "Legend_selected"), unit);
         return legend;
     }
 

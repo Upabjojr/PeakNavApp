@@ -57,6 +57,16 @@ public final class MapScreens {
     }
 
     /**
+     * The place screen for deleting: what is downloaded shaded on the map, a block of it
+     * chosen by a tap or a search, and deleted after a question.
+     */
+    public static void openDeleteChooser() {
+        Gdx.app.postRunnable(() -> show(new PlaceScreen(
+                getC().L.getTargetLatitude(), getC().L.getTargetLongitude(), false,
+                PlaceScreen.Purpose.DELETE)));
+    }
+
+    /**
      * The device cannot say where it is and the reader chose to search: the first-run chooser,
      * if it is still waiting for a place, puts the cursor in its search box. Any thread.
      */

@@ -57,6 +57,8 @@ public class OptionPane {
     private final Table selectInfoOpts;
     /** The languages to choose from: one column that scrolls, whatever the screen's shape. */
     private Table selectLanguage;
+    private Table selectStorage;
+    private ImageTextButtonOptionPane buttonArchives, buttonImagery, buttonAllData;
     private com.badlogic.gdx.scenes.scene2d.ui.ScrollPane languageScroll;
     private Cell<com.badlogic.gdx.scenes.scene2d.ui.ScrollPane> languageScrollCell;
     private Table languageList;
@@ -119,6 +121,10 @@ public class OptionPane {
         return selectLanguage;
     }
 
+    public Table getSelectStorage() {
+        return selectStorage;
+    }
+
     public Table getSelectInfoOpts() {
         return selectInfoOpts;
     }
@@ -145,6 +151,7 @@ public class OptionPane {
         selectBoxUnits = createSelectBoxUnitSystem();
         selectInfoOpts = createInfoOptsMenu();
         selectLanguage = createLanguageMenu();
+        selectStorage = createStorageMenu();
         selectGpx = createGpxMenu();
         selectMarkers = createMarkersMenu();
         selectPathsAndMarkers = createPathsAndMarkersMenu();
@@ -285,7 +292,7 @@ public class OptionPane {
 
     private Table[] allMenus() {
         return new Table[]{table, tableOneColumn, getSelectBoxSatelliteSource(), getSelectBoxDownloadSource(),
-                getSelectBoxUnits(), getSelectInfoOpts(), getSelectLanguage(), getSelectGpx(), getSelectPathsAndMarkers(),
+                getSelectBoxUnits(), getSelectInfoOpts(), getSelectLanguage(), getSelectStorage(), getSelectGpx(), getSelectPathsAndMarkers(),
                 getSelectMarkers(), getSelectLabels(), getSelectLabelsOneColumn(), getSelectSky(), getSelectCompass(), getSelectRoads(),
                 getSelectRoadsOneColumn(), getSelectRoadsGroup(), getSelectPistes()};
     }
@@ -293,7 +300,7 @@ public class OptionPane {
     /** Whether the options menu, or any of its submenus, is on screen. */
     public boolean isAnyMenuVisible() {
         Table[] menus = {table, tableOneColumn, getSelectBoxSatelliteSource(), getSelectBoxDownloadSource(),
-                getSelectBoxUnits(), getSelectInfoOpts(), getSelectLanguage(), getSelectGpx(), getSelectPathsAndMarkers(),
+                getSelectBoxUnits(), getSelectInfoOpts(), getSelectLanguage(), getSelectStorage(), getSelectGpx(), getSelectPathsAndMarkers(),
                 getSelectMarkers(), getSelectLabels(), getSelectLabelsOneColumn(), getSelectSky(), getSelectCompass(), getSelectRoads(),
                 getSelectRoadsOneColumn(), getSelectRoadsGroup(), getSelectPistes()};
         for (Table menu : menus) {
@@ -1309,6 +1316,16 @@ public class OptionPane {
         });
         buttons.add(buttonLanguage);
 
+        // What the downloads take of the device, and the ways to give it back.
+        ImageTextButtonOptionPane buttonStorage = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_download_data2.png", s("Storage"), false);
+        buttonStorage.addClickListener(() -> {
+            table.setVisible(false);
+            selectStorage.setVisible(true);
+            measureStorage();
+        });
+        buttons.add(buttonStorage);
+
         WidgetGetter.ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton("icons/icon_back.png", s("Back"), false);
         back.addClickListener(() -> {
             table.setVisible(false);
@@ -1319,6 +1336,101 @@ public class OptionPane {
         addButtonsToTable(table, buttons, true, buttonWidth);
         table.setVisible(false);
         return table;
+    }
+
+    /**
+     * Storage: what the downloads take of the device, each kind with its size, and a press
+     * to delete it after a question. The archives are kept after they are unpacked, so that a
+     * block asked for again is not fetched again; on a phone they take nearly as much again as
+     * the data. The imagery is fetched again as it is looked at. The map data can go block by
+     * block, chosen on the map, or all at once.
+     */
+    private Table createStorageMenu() {
+        Table table = new Table();
+        table.center();
+        table.setFillParent(true);
+        float buttonWidth = this.buttonWidth * 1.35f;
+        List<Table> buttons = new ArrayList<>(8);
+
+        buttonArchives = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_download_data.png", s("Storage_archives"), false);
+        buttonArchives.addClickListener(() -> askToDelete("Storage_archives_prompt",
+                data -> data.deleteArchives(), false));
+        buttons.add(buttonArchives);
+
+        buttonImagery = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_satellite.png", s("Storage_imagery"), false);
+        buttonImagery.addClickListener(() -> askToDelete("Storage_imagery_prompt",
+                data -> data.deleteImagery(), false));
+        buttons.add(buttonImagery);
+
+        ImageTextButtonOptionPane buttonAreas = getC().widgetGetter.getImageTextButton(
+                "icons/icon_map.png", s("Storage_areas"), false);
+        buttonAreas.addClickListener(() -> {
+            hide();
+            com.peaknav.viewer.mapscreens.MapScreens.openDeleteChooser();
+        });
+        buttons.add(buttonAreas);
+
+        buttonAllData = getC().widgetGetter.getImageTextButton(
+                "icons/icon_x.png", s("Storage_all"), false);
+        buttonAllData.addClickListener(() -> askToDelete("Storage_all_prompt",
+                data -> data.deleteAll(), true));
+        buttons.add(buttonAllData);
+
+        ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
+                "icons/icon_back.png", s("Back"), false);
+        back.addClickListener(() -> {
+            table.setVisible(false);
+            selectInfoOpts.setVisible(true);
+        });
+        buttons.add(back);
+
+        addButtonsToTable(table, buttons, true, buttonWidth);
+        table.setVisible(false);
+        return table;
+    }
+
+    private interface Deletion {
+        long of(com.peaknav.database.DownloadedData data);
+    }
+
+    /** Measured off the render thread - the folders hold thousands of files - and shown on it. */
+    private void measureStorage() {
+        getC().submitExecutorGeneric(() -> {
+            com.peaknav.database.DownloadedData data = com.peaknav.database.DownloadedData.ofTheApp();
+            final String archives = com.peaknav.database.DownloadedData.readable(data.archivesBytes());
+            final String imagery = com.peaknav.database.DownloadedData.readable(data.imageryBytes());
+            final String all = com.peaknav.database.DownloadedData.readable(data.mapDataBytes());
+            Gdx.app.postRunnable(() -> {
+                buttonArchives.setText(s("Storage_archives") + ": " + archives);
+                buttonImagery.setText(s("Storage_imagery") + ": " + imagery);
+                buttonAllData.setText(s("Storage_all") + ": " + all);
+            });
+        });
+    }
+
+    /**
+     * Asks, deletes on a yes, says how much was freed and measures again.
+     *
+     * @param mapData whether map data goes, which the app holds in memory and must drop
+     */
+    private void askToDelete(String question, Deletion deletion, boolean mapData) {
+        if (com.peaknav.compatibility.PeakNavAppState.getAppState().isMapDataDownloadStarted()) {
+            // Not under a download's feet: it is writing into the folders this would empty.
+            getNativeScreenCaller().makeToast(s("Download_in_progress"));
+            return;
+        }
+        getNativeScreenCaller().promptYesNo("", s(question), () ->
+                getC().submitExecutorGeneric(() -> {
+                    long freed = deletion.of(com.peaknav.database.DownloadedData.ofTheApp());
+                    if (mapData) {
+                        com.peaknav.database.DownloadedData.tellTheApp();
+                    }
+                    getNativeScreenCaller().makeToast(s("Storage_freed") + " "
+                            + com.peaknav.database.DownloadedData.readable(freed));
+                    measureStorage();
+                }));
     }
 
     /** "Language: Italiano", or "Language: System language" while the device's is followed. */
@@ -2161,6 +2273,7 @@ public class OptionPane {
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
         selectLanguage.setVisible(false);
+        selectStorage.setVisible(false);
         selectGpx.setVisible(false);
         selectPathsAndMarkers.setVisible(false);
         selectMarkers.setVisible(false);
@@ -2185,6 +2298,7 @@ public class OptionPane {
         selectBoxUnits.setVisible(false);
         selectInfoOpts.setVisible(false);
         selectLanguage.setVisible(false);
+        selectStorage.setVisible(false);
         selectGpx.setVisible(false);
         selectPathsAndMarkers.setVisible(false);
         selectMarkers.setVisible(false);

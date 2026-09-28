@@ -1727,6 +1727,7 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(optionPane.getSelectBoxUnits());
 		stage.addActor(optionPane.getSelectInfoOpts());
 		stage.addActor(optionPane.getSelectLanguage());
+		stage.addActor(optionPane.getSelectStorage());
 		stage.addActor(optionPane.getSelectGpx());
 		stage.addActor(optionPane.getSelectPathsAndMarkers());
 		stage.addActor(optionPane.getSelectMarkers());
