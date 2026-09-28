@@ -16,7 +16,7 @@ import java.util.Map;
 public final class WikipediaArticle {
 
     /** Wikimedia asks for an agent that says what is calling and where to find it. */
-    private static final String USER_AGENT = "PeakNav (https://peaknav.com)";
+    static final String USER_AGENT = "PeakNav (https://peaknav.com)";
     private static final int CACHE_SIZE = 48;
 
     public static final class Article {

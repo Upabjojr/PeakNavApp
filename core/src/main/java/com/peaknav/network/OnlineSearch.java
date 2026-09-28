@@ -83,6 +83,8 @@ public class OnlineSearch {
         });
     }
 
+    private static final int SEARCH_TIMEOUT_MILLIS = 15_000;
+
     private void findWithNominatim(String text, final NominatimResponseListener callback) throws UnsupportedEncodingException {
         String encodedText = URLEncoder.encode(text, "UTF-8");
 
@@ -90,14 +92,25 @@ public class OnlineSearch {
         request.setUrl(String.format("https://nominatim.openstreetmap.org/search?osmtype=N&q=%s&limit=15&format=json&accept-language=%s",
                 encodedText, URLEncoder.encode(acceptLanguages(interfaceLanguage()), "UTF-8")));
         request.setHeader("Content-Type", "application/x-www-form-urlencoded");
+        // Nominatim's usage policy asks every application to name itself.
+        request.setHeader("User-Agent", WikipediaArticle.USER_AGENT);
         request.setContent("");
         request.setMethod("GET");
+        // Without a timeout libGDX waits for ever: a stalled connection parked a network
+        // thread for good, and the search had neither an answer nor a failure.
+        request.setTimeOut(SEARCH_TIMEOUT_MILLIS);
 
         Gdx.net.sendHttpRequest(request, new Net.HttpResponseListener() {
             @Override
             public void handleHttpResponse(Net.HttpResponse httpResponse) {
                 ArrayList<NominatimResponse> retval = new ArrayList<>();
                 try {
+                    int status = httpResponse.getStatus() == null ? 0 : httpResponse.getStatus().getStatusCode();
+                    if (status != 200) {
+                        // A rate limit (429) or a server error: no results, said as none.
+                        callback.applySearchResults(retval);
+                        return;
+                    }
                     String responseJson = httpResponse.getResultAsString();
                     JsonValue list = new JsonReader().parse(responseJson);
 
@@ -121,14 +134,17 @@ public class OnlineSearch {
                 callback.applySearchResults(retval);
             }
 
+            // Both answered, with no results: the listener used to hear nothing, and anything
+            // waiting on it waited for good.
             @Override
             public void failed(Throwable t) {
                 t.printStackTrace();
+                callback.applySearchResults(new ArrayList<NominatimResponse>());
             }
 
             @Override
             public void cancelled() {
-
+                callback.applySearchResults(new ArrayList<NominatimResponse>());
             }
         });
 

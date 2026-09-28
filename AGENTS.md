@@ -208,8 +208,9 @@ J=-Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
   - The download consent (`P.setCollectDownloadInfo`) must be set **in the same
     task** as the download it enables. `PeakNavDownloadManager` skips every request
     without it, so a download that starts first shows progress and fetches nothing.
-  - `OnlineSearch.failed()` never calls its listener, so anything waiting on a
-    Nominatim response needs its own timeout or it waits forever.
+  - `OnlineSearch` answers its listener on every path - results, an error status,
+    a failure, a cancellation, a 15 s timeout - with an empty list when there are
+    none, so a caller need not keep a timeout of its own.
 
   What is still missing — shipped gaps, not release blockers, and each surfaces at
   runtime rather than at compile time:
