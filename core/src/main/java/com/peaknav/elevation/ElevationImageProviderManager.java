@@ -108,8 +108,15 @@ public class ElevationImageProviderManager {
         }
         List<MapTile> mapTiles  = getC().mapTileStorage.getMapTiles();
         ElevationImageAbstract elevationImage = null;
-        if (mapTiles.size() > 0) {
-            MapTile mapTile = mapTiles.get(0);
+        // The list is cleared and filled again by the tile updater: between size() and get(0)
+        // it could empty, and get(0) threw on this thread.
+        MapTile mapTile = null;
+        try {
+            mapTile = mapTiles.isEmpty() ? null : mapTiles.get(0);
+        } catch (IndexOutOfBoundsException emptiedMeanwhile) {
+            // no tile to read from
+        }
+        if (mapTile != null) {
             if (mapTile.tileBoundingBox.toBoundingBox().contains(
                     new LatLong(targetLat, targetLon))) {
                 elevationImage = mapTile.elevationImage;
