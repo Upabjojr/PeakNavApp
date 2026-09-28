@@ -209,7 +209,7 @@ public class MountainInputController extends CameraInputController {
         dragPrevX = dragX = screenX;
         dragPrevY = dragY = screenY;
         if (pointer == 0) {
-            forgetLostFingers();
+            forgetLostFingers(button);
         }
         return super.touchDown(screenX, screenY, pointer, button);
     }
@@ -238,10 +238,16 @@ public class MountainInputController extends CameraInputController {
      * private fields, reached by reflection; where that is not possible nothing changes, and
      * touchCancelled covers the common case.
      */
-    private void forgetLostFingers() {
+    private void forgetLostFingers(int pressed) {
         for (int i = 1; i < 20; i++) {
             if (com.badlogic.gdx.Gdx.input != null && com.badlogic.gdx.Gdx.input.isTouched(i)) {
                 return;   // a real second finger: a pinch is starting
+            }
+        }
+        for (int other = 0; other <= 4; other++) {
+            if (other != pressed && com.badlogic.gdx.Gdx.input != null
+                    && com.badlogic.gdx.Gdx.input.isButtonPressed(other)) {
+                return;   // a second mouse button, the first still held: nothing was lost
             }
         }
         try {
@@ -260,6 +266,9 @@ public class MountainInputController extends CameraInputController {
             touchedField = null;
             multiTouchField = null;
         }
+        // The lost finger's button as well. While it is set, touchDown keeps the old touch as
+        // the drag's start, and the first drag turned the camera by the whole way from there.
+        this.button = -1;
     }
 
     @Override
