@@ -100,13 +100,12 @@ public final class RouteToPoint {
                         fromLat, fromLon, toLat, toLon, deadline);
                 if (result.route == null) {
                     if (finish(request)) {
-                        toast(s(result.problem).replace("{km}", String.valueOf((int) MAX_STRAIGHT_KM)));
+                        toast(withDistance(s(result.problem), MAX_STRAIGHT_KM * 1000, true));
                     }
                     return;
                 }
                 final String gpx = gpxFor(result.route, toLat, toLon);
-                final String found = s("Route_found")
-                        .replace("{km}", String.format(Locale.ROOT, "%.1f", result.route.metres / 1000));
+                final String found = withDistance(s("Route_found"), result.route.metres, false);
                 if (!finish(request)) {
                     return; // the watchdog already told the user it gave up
                 }
@@ -263,5 +262,29 @@ public final class RouteToPoint {
         if (getNativeScreenCaller() != null) {
             getNativeScreenCaller().makeToast(text);
         }
+    }
+
+    /**
+     * A message's "{km} km" as a distance in the units chosen. The messages were always in
+     * kilometres, while the GPX written for the same route used the units chosen; every
+     * translation writes the placeholder followed by " km".
+     */
+    static String withDistance(String message, double metres, boolean limit) {
+        com.peaknav.utils.PreferencesManager.UnitSystem units = com.peaknav.utils.PreferencesManager.P == null
+                ? com.peaknav.utils.PreferencesManager.UnitSystem.METRIC
+                : com.peaknav.utils.PreferencesManager.P.getUnitSystem();
+        String distance;
+        if (limit) {
+            // A limit, not a measurement: a whole number, no ".0".
+            distance = units == com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL
+                    ? Math.round(metres / 1609.344) + " mi"
+                    : Math.round(metres / 1000) + " km";
+        } else {
+            distance = com.peaknav.gpx.GpxTrackStats.formatDistance(metres, units);
+        }
+        if (message.contains("{km} km")) {
+            return message.replace("{km} km", distance);
+        }
+        return message.replace("{km}", distance);
     }
 }
