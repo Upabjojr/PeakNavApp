@@ -398,6 +398,9 @@ public final class GpxTrackStats {
         while (first < n && Double.isNaN(heights[first])) {
             first++;
         }
+        if (first == n) {
+            return;   // no height anywhere: nothing to fill from
+        }
         for (int i = 0; i < first; i++) {
             heights[i] = heights[first];
         }

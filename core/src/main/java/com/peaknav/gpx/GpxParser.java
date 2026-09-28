@@ -29,7 +29,7 @@ public final class GpxParser {
         }
         XmlReader.Element root;
         try {
-            root = new XmlReader().parse(xml);
+            root = new XmlReader().parse(readable(xml));
         } catch (Exception e) {
             // Not valid XML / GPX.
             return tracks;
@@ -62,11 +62,51 @@ public final class GpxParser {
         return tracks;
     }
 
+    /**
+     * The document as the reader can take it. A byte-order mark in front, which Windows tools
+     * write, is not XML to it: the whole file was refused, and the track "not found". And it
+     * decodes character references in hexadecimal only, so the decimal ones are rewritten:
+     * "Caf&#233;" came out as "Caf#233".
+     */
+    static String readable(String xml) {
+        int start = 0;
+        while (start < xml.length() && (xml.charAt(start) == '\uFEFF' || xml.charAt(start) <= ' ')) {
+            start++;
+        }
+        String text = start == 0 ? xml : xml.substring(start);
+        if (text.indexOf("&#") < 0) {
+            return text;
+        }
+        Matcher decimal = DECIMAL_REFERENCE.matcher(text);
+        StringBuffer out = new StringBuffer(text.length());
+        while (decimal.find()) {
+            String replacement;
+            try {
+                replacement = "&#x" + Integer.toHexString(Integer.parseInt(decimal.group(1))) + ";";
+            } catch (NumberFormatException tooLong) {
+                replacement = decimal.group();
+            }
+            decimal.appendReplacement(out, Matcher.quoteReplacement(replacement));
+        }
+        decimal.appendTail(out);
+        return out.toString();
+    }
+
+    private static final Pattern DECIMAL_REFERENCE = Pattern.compile("&#(\\d+);");
+
+    /** A number that is one: parseFloat reads "NaN" and "Infinity" too, which some exporters write. */
+    private static boolean isNumber(float value) {
+        return !Float.isNaN(value) && !Float.isInfinite(value);
+    }
+
     private static void addPoints(GpxTrack track, Array<XmlReader.Element> pts) {
         for (XmlReader.Element pt : pts) {
             Float lat = attrFloat(pt, "lat");
             Float lon = attrFloat(pt, "lon");
-            if (lat == null || lon == null) {
+            // A point that is nowhere is left out: one NaN made the track's box NaN, so that
+            // no track was drawn, and its statistics index an array at -1.
+            if (lat == null || lon == null || !isNumber(lat) || !isNumber(lon)
+                    || lat < -90f || lat > 90f || lon < -180f || lon > 180f) {
                 continue;
             }
             float ele = 0f;
@@ -74,13 +114,16 @@ public final class GpxParser {
             String eleText = childText(pt, "ele");
             if (eleText != null) {
                 try {
-                    ele = Float.parseFloat(eleText.trim());
-                    hasEle = true;
+                    float read = Float.parseFloat(eleText.trim());
+                    if (isNumber(read)) {
+                        ele = read;
+                        hasEle = true;
+                    }
                 } catch (NumberFormatException ignored) {
                     // leave without elevation
                 }
             }
-            XmlReader.Element extensions = pt.getChildByName("extensions");
+            XmlReader.Element extensions = child(pt, "extensions");
             XmlReader.Element way = extensions == null ? null
                     : extensions.getChildByName(com.peaknav.routing.RouteGpx.WAY_ELEMENT);
             if (way != null) {
@@ -123,13 +166,43 @@ public final class GpxParser {
         }
     }
 
+    /**
+     * Whether an element is GPX's {@code name}, written with a namespace prefix or without:
+     * {@code <gpx:trk>} is the same element as {@code <trk>}, and the reader gives the name as
+     * it is written.
+     */
+    private static boolean isNamed(XmlReader.Element element, String name) {
+        String written = element.getName();
+        if (written == null) {
+            return false;
+        }
+        int colon = written.lastIndexOf(':');
+        return (colon < 0 ? written : written.substring(colon + 1)).equals(name);
+    }
+
     private static Array<XmlReader.Element> childrenNamed(XmlReader.Element parent, String name) {
-        Array<XmlReader.Element> out = parent.getChildrenByName(name);
-        return (out != null) ? out : new Array<XmlReader.Element>(0);
+        Array<XmlReader.Element> out = new Array<XmlReader.Element>();
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            XmlReader.Element child = parent.getChild(i);
+            if (isNamed(child, name)) {
+                out.add(child);
+            }
+        }
+        return out;
+    }
+
+    private static XmlReader.Element child(XmlReader.Element parent, String name) {
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            XmlReader.Element child = parent.getChild(i);
+            if (isNamed(child, name)) {
+                return child;
+            }
+        }
+        return null;
     }
 
     private static String childText(XmlReader.Element parent, String name) {
-        XmlReader.Element child = parent.getChildByName(name);
+        XmlReader.Element child = child(parent, name);
         if (child == null) {
             return null;
         }
