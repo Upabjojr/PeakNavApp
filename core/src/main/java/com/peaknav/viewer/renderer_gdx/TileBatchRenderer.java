@@ -742,6 +742,7 @@ public class TileBatchRenderer {
         }
         modelBatch.dispose();
         modelBatchPseudodistances.dispose();
+        modelBatchRoadsOverlay.dispose();   // left out when it was added
     }
 
 }
