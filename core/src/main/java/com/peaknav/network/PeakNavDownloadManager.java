@@ -128,8 +128,33 @@ public class PeakNavDownloadManager {
         return queue;
     }
 
+    /** How many archives a side each kind of data is fetched in, around the point. */
+    private static final int SPAN_ELEVATION = 2, SPAN_POI = 3, SPAN_HIGHWAYS = 2;
+
+    /**
+     * The ground a download around this point covers, one box for each kind of data the place
+     * screen shades as downloaded: elevation, points of interest, and the roads and pistes,
+     * which share their archives' cut. They differ several times over - the roads cover a
+     * sixth of the width of the points of interest - so no single box is what a download
+     * fetches. Area labels are left out: they are not shaded either.
+     */
+    public List<com.peaknav.geo.BoundingBox> downloadBlocks(double lat, double lon) {
+        List<com.peaknav.geo.BoundingBox> blocks = new ArrayList<>();
+        addBlock(blocks, getQueueMapData(lat, lon, zoomPoiCompressed, SPAN_POI));
+        addBlock(blocks, getQueueMapData(lat, lon, zoomElevationCompressed, SPAN_ELEVATION));
+        addBlock(blocks, getQueueMapData(lat, lon, zoomHighwaysCompressed, SPAN_HIGHWAYS));
+        return blocks;
+    }
+
+    private static void addBlock(List<com.peaknav.geo.BoundingBox> blocks, List<Tile> tiles) {
+        // None at all where the block would fall off the map's edge, at the poles.
+        if (!tiles.isEmpty()) {
+            blocks.add(com.peaknav.database.MissingDataDownloader.getBoundingBoxOfTargetTiles(tiles));
+        }
+    }
+
     private void addQueueElevations(double lat, double lon) {
-        List<Tile> queue = getQueueMapData(lat, lon, zoomElevationCompressed, 2);
+        List<Tile> queue = getQueueMapData(lat, lon, zoomElevationCompressed, SPAN_ELEVATION);
         for (Tile queueTile : queue) {
             // TODO: insert only if not exists? ==> RIGHT!
             mapSqlite.addToDownloadQueueElevationTile(queueTile);
@@ -157,7 +182,7 @@ public class PeakNavDownloadManager {
     }
 
     private void addQueueHighways(double lat, double lon) {
-        addQueueMapData(lat, lon, zoomHighwaysCompressed, 2, PbfLayer.PBF_HIGHWAYS);
+        addQueueMapData(lat, lon, zoomHighwaysCompressed, SPAN_HIGHWAYS, PbfLayer.PBF_HIGHWAYS);
     }
 
     /**
@@ -167,11 +192,11 @@ public class PeakNavDownloadManager {
      * they are switched on.
      */
     private void addQueuePistes(double lat, double lon) {
-        addQueueMapData(lat, lon, zoomHighwaysCompressed, 2, PbfLayer.PBF_PISTES);
+        addQueueMapData(lat, lon, zoomHighwaysCompressed, SPAN_HIGHWAYS, PbfLayer.PBF_PISTES);
     }
 
     private void addQueuePois(double lat, double lon) {
-        addQueueMapData(lat, lon, zoomPoiCompressed, 3, PbfLayer.PBF_POI);
+        addQueueMapData(lat, lon, zoomPoiCompressed, SPAN_POI, PbfLayer.PBF_POI);
     }
 
     /**

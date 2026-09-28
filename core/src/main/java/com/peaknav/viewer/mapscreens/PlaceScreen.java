@@ -432,18 +432,34 @@ class PlaceScreen extends MapScreens.Base {
     }
 
     /**
-     * The tiles a download would fetch around the point. Shown whole when a point is chosen:
-     * three archives a side, some 300 km, it was larger than the map at the zoom a point used
-     * to be shown at, and all there was to see of it was a faint red wash.
+     * The ground a download would fetch around the point, one box for each kind of data: they
+     * differ several times over (PeakNavDownloadManager.downloadBlocks). The block shown was
+     * the 3 x 3 zoom-9 tiles of an old setting that nothing downloaded, a fraction of what
+     * then turned up hatched on the map.
      */
-    private BoundingBox downloadBlock() {
+    private List<BoundingBox> downloadBlocks() {
+        List<BoundingBox> blocks = new ArrayList<>();
         if (purpose == Purpose.DELETE) {
             // What Delete would delete: the block the point is in.
-            return com.peaknav.database.DownloadedData.blockAt(pointLat, pointLon).getBoundingBox();
+            blocks.add(com.peaknav.database.DownloadedData.blockAt(pointLat, pointLon).getBoundingBox());
+            return blocks;
         }
         PeakNavDownloadManager manager = getC().missingDataDownloader.getPeakNavDownloadManager();
-        List<Tile> tiles = manager.getQueueMapData(pointLat, pointLon, manager.getZoomPoi(), manager.getRangePoi());
-        return MissingDataDownloader.getBoundingBoxOfTargetTiles(tiles);
+        blocks.addAll(manager.downloadBlocks(pointLat, pointLon));
+        if (blocks.isEmpty()) {
+            blocks.add(new BoundingBox(pointLat, pointLon, pointLat, pointLon));
+        }
+        return blocks;
+    }
+
+    /** All of {@link #downloadBlocks}: shown whole when a point is chosen. */
+    private BoundingBox downloadBlock() {
+        List<BoundingBox> blocks = downloadBlocks();
+        BoundingBox all = blocks.get(0);
+        for (BoundingBox block : blocks) {
+            all = all.extendBoundingBox(block);
+        }
+        return all;
     }
 
     /** The marker and the red block, when there is a point; what is downloaded, always. */
@@ -454,9 +470,18 @@ class PlaceScreen extends MapScreens.Base {
         }
         if (pointChosen) {
             map.setMarker(pointLat, pointLon);
+            // Each kind's box washed faintly, so the red deepens towards the point, where
+            // more arrives; the outline around all of it.
+            List<BoundingBox> blocks = downloadBlocks();
+            float alpha = 0.18f / blocks.size();
+            for (BoundingBox block : blocks) {
+                List<BoundingBox> one = new ArrayList<>();
+                one.add(block);
+                shadings.add(new SlippyMap.Shading(one, withAlpha(SELECTED, alpha), null, 0, 1f));
+            }
             List<BoundingBox> area = new ArrayList<>();
             area.add(downloadBlock());
-            shadings.add(new SlippyMap.Shading(area, withAlpha(SELECTED, 0.12f), SELECTED, 0, 2.5f));
+            shadings.add(new SlippyMap.Shading(area, null, SELECTED, 0, 2.5f));
         }
         map.setShadings(shadings);
     }
