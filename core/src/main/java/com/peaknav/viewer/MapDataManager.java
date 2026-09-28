@@ -183,7 +183,14 @@ public class MapDataManager {
                         break;
                     case "isolation_parent":
                         String isolationParentS = tags.get("isolation_parent");
-                        isolationParent = Integer.parseInt(isolationParentS);
+                        // Guarded as the height and the prominence are: one value that is no
+                        // integer threw out of the whole tile's list, and its labels, and those
+                        // of every tile after it in the read, did not appear.
+                        try {
+                            isolationParent = Integer.parseInt(isolationParentS.trim());
+                        } catch (NumberFormatException | NullPointerException notAnId) {
+                            // left unknown
+                        }
                         break;
                 }
             }
