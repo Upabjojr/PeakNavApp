@@ -801,6 +801,9 @@ public class LabelRenderer {
                 float plateH = markerGlyph.height + 2 * padY;
                 float plateY = d.y + flagHeight * 0.62f - plateH * 0.5f;
                 float plateW = markerGlyph.width + 2 * padX + flagWidth * 0.45f;
+                // Again for each plate: the sprite batch's end() below turns blending off, and
+                // every marker's plate after the first was drawn opaque.
+                Gdx.gl.glEnable(GL20.GL_BLEND);
                 shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
                 try {
                     shapeRenderer.setColor(0.05f, 0.06f, 0.13f, 0.78f);
@@ -1702,7 +1705,9 @@ public class LabelRenderer {
         float platePadX = 0.14f * widgetUnitStep;
         float platePadY = 0.07f * widgetUnitStep;
 
-        // Bars and the dark plates behind the labels.
+        // Bars and the dark plates behind the labels - translucent, so with blending on, which
+        // nothing had turned on at this point of the frame.
+        Gdx.gl.glEnable(GL20.GL_BLEND);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         try {
             for (int i = 0; i < n; i++) {
@@ -1730,6 +1735,7 @@ public class LabelRenderer {
             }
         } finally {
             shapeRenderer.end();
+            Gdx.gl.glDisable(GL20.GL_BLEND);   // back as the 3D pass's render context expects it
         }
 
         // Labels on top of their plates.
