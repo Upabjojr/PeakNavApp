@@ -677,6 +677,9 @@ public class OptionPane {
         checkBoxLargeFonts.addClickListener(() -> changer.execute(() -> {
             P.setViewLargeFonts(checkBoxLargeFonts.isChecked());
             getC().O.iterateOverVisiblePoisUnstoppable(poiObject -> poiObject.drawLabel.updateLabelPolygonCoordinates());
+            // And placed again, as after a change of units: every label has changed size, and
+            // which ones hide each other was still the answer for the other size.
+            getC().dataRetrieveThreadManager.triggerUpdateVisibilityLabelOverlap();
         }));
         buttons.add(checkBoxLargeFonts);
 
