@@ -372,6 +372,9 @@ class PlaceScreen extends MapScreens.Base {
 
     /** The point moves here, with the block a download would fetch around it. */
     private void choose(double lat, double lon, boolean center) {
+        // An online answer still on its way belongs to the search this choice has ended: it
+        // put the list back over the map and the point just chosen.
+        searchGeneration++;
         pointLat = lat;
         pointLon = lon;
         pointChosen = true;
