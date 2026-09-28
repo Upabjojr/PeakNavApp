@@ -309,6 +309,48 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         });
     }
 
+    /**
+     * The sky's date and time, in the device's zone: an alert with one field, which a date
+     * picker fills in place of the keyboard. OK holds the sky at the time shown; "Device clock"
+     * lets it run again. The base class's chooseSkyTime does nothing, and with no override here
+     * the menu's button closed the menu, switched the sky on, and showed no picker.
+     */
+    @Override
+    public void chooseSkyTime() {
+        onMainThread(() -> {
+            final com.peaknav.sky.SkyModel sky = getC().skyModel;
+            final java.text.SimpleDateFormat shown =
+                    new java.text.SimpleDateFormat("yyyy-MM-dd  HH:mm", java.util.Locale.ENGLISH);
+            final org.robovm.apple.uikit.UIDatePicker picker = new org.robovm.apple.uikit.UIDatePicker();
+            picker.setDatePickerMode(org.robovm.apple.uikit.UIDatePickerMode.DateAndTime);
+            // Wheels, where there is a choice (iOS 13.4): the default since iOS 14 is a label
+            // that opens a calendar of its own, which is no replacement for a keyboard.
+            if (NSProcessInfo.getSharedProcessInfo().isOperatingSystemAtLeastVersion(
+                    new org.robovm.apple.foundation.NSOperatingSystemVersion(13, 4, 0))) {
+                picker.setPreferredDatePickerStyle(org.robovm.apple.uikit.UIDatePickerStyle.Wheels);
+                picker.sizeToFit();
+            }
+            picker.setDate(new org.robovm.apple.foundation.NSDate(new java.util.Date(sky.currentTimeMillis())));
+
+            UIAlertController controller = new UIAlertController(
+                    s("Sky_time"), null, UIAlertControllerStyle.Alert);
+            controller.addTextField((UITextField field) -> {
+                field.setText(shown.format(picker.getDate().toDate()));
+                field.setTextAlignment(org.robovm.apple.uikit.NSTextAlignment.Center);
+                field.setInputView(picker);
+                picker.addOnValueChangedListener(
+                        control -> field.setText(shown.format(picker.getDate().toDate())));
+            });
+            controller.addAction(new UIAlertAction(s("OK"), UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> sky.setCustomTimeMillis(picker.getDate().toDate().getTime())));
+            controller.addAction(new UIAlertAction(s("Sky_time_device_clock"), UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> sky.clearCustomTime()));
+            controller.addAction(new UIAlertAction(s("Cancel"), UIAlertActionStyle.Cancel,
+                    (UIAlertAction action) -> { }));
+            present(controller);
+        });
+    }
+
     @Override
     public void promptChoice(final String title, final String message, final String first,
                              final String second, final Runnable onFirst, final Runnable onSecond) {
