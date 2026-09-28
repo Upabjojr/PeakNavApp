@@ -390,7 +390,7 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                     fields.add(field);
                 });
             }
-            controller.addAction(new UIAlertAction("OK", UIAlertActionStyle.Default,
+            controller.addAction(new UIAlertAction(s("OK"), UIAlertActionStyle.Default,
                     (UIAlertAction action) -> {
                         String[] values = new String[fields.size()];
                         for (int i = 0; i < values.length; i++) {
@@ -398,7 +398,7 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                         }
                         callback.onEntered(values);
                     }));
-            controller.addAction(new UIAlertAction("Cancel", UIAlertActionStyle.Cancel,
+            controller.addAction(new UIAlertAction(s("Cancel"), UIAlertActionStyle.Cancel,
                     (UIAlertAction action) -> callback.onCancelled()));
             present(controller);
         });
