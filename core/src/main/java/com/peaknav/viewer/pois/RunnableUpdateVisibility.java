@@ -108,16 +108,20 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
 
         getC().visibility.updateCameraPosLatits();
 
-        Iterator<DataRetrieveThreadManager.MapDataUpdateRequest> iterator = updateRequests.iterator();
-
-        while (iterator.hasNext()) {
+        while (true) {
+            // One request at a time, taken under the set's own lock. The set is a synchronized
+            // one, which does not guard iteration: the render thread adding a request between
+            // next() and remove() made remove() throw, and the pass ended there with its
+            // worker thread.
             DataRetrieveThreadManager.MapDataUpdateRequest updateRequest;
-            try {
+            synchronized (updateRequests) {
+                Iterator<DataRetrieveThreadManager.MapDataUpdateRequest> iterator = updateRequests.iterator();
+                if (!iterator.hasNext()) {
+                    break;
+                }
                 updateRequest = iterator.next();
-            } catch (ConcurrentModificationException concurrentModificationException) {
-                return;
+                iterator.remove();
             }
-            iterator.remove();
 
             switch (updateRequest) {
                 case DATA_SORT_POI_LIST_BY_RELEVANCE:
