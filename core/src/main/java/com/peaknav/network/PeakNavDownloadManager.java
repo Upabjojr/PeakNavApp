@@ -378,7 +378,10 @@ public class PeakNavDownloadManager {
                                 System.err.println("[Download] skipped " + target.objectKey
                                         + ": download consent not granted"
                                         + " (see Missing_download_info_consent)");
-                                ok = true;
+                                // Left pending, and counted as not fetched: it was counted as
+                                // fetched, and its tile stamped downloaded with nothing on disk.
+                                pending = true;
+                                failed.incrementAndGet();
                                 return;
                             }
 
