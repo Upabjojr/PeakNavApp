@@ -1939,6 +1939,9 @@ public class MapViewerScreen implements Screen {
 				// Upright or on its side, the slideshow is laid out differently.
 				tutorialOverlay.layout();
 			}
+			if (featureInfoPane != null) {
+				featureInfoPane.relayout();
+			}
 			stageNavigationViewport.update(width, height, true);
 
 			labelRenderer.resize(width, height);

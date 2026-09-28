@@ -194,6 +194,13 @@ public class OptionPane {
         if (selectLanguage.isVisible()) {
             fitLanguageList();
         }
+        // Sized from the screen's height when built or opened, as the language list was: turned
+        // with one open, a list ran off the screen with the buttons around it.
+        if (selectMarkers.isVisible()) {
+            rebuildMarkersList();
+        }
+        populateSatelliteSourceSelectBox(selectBoxSatSrc);
+        populateDownloadSourceSelectBox(selectBoxDownloadSrc);
     }
 
     /*

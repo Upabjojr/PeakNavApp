@@ -168,6 +168,17 @@ public class FeatureInfoPane {
         return root.isVisible() && shown != null;
     }
 
+    /**
+     * The screen has turned: laid out again for its width and height. The portrait's maximum
+     * height stayed on its side, running the buttons off the bottom; the landscape's width
+     * stayed upright, over the button columns on the right.
+     */
+    public void relayout() {
+        if (isShown()) {
+            layoutPanel();
+        }
+    }
+
     public FeatureInfo getShown() {
         return isShown() ? shown : null;
     }
