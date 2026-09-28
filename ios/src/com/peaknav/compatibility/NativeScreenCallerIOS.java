@@ -414,7 +414,14 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     public void shareSnapshot(final Pixmap pixmap, final com.peaknav.utils.SnapshotInfo info) {
         // Encoded on the calling thread: it is megabytes of work and the main thread is
         // also the render thread here, so doing it there would stall the picture.
-        final byte[] png = new UtilsOSIOS().encodePng(pixmap);
+        final byte[] png;
+        try {
+            png = new UtilsOSIOS().encodePng(pixmap);
+        } finally {
+            // The picture is this method's to release, as it is Android's and the desktop's:
+            // kept, every share left a screen's worth of native memory behind.
+            pixmap.dispose();
+        }
         onMainThread(() -> {
             UIImage image = new UIImage(new NSData(png));
             // Shared as a JPEG file rather than a UIImage: the file keeps the EXIF block
