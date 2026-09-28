@@ -27,8 +27,10 @@ public interface LabelTextRasterizer {
 
     /**
      * The text drawn in {@code color} at {@code textSize} pixels to the em, on a transparent
-     * picture exactly {@link #width} wide (rounded up) and as tall as the font's ascent plus
-     * descent. RGBA8888, not yet a texture: this may run off the render thread.
+     * picture exactly {@link #width} wide (rounded up) and tall enough for every mark: the
+     * ascent and descent of the fonts that drew it, which for a name in another script are not
+     * the system font's - stacked Thai marks, Arabic descenders, the taller CJK fonts. RGBA8888,
+     * not yet a texture: this may run off the render thread.
      */
     Rendered draw(String text, float textSize, Color color);
 

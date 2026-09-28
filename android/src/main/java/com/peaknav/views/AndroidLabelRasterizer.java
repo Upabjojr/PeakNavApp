@@ -57,10 +57,16 @@ final class AndroidLabelRasterizer implements LabelTextRasterizer {
         Paint paint = paints.get();
         paint.setTextSize(textSize);
         paint.setColor(Color.argb8888(color));
+        // The paint's metrics are its typeface's; a name in another script is drawn by a
+        // fallback font, whose marks can reach above or below them and were cut off at the
+        // picture's edge. The glyphs' own bounds say how far they go.
         Paint.FontMetrics metrics = paint.getFontMetrics();
-        float ascent = -metrics.ascent;
+        android.graphics.Rect ink = new android.graphics.Rect();
+        paint.getTextBounds(text, 0, text.length(), ink);
+        float ascent = (float) Math.ceil(Math.max(-metrics.ascent, -ink.top + 1));
+        float descent = Math.max(metrics.descent, ink.bottom + 1);
         int width = Math.max(1, (int) Math.ceil(paint.measureText(text)));
-        int height = Math.max(1, (int) Math.ceil(ascent + metrics.descent));
+        int height = Math.max(1, (int) Math.ceil(ascent + descent));
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         new Canvas(bitmap).drawText(text, 0f, ascent, paint);
         int[] argb = new int[width * height];

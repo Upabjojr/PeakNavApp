@@ -5,7 +5,10 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.peaknav.viewer.labels.LabelTextRasterizer;
 
 import org.robovm.apple.coregraphics.CGPoint;
+import org.robovm.apple.coregraphics.CGRect;
 import org.robovm.apple.coregraphics.CGSize;
+import org.robovm.apple.coretext.CTLine;
+import org.robovm.apple.coretext.CTLineBoundsOptions;
 import org.robovm.apple.foundation.NSAttributedString;
 import org.robovm.apple.foundation.NSData;
 import org.robovm.apple.uikit.NSAttributedStringAttributes;
@@ -37,19 +40,28 @@ public final class IOSLabelRasterizer implements LabelTextRasterizer {
 
     @Override
     public Rendered draw(String text, float textSize, Color color) {
-        UIFont font = UIFont.getSystemFont(textSize);
-        float ascent = (float) font.getAscender();
-        float descent = (float) -font.getDescender();
         NSAttributedString string = attributed(text, textSize, color);
         CGSize size = string.getSize();
+        // The line's metrics, not the system font's: a name drawn by a fallback font with a
+        // taller ascender (PingFang, the Thai, Arabic and Devanagari fonts) makes the line taller,
+        // and draw(CGPoint) puts the top of that line at the point - the baseline sat lower than
+        // Rendered said, and the bottom of the text was cut at the picture's edge. y is up from
+        // the baseline in these bounds.
+        CTLine line = CTLine.create(string);
+        CGRect typographic = line.getBounds(CTLineBoundsOptions.ExcludeTypographicLeading);
+        CGRect glyphs = line.getBounds(CTLineBoundsOptions.UseGlyphPathBounds);
+        double lineAscent = typographic.getMaxY();
+        double top = Math.max(lineAscent, glyphs.getMaxY() + 1);
+        double bottom = Math.min(typographic.getMinY(), glyphs.getMinY() - 1);
+        float ascent = (float) Math.ceil(top);
         int width = Math.max(1, (int) Math.ceil(size.getWidth()));
-        int height = Math.max(1, (int) Math.ceil(ascent + descent));
+        int height = Math.max(1, (int) Math.ceil(ascent - bottom));
         UIGraphics.beginImageContext(new CGSize(width, height), false, 1.0);
         UIImage image;
         try {
-            // draw(CGPoint) puts the top of the line at the point: the baseline lands an ascent
-            // below it, where Rendered says it is.
-            string.draw(new CGPoint(0, 0));
+            // draw(CGPoint) puts the top of the line at the point, the baseline a line's ascent
+            // below it: moved down so the baseline lands where Rendered says it is.
+            string.draw(new CGPoint(0, ascent - lineAscent));
             image = UIGraphics.getImageFromCurrentImageContext();
         } finally {
             UIGraphics.endImageContext();
