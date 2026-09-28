@@ -56,11 +56,13 @@ public class CurrentLocation {
         currentLatitude = targetLatitude;
         currentLongitude = targetLongitude;
         currentLocationNotSet = false;
-        getC().getMapViewerScreen().setCurrentCoordLocation(
-                targetLongitude,
-                targetLatitude,
-                currentTerrainEle
-        );
+        // On the render thread: this is called from the elevation loader when a tile holding
+        // the target lands, and what follows moves the camera, sets the elevation bar (whose
+        // change event moves the camera again and shows a toast) and shows or hides widgets -
+        // none of which may happen beside the frame being drawn.
+        final float lon = targetLongitude, lat = targetLatitude, ele = currentTerrainEle;
+        com.badlogic.gdx.Gdx.app.postRunnable(
+                () -> getC().getMapViewerScreen().setCurrentCoordLocation(lon, lat, ele));
     }
 
     private volatile float currentTerrainEle;

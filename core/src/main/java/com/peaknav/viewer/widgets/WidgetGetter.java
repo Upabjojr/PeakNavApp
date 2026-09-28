@@ -90,10 +90,17 @@ public class WidgetGetter {
         return tableCopyright;
     }
 
-    public void setCopyrightLabel(String copyrightNotice) {
+    /**
+     * Any thread: the labels are set on the render thread, which lays them out and draws them.
+     * The menus called this from their worker, and a label's text changed under the frame
+     * drawing it (libGDX's layouts and pools are not made for two threads).
+     */
+    public void setCopyrightLabel(final String copyrightNotice) {
         this.copyrightNotice = copyrightNotice;
-        tableLocation.copyrightLabel.setText(copyrightNotice);
-        copyrightLabel.setText(copyrightNotice);
+        Gdx.app.postRunnable(() -> {
+            tableLocation.copyrightLabel.setText(copyrightNotice);
+            copyrightLabel.setText(copyrightNotice);
+        });
     }
 
     public static class HyperlinkLabel extends Table {
@@ -618,12 +625,15 @@ public class WidgetGetter {
          * is the one that lays it out and draws it.
          */
         public void setDownloadProgress(final float ratio) {
-            progressBar.setValue(ratio);
             final int percent = Math.max(0, Math.min(100, (int) Math.floor(ratio * 100f)));
-            // The bar hides once the ratio passes 0.999 (PeakNavAppState), and so does the
-            // percentage in the middle of the screen.
+            // The bar hides once the ratio passes 0.999, and so does the percentage in the
+            // middle of the screen. All of it on the render thread, in the order it was asked
+            // for: the bar was set from the download's workers, firing a change event from
+            // there, and could overtake the "0 %" posted at the start, leaving it stuck at 0.
             final boolean finished = ratio > 0.999f;
             Gdx.app.postRunnable(() -> {
+                progressBar.setValue(ratio);
+                progressBarTable.setVisible(!finished);
                 progressPercentLabel.setText(percent + "%");
                 com.peaknav.viewer.screens.LabelLoading labelLoading = mapApp.mapViewerScreen.labelLoading;
                 if (labelLoading != null) {

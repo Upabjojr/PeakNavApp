@@ -77,7 +77,10 @@ public class PeakNavAppState {
     public void setMapDataDownloaded(boolean mapDataDownloaded) {
         this.mapDataDownloaded = mapDataDownloaded;
         if (mapDataDownloaded) {
-            getAppInstance().introScreen.triggerMapDataDownloaded();
+            // The welcome screen's widgets and the switch to the map, on the render thread:
+            // this is called from the download's thread when it ends, and Game.setScreen and
+            // the label's text were set from there.
+            onRenderThread(() -> getAppInstance().introScreen.triggerMapDataDownloaded());
             // The search and download screen, if it is open, shades what is now on the device.
             com.peaknav.viewer.mapscreens.MapScreens.downloadedDataChanged();
         }
@@ -160,8 +163,7 @@ public class PeakNavAppState {
     public void setMapDataDownloadProgressRatio(float mapDataDownloadPercent) {
         this.mapDataDownloadProgressRatio = mapDataDownloadPercent;
         WidgetGetter.TableLocation tableLocation = MapViewerSingleton.getViewerInstance().tableLocation;
-        tableLocation.setDownloadProgress(mapDataDownloadPercent);
-        tableLocation.progressBarTable.setVisible(!(mapDataDownloadPercent > 0.999f));
+        tableLocation.setDownloadProgress(mapDataDownloadPercent);   // posts, the bar's visibility too
     }
 
     public float getMapDataDownloadProgressRatio() {
