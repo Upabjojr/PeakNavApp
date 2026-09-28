@@ -277,6 +277,11 @@ public final class PhotoSkylineAligner {
         if (p == null || getC() == null || getC().L == null || getC().L.isCurrentLocationNotSet()) {
             return;
         }
+        // One at a time: a second press while a match runs started another worker beside it,
+        // and each turned the camera to its own result.
+        if (!MATCHING.compareAndSet(false, true)) {
+            return;
+        }
         // held on screen until the result replaces it: the two forests and the pose
         // search take a few seconds on a phone
         toast(s("Match_photo_direction_running"), true);
@@ -290,12 +295,19 @@ public final class PhotoSkylineAligner {
                         toast(s("Match_photo_direction_failed"), false);
                         return;
                     }
+                    if (!isCurrent(p)) {
+                        // Closed or replaced during the match, which takes seconds.
+                        releaseToast();
+                        return;
+                    }
                     apply(m, p);
                     toast(s("Match_photo_direction_applied") + " " + Math.round(m.bearingDeg) + "\u00b0"
                             + (m.isConfident() ? "" : " (" + s("Match_photo_direction_uncertain") + ")"), false);
                 } catch (Throwable t) {
                     getLogger().error(TAG, "forced skyline match failed: " + t);
                     releaseToast();
+                } finally {
+                    MATCHING.set(false);
                 }
             }
         }, "skyline-match");
@@ -795,9 +807,27 @@ public final class PhotoSkylineAligner {
         });
     }
 
+    /** Whether {@code p} is still the photo behind the terrain. */
+    private static boolean isCurrent(Pending p) {
+        synchronized (LOCK) {
+            return pending == p;
+        }
+    }
+
+    /** Whether a match the button started is running. */
+    private static final java.util.concurrent.atomic.AtomicBoolean MATCHING =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     private static void applyOnRenderThread(SkylineMatcher.Match m, Pending p) {
         MapViewerScreen screen = getC().getMapViewerScreen();
         if (screen == null) {
+            return;
+        }
+        // Checked here, on the thread that clears the photo, as well as where the match
+        // ended: a match found for a photo since closed or replaced turned the camera, set
+        // its field of view and switched the gyroscope off, for a picture no longer there.
+        // The automatic match's "yes" can come long after the question was asked.
+        if (!isCurrent(p)) {
             return;
         }
         com.peaknav.gesture.PhotoPin.clear();   // the pose is replaced wholesale
