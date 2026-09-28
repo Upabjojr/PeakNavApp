@@ -28,7 +28,7 @@ changed with the switch, so stale uncorrected tiles are never mixed in.)
 
 One honesty note about the data itself: ASTER is a stereo-photogrammetric DEM, and
 like all of its kind it rounds off sharp summits - broad ones read true (the
-Breithorn's snow dome comes back 4160 m against a surveyed 4164) while raw ASTER
+Breithorn's snow dome comes back 4156 m against a surveyed 4164) while raw ASTER
 clipped a rock spire by hundreds of metres. The dataset now corrects summits
 against surveyed elevations: the Matterhorn, which the raw DEM clipped to about
 4040 m, tops out at 4484 - the surveyed 4478 to within the encoding's 4 m step.
@@ -226,7 +226,7 @@ def elevation_at(lat, lon, *, sample="max", dataset_path=None, timeout_s=120):
         ``snapshot_download``.
 
     >>> elevation_at(45.9417, 7.7480)                    # doctest: +SKIP
-    4160
+    4156
     >>> elevation_at(0.0, -30.0)                         # doctest: +SKIP
     0
 

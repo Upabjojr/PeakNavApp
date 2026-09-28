@@ -18,7 +18,7 @@ Two submodules, split by what they need:
     repository with ``./gradlew :headless:renderJar``) and a Java 17 runtime.
 
         >>> from peaknav.headless import PeakNavHeadless
-        >>> with PeakNavHeadless(45.9763, 7.6586) as nav:    # doctest: +SKIP
+        >>> with PeakNavHeadless(46.0207, 7.7491) as nav:    # above Zermatt; doctest: +SKIP
         ...     nav.look(bearing_deg=230, pitch_deg=-4)
         ...     nav.save_frame("matterhorn.png")
 
