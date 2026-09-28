@@ -670,20 +670,40 @@ public class MapTile {
             // The count comes down on every way out. A missing elevation file, or anything
             // thrown below, left it raised: a provider that could never be evicted or disposed.
             try {
-                elevationImage = provider.provideForMapTile(MapTile.this);
+                if (disposed) {
+                    return;   // replaced while it waited in the queue
+                }
+                // Kept in a local: the render thread sets the field to null when it disposes the
+                // tile, and reading it again below threw NullPointerException here.
+                ElevationImageAbstract image = provider.provideForMapTile(MapTile.this);
                 // elevationImageMesh = elevationImageStorage.retrieveMesh();
-                if (elevationImage == null) {
+                if (image == null) {
                     // This probably means the elevation file has not been found:
                     setMapTileState(MapTileState.ELEVATION_DATA_NOT_FOUND);
                     return;
                 }
-                callVertexRetrieval();
+                pixmapLock.lock();
+                try {
+                    if (disposed) {
+                        // Disposed while the crop was made: nothing will dispose it but this.
+                        image.dispose();
+                        return;
+                    }
+                    elevationImage = image;
+                } finally {
+                    pixmapLock.unlock();
+                }
+                callVertexRetrieval(image);
                 if (tileBoundingBox.toBoundingBox().contains(
                         getC().L.getTargetLatLong()
                 )) {
-                    float ele = elevationImage.getTileElevationLatitsFromMaxCoords(
+                    float ele = image.getTileElevationLatitsFromMaxCoords(
                             getC().L.getTargetLongitude(), getC().L.getTargetLatitude());
                     getC().L.setCurrentTerrainEle(ele);
+                }
+            } catch (IllegalStateException disposedMeanwhile) {
+                if (!disposed) {
+                    throw disposedMeanwhile;
                 }
             } finally {
                 provider.decrementReferenceCounter();
@@ -694,19 +714,23 @@ public class MapTile {
 
     public void recomputeNormals() {
         future = getC().executorEleLoad.submit(() -> {
-            elevationImage.setVertexNormals(vertices);
+            ElevationImageAbstract image = elevationImage;
+            if (image == null || disposed) {
+                return;
+            }
+            image.setVertexNormals(vertices);
             Gdx.app.postRunnable(this::uploadMeshVertices);
         });
     }
 
-    private void callVertexRetrieval() {
+    private void callVertexRetrieval(ElevationImageAbstract image) {
         getAppState().setLastAnyMapTileUpdateTimeToNow();
 
         // This two are meant to avoid computing vertices and indices on the OpenGL thread:
-        elevationImage.getMeshVertices();
-        elevationImage.getMeshIndices();
+        image.getMeshVertices();
+        image.getMeshIndices();
 
-        float[] oldVertices = elevationImage.getMeshVertices();
+        float[] oldVertices = image.getMeshVertices();
         if (vertices == null) {
             vertices = new float[oldVertices.length];
         }

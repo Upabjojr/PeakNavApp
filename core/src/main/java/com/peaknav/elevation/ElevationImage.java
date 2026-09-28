@@ -38,6 +38,10 @@ public class ElevationImage extends ElevationImageAbstract {
 
     @Override
     protected short[] computeElevationsFromImages() {
+        if (eleJpg.isDisposed() || elePng.isDisposed()) {
+            // Disposed before its elevations were asked for: the tile has gone.
+            throw new IllegalStateException("elevation image already disposed");
+        }
         short[] elevationsShort = new short[edgeLength*edgeLength];
 
         ByteBuffer bbJpg = eleJpg.getPixels();
@@ -136,8 +140,13 @@ public class ElevationImage extends ElevationImageAbstract {
         // saveNormalsToExternal(fileImageNormals);
     }
 
+    /**
+     * Synchronized on the image, as the computation of its elevations is (getElevations): the
+     * render thread disposes a replaced tile while a loader thread may still be reading these
+     * pixmaps' native buffers, and freeing them under it read freed memory.
+     */
     @Override
-    public void dispose() {
+    public synchronized void dispose() {
         if (!eleJpg.isDisposed()) {
             eleJpg.dispose();
         }
