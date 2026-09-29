@@ -109,8 +109,21 @@ public final class DesktopSwing {
      * the buttons call from.
      */
     public static void onEdt(Runnable work) {
+        onEdt(work, null);
+    }
+
+    /**
+     * As {@link #onEdt(Runnable)}, running {@code otherwise} in its place when no window can
+     * be opened: the answer a dialog closed without one would have given, or the freeing of
+     * what the work would have freed. Without it, a caller waiting on the dialog's answer
+     * waited for good.
+     */
+    public static void onEdt(Runnable work, Runnable otherwise) {
         if (!AVAILABLE) {
             reportUnavailable();
+            if (otherwise != null) {
+                otherwise.run();
+            }
             return;
         }
         SwingUtilities.invokeLater(() -> {
@@ -122,6 +135,39 @@ public final class DesktopSwing {
                 thrown.printStackTrace();
             }
         });
+    }
+
+    /** Whether a file chooser is on screen, or about to be: one at a time. */
+    private static final java.util.concurrent.atomic.AtomicBoolean CHOOSING =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * Runs a file chooser's {@code work} on the event thread, unless one is already up or on
+     * its way: then it returns false, and does nothing. The mark is set here, on the calling
+     * thread, before the work is queued. Set inside the queued work, as it was, it guarded
+     * nothing when the chooser was the desktop's own (zenity, kdialog): waiting for that
+     * program held the event thread, a second click queued a second chooser behind it, and
+     * it opened as soon as the first closed.
+     *
+     * @param otherwise run instead when no window can be opened; may be null
+     */
+    public static boolean chooser(Runnable work, Runnable otherwise) {
+        if (!CHOOSING.compareAndSet(false, true)) {
+            return false;
+        }
+        onEdt(() -> {
+            try {
+                work.run();
+            } finally {
+                CHOOSING.set(false);
+            }
+        }, () -> {
+            CHOOSING.set(false);
+            if (otherwise != null) {
+                otherwise.run();
+            }
+        });
+        return true;
     }
 
     private static void printOnce() {

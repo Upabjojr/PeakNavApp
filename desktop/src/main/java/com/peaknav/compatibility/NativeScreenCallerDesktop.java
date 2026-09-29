@@ -108,7 +108,8 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void pickGpxFile() {
-        DesktopSwing.onEdt(() -> {
+        // One chooser at a time: a second click while one is up does nothing.
+        DesktopSwing.chooser(() -> {
             // The system's own dialog where there is one; Swing's otherwise.
             java.io.File picked = com.peaknav.viewer.desktop.NativeFileDialogs.open(null,
                     new com.peaknav.viewer.desktop.NativeFileDialogs.Filter("GPX tracks", "gpx"));
@@ -141,7 +142,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                 return;
             }
             loadGpxFile(file);
-        });
+        }, null);
     }
 
     /** Reads a .gpx on a worker and adds its paths; from the chooser or a drop on the window. */
@@ -201,7 +202,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                     null, options, options[0]);
             // Closed without an answer counts as the second one.
             (answer == 0 ? onFirst : onSecond).run();
-        });
+        }, onSecond);
     }
 
     @Override
@@ -386,7 +387,8 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         // JPEG by default, as on the phones: a render of terrain and photographs is several
         // times smaller so, and the EXIF block (where and which way) travels with it.
         final String defaultName = "PeakNav_" + stamp + ".jpg";
-        DesktopSwing.onEdt(() -> {
+        // One chooser at a time; with one already up, this snapshot is not saved.
+        boolean asking = DesktopSwing.chooser(() -> {
             try {
                 // The system's own dialog where there is one, which asks before overwriting;
                 // then only a name this code changes needs asking about. Swing's otherwise.
@@ -473,7 +475,10 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
             } catch (Throwable t) {
                 pixmap.dispose();
             }
-        });
+        }, pixmap::dispose);
+        if (!asking) {
+            pixmap.dispose();
+        }
     }
 
     /**
@@ -708,7 +713,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                 values[i] = fields[i].getText();
             }
             callback.onEntered(values);
-        });
+        }, callback::onCancelled);
     }
 
     /**

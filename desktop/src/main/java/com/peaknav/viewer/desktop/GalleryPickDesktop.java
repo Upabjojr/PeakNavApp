@@ -10,7 +10,6 @@ import com.peaknav.viewer.MapViewerSingleton;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.swing.JFileChooser;
 import javax.swing.SwingUtilities;
@@ -39,9 +38,6 @@ import javax.swing.filechooser.FileFilter;
  */
 public class GalleryPickDesktop {
 
-    /** True while a chooser is on screen. Only one may be; see the class comment. */
-    private static final AtomicBoolean OPEN = new AtomicBoolean(false);
-
     /** The chooser on screen, so a second request can raise it instead of stacking one. */
     private static volatile JFileChooser showing;
 
@@ -55,20 +51,25 @@ public class GalleryPickDesktop {
      * the second call brings that one to the front rather than opening another.
      */
     public static void open() {
-        DesktopSwing.onEdt(() -> {
-            if (!OPEN.compareAndSet(false, true)) {
-                // Already asking: show the user the chooser they already have, wherever it
-                // has ended up - behind the map window, or minimised. See WindowRaiser.
-                WindowRaiser.bringToFront(showing);
-                return;
-            }
+        // Only one chooser at a time, of any kind (DesktopSwing.chooser).
+        boolean opening = DesktopSwing.chooser(() -> {
             try {
                 selectImage();
             } finally {
                 showing = null;
-                OPEN.set(false);
             }
-        });
+        }, null);
+        if (!opening) {
+            // Already asking: show the user the chooser they already have, wherever it has
+            // ended up - behind the map window, or minimised. See WindowRaiser. The desktop's
+            // own chooser is another program's window, and is left to it.
+            DesktopSwing.onEdt(() -> {
+                JFileChooser chooser = showing;
+                if (chooser != null) {
+                    WindowRaiser.bringToFront(chooser);
+                }
+            });
+        }
     }
 
     /**
