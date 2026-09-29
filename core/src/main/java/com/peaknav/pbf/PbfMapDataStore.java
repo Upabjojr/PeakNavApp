@@ -25,9 +25,13 @@ public class PbfMapDataStore {
     }
 
     private void insertWayIfContained(BoundingBox bb, Way way, MapReadResult mapReadResult) {
+        // A way's nodes can be missing (Way: a node outside the extract), as a whole ring or one point.
         for (LatLong[] latLongs : way.latLongs) {
+            if (latLongs == null) {
+                continue;
+            }
             for (LatLong latLong : latLongs) {
-                if (bb.contains(latLong)) {
+                if (latLong != null && bb.contains(latLong)) {
                     mapReadResult.ways.add(way);
                     return;
                 }

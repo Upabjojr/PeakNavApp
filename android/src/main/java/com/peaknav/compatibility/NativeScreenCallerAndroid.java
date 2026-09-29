@@ -54,8 +54,6 @@ import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.views.AndroidLauncher;
 import com.peaknav.views.AppInfoAndroidView;
 import com.peaknav.views.CameraPictureView;
-import com.peaknav.views.MapDataDownloadChooser;
-import com.peaknav.views.SearchMenu;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

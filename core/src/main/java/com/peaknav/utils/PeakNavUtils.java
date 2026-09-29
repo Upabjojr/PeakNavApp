@@ -217,8 +217,6 @@ public class PeakNavUtils {
         return imageHeights;
     }
 
-    private final static ConcurrentMap<String, Lock> blockedImages = new ConcurrentHashMap<>();
-
     /** Hands back a reference taken by {@link #readImageCached}; null-safe. */
     public static void decrementReferenceCounter(Pixmap pixmap) {
         if (pixmap == null) {
@@ -250,26 +248,6 @@ public class PeakNavUtils {
         }
     }
 
-    public static class PixmapLock {
-        public final Pixmap pixmap;
-        public final Lock lock;
-        public PixmapLock(Pixmap pixmap, Lock lock) {
-            this.pixmap = pixmap;
-            this.lock = lock;
-        }
-    }
-    public static PixmapLock readImageBlocking(File tileTexture) {
-        String tilePath = tileTexture.getAbsolutePath();
-        Lock lock = blockedImages.get(tilePath);
-        if (lock == null) {
-            synchronized (blockedImages) {
-                blockedImages.put(tilePath, new ReentrantLock());
-            }
-            lock = blockedImages.get(tilePath);
-        }
-        lock.lock();
-        return new PixmapLock(readImage(tileTexture), lock);
-    }
 
     public static void setBytesAsBackgroundImage(byte[] bytesJpeg) {
         // The map's "Loading..." screen while the picture is decoded and turned upright;

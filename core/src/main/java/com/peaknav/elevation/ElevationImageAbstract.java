@@ -14,8 +14,8 @@ public abstract class ElevationImageAbstract {
     public static final int numVertAttributes = 8;
 
     /**
-     * Most vertices a tile mesh may have. The index buffers built here and in
-     * {@link com.peaknav.elevation.NormalShader} are {@code short[]} — GL ES 2 has no 32-bit
+     * Most vertices a tile mesh may have. The index buffers built here are
+     * {@code short[]} — GL ES 2 has no 32-bit
      * element indices — so a vertex number beyond this wraps silently on the cast and the
      * triangles then point at arbitrary vertices, tearing holes you can see the sky through.
      *
@@ -200,25 +200,6 @@ public abstract class ElevationImageAbstract {
                 vertices[i + 5] = tmp1.z;
             }
         }
-    }
-
-    public float getTileElevationLatitsFromCoords(float lon, float lat) {
-        float floatX = (float) (lon - boundingBox.minLongitude) / coordStepX * (edgeLength - 1);
-        float floatY = (float) (lat - boundingBox.minLatitude) / coordStepY * (edgeLength - 1);
-        float wX = floatX - ((int) floatX);
-        float wY = floatY - ((int) floatY);
-        int eleX = (int) floatX;
-        int eleY = (int) floatY;
-        if (floatX >= edgeLength - 1)
-            eleX = edgeLength - 2;
-        if (eleY >= edgeLength - 1)
-            eleY = edgeLength - 2;
-        return (
-                wX * wY * getTileMatrixElevationLatits(eleX, eleY) +
-                        (1 - wX) * wY * getTileMatrixElevationLatits(eleX + 1, eleY) +
-                        wX * (1 - wY) * getTileMatrixElevationLatits(eleX, eleY + 1) +
-                        (1 - wX) * (1 - wY) * getTileMatrixElevationLatits(eleX + 1, eleY + 1)
-        );
     }
 
     public abstract void dispose();
