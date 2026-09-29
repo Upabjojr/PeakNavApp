@@ -177,7 +177,11 @@ tasks.matching { it.name.contains("merge") && it.name.contains("JniLibFolders") 
 // ':core:generateGeonamesAssetIndex' writes assets/geonames_index.362/filelist.txt into the
 // shared '../assets' folder that this module packages. Declare the dependency so Gradle orders
 // the asset merge after it; otherwise mergeAssets fails with an implicit-dependency validation error.
-tasks.matching { it.name == 'mergeDebugAssets' || it.name == 'mergeReleaseAssets' }.configureEach { mergeTask ->
+// Lint reads the assets folder too (the release build runs lintVital, whose model writer failed
+// the same way), so its tasks wait for the same two.
+tasks.matching {
+    it.name == 'mergeDebugAssets' || it.name == 'mergeReleaseAssets' || it.name.toLowerCase().contains('lint')
+}.configureEach { mergeTask ->
     mergeTask.dependsOn ':core:generateGeonamesAssetIndex'
     // And the fonts, baked into assets/fonts_baked/ when the app is built.
     mergeTask.dependsOn ':core:bakeFonts'
