@@ -56,6 +56,41 @@ public class CameraPictureView extends Fragment {
      * can use; see the note in surfaceCreated for what the size is really guarding against.
      */
     private static final int MAX_PICTURE_EDGE = 2048;
+
+    /**
+     * The photo's size, of the {@code {width, height}} pairs the camera offers: the largest in
+     * area with both edges within {@code maxEdge}, of the 4:3 ones - the viewfinder's shape -
+     * if there are any. The lists often hold one width in two shapes (2048x1536 and
+     * 2048x1152), in no set order, and the widest was taken, whichever came first: on a phone
+     * listing the 16:9 one first, the photo lost the top and bottom of what the viewfinder
+     * framed, and the top is where the skyline is. With every size above the ceiling, the
+     * smallest in area, of the 4:3 ones again if any.
+     */
+    static int[] choosePictureSize(int[][] sizes, int maxEdge) {
+        int[] best = null;
+        boolean bestFits = false;
+        boolean bestFourThree = false;
+        for (int[] size : sizes) {
+            boolean fits = size[0] <= maxEdge && size[1] <= maxEdge;
+            boolean fourThree = 3L * Math.max(size[0], size[1]) == 4L * Math.min(size[0], size[1]);
+            long area = (long) size[0] * size[1];
+            boolean better;
+            if (best == null || fits != bestFits) {
+                better = best == null || fits;
+            } else if (fourThree != bestFourThree) {
+                better = fourThree;
+            } else {
+                long bestArea = (long) best[0] * best[1];
+                better = fits ? area > bestArea : area < bestArea;
+            }
+            if (better) {
+                best = size;
+                bestFits = fits;
+                bestFourThree = fourThree;
+            }
+        }
+        return best;
+    }
     private SurfaceView surfaceView;
     private SurfaceHolder surfaceHolder;
     private ImageReader imageReader;
@@ -229,28 +264,13 @@ public class CameraPictureView extends Fragment {
                 // costing about what it cost when this code was reading the preview sizes.
                 List<Camera.Size> pictureSizes = param.getSupportedPictureSizes();
                 if (pictureSizes != null && !pictureSizes.isEmpty()) {
-                    int maxWidth = 0;
-                    for (Camera.Size size : pictureSizes) {
-                        if (size.width > MAX_PICTURE_EDGE || size.height > MAX_PICTURE_EDGE)
-                            continue;
-                        if (size.width <= maxWidth)
-                            continue;
-                        w = size.width;
-                        maxWidth = w;
-                        h = size.height;
+                    int[][] sizes = new int[pictureSizes.size()][];
+                    for (int i = 0; i < sizes.length; i++) {
+                        sizes[i] = new int[] {pictureSizes.get(i).width, pictureSizes.get(i).height};
                     }
-                    if (maxWidth == 0) {
-                        // Every size offered is above the ceiling: take the smallest of them,
-                        // which is the closest thing to a size this phone can be asked for.
-                        Camera.Size smallest = pictureSizes.get(0);
-                        for (Camera.Size size : pictureSizes) {
-                            if (size.width < smallest.width) {
-                                smallest = size;
-                            }
-                        }
-                        w = smallest.width;
-                        h = smallest.height;
-                    }
+                    int[] chosen = choosePictureSize(sizes, MAX_PICTURE_EDGE);
+                    w = chosen[0];
+                    h = chosen[1];
                     param.setPictureSize(w, h);
                 }
                 try {
