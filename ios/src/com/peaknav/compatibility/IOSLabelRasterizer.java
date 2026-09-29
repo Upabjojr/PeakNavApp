@@ -10,6 +10,7 @@ import org.robovm.apple.coregraphics.CGSize;
 import org.robovm.apple.coretext.CTLine;
 import org.robovm.apple.coretext.CTLineBoundsOptions;
 import org.robovm.apple.foundation.NSAttributedString;
+import org.robovm.apple.foundation.NSAutoreleasePool;
 import org.robovm.apple.foundation.NSData;
 import org.robovm.apple.uikit.NSAttributedStringAttributes;
 import org.robovm.apple.uikit.UIColor;
@@ -56,18 +57,23 @@ public final class IOSLabelRasterizer implements LabelTextRasterizer {
         float ascent = (float) Math.ceil(top);
         int width = Math.max(1, (int) Math.ceil(size.getWidth()));
         int height = Math.max(1, (int) Math.ceil(ascent - bottom));
-        UIGraphics.beginImageContext(new CGSize(width, height), false, 1.0);
-        UIImage image;
-        try {
-            // draw(CGPoint) puts the top of the line at the point, the baseline a line's ascent
-            // below it: moved down so the baseline lands where Rendered says it is.
-            string.draw(new CGPoint(0, ascent - lineAscent));
-            image = UIGraphics.getImageFromCurrentImageContext();
-        } finally {
-            UIGraphics.endImageContext();
+        byte[] bytes;
+        // The image and its PNG are autoreleased, into a pool that drains when the thread ends -
+        // and the label worker never ends: without a pool of its own, every label drawn stayed.
+        try (NSAutoreleasePool pool = new NSAutoreleasePool()) {
+            UIGraphics.beginImageContext(new CGSize(width, height), false, 1.0);
+            UIImage image;
+            try {
+                // draw(CGPoint) puts the top of the line at the point, the baseline a line's
+                // ascent below it: moved down so the baseline lands where Rendered says it is.
+                string.draw(new CGPoint(0, ascent - lineAscent));
+                image = UIGraphics.getImageFromCurrentImageContext();
+            } finally {
+                UIGraphics.endImageContext();
+            }
+            NSData png = image.toPNGData();
+            bytes = png.getBytes();
         }
-        NSData png = image.toPNGData();
-        byte[] bytes = png.getBytes();
         Pixmap pixmap = new Pixmap(bytes, 0, bytes.length);
         return new Rendered(pixmap, ascent);
     }
