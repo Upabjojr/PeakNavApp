@@ -240,25 +240,33 @@ public class PeakNavDownloadManager {
      * Tries each configured provider's URL in turn until the tile downloads, so extra
      * providers act as mirrors: if HuggingFace is unreachable, the next one is tried.
      *
-     * @throws IOException when no provider is configured or every one failed.
+     * @throws IOException when no provider is configured or every one failed: a
+     *         {@link java.io.FileNotFoundException} only when every one said it has no such
+     *         file, and the archive is taken not to exist. One that could not be reached
+     *         does not say that, whichever of them was tried last.
      */
     private void downloadFromProviders(List<String> candidateUrls, File localFile) throws IOException {
         if (candidateUrls == null || candidateUrls.isEmpty()) {
             throw new IOException("No download provider is configured");
         }
         IOException lastFailure = null;
+        IOException notFound = null;
         for (String url : candidateUrls) {
             try {
                 downloadWithRetries(url, localFile);
                 return;
             } catch (IOException ex) {
-                lastFailure = ex;
+                if (ex instanceof java.io.FileNotFoundException) {
+                    notFound = ex;
+                } else {
+                    lastFailure = ex;
+                }
                 if (candidateUrls.size() > 1) {
                     getLogger().debug(TAG, "provider failed, trying next: " + url + " -> " + ex);
                 }
             }
         }
-        throw lastFailure;
+        throw lastFailure != null ? lastFailure : notFound;
     }
 
     /**
@@ -442,7 +450,12 @@ public class PeakNavDownloadManager {
                                 try {
                                     downloadFromProviders(target.candidateUrls, localFile);
                                 } catch (java.io.FileNotFoundException notOnServer) {
-                                    // Not a failure: there is no such archive. The row goes.
+                                    // Not a failure: there is no such archive - a tile of sea,
+                                    // or of land with nothing of this layer on it. Recorded as
+                                    // downloaded, with nothing to unpack: dropped unrecorded,
+                                    // as it was, the place still looked never downloaded, and
+                                    // the banner offered it again on every arrival.
+                                    ok = true;
                                     return;
                                 } catch (IOException notFetched) {
                                     pending = true;
