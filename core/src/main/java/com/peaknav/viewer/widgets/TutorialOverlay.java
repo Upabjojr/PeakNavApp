@@ -57,16 +57,17 @@ public class TutorialOverlay implements Disposable {
     /** Pictures kept decoded: the one on screen and its neighbours. */
     private static final int TEXTURES_KEPT = 3;
 
-    /** One slide: the picture, the caption's key, and where the ring goes (null for none). */
+    /** One slide: the picture, the caption's key, and where the rings go (null for none). */
     private static final class Slide {
         final String image;
         final String key;
-        final float[] marker;   // cx, cy, rw, rh as fractions of the picture, or null
+        /** Per ring cx, cy, rw, rh as fractions of the picture; usually one, several for a set of buttons. */
+        final float[][] markers;
 
-        Slide(String image, String key, float[] marker) {
+        Slide(String image, String key, float[][] markers) {
             this.image = image;
             this.key = key;
-            this.marker = marker;
+            this.markers = markers;
         }
     }
 
@@ -172,15 +173,33 @@ public class TutorialOverlay implements Disposable {
                 return;
             }
             for (JsonValue entry = new JsonReader().parse(file).child; entry != null; entry = entry.next) {
-                JsonValue marker = entry.get("marker");
                 slides.add(new Slide(entry.getString("image"), entry.getString("key"),
-                        marker == null || marker.isNull() ? null : new float[]{
-                                marker.getFloat("cx"), marker.getFloat("cy"),
-                                marker.getFloat("rw"), marker.getFloat("rh")}));
+                        markers(entry.get("marker"))));
             }
         } catch (RuntimeException broken) {
             Gdx.app.error("PeakNav", "tutorial slides: " + broken);
         }
+    }
+
+    /** A slide's "marker": null, one ring, or an array of them for the buttons of a set. */
+    private static float[][] markers(JsonValue marker) {
+        if (marker == null || marker.isNull()) {
+            return null;
+        }
+        List<float[]> rings = new ArrayList<>();
+        if (marker.isArray()) {
+            for (JsonValue one = marker.child; one != null; one = one.next) {
+                rings.add(ring(one));
+            }
+        } else {
+            rings.add(ring(marker));
+        }
+        return rings.isEmpty() ? null : rings.toArray(new float[0][]);
+    }
+
+    private static float[] ring(JsonValue marker) {
+        return new float[]{marker.getFloat("cx"), marker.getFloat("cy"),
+                marker.getFloat("rw"), marker.getFloat("rh")};
     }
 
     public Table getRoot() {
@@ -376,7 +395,7 @@ public class TutorialOverlay implements Disposable {
             return;
         }
         Slide slide = slides.get(index);
-        slideView.set(picture(slide.image), slide.marker);
+        slideView.set(picture(slide.image), slide.markers);
         title.setText(s(slide.key));
         detail.setText(s(slide.key + "_detail"));
         counter.setText((index + 1) + " / " + slides.size());
@@ -559,46 +578,60 @@ public class TutorialOverlay implements Disposable {
     private final class SlideView extends com.badlogic.gdx.scenes.scene2d.ui.WidgetGroup {
 
         private final Image picture = new Image();
-        private final Image ring = new Image();
-        /** Rings that swell and fade out of it one after the other, so the eye is caught by movement. */
-        private final Image[] ripples = {new Image(), new Image()};
-        /** The rest of the picture dimmed, so the ringed spot is the bright one. */
+        /** One per ring, made as the slides need them. */
+        private final List<Image> rings = new ArrayList<>();
+        /** Rings that swell and fade out of each ring one after the other, so the eye is caught by movement. */
+        private final List<Image[]> ripples = new ArrayList<>();
+        /**
+         * The rest of the picture dimmed, so the ringed spot is the bright one. Only around a
+         * single ring: the buttons of a set are far apart, and a spotlight on one would dim the others.
+         */
         private final Spotlight spotlight = new Spotlight();
-        private float[] marker;
+        private float[][] markers;
 
         SlideView() {
             picture.setScaling(Scaling.fit);
             picture.setTouchable(Touchable.disabled);
             addActor(picture);
             addActor(spotlight);
-            for (Image ripple : ripples) {
-                ripple.setDrawable(new TextureRegionDrawable(ring()));
-                ripple.setVisible(false);
-                ripple.setTouchable(Touchable.disabled);
-                addActor(ripple);
-            }
-            ring.setDrawable(new TextureRegionDrawable(ring()));
-            ring.setVisible(false);
-            ring.setTouchable(Touchable.disabled);
-            addActor(ring);
         }
 
-        void set(TextureRegion region, float[] marker) {
-            this.marker = marker;
-            picture.setDrawable(region == null ? null : new TextureRegionDrawable(region));
-            ring.setVisible(marker != null);
-            spotlight.setVisible(marker != null);
-            ring.clearActions();
-            spotlight.clearActions();
-            for (Image ripple : ripples) {
-                ripple.setVisible(marker != null);
-                ripple.clearActions();
-                ripple.getColor().a = 0f;
+        private Image newRing() {
+            Image image = new Image(new TextureRegionDrawable(ring()));
+            image.setVisible(false);
+            image.setTouchable(Touchable.disabled);
+            addActor(image);
+            return image;
+        }
+
+        void set(TextureRegion region, float[][] markers) {
+            this.markers = markers;
+            int count = markers == null ? 0 : markers.length;
+            while (rings.size() < count) {
+                ripples.add(new Image[]{newRing(), newRing()});
+                rings.add(newRing());   // over its ripples
             }
-            if (marker != null) {
+            picture.setDrawable(region == null ? null : new TextureRegionDrawable(region));
+            spotlight.setVisible(count == 1);
+            spotlight.clearActions();
+            if (count == 1) {
                 // The picture dims around the spot...
                 spotlight.getColor().a = 0f;
                 spotlight.addAction(Actions.alpha(1f, 0.5f));
+            }
+            for (int r = 0; r < rings.size(); r++) {
+                Image ring = rings.get(r);
+                boolean shown = r < count;
+                ring.setVisible(shown);
+                ring.clearActions();
+                for (Image ripple : ripples.get(r)) {
+                    ripple.setVisible(shown);
+                    ripple.clearActions();
+                    ripple.getColor().a = 0f;
+                }
+                if (!shown) {
+                    continue;
+                }
                 // ...the ring swoops in onto it from large, then breathes and brightens...
                 ring.getColor().a = 0f;
                 ring.setScale(3f);
@@ -610,8 +643,9 @@ public class TutorialOverlay implements Disposable {
                                         Actions.scaleTo(1.08f, 1.08f, 0.45f, Interpolation.sine)),
                                 Actions.sequence(Actions.alpha(0.6f, 0.45f), Actions.alpha(1f, 0.45f))))));
                 // ...and rings swell out of it and fade, one after the other.
-                for (int i = 0; i < ripples.length; i++) {
-                    ripples[i].addAction(Actions.sequence(
+                Image[] own = ripples.get(r);
+                for (int i = 0; i < own.length; i++) {
+                    own[i].addAction(Actions.sequence(
                             Actions.delay(0.55f + 0.7f * i),
                             Actions.forever(Actions.sequence(
                                     Actions.parallel(Actions.scaleTo(1f, 1f), Actions.alpha(0.9f)),
@@ -625,7 +659,7 @@ public class TutorialOverlay implements Disposable {
         @Override
         public void layout() {
             picture.setBounds(0, 0, getWidth(), getHeight());
-            if (marker == null || picture.getDrawable() == null) {
+            if (markers == null || picture.getDrawable() == null) {
                 return;
             }
             // Where the picture actually lands inside this box, once fitted.
@@ -636,20 +670,26 @@ public class TutorialOverlay implements Disposable {
             float drawnHeight = pictureHeight * scale;
             float left = (getWidth() - drawnWidth) / 2;
             float bottom = (getHeight() - drawnHeight) / 2;
-            // The marker's y runs down the picture, scene2d's up.
-            float centreX = left + marker[0] * drawnWidth;
-            float centreY = bottom + (1 - marker[1]) * drawnHeight;
-            float width = 2 * marker[2] * drawnWidth;
-            float height = 2 * marker[3] * drawnHeight;
-            ring.setBounds(centreX - width / 2, centreY - height / 2, width, height);
-            ring.setOrigin(Align.center);
-            for (Image ripple : ripples) {
-                ripple.setBounds(ring.getX(), ring.getY(), width, height);
-                ripple.setOrigin(Align.center);
+            for (int r = 0; r < markers.length; r++) {
+                float[] marker = markers[r];
+                // The marker's y runs down the picture, scene2d's up.
+                float centreX = left + marker[0] * drawnWidth;
+                float centreY = bottom + (1 - marker[1]) * drawnHeight;
+                float width = 2 * marker[2] * drawnWidth;
+                float height = 2 * marker[3] * drawnHeight;
+                Image ring = rings.get(r);
+                ring.setBounds(centreX - width / 2, centreY - height / 2, width, height);
+                ring.setOrigin(Align.center);
+                for (Image ripple : ripples.get(r)) {
+                    ripple.setBounds(ring.getX(), ring.getY(), width, height);
+                    ripple.setOrigin(Align.center);
+                }
+                if (r == 0) {
+                    spotlight.setBounds(left, bottom, drawnWidth, drawnHeight);
+                    spotlight.hole(centreX - left, centreY - bottom,
+                            SPOTLIGHT_SCALE * width, SPOTLIGHT_SCALE * height);
+                }
             }
-            spotlight.setBounds(left, bottom, drawnWidth, drawnHeight);
-            spotlight.hole(centreX - left, centreY - bottom,
-                    SPOTLIGHT_SCALE * width, SPOTLIGHT_SCALE * height);
         }
 
         @Override

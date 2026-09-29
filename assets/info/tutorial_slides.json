@@ -209,7 +209,7 @@
     "key": "Tutorial_photo_match",
     "marker": {
       "cx": 0.2197,
-      "cy": 0.9278,
+      "cy": 0.9634,
       "rw": 0.085,
       "rh": 0.0391
     }
@@ -219,7 +219,7 @@
     "key": "Tutorial_photo_outlines",
     "marker": {
       "cx": 0.425,
-      "cy": 0.9278,
+      "cy": 0.9634,
       "rw": 0.15,
       "rh": 0.0391
     }
@@ -229,27 +229,87 @@
     "key": "Tutorial_photo_terrain",
     "marker": {
       "cx": 0.9197,
-      "cy": 0.74,
+      "cy": 0.7672,
       "rw": 0.085,
       "rh": 0.0828
     }
+  },
+  {
+    "image": "tutorial_photo.jpg",
+    "key": "Tutorial_photo_nudge",
+    "marker": [
+      {
+        "cx": 0.5,
+        "cy": 0.1013,
+        "rw": 0.119,
+        "rh": 0.0548
+      },
+      {
+        "cx": 0.5,
+        "cy": 0.8159,
+        "rw": 0.119,
+        "rh": 0.0548
+      },
+      {
+        "cx": 0.21,
+        "cy": 0.5,
+        "rw": 0.119,
+        "rh": 0.0548
+      },
+      {
+        "cx": 0.905,
+        "cy": 0.5,
+        "rw": 0.119,
+        "rh": 0.0548
+      }
+    ]
   },
   {
     "image": "tutorial_photo_pin.jpg",
     "key": "Tutorial_photo_pin",
     "marker": {
       "cx": 0.0795,
-      "cy": 0.3397,
+      "cy": 0.3251,
       "rw": 0.085,
       "rh": 0.0391
     }
+  },
+  {
+    "image": "tutorial_photo_pin.jpg",
+    "key": "Tutorial_photo_pin_adjust",
+    "marker": [
+      {
+        "cx": 0.5,
+        "cy": 0.1013,
+        "rw": 0.119,
+        "rh": 0.0548
+      },
+      {
+        "cx": 0.5,
+        "cy": 0.8159,
+        "rw": 0.119,
+        "rh": 0.0548
+      },
+      {
+        "cx": 0.21,
+        "cy": 0.5,
+        "rw": 0.119,
+        "rh": 0.0548
+      },
+      {
+        "cx": 0.905,
+        "cy": 0.5,
+        "rw": 0.119,
+        "rh": 0.0548
+      }
+    ]
   },
   {
     "image": "tutorial_photo.jpg",
     "key": "Tutorial_photo_close",
     "marker": {
       "cx": 0.6295,
-      "cy": 0.9278,
+      "cy": 0.9634,
       "rw": 0.085,
       "rh": 0.0391
     }

@@ -42,7 +42,9 @@ public final class TutorialStrings {
             "Tutorial_photo_match",
             "Tutorial_photo_outlines",
             "Tutorial_photo_terrain",
+            "Tutorial_photo_nudge",
             "Tutorial_photo_pin",
+            "Tutorial_photo_pin_adjust",
             "Tutorial_photo_close",
             "Tutorial_help",
     };
