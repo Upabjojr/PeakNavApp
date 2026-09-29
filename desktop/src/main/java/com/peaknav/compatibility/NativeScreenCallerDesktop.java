@@ -602,10 +602,15 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         if (!com.peaknav.viewer.desktop.DesktopSwing.isAvailable()) {
             // No AWT to float a window over the map: the map has a toast of its own, and
             // saying so on the console costs nothing. Deliberately not DesktopSwing.onEdt:
-            // a toast is not worth explaining the runtime for, once per toast.
+            // a toast is not worth explaining the runtime for, once per toast. The map's toast
+            // only while the map is up: on its stage under the welcome screen, nobody saw it.
             System.err.println("[Toast] " + message);
-            com.badlogic.gdx.Gdx.app.postRunnable(
-                    () -> com.peaknav.viewer.MapViewerSingleton.getViewerInstance().toast(message));
+            com.badlogic.gdx.Gdx.app.postRunnable(() -> {
+                com.peaknav.viewer.MapApp app = com.peaknav.viewer.MapViewerSingleton.getAppInstance();
+                if (app.getScreen() == app.mapViewerScreen) {
+                    app.mapViewerScreen.toast(message);
+                }
+            });
             return;
         }
         javax.swing.SwingUtilities.invokeLater(() -> {

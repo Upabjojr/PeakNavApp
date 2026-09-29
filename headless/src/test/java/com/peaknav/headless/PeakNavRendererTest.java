@@ -1049,6 +1049,15 @@ class PeakNavRendererTest {
                     "a UI screenshot is the whole window, not cropped to the photo");
             http(port, "DELETE", "/photo", null);
             assertTrue(!renderer.hasPhoto());
+            // a toast is read back over REST, whichever screen is up, and is not a prompt
+            int seen = (int) jsonNumber(http(port, "GET", "/messages", null), "last_seq");
+            int prompts = renderer.suppressedPrompts();
+            com.peaknav.utils.PeakNavUtils.getNativeScreenCaller().makeToast("hello from the test");
+            String messages = http(port, "GET", "/messages?after=" + seen, null);
+            assertTrue(messages.contains("\"detail\":\"hello from the test\"")
+                    && messages.contains("\"kind\":\"toast\""), messages);
+            assertEquals(seen + 1, (int) jsonNumber(messages, "last_seq"), messages);
+            assertEquals(prompts, renderer.suppressedPrompts(), "a toast asks nothing");
         } finally {
             server.stop();
         }

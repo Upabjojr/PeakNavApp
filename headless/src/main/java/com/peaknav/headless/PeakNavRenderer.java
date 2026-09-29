@@ -1237,6 +1237,16 @@ public final class PeakNavRenderer implements AutoCloseable {
         return snapshotWriter.suppressedPromptsAfter(afterSeq);
     }
 
+    /** How many toasts the app showed: messages that ask nothing, so not prompts. */
+    public int messages() {
+        return snapshotWriter.messageCount();
+    }
+
+    /** The toasts with a sequence number above {@code afterSeq}, oldest first. */
+    List<FileSnapshotWriter.SuppressedPrompt> messagesAfter(int afterSeq) {
+        return snapshotWriter.messagesAfter(afterSeq);
+    }
+
     /**
      * Resizes the hidden window. The app reacts exactly as to a user resize: camera
      * aspect, stage viewport and depth pixmaps all follow.

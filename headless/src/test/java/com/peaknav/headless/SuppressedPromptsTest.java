@@ -48,6 +48,35 @@ class SuppressedPromptsTest {
     }
 
     @Test
+    void aChoiceTakesItsSecondAnswer() {
+        FileSnapshotWriter writer = new FileSnapshotWriter();
+        AtomicBoolean first = new AtomicBoolean();
+        AtomicBoolean second = new AtomicBoolean();
+        writer.promptChoice("Where are you?", "No GPS", "Estimate", "Search",
+                () -> first.set(true), () -> second.set(true));
+
+        assertFalse(first.get(), "nobody chose the first");
+        assertTrue(second.get(), "the second is answered, so its caller does not wait");
+        assertEquals("choice", writer.suppressedPromptsAfter(0).get(0).kind);
+        assertEquals("Where are you? - No GPS", writer.suppressedPromptsAfter(0).get(0).detail);
+    }
+
+    @Test
+    void toastsAreMessagesNotPrompts() {
+        FileSnapshotWriter writer = new FileSnapshotWriter();
+        writer.makeToast("Download complete!");
+        writer.makeToast("");
+        writer.makeToast("Track loaded");
+
+        assertEquals(0, writer.suppressedPromptCount(), "a toast asks nothing");
+        assertEquals(2, writer.messageCount(), "an empty toast is not a message");
+        List<FileSnapshotWriter.SuppressedPrompt> later = writer.messagesAfter(1);
+        assertEquals(1, later.size());
+        assertEquals("toast", later.get(0).kind);
+        assertEquals("Track loaded", later.get(0).detail);
+    }
+
+    @Test
     void openUriIsRecordedInsteadOfLaunchingABrowser() {
         Net failing = (Net) Proxy.newProxyInstance(Net.class.getClassLoader(), new Class<?>[] {Net.class},
                 (proxy, method, args) -> {

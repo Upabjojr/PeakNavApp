@@ -37,6 +37,14 @@ final class FileSnapshotWriter extends NativeScreenCallerDesktop {
      */
     private final List<SuppressedPrompt> suppressedPrompts = new ArrayList<>();
     private int suppressedPromptTotal;
+    /**
+     * Every message the app showed and asked nothing with - a toast - in order, as
+     * {@code kind} "toast": what a person would have read. Apart from the prompts, so that a
+     * test's "no prompt was raised" still means nobody was asked anything. REST clients read
+     * them back with {@code GET /messages}.
+     */
+    private final List<SuppressedPrompt> messages = new ArrayList<>();
+    private int messageTotal;
 
     /** Only the latest are kept; the sequence numbers keep counting past the dropped ones. */
     private static final int KEPT_PROMPTS = 200;
@@ -79,6 +87,30 @@ final class FileSnapshotWriter extends NativeScreenCallerDesktop {
             suppressedPrompts.remove(0);
         }
         System.err.println("headless: suppressed " + kind + (detail.isEmpty() ? "" : ": " + detail));
+    }
+
+    synchronized int messageCount() {
+        return messageTotal;
+    }
+
+    /** The kept messages with a sequence number above {@code afterSeq} (0 for all of them). */
+    synchronized List<SuppressedPrompt> messagesAfter(int afterSeq) {
+        List<SuppressedPrompt> out = new ArrayList<>();
+        for (SuppressedPrompt message : messages) {
+            if (message.seq > afterSeq) {
+                out.add(message);
+            }
+        }
+        return out;
+    }
+
+    private synchronized void message(String kind, String text) {
+        messageTotal++;
+        messages.add(new SuppressedPrompt(messageTotal, System.currentTimeMillis(), kind, text));
+        if (messages.size() > KEPT_PROMPTS) {
+            messages.remove(0);
+        }
+        System.err.println("headless: " + text);
     }
 
     /** Arms the writer for the next snapshot and returns a latch that fires once saved. */
@@ -174,6 +206,15 @@ final class FileSnapshotWriter extends NativeScreenCallerDesktop {
     }
 
     @Override
+    public void promptChoice(String title, String message, String first, String second,
+                             Runnable onFirst, Runnable onSecond) {
+        // The dialog closed without an answer, which is the second: the one that asks nothing
+        // more. Not answering at all left the caller waiting for good.
+        suppress("choice", title + " - " + message);
+        onSecond.run();
+    }
+
+    @Override
     public void chooseSkyTime() {
         // the sky time is set explicitly here (PeakNavRenderer.setSkyTimeMillis)
         suppress("sky_time", "");
@@ -202,8 +243,12 @@ final class FileSnapshotWriter extends NativeScreenCallerDesktop {
 
     @Override
     public void makeToast(String message) {
-        // Not a prompt: the desktop toast is a window of its own, so it only goes to the log.
-        System.err.println("headless: " + message);
+        // Not a prompt: nobody is asked anything. The desktop toast is a window of its own,
+        // and the map's toast is on the map's stage, which the welcome screen hides - so the
+        // text goes to GET /messages, whichever screen is up.
+        if (message != null && !message.isEmpty()) {
+            message("toast", message);
+        }
     }
 
     @Override

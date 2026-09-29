@@ -43,7 +43,9 @@ required, because GLFW needs one to create a context — run it from a graphical
 Headless means headless: there is nobody to answer a dialog, and a modal one would sit
 invisibly on the display and stall the run forever (the missing-map-data prompt used to do
 exactly that). `FileSnapshotWriter` — installed as the app's `NativeScreenCaller` —
-overrides every UI-raising method: prompts are suppressed and logged to stderr, and
+overrides every UI-raising method: prompts are suppressed and logged to stderr (REST:
+`GET /prompts`; a two-answer choice takes its second, as a dialog closed without an
+answer), toasts are kept for `GET /messages` whichever screen is up, and
 `moveTo()` passes `checkMissing=false` so moving the viewpoint never asks anything.
 Fetching data is an explicit call, `downloadMissingData(lat, lon, timeout)` (CLI:
 `--download`), which goes through `CheckMissingData` directly, downloads only what the
@@ -109,6 +111,7 @@ satellite work is pending, and tile updates have been quiet for 2 s; and
 | `downloadMissingData(lat, lon, timeout)` | fetch what the area is missing, and wait |
 | `awaitTilesLoaded` / `awaitLabelsRendered` / `settle` | waiting |
 | `suppressedPrompts()` | how many UI prompts were intercepted (tests assert 0) |
+| `messages()` | how many toasts the app showed |
 | `capture(file)` | write a PNG or JPEG, chosen by extension |
 
 ## Tests

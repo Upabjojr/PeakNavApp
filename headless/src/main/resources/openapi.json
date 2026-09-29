@@ -36,6 +36,10 @@
                     "suppressed_prompts": {
                       "type": "integer",
                       "description": "How many dialogs, choosers and browser launches were intercepted since start; see /prompts"
+                    },
+                    "messages": {
+                      "type": "integer",
+                      "description": "How many toasts the app showed since start; see /messages"
                     }
                   }
                 }
@@ -48,7 +52,7 @@
     "/prompts": {
       "get": {
         "summary": "What the app tried to ask",
-        "description": "Headless never shows a dialog: every yes/no prompt, alert, file or download chooser, text-field prompt and browser launch is intercepted and recorded here instead, oldest first (the latest 200 are kept). Poll with ?after=<last_seq of the previous call> to see only new ones.",
+        "description": "Headless never shows a dialog: every yes/no prompt, two-answer choice (answered with its second, as a dialog closed without an answer), alert, file or download chooser, text-field prompt and browser launch is intercepted and recorded here instead, oldest first (the latest 200 are kept). Poll with ?after=<last_seq of the previous call> to see only new ones.",
         "parameters": [
           {
             "name": "after",
@@ -63,6 +67,28 @@
         "responses": {
           "200": {
             "description": "{total, last_seq, prompts: [{seq, time_ms, kind, detail}]}"
+          }
+        }
+      }
+    },
+    "/messages": {
+      "get": {
+        "summary": "What the app told the reader",
+        "description": "The toasts the app showed - messages that ask nothing, such as a download's outcome - recorded here with kind \"toast\" and the text as detail, oldest first (the latest 200 are kept), whichever screen was up. Poll with ?after=<last_seq of the previous call> to see only new ones.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only messages with a larger sequence number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{total, last_seq, messages: [{seq, time_ms, kind, detail}]}"
           }
         }
       }

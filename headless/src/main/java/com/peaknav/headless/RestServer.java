@@ -72,9 +72,12 @@ final class RestServer {
             if ("GET".equals(method) && "/status".equals(path)) {
                 json(x, 200, "{\"ok\":true,\"orbiting\":" + renderer.isOrbiting()
                         + ",\"suppressed_prompts\":" + renderer.suppressedPrompts()
+                        + ",\"messages\":" + renderer.messages()
                         + "," + renderer.labelDiagnostics() + "," + renderer.quietDiagnostics() + "}");
             } else if ("GET".equals(method) && "/prompts".equals(path)) {
                 prompts(x);
+            } else if ("GET".equals(method) && "/messages".equals(path)) {
+                messages(x);
             } else if ("GET".equals(method) && "/openapi.json".equals(path)) {
                 resource(x, "openapi.json", "application/json");
             } else if ("POST".equals(method) && "/position".equals(path)) {
@@ -141,24 +144,47 @@ final class RestServer {
      * so a client can poll with the {@code last_seq} of its previous call.
      */
     private void prompts(HttpExchange x) throws IOException {
+        int afterSeq = afterSeq(x);
+        entries(x, "prompts", renderer.suppressedPrompts(), renderer.suppressedPromptsAfter(afterSeq));
+    }
+
+    /**
+     * What the app told the reader and asked nothing with - its toasts: "Download complete!",
+     * a track that could not be read - oldest first, as {@code /prompts}. They would be on
+     * screen for a second; here they are kept for a client to read.
+     */
+    private void messages(HttpExchange x) throws IOException {
+        int afterSeq = afterSeq(x);
+        entries(x, "messages", renderer.messages(), renderer.messagesAfter(afterSeq));
+    }
+
+    private int afterSeq(HttpExchange x) {
         String after = query(x).get("after");
-        int afterSeq;
         try {
-            afterSeq = after == null ? 0 : Integer.parseInt(after);
+            return after == null ? 0 : Integer.parseInt(after);
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("after wants a sequence number");
         }
-        StringBuilder out = new StringBuilder("{\"total\":").append(renderer.suppressedPrompts())
-                .append(",\"prompts\":[");
+    }
+
+    /** {@code {total, <name>: [{seq, time_ms, kind, detail}], last_seq}}. */
+    private void entries(HttpExchange x, String name, int total,
+            java.util.List<FileSnapshotWriter.SuppressedPrompt> entries) throws IOException {
+        StringBuilder out = new StringBuilder("{\"total\":").append(total)
+                .append(",\"").append(name).append("\":[");
         String separator = "";
-        for (FileSnapshotWriter.SuppressedPrompt prompt : renderer.suppressedPromptsAfter(afterSeq)) {
-            out.append(separator).append("{\"seq\":").append(prompt.seq)
-                    .append(",\"time_ms\":").append(prompt.timeMillis)
-                    .append(",\"kind\":").append(quote(prompt.kind))
-                    .append(",\"detail\":").append(quote(prompt.detail)).append('}');
+        int last = 0;
+        for (FileSnapshotWriter.SuppressedPrompt entry : entries) {
+            out.append(separator).append("{\"seq\":").append(entry.seq)
+                    .append(",\"time_ms\":").append(entry.timeMillis)
+                    .append(",\"kind\":").append(quote(entry.kind))
+                    .append(",\"detail\":").append(quote(entry.detail)).append('}');
             separator = ",";
+            last = entry.seq;
         }
-        json(x, 200, out.append("],\"last_seq\":").append(renderer.suppressedPrompts())
+        // The last one listed, not the count read before: one recorded in between is not
+        // skipped by the next call's ?after.
+        json(x, 200, out.append("],\"last_seq\":").append(Math.max(last, total))
                 .append('}').toString());
     }
 
