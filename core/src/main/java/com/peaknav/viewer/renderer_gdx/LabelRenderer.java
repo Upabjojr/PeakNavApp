@@ -992,8 +992,10 @@ public class LabelRenderer {
         // so they are drawn again as they were. Measuring them - an ellipse of points per area,
         // each corrected for the earth's curvature and projected - was half of every frame's
         // work on a phone, and made the idle frame rate unreachable. Anything else that could
-        // change them (the areas loaded, the switches, the fonts) is taken up at the next
-        // decision, at most half a second away.
+        // change them (the areas loaded, the fonts) is taken up at the next decision, at most
+        // half a second away - but not with the label updates held, as the headless renderer
+        // holds them, when the next decision waits for a label pass. So the switches of the
+        // area kinds are compared too: turned off, a kind went on being drawn until then.
         if (!decide && areaCameraUnchanged(cam, areas)) {
             for (int i = 0; i < areaDrawn.size(); i++) {
                 drawAreaName(areaDrawn.get(i));
@@ -1305,18 +1307,29 @@ public class LabelRenderer {
     private int areaCamWidth, areaCamHeight;
     private List<MapArea> areaCamAreas;
     private int areaCamAreaCount;
+    private int areaCamSwitches = -1;
+
+    /** Which kinds of area are switched on, as bits: a change is a change of the labels shown. */
+    private static int areaSwitches() {
+        return (P.isVisibleCities() ? 1 : 0) | (P.isVisibleMountainRanges() ? 2 : 0)
+                | (P.isVisibleIslands() ? 4 : 0) | (P.isVisibleLakes() ? 8 : 0);
+    }
 
     /**
-     * Whether the camera, the screen and the areas nearby are exactly as they were when the
-     * area labels were last measured; notes them for the next frame when not.
+     * Whether the camera, the screen, the areas nearby and the switches of their kinds are
+     * exactly as they were when the area labels were last measured; notes them for the next
+     * frame when not.
      */
     private boolean areaCameraUnchanged(PerspectiveCameraExt cam, List<MapArea> areas) {
         int w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
+        int switches = areaSwitches();
         boolean same = cam.position.equals(areaCamPosition) && cam.direction.equals(areaCamDirection)
                 && cam.up.equals(areaCamUp) && cam.fieldOfView == areaCamFov
                 && w == areaCamWidth && h == areaCamHeight
-                && areas == areaCamAreas && areas.size() == areaCamAreaCount;
+                && areas == areaCamAreas && areas.size() == areaCamAreaCount
+                && switches == areaCamSwitches;
         if (!same) {
+            areaCamSwitches = switches;
             areaCamPosition.set(cam.position);
             areaCamDirection.set(cam.direction);
             areaCamUp.set(cam.up);
