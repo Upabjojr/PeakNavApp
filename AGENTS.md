@@ -268,6 +268,9 @@ Android's libcore and predates Java 8:
 - **No Java 8 constants** like `Float.BYTES` (javac inlines them, so these are
   compile-audit noise rather than runtime crashes — but keep them out anyway).
 - **No `Locale.getScript()`**, a Java 7 method Android added late.
+- **No `URLConnection.getContentLengthLong()`** (Java 7): read the `Content-Length`
+  header instead. It would throw `NoSuchMethodError` on every download, past every
+  `IOException` handler.
 - **No `java.io.File.toPath()`** either, so code cannot even reach `java.nio.file`.
   To rename a finished file into place, use
   `PeakNavUtils.getLoadFactory().getFileMover()` — a `com.peaknav.utils.FileMover`

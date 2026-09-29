@@ -270,6 +270,24 @@ public class PeakNavDownloadManager {
     }
 
     /**
+     * The length the server announced, or -1 when it announced none or an unreadable one. Read
+     * from the header rather than with URLConnection.getContentLengthLong(), a Java 7 method
+     * RoboVM's runtime lacks: on iOS it throws NoSuchMethodError, which no IOException handler
+     * catches, on every download.
+     */
+    private static long contentLength(URLConnection conn) {
+        String header = conn.getHeaderField("Content-Length");
+        if (header == null) {
+            return -1;
+        }
+        try {
+            return Long.parseLong(header.trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /**
      * Downloads {@code urlString} to {@code localFile}, retrying transient failures.
      *
      * @throws IOException when every attempt failed; the caller then drops the tile as before.
@@ -291,7 +309,7 @@ public class PeakNavDownloadManager {
                 // and both leave a whole file.
                 File partial = new File(localFile.getPath()
                         + ".part-" + java.util.UUID.randomUUID());
-                long expected = conn.getContentLengthLong();
+                long expected = contentLength(conn);
                 long received = 0;
                 try (InputStream in = conn.getInputStream();
                      FileOutputStream fos = new FileOutputStream(partial)) {
