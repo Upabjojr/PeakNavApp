@@ -236,13 +236,25 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
      * otherwise take the dialog down with it.
      */
     private volatile UIViewController activeToast;
+    /** Counts the toasts shown, a replaced one too, so only the latest's timer dismisses it. Main thread. */
+    private int toastShown;
 
     @Override
     public void makeToast(final String message) {
         onMainThread(() -> {
+            UIViewController root = rootController();
+            UIViewController showing = activeToast;
+            if (showing instanceof UIAlertController && root != null
+                    && root.getPresentedViewController() == showing) {
+                // A toast is up - "Estimating your position..." while the estimate is made:
+                // the new message takes its place, with a full turn of its own. Dropped, the
+                // place the estimate found, which comes within a second or two, was never said.
+                ((UIAlertController) showing).setMessage(message);
+                dismissLater((UIAlertController) showing);
+                return;
+            }
             final UIAlertController controller = new UIAlertController(
                     null, message, UIAlertControllerStyle.Alert);
-            UIViewController root = rootController();
             if (root == null || root.getPresentedViewController() != null) {
                 // Something real is up (a dialog, a screen - or another toast): a toast is
                 // too unimportant to queue behind it, and presenting from busy root was a
@@ -251,23 +263,31 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
             }
             activeToast = controller;
             root.presentViewController(controller, true, null);
-            // Dismissed on a plain timer that hands the work back to the main thread. The
-            // Objective-C way would be performSelector:withObject:afterDelay:, but a
-            // scheduled Runnable posted through libGDX lands on the same thread with none
-            // of the selector plumbing, and is far easier to see the correctness of.
-            DISMISS_TIMER.schedule(new java.util.TimerTask() {
-                @Override
-                public void run() {
-                    onMainThread(() -> {
-                        if (activeToast == controller) {
-                            activeToast = null;
-                            controller.dismissViewController(true, null);
-                        }
-                        // else presentWhenIdle already dismissed it to make room.
-                    });
-                }
-            }, (long) (TOAST_SECONDS * 1000));
+            dismissLater(controller);
         });
+    }
+
+    /**
+     * Dismissed on a plain timer that hands the work back to the main thread. The Objective-C
+     * way would be performSelector:withObject:afterDelay:, but a scheduled Runnable posted
+     * through libGDX lands on the same thread with none of the selector plumbing, and is far
+     * easier to see the correctness of. Main thread.
+     */
+    private void dismissLater(final UIAlertController controller) {
+        final int shown = ++toastShown;
+        DISMISS_TIMER.schedule(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                onMainThread(() -> {
+                    // Not if presentWhenIdle already dismissed it to make room, nor if a newer
+                    // message has taken it over since.
+                    if (activeToast == controller && shown == toastShown) {
+                        activeToast = null;
+                        controller.dismissViewController(true, null);
+                    }
+                });
+            }
+        }, (long) (TOAST_SECONDS * 1000));
     }
 
     @Override
