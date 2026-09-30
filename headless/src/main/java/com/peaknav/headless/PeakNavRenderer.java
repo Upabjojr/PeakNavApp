@@ -1201,6 +1201,16 @@ public final class PeakNavRenderer implements AutoCloseable {
 
         onRenderThread(() -> getC().checkMissingData.downloadMissingData(latitude, longitude));
 
+        // That call ran the download to its end. One that fetched nothing leaves the ratio at 0
+        // (it used to be set to 1 whatever came of it), and waiting for it to fill would burn
+        // the whole timeout: say so now.
+        final boolean[] fetchedNothing = new boolean[1];
+        onRenderThread(() -> fetchedNothing[0] = !getAppState().isMapDataDownloadStarted()
+                && getAppState().getMapDataDownloadProgressRatio() <= 0.999f);
+        if (fetchedNothing[0]) {
+            return false;
+        }
+
         long deadline = System.currentTimeMillis() + timeoutMillis;
         while (System.currentTimeMillis() < deadline) {
             final float[] progress = new float[1];

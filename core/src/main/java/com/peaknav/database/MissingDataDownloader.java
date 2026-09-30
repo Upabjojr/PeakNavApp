@@ -3,12 +3,9 @@ package com.peaknav.database;
 
 import static com.peaknav.utils.PeakNavUtils.getC;
 
-import com.badlogic.gdx.Gdx;
 import com.peaknav.network.PeakNavHttpCompressDownloader;
 import com.peaknav.network.PeakNavDownloadManager;
 import com.peaknav.pbf.PbfLayer;
-import com.peaknav.viewer.MapViewerSingleton;
-import com.peaknav.viewer.widgets.WidgetGetter;
 
 import com.peaknav.geo.Tile;
 
@@ -81,11 +78,9 @@ public class MissingDataDownloader {
 
         // TODO: add checks to avoid re-downloading the same file multiple times:
 
-        Gdx.app.postRunnable(() -> {
-            WidgetGetter.TableLocation tableLocation = MapViewerSingleton.getViewerInstance().tableLocation;
-            tableLocation.setDownloadProgress(0f);
-            tableLocation.progressBarTable.setVisible(true);
-        });
+        // The shared figure too, not only the bar: the welcome screen reads that one, and it
+        // still held the last download's end.
+        com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloadProgressRatio(0f);
 
         if (queueArea) {
             peakNavDownloadManager.addDataToQueue(lat, lon);

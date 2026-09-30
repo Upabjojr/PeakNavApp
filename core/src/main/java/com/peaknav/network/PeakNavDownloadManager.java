@@ -412,6 +412,8 @@ public class PeakNavDownloadManager {
 
         List<PeakNavHttpCompressDownloader.DownloadTarget> targets = eleDown.getDownloadTargets(queuedTiles);
 
+        // The archives fetched so far, which is what the progress shows: counting the ones that
+        // failed too, a download with no connection ran up to 100% having fetched nothing.
         final AtomicInteger counterMapData = new AtomicInteger(0);
         final AtomicInteger failed = new AtomicInteger(0);
         // Set by the first archive that finds no connection: the ones after it are not tried,
@@ -525,13 +527,13 @@ public class PeakNavDownloadManager {
                         } finally {
                             if (ok) {
                                 mapSqlite.updateDownloadQueueMapDataTimestamp(target.queuedTile, now);
+                                updateProgressText(counterMapData.incrementAndGet(), downloadSize);
                             } else if (!pending) {
                                 if (localFile != null && localFile.exists()) {
                                     localFile.delete();
                                 }
                                 mapSqlite.removeDownloadQueueMapData(target.queuedTile);
                             }
-                            updateProgressText(counterMapData.incrementAndGet(), downloadSize);
                         }
                     }
             );
@@ -557,16 +559,19 @@ public class PeakNavDownloadManager {
         if (interrupted) {
             Thread.currentThread().interrupt();
         }
+        Outcome outcome = new Outcome(downloadSize, failed.get());
         // Finished, whatever the queue held. With nothing left to fetch - every tile already
         // downloaded - no worker ever reported progress, so the bar the download showed stayed
-        // on screen at 0 for good, and anything waiting for it to fill waited forever.
-        getAppState().setMapDataDownloadProgressRatio(1f);
+        // on screen at 0 for good, and anything waiting for it to fill waited forever. Full only
+        // if something did arrive: one that fetched nothing ends at 0, not at a 100% that was
+        // still what the next download showed until its first archive came in.
+        getAppState().endMapDataDownloadProgress(!outcome.nothingFetched());
 
         NotificationManagerPeakNav notificationManager = getC().getMapViewerScreen().mapApp.loadFactory.getPeakNavNotificationManager();
         if (notificationManager != null) {
             notificationManager.clear();
         }
-        return new Outcome(downloadSize, failed.get());
+        return outcome;
     }
 
     /**

@@ -129,6 +129,9 @@ public class PeakNavAppState {
             }
         }
         if (mapDataDownloadStarted) {
+            // From nothing, before anything reads it: the last download's figure - 100%, or
+            // whatever it stopped at - was shown until this one's first archive came in.
+            mapDataDownloadProgressRatio = 0f;
             onRenderThread(() -> getAppInstance().introScreen.triggerMapDataDownloadStarted());
         } else {
             mapDataDownloadFinishedTime = System.currentTimeMillis();
@@ -164,6 +167,19 @@ public class PeakNavAppState {
         this.mapDataDownloadProgressRatio = mapDataDownloadPercent;
         WidgetGetter.TableLocation tableLocation = MapViewerSingleton.getViewerInstance().tableLocation;
         tableLocation.setDownloadProgress(mapDataDownloadPercent);   // posts, the bar's visibility too
+    }
+
+    /**
+     * A download's progress is over: full if it fetched anything, back to nothing if it did
+     * not. The map screen's bar goes away either way - at 0 it would have stayed up for good.
+     */
+    public void endMapDataDownloadProgress(boolean fetchedAny) {
+        if (fetchedAny) {
+            setMapDataDownloadProgressRatio(1f);
+            return;
+        }
+        this.mapDataDownloadProgressRatio = 0f;
+        MapViewerSingleton.getViewerInstance().tableLocation.hideDownloadProgress();
     }
 
     public float getMapDataDownloadProgressRatio() {

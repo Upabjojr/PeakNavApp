@@ -650,6 +650,19 @@ public class WidgetGetter {
             });
         }
 
+        /** Takes the bar and the percentage away, leaving them at 0 for the next download. */
+        public void hideDownloadProgress() {
+            Gdx.app.postRunnable(() -> {
+                progressBar.setValue(0f);
+                progressBarTable.setVisible(false);
+                progressPercentLabel.setText("0%");
+                com.peaknav.viewer.screens.LabelLoading labelLoading = mapApp.mapViewerScreen.labelLoading;
+                if (labelLoading != null) {
+                    labelLoading.setDownloadPercent(-1);
+                }
+            });
+        }
+
         public void setButtonHereFromGps() {
             if (getC().L.isTargetSetFromGPS()) {
                 hereButton.getStyle().up = icon_here_gps;
