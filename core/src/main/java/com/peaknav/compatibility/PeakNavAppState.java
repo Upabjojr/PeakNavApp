@@ -136,6 +136,19 @@ public class PeakNavAppState {
         } else {
             mapDataDownloadFinishedTime = System.currentTimeMillis();
         }
+        // Only the first start and the last end come this far: kept going while any runs.
+        NativeScreenCaller nativeScreenCaller = platform();
+        if (nativeScreenCaller != null) {
+            nativeScreenCaller.setMapDataDownloadRunning(mapDataDownloadStarted);
+        }
+    }
+
+    /** The platform's own side of the app; none where there is no app (the tests). */
+    private static NativeScreenCaller platform() {
+        if (!MapViewerSingleton.hasAppInstance()) {
+            return null;
+        }
+        return getAppInstance().nativeScreenCaller;
     }
 
     /** Posted to the render thread; run at once where there is no app (the tests). */
@@ -165,6 +178,10 @@ public class PeakNavAppState {
 
     public void setMapDataDownloadProgressRatio(float mapDataDownloadPercent) {
         this.mapDataDownloadProgressRatio = mapDataDownloadPercent;
+        NativeScreenCaller nativeScreenCaller = platform();
+        if (nativeScreenCaller != null) {
+            nativeScreenCaller.setMapDataDownloadProgress(mapDataDownloadPercent);
+        }
         WidgetGetter.TableLocation tableLocation = MapViewerSingleton.getViewerInstance().tableLocation;
         tableLocation.setDownloadProgress(mapDataDownloadPercent);   // posts, the bar's visibility too
     }

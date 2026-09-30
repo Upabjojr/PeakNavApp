@@ -72,6 +72,20 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         this.mainActivity = mainActivity;
     }
 
+    @Override
+    public void setMapDataDownloadRunning(boolean running) {
+        if (running) {
+            MapDataDownloadService.start(context);
+        } else {
+            MapDataDownloadService.stop();
+        }
+    }
+
+    @Override
+    public void setMapDataDownloadProgress(float ratio) {
+        MapDataDownloadService.progress(ratio);
+    }
+
     private void startActivityAndPause(Intent intent) {
         MapViewerSingleton.getAppInstance().pause();
         context.startActivity(intent);

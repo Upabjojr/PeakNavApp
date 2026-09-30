@@ -86,6 +86,42 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     /** Dismisses the toast alerts. Daemon, so it can never hold the app open. */
     private static final java.util.Timer DISMISS_TIMER = new java.util.Timer("ios-toast", true);
 
+    // ------------------------------------------------------------------ downloads
+
+    /** The background time asked for while a download runs; UIBackgroundTaskInvalid when none. */
+    private long downloadBackgroundTask = UIApplication.getInvalidBackgroundTask();
+
+    /**
+     * Asks iOS for time to go on with a download after the app leaves the screen. iOS suspends
+     * an app in the background, and gives one that asks this only a while - around half a
+     * minute - not the whole of a long download; enough for one nearly done. What was not
+     * fetched stays in the queue and is taken up when the app comes back.
+     * begin/endBackgroundTask may be called from any thread.
+     */
+    @Override
+    public synchronized void setMapDataDownloadRunning(boolean running) {
+        UIApplication application = UIApplication.getSharedApplication();
+        if (application == null) {
+            return;
+        }
+        long invalid = UIApplication.getInvalidBackgroundTask();
+        if (running && downloadBackgroundTask == invalid) {
+            downloadBackgroundTask = application.beginBackgroundTask("PeakNav map data download",
+                    this::endDownloadBackgroundTask);
+        } else if (!running) {
+            endDownloadBackgroundTask();
+        }
+    }
+
+    /** Hands the background time back: the download ended, or iOS says the time is up. */
+    private synchronized void endDownloadBackgroundTask() {
+        long invalid = UIApplication.getInvalidBackgroundTask();
+        if (downloadBackgroundTask != invalid) {
+            UIApplication.getSharedApplication().endBackgroundTask(downloadBackgroundTask);
+            downloadBackgroundTask = invalid;
+        }
+    }
+
     // ------------------------------------------------------------------ plumbing
 
     /**

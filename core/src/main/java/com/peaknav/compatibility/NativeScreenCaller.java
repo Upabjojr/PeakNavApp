@@ -283,6 +283,17 @@ public abstract class NativeScreenCaller {
     public void chooseSkyTime() { }
 
     /**
+     * A map data download began (true) or the last one running ended (false). Where the system
+     * stops an app it cannot see - Android freezes one in the background, or with the screen
+     * locked, within seconds - this is where the platform asks to be let go on with it.
+     * No-op by default: the desktop runs on whatever the window is doing.
+     */
+    public void setMapDataDownloadRunning(boolean running) { }
+
+    /** How far the running download has got, 0 to 1, for whatever the platform shows of it. */
+    public void setMapDataDownloadProgress(float ratio) { }
+
+    /**
      * Asks the user to fill in one or more text fields in a native dialog.
      *
      * @param title         dialog title
