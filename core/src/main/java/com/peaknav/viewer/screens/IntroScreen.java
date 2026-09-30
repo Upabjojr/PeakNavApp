@@ -75,21 +75,25 @@ public class IntroScreen implements Screen {
 
     /**
      * Nothing could be fetched: the screen as it was before the download, its button there to
-     * try again, with the reason under it. Render thread.
+     * try again, with the reason over the terms above it. Render thread.
      */
     public void triggerMapDataDownloadFailed() {
         downloadStarted = false;
         downloadPercentShown = -1;
         if (labelDownloadState != null) {
-            labelDownloadState.setText(s("Download_failed"));
+            // Said above the terms, not in the state's place under the logo: the terms come
+            // back with the button, and on a wide screen the two met in the middle of it.
+            labelDownloadState.setText("");
             refreshStatePlate();
         }
+        showDownloadFailure(true);
         if (tableDownloadMap != null) {
             tableDownloadMap.setVisible(true);
         }
     }
 
     public void triggerMapDataDownloadStarted() {
+        showDownloadFailure(false);
         if (labelDownloadState != null) {
             labelDownloadState.setText(s("Download_in_progress"));
             refreshStatePlate();
@@ -117,6 +121,9 @@ public class IntroScreen implements Screen {
     private final com.badlogic.gdx.math.Vector2 logoCentre = new com.badlogic.gdx.math.Vector2();
     /** The terms and links, on their own plate; tableDownloadMap fills the screen and cannot carry one. */
     private Table termsPlate;
+    /** Why the last download fetched nothing, at the head of the terms' plate while it applies. */
+    private Label labelDownloadFailed;
+    private com.badlogic.gdx.scenes.scene2d.ui.Cell<Label> downloadFailedCell;
     /** The cell over the terms where the caption sits on a tall screen. */
     private com.badlogic.gdx.scenes.scene2d.ui.Cell<Table> captionRow;
     /** The title's and the logo's cells, so they can sit lower on a tall screen. */
@@ -350,7 +357,22 @@ public class IntroScreen implements Screen {
         // The terms and the links inside a plate of their own, not on tableDownloadMap itself:
         // that one fills the screen, and a background on it would tint the whole picture.
         termsPlate = new Table();
-        termsPlate.add(getLicensePrivacy(labelStyleSmall)).width(licenseTextWidth())
+        // The terms' width, whichever way up the screen is turned now.
+        com.badlogic.gdx.scenes.scene2d.ui.Value termsWidth = new com.badlogic.gdx.scenes.scene2d.ui.Value() {
+            @Override
+            public float get(com.badlogic.gdx.scenes.scene2d.Actor context) {
+                return licenseTextWidth();
+            }
+        };
+        // A failed download's reason, over the terms and wrapped at their width: on one line it
+        // was wider than the screen's middle, and on a wide screen it sat on top of the terms.
+        labelDownloadFailed = new Label(s("Download_failed"), labelStyleSmall);
+        labelDownloadFailed.setWrap(true);
+        labelDownloadFailed.setAlignment(com.badlogic.gdx.utils.Align.center);
+        downloadFailedCell = termsPlate.add(labelDownloadFailed).width(termsWidth);
+        downloadFailedCell.row();
+        showDownloadFailure(false);
+        termsPlate.add(getLicensePrivacy(labelStyleSmall)).width(termsWidth)
                 .pad(0.15f * widgetUnitStep).row();
         termsPlate.add(getLicensePrivacyLinks()).padBottom(0.15f * widgetUnitStep).row();
         // The caption goes here when the screen is tall; when it is wide it sits in the corner.
@@ -406,6 +428,21 @@ public class IntroScreen implements Screen {
         links.add(termsLicense).left().padRight(widgetUnitStep);
         links.add(termsPrivacy).right();
         return links;
+    }
+
+    /** Puts the failed download's reason over the terms, or takes it away, room and all. */
+    private void showDownloadFailure(boolean shown) {
+        if (downloadFailedCell == null) {
+            return;
+        }
+        labelDownloadFailed.setVisible(shown);
+        if (shown) {
+            downloadFailedCell.height(com.badlogic.gdx.scenes.scene2d.ui.Value.prefHeight)
+                    .padTop(0.15f * widgetUnitStep).padBottom(0.1f * widgetUnitStep);
+        } else {
+            downloadFailedCell.height(0f).padTop(0f).padBottom(0f);
+        }
+        termsPlate.invalidateHierarchy();
     }
 
     private Label getLicensePrivacy(Label.LabelStyle labelStyleSmall) {
@@ -693,6 +730,9 @@ public class IntroScreen implements Screen {
         // when the layout is invalidated: without this the picture on screen when the phone
         // turned kept its old shape until the next one arrived.
         slideShow.invalidate();
+        // The terms' width follows the window too, which a resize keeping its shape (a desktop
+        // window dragged wider) would otherwise leave as it was when the screen opened.
+        termsPlate.invalidateHierarchy();
         spriteBatch.getProjectionMatrix().setToOrtho2D(0, 0, width, height);
         shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());
 
