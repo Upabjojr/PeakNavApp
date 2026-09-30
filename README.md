@@ -15,7 +15,7 @@ Available for **Android**, **iOS**, **Windows**, **macOS** and **Linux**.
 
 <!-- An <iframe> is stripped entirely by GitHub, so the video is a thumbnail that links
      to YouTube instead of an embedded player. -->
-[![Watch PeakNav in action](https://img.youtube.com/vi/y4WspQmcwQw/hqdefault.jpg)](https://www.youtube.com/watch?v=y4WspQmcwQw)
+[![Watch PeakNav in action](https://img.youtube.com/vi/C-tfDcwJmWw/hqdefault.jpg)](https://www.youtube.com/watch?v=C-tfDcwJmWw)
 
 ## Download
 
