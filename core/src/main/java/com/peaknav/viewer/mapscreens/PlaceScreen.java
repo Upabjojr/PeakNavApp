@@ -161,6 +161,8 @@ class PlaceScreen extends MapScreens.Base {
     /** The result rows in list order, and where each one points, for the arrow keys. */
     private final List<Table> resultRows = new ArrayList<>();
     private final List<double[]> resultPoints = new ArrayList<>();
+    /** Each result's name as listed: written into the field when it is chosen. */
+    private final List<String> resultTexts = new ArrayList<>();
     /** The row the arrow keys have highlighted, or -1: Enter goes there instead of searching. */
     private int selected = -1;
 
@@ -795,6 +797,7 @@ class PlaceScreen extends MapScreens.Base {
     private void onEnter(String typed) {
         if (selected >= 0 && resultsPane.isVisible()) {
             double[] point = resultPoints.get(selected);
+            showChosenName(resultTexts.get(selected));
             hideKeyboard();
             showResults(false);
             choose(point[0], point[1], true);
@@ -838,6 +841,7 @@ class PlaceScreen extends MapScreens.Base {
         results.clearChildren();
         resultRows.clear();
         resultPoints.clear();
+        resultTexts.clear();
         selected = -1;
         for (LuceneGeonameSearch.GeonameResult result : found) {
             addResult(result.getFullName(), result.lat, result.lon);
@@ -845,7 +849,16 @@ class PlaceScreen extends MapScreens.Base {
         showResults(!found.isEmpty());
     }
 
-    private void addResult(String text, final double lat, final double lon) {
+    /**
+     * The field says which place was chosen, in place of the letters typed to find it. Set by
+     * the app, so it fires no change event and starts no search of its own.
+     */
+    private void showChosenName(String name) {
+        field.setText(name);
+        field.setCursorPosition(name.length());
+    }
+
+    private void addResult(final String text, final double lat, final double lon) {
         float unit = MapScreens.unit();
         Label label = new Label(text, MapScreens.darkCaption());
         label.setWrap(true);
@@ -857,6 +870,7 @@ class PlaceScreen extends MapScreens.Base {
         row.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
+                showChosenName(text);
                 hideKeyboard();
                 showResults(false);
                 choose(lat, lon, true);
@@ -865,6 +879,7 @@ class PlaceScreen extends MapScreens.Base {
         results.add(row).growX().padBottom(1f).row();
         resultRows.add(row);
         resultPoints.add(new double[]{lat, lon});
+        resultTexts.add(text);
     }
 
     private void showResults(boolean visible) {
