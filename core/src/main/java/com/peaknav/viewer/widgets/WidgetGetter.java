@@ -626,6 +626,8 @@ public class WidgetGetter {
         public final ProgressBar progressBar;
         /** The download's progress as a percentage, drawn over the middle of {@link #progressBar}. */
         public final Label progressPercentLabel;
+        /** Stops the download under way, once confirmed; under {@link #progressBar}. */
+        public final Button buttonCancelDownload;
 
         /**
          * Shows how far the map data download has got, 0 to 1, on the bar and as a percentage.
@@ -746,8 +748,31 @@ public class WidgetGetter {
             com.badlogic.gdx.scenes.scene2d.ui.Stack progressStack = new com.badlogic.gdx.scenes.scene2d.ui.Stack();
             progressStack.add(progressBar);
             progressStack.add(progressPercentLabel);
+            // Stops the download, under the bar it belongs to; asked about first, as
+            // what it throws away may be most of an hour's fetching.
+            buttonCancelDownload = getC().widgetTextures.getButtonWithIcon("icons/icon_download_cancel.png");
+            buttonCancelDownload.setName("download_cancel");
+            buttonCancelDownload.addListener(new ChangeListener() {
+                @Override
+                public void changed(ChangeEvent event, Actor actor) {
+                    if (getNativeScreenCaller() == null) {
+                        return;   // the headless renderer: nobody to ask
+                    }
+                    getNativeScreenCaller().promptYesNo("", s("Download_cancel_confirm"), () ->
+                            // The answer comes on the platform's UI thread; stopping closes
+                            // connections and reads the disk.
+                            getC().submitExecutorGeneric(() ->
+                                    com.peaknav.compatibility.PeakNavAppState.getAppState()
+                                            .cancelMapDataDownload()));
+                }
+            });
             progressBarTable.add(progressStack).padTop(0).padRight(3.2f*widgetUnitStep + borderPad)
-                    .width(2*widgetUnitStep).height(widgetUnitStep).right();
+                    .width(2*widgetUnitStep).height(widgetUnitStep).right().row();
+            // Under the bar, in the middle of it: beside it, on a phone held upright, it fell
+            // on the camera button and could not be seen.
+            progressBarTable.add(buttonCancelDownload).width(widgetUnitStep).height(widgetUnitStep)
+                    .padTop(0.2f*widgetUnitStep)
+                    .padRight(3.7f*widgetUnitStep + borderPad).right();
 
             Button buttonSearch = getC().widgetTextures.getButtonWithIcon("icons/icon_search.png");
             buttonSearch.setName("search");   // for /widgets, which places the tutorial's markers

@@ -221,6 +221,12 @@ public class PeakNavDownloadManager {
 
         builder.append("Downloaded map data " + counterMapData + " / " + downloadSize);
 
+        if (cancelled()) {
+            // An archive that was being unpacked when the download was stopped: its data is
+            // kept, but the bar that was taken away is not brought back for it.
+            return;
+        }
+
         float progress = 1.f * counterMapData / downloadSize;
         getAppState().setMapDataDownloadProgressRatio(progress);
         // notificationManager.setText(builder.toString(), progress);
@@ -235,6 +241,51 @@ public class PeakNavDownloadManager {
     private static final long DOWNLOAD_RETRY_BASE_MILLIS = 700L;
     private static final int DOWNLOAD_CONNECT_TIMEOUT_MILLIS = 20_000;
     private static final int DOWNLOAD_READ_TIMEOUT_MILLIS = 60_000;
+
+    /**
+     * Counts the times the user stopped the download. A run through the queue is given the
+     * figure it was asked for under, and is stopped once it has moved on: a flag set on
+     * stopping and cleared on starting would lose a stop that came between the two.
+     */
+    private final AtomicInteger cancelGeneration = new AtomicInteger(0);
+    /** The figure the run now going was asked for under; one run at a time. */
+    private volatile int runningGeneration = 0;
+    /** The connections now open, to be dropped by a stop rather than left to time out. */
+    private final java.util.Set<URLConnection> openConnections = java.util.Collections.newSetFromMap(
+            new java.util.concurrent.ConcurrentHashMap<URLConnection, Boolean>());
+
+    /** The download was stopped by the user, not by anything that went wrong. */
+    static final class Cancelled extends IOException {
+        Cancelled() {
+            super("download stopped by the user");
+        }
+    }
+
+    public int cancelGeneration() {
+        return cancelGeneration.get();
+    }
+
+    private boolean cancelled() {
+        return cancelGeneration.get() != runningGeneration;
+    }
+
+    /**
+     * Stops the run now going, and any asked for before this and still waiting for it: no
+     * further archive is fetched, and the ones being fetched are dropped where they are. What
+     * has arrived stays. Not to be called from a platform's UI thread: it closes connections.
+     */
+    public void cancel() {
+        cancelGeneration.incrementAndGet();
+        for (URLConnection conn : openConnections) {
+            if (conn instanceof java.net.HttpURLConnection) {
+                try {
+                    ((java.net.HttpURLConnection) conn).disconnect();
+                } catch (RuntimeException ignored) {
+                    // The read loop sees the stop at its next block anyway.
+                }
+            }
+        }
+    }
 
     /**
      * Tries each configured provider's URL in turn until the tile downloads, so extra
@@ -256,6 +307,9 @@ public class PeakNavDownloadManager {
                 downloadWithRetries(url, localFile);
                 return;
             } catch (IOException ex) {
+                if (ex instanceof Cancelled) {
+                    throw ex;   // not a provider failing: the next one is not tried
+                }
                 if (ex instanceof java.io.FileNotFoundException) {
                     notFound = ex;
                 } else {
@@ -295,9 +349,16 @@ public class PeakNavDownloadManager {
     private void downloadWithRetries(String urlString, File localFile) throws IOException {
         IOException lastFailure = null;
         for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+            if (cancelled()) {
+                // Also what a connection dropped by cancel() comes to: its "socket closed"
+                // would otherwise be taken for a network error and tried again.
+                throw new Cancelled();
+            }
+            URLConnection conn = null;
             try {
                 URL url = new URL(urlString);
-                URLConnection conn = url.openConnection();
+                conn = url.openConnection();
+                openConnections.add(conn);
                 conn.setConnectTimeout(DOWNLOAD_CONNECT_TIMEOUT_MILLIS);
                 conn.setReadTimeout(DOWNLOAD_READ_TIMEOUT_MILLIS);
 
@@ -316,6 +377,9 @@ public class PeakNavDownloadManager {
                     byte[] readBuf = new byte[8192];
                     int readLen;
                     while ((readLen = in.read(readBuf)) > 0) {
+                        if (cancelled()) {
+                            throw new Cancelled();
+                        }
                         fos.write(readBuf, 0, readLen);
                         received += readLen;
                     }
@@ -335,6 +399,9 @@ public class PeakNavDownloadManager {
                 getLoadFactory().getFileMover().moveIntoPlace(partial, localFile);
                 return;
             } catch (IOException ex) {
+                if (ex instanceof Cancelled) {
+                    throw ex;
+                }
                 lastFailure = ex;
                 // No half-written archive to clean up: the stream went to the .part file,
                 // which its own catch already removed, and nothing lands on the final name
@@ -359,6 +426,10 @@ public class PeakNavDownloadManager {
                         throw lastFailure;
                     }
                 }
+            } finally {
+                if (conn != null) {
+                    openConnections.remove(conn);
+                }
             }
         }
         throw lastFailure;
@@ -375,10 +446,23 @@ public class PeakNavDownloadManager {
         /** Of those, the ones that could not be fetched or unpacked. Not the ones the server
          * does not have: a region without area labels has no archive for them. */
         public final int failed;
+        /** The user stopped it: what was not fetched by then is counted as failed, but nothing
+         * went wrong and nothing is to be said of it. */
+        public final boolean cancelled;
 
         Outcome(int wanted, int failed) {
+            this(wanted, failed, false);
+        }
+
+        Outcome(int wanted, int failed, boolean cancelled) {
             this.wanted = wanted;
             this.failed = failed;
+            this.cancelled = cancelled;
+        }
+
+        /** A download stopped before it began: it was waiting for the one the user stopped. */
+        public static Outcome cancelledBeforeStart() {
+            return new Outcome(0, 0, true);
         }
 
         /** Every archive failed: nothing on the device has changed. */
@@ -394,7 +478,11 @@ public class PeakNavDownloadManager {
                 || failure instanceof java.net.NoRouteToHostException;
     }
 
-    public Outcome processQueue() {
+    /**
+     * @param generation {@link #cancelGeneration()} as it was when this run was asked for
+     */
+    public Outcome processQueue(int generation) {
+        runningGeneration = generation;
 
         List<MapSqlite.QueuedTile> queuedTiles = new ArrayList<>();
         for (MapSqlite.QueuedTile queued : mapSqlite.getDownloadQueue()) {
@@ -435,6 +523,13 @@ public class PeakNavDownloadManager {
                         boolean okDownload = false;
                         File localFile = null;
                         try {
+                            if (cancelled()) {
+                                // Left to the clean-up at the end, which drops every row
+                                // not fetched.
+                                pending = true;
+                                failed.incrementAndGet();
+                                return;
+                            }
                             if (!P.isCollectDownloadInfo()) {
                                 // Respect the missing download consent, but never silently:
                                 // this skip used to be invisible, so a download without the
@@ -559,13 +654,19 @@ public class PeakNavDownloadManager {
         if (interrupted) {
             Thread.currentThread().interrupt();
         }
-        Outcome outcome = new Outcome(downloadSize, failed.get());
+        boolean cancelled = cancelled();
+        if (cancelled) {
+            // What was not fetched is no longer wanted: left queued, it would be fetched by the
+            // next download, or taken up at the next start, as one the app was closed during.
+            mapSqlite.cleanQueue();
+        }
+        Outcome outcome = new Outcome(downloadSize, failed.get(), cancelled);
         // Finished, whatever the queue held. With nothing left to fetch - every tile already
         // downloaded - no worker ever reported progress, so the bar the download showed stayed
         // on screen at 0 for good, and anything waiting for it to fill waited forever. Full only
         // if something did arrive: one that fetched nothing ends at 0, not at a 100% that was
         // still what the next download showed until its first archive came in.
-        getAppState().endMapDataDownloadProgress(!outcome.nothingFetched());
+        getAppState().endMapDataDownloadProgress(!cancelled && !outcome.nothingFetched());
 
         NotificationManagerPeakNav notificationManager = getC().getMapViewerScreen().mapApp.loadFactory.getPeakNavNotificationManager();
         if (notificationManager != null) {

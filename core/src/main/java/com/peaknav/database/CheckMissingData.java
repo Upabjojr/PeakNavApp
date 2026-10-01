@@ -185,7 +185,7 @@ public class CheckMissingData {
             } finally {
                 com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloadStarted(false);
             }
-            if (outcome.failed > 0) {
+            if (outcome.failed > 0 && !outcome.cancelled) {
                 com.peaknav.utils.PeakNavUtils.getNativeScreenCaller().makeToast(
                         com.peaknav.utils.PeakNavUtils.s(
                                 outcome.nothingFetched() ? "Download_failed" : "Download_incomplete"));

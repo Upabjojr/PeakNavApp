@@ -716,7 +716,7 @@ class PlaceScreen extends MapScreens.Base {
             // pictures (LabelLoading), which appear only while the target has nothing to draw.
             // Left on the old place, the map there counted as loaded and the download ran with
             // no sign of it but the thin bar at the top.
-            getC().L.setCurrentTargetCoords(lat, lon, false);
+            getC().L.setCurrentTargetCoordsForDownload(lat, lon);
             // And remember it now. The position is otherwise saved only once a place has
             // landed, which takes the elevation this download is fetching: an app closed during
             // its first download kept nothing, and came back to null island with nothing

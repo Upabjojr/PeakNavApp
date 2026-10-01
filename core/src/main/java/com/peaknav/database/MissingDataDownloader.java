@@ -59,22 +59,40 @@ public class MissingDataDownloader {
      * with shared coordinates one queued or went to the other's area; on iOS their database
      * transactions nested, and the exception that threw from the inner one's end aborted both.
      */
-    public synchronized PeakNavDownloadManager.Outcome download(double lat, double lon, boolean goToLocation) {
-        this.lat = lat;
-        this.lon = lon;
-        return download(true, goToLocation, lat, lon);
+    public PeakNavDownloadManager.Outcome download(double lat, double lon, boolean goToLocation) {
+        // Read before waiting for its turn: a stop meanwhile is meant for this one too.
+        int generation = peakNavDownloadManager.cancelGeneration();
+        synchronized (this) {
+            if (peakNavDownloadManager.cancelGeneration() != generation) {
+                return PeakNavDownloadManager.Outcome.cancelledBeforeStart();
+            }
+            this.lat = lat;
+            this.lon = lon;
+            return download(true, goToLocation, lat, lon, generation);
+        }
+    }
+
+    /** The user stopped the download: the one running, and the ones waiting behind it. */
+    public void cancel() {
+        peakNavDownloadManager.cancel();
     }
 
     /**
      * Takes up a download the app was closed during: the tiles still queued from it, and no new
      * area. They are fetched and the map refreshed as any download does.
      */
-    public synchronized PeakNavDownloadManager.Outcome resumeQueued() {
-        return download(false, false, lat, lon);
+    public PeakNavDownloadManager.Outcome resumeQueued() {
+        int generation = peakNavDownloadManager.cancelGeneration();
+        synchronized (this) {
+            if (peakNavDownloadManager.cancelGeneration() != generation) {
+                return PeakNavDownloadManager.Outcome.cancelledBeforeStart();
+            }
+            return download(false, false, lat, lon, generation);
+        }
     }
 
     private PeakNavDownloadManager.Outcome download(boolean queueArea, boolean goToLocation,
-                                                    double lat, double lon) {
+                                                    double lat, double lon, int generation) {
 
         // TODO: add checks to avoid re-downloading the same file multiple times:
 
@@ -86,7 +104,7 @@ public class MissingDataDownloader {
             peakNavDownloadManager.addDataToQueue(lat, lon);
         }
 
-        PeakNavDownloadManager.Outcome outcome = peakNavDownloadManager.processQueue();
+        PeakNavDownloadManager.Outcome outcome = peakNavDownloadManager.processQueue(generation);
 
         // This should be able to redraw the missing tiles after downloading
         // more data from the internet:
@@ -95,7 +113,8 @@ public class MissingDataDownloader {
         // tiles that just arrived would stay invisible until a restart without this.
         getC().areaRegistry.invalidateCache();
 
-        if (goToLocation) {
+        // Not after a stop: the place was to be gone to once its data was here.
+        if (goToLocation && !outcome.cancelled) {
             getC().L.setCurrentTargetCoordsAfterTileUpdates(lat, lon);
         }
 

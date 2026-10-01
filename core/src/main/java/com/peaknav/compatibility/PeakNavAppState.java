@@ -97,6 +97,13 @@ public class PeakNavAppState {
      */
     public void mapDataDownloadEnded(com.peaknav.network.PeakNavDownloadManager.Outcome outcome,
                                      boolean asked) {
+        if (outcome != null && outcome.cancelled) {
+            // Stopped by the user, who knows: nothing is said, and what did arrive counts.
+            if (outcome.failed < outcome.wanted) {
+                setMapDataDownloaded(true);
+            }
+            return;
+        }
         boolean nothing = outcome == null || outcome.nothingFetched();
         if (nothing) {
             if (asked) {
@@ -112,6 +119,21 @@ public class PeakNavAppState {
             com.peaknav.utils.PeakNavUtils.getNativeScreenCaller().makeToast(
                     com.peaknav.utils.PeakNavUtils.s("Download_incomplete"));
         }
+    }
+
+    /**
+     * The user stopped the download: no further archive is fetched, what was queued for it is
+     * dropped, and a place the map was to go to once its data was here is given up. What has
+     * arrived stays. Off the platform's UI thread: it closes connections and reads the disk.
+     */
+    public void cancelMapDataDownload() {
+        if (!isMapDataDownloadStarted()) {
+            return;
+        }
+        com.peaknav.utils.PeakNavUtils.getC().missingDataDownloader.cancel();
+        // At once, not when the workers have wound down.
+        MapViewerSingleton.getViewerInstance().tableLocation.hideDownloadProgress();
+        com.peaknav.utils.PeakNavUtils.getC().L.dropTargetWaitingForDownload();
     }
 
     /** A download began (true) or ended (false); each start is paired with one end. */

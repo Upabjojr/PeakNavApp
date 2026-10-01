@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- "Stop the download": the download arrow, greyed out, with a cross badge at its corner. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+
+  <!-- the arrow into its tray, desaturated: it is the thing being stopped -->
+  <g fill="none" stroke="#8b969e" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="104" y1="48" x2="104" y2="144"/>
+    <polyline points="62,104 104,146 146,104"/>
+    <line x1="52" y1="182" x2="156" y2="182"/>
+  </g>
+
+  <!-- cross, on a light disc so it stays legible over the arrow -->
+  <circle cx="162" cy="158" r="46" fill="#ffffff"/>
+  <circle cx="162" cy="158" r="46" fill="none" stroke="#7a1c17" stroke-width="6"/>
+  <g stroke="#d23b32" stroke-width="17" stroke-linecap="round">
+    <line x1="144" y1="140" x2="180" y2="176"/>
+    <line x1="180" y1="140" x2="144" y2="176"/>
+  </g>
+
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#7a1c17" stroke-width="3"/>
+</svg>

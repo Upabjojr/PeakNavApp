@@ -36,6 +36,7 @@ ICONS=(
   "icon_gpx_play:128:128"
   "icon_gpx_pause:128:128"
   "icon_gpx_clear:128:128"
+  "icon_download_cancel:128:128"
   "icon_route_to:128:128"
   "icon_gpx_share:128:128"
   "icon_gpx_info:128:128"

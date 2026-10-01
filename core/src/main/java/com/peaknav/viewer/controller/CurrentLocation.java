@@ -374,6 +374,49 @@ public class CurrentLocation {
         targetAfterUpdate.set(new double[]{lat, lon});
     }
 
+    /**
+     * Where the map was, and where it was sent, when it went to a place whose download was
+     * just starting: {fromLat, fromLon, toLat, toLon}. For {@link #dropTargetWaitingForDownload}.
+     */
+    private final java.util.concurrent.atomic.AtomicReference<double[]> movedForDownload =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    /**
+     * Goes to a place whose data is about to be downloaded, without asking about what is
+     * missing there, and remembers where from: stopping the download comes back.
+     */
+    public void setCurrentTargetCoordsForDownload(double lat, double lon) {
+        movedForDownload.set(currentLocationNotSet ? null
+                : new double[]{currentLatitude, currentLongitude, lat, lon});
+        setCurrentTargetCoords(lat, lon, false);
+    }
+
+    /**
+     * The download was stopped: gives up a place that was waiting for it. The one to go to when
+     * the download ends is forgotten; and a target already moved there when the download
+     * started goes back to where the map was, or the screen would stay on "loading" over a
+     * place that is not coming, or land on the part of it that did. Left alone if the map has
+     * landed there already, or the user has gone somewhere else since.
+     */
+    public void dropTargetWaitingForDownload() {
+        targetAfterUpdate.set(null);
+        double[] moved = movedForDownload.getAndSet(null);
+        if (moved == null) {
+            return;
+        }
+        if (Math.abs(moved[2] - targetLatitude) > TARGET_MOVED_EPSILON_DEG
+                || Math.abs(moved[3] - targetLongitude) > TARGET_MOVED_EPSILON_DEG) {
+            return;
+        }
+        if (currentTerrainEleFired == LocationState.ELEVATION_SET
+                && currentLatitude == targetLatitude && currentLongitude == targetLongitude) {
+            return;
+        }
+        setCurrentTargetCoords(moved[0], moved[1], false);
+        // The place screen saved the new place for the next start; that too.
+        saveCoordinatesToPreferences(moved[0], moved[1]);
+    }
+
     public void checkTargetCoordsAfterTileUpdates() {
         double[] target = targetAfterUpdate.getAndSet(null);
         if (target != null) {
