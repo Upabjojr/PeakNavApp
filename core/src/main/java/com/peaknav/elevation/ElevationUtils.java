@@ -94,8 +94,21 @@ public class ElevationUtils {
      * drawn. See TestRoundEarthCurvature for the numbers.
      */
     public static float roundEarthDropLatits(float dLat, float dLon, float refLat) {
-        final float corrForRadius = (float) Math.pow(Math.cos(Math.toRadians(refLat)), 2);
-        float dz = (float) Math.sqrt(corrForRadius * dLon * dLon + dLat * dLat) * Units.deg2rad;
+        return roundEarthDropLatitsScaled(dLat, dLon, longitudeScaleSquared(refLat));
+    }
+
+    /**
+     * The squared cosine of the reference latitude: what a degree of longitude is worth
+     * against a degree of latitude there, squared. The same for every point of a frame, so
+     * a caller correcting many points takes it once (see {@link #roundEarthDropLatitsScaled}).
+     */
+    public static float longitudeScaleSquared(float refLat) {
+        return (float) Math.pow(Math.cos(Math.toRadians(refLat)), 2);
+    }
+
+    /** {@link #roundEarthDropLatits} with {@link #longitudeScaleSquared} already taken. */
+    public static float roundEarthDropLatitsScaled(float dLat, float dLon, float longitudeScaleSquared) {
+        float dz = (float) Math.sqrt(longitudeScaleSquared * dLon * dLon + dLat * dLat) * Units.deg2rad;
         dz = (float) ( - radiusOfEarthInLatits + radiusOfEarthInLatits / Math.cos(dz) );
         return dz;
     }

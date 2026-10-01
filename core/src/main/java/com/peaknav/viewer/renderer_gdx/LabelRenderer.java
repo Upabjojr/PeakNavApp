@@ -552,6 +552,16 @@ public class LabelRenderer {
     // of area read as visually distinct. The peak/town labels alone never say which island or range
     // you are looking at.
     private static final int AREA_SEGMENTS = 48;
+    /** The cosine and sine of each point's angle round an area's ellipse: the same for every area. */
+    private static final float[] AREA_SEGMENT_COS = new float[AREA_SEGMENTS];
+    private static final float[] AREA_SEGMENT_SIN = new float[AREA_SEGMENTS];
+    static {
+        for (int k = 0; k < AREA_SEGMENTS; k++) {
+            float t = (float) (2.0 * Math.PI * k / AREA_SEGMENTS);
+            AREA_SEGMENT_COS[k] = (float) Math.cos(t);
+            AREA_SEGMENT_SIN[k] = (float) Math.sin(t);
+        }
+    }
     private static final float KM_PER_DEG_LAT = 111.32f;
     private final Vector3 areaTmp = new Vector3();
     private final GlyphLayout areaGlyph = new GlyphLayout();
@@ -1030,6 +1040,12 @@ public class LabelRenderer {
         }
 
         float cosTargetLat = (float) Math.cos(Math.toRadians(targetLat));
+        // What every point of every ellipse below is placed with. Taken once: asked again for
+        // each of the 48 points of each area, the trigonometry in them was most of this
+        // method's time - and this method the largest part of a moving frame's label work
+        // among mountains, where some three hundred ranges and groups are in range at once.
+        double lonitsToLatits = Units.convertLonitsToLatits(1.0, targetLat);
+        float longitudeScaleSquared = ElevationUtils.longitudeScaleSquared(targetLat);
         int screenW = Gdx.graphics.getWidth();
         int screenH = Gdx.graphics.getHeight();
 
@@ -1038,6 +1054,8 @@ public class LabelRenderer {
         // the factor is ~1; it roughly doubles a few km up.
         float camHeightMeters = Math.max(0f, Units.convertLatitsToMeters(cam.position.z));
         float altitudeRangeFactor = Math.min(8f, 1f + camHeightMeters / 3500f);
+        // How far the camera sees to the sea horizon; each area adds its own peak's reach.
+        double camHorizonReach = Math.sqrt(2.0 * Units.radiusOfEarth * camHeightMeters);
 
         // Pass 1: measure every label that survives the culls; the actual drawing happens after the
         // de-overlap pass so a label hidden behind a higher-priority one is dropped, not stacked.
@@ -1078,8 +1096,9 @@ public class LabelRenderer {
             boolean standing = frozenAreaSelection.contains(area);
 
             // Centre at sea level (elevation 0, round-earth corrected).
-            float centreCorr = ElevationUtils.getElevationCorrectionForRoundEarth(area.lat, areaLon);
-            float centreX = (float) Units.convertLonitsToLatits(areaLon, targetLat);
+            float centreCorr = ElevationUtils.roundEarthDropLatitsScaled(
+                    area.lat - targetLat, areaLon - targetLon, longitudeScaleSquared);
+            float centreX = (float) (areaLon * lonitsToLatits);
             float centreY = area.lat;
             float centreZ = -centreCorr;
             float toX = centreX - cam.position.x;
@@ -1096,9 +1115,24 @@ public class LabelRenderer {
             // sea-level horizon of its (missing) elevation.
             float effPeakMeters = "island".equals(area.type)
                     ? Math.max(area.peakMeters, 200f) : area.peakMeters;
-            float horizonReach = (float) (Math.sqrt(2.0 * Units.radiusOfEarth * camHeightMeters)
+            float horizonReach = (float) (camHorizonReach
                     + Math.sqrt(2.0 * Units.radiusOfEarth * effPeakMeters));
             if (distMeters > (standing ? horizonReach * BORDER_STICKY_RANGE : horizonReach)) {
+                frozenAreaSelection.remove(area);
+                continue;
+            }
+
+            // Gate on the summit being inside the frustum, so no ghost pill shows when you face
+            // away. Before the ellipse, which this does not need: of the areas in range only
+            // those the camera faces go on to be measured, a dozenth of them in a mountain view.
+            float summitZ = centreZ + Units.convertMetersToLatits(area.peakMeters);
+            if (!areaSummitInView(centreX, centreY, summitZ, cam, standing)) {
+                // A standing plate that fails a geometric cull LEAVES the selection. Left in
+                // it, a plate whose summit sits on the padded frustum edge - a range the
+                // camera is flying across - failed on one camera placement and passed on
+                // the next, blinking for single frames until the summit was well outside.
+                // Gone, it can only come back through a decision, whose entry test is the
+                // strict frustum: the exit happens once, and cleanly.
                 frozenAreaSelection.remove(area);
                 continue;
             }
@@ -1115,15 +1149,15 @@ public class LabelRenderer {
             float minY = Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
             int inFront = 0;
             for (int k = 0; k < AREA_SEGMENTS; k++) {
-                float t = (float) (2.0 * Math.PI * k / AREA_SEGMENTS);
-                float localE = area.semiMajorKm * (float) Math.cos(t);
-                float localN = area.semiMinorKm * (float) Math.sin(t);
+                float localE = area.semiMajorKm * AREA_SEGMENT_COS[k];
+                float localN = area.semiMinorKm * AREA_SEGMENT_SIN[k];
                 float eastKm = localE * cosR - localN * sinR;
                 float northKm = localE * sinR + localN * cosR;
                 float ptLat = area.lat + northKm / KM_PER_DEG_LAT;
                 float ptLon = areaLon + eastKm / kmPerDegLon;
-                float corr = ElevationUtils.getElevationCorrectionForRoundEarth(ptLat, ptLon);
-                float wx = (float) Units.convertLonitsToLatits(ptLon, targetLat);
+                float corr = ElevationUtils.roundEarthDropLatitsScaled(
+                        ptLat - targetLat, ptLon - targetLon, longitudeScaleSquared);
+                float wx = (float) (ptLon * lonitsToLatits);
                 // Skip boundary points behind the camera: projecting them divides by a negative w
                 // and mirrors the screen coordinates, which used to blow the silhouette box up
                 // (huge or misplaced pills when standing on/inside a large area).
@@ -1152,19 +1186,7 @@ public class LabelRenderer {
             // terrain — at any distance or camera pitch (a fixed world-height lift collapses to a
             // few pixels when the area is far or seen from straight above). The silhouette top is
             // the higher (on screen) of the sea-level footprint's top edge and the projected summit:
-            // from the side the summit wins, from straight above the footprint does. Gate on the
-            // summit being inside the frustum, so no ghost pill shows when you face away.
-            float summitZ = centreZ + Units.convertMetersToLatits(area.peakMeters);
-            if (!areaSummitInView(centreX, centreY, summitZ, cam, standing)) {
-                // A standing plate that fails a geometric cull LEAVES the selection. Left in
-                // it, a plate whose summit sits on the padded frustum edge - a range the
-                // camera is flying across - failed on one camera placement and passed on
-                // the next, blinking for single frames until the summit was well outside.
-                // Gone, it can only come back through a decision, whose entry test is the
-                // strict frustum: the exit happens once, and cleanly.
-                frozenAreaSelection.remove(area);
-                continue;
-            }
+            // from the side the summit wins, from straight above the footprint does.
             areaTmp.set(centreX, centreY, summitZ);
             cam.project(areaTmp);
             float summitX = areaTmp.x;
