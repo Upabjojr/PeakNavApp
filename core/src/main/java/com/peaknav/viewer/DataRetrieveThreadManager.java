@@ -139,7 +139,7 @@ public class DataRetrieveThreadManager {
     private volatile long terrainDrawnMillis = 0L;
 
     /** How long the terrain has to stay as it is before the labels are checked against it. */
-    private static final long TERRAIN_SETTLE_MILLIS = 200L;
+    private static final long TERRAIN_SETTLE_MILLIS = 50L;
 
     /**
      * A tile's terrain has just been drawn: which labels the mountains hide is decided against
