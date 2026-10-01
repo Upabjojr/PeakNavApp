@@ -2135,6 +2135,9 @@ public class MapViewerScreen implements Screen {
 			getC().dataRetrieveThreadManager.triggerUpdateVisibilityLabelOverlap();
 		}
 
+		// And one against the terrain, once the tiles of a new place have been drawn.
+		getC().dataRetrieveThreadManager.checkTerrainSettled();
+
 		/*
 		if (flagChange) {
 			getAppState().setLastAnyMapTileUpdateTimeToNow();

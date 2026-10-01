@@ -40,12 +40,30 @@ public class Visibility {
         }
     }
 
-    private final Vector3 tempVisibility = new Vector3();
+    // Anonymous subclass rather than ThreadLocal.withInitial, as in ImpactPixmap: one scratch
+    // vector was shared by the visibility worker and the render thread (the markers), which
+    // ask at the same time - one's point could be measured from the other's.
+    private final ThreadLocal<Vector3> origin = new ThreadLocal<Vector3>() {
+        @Override
+        protected Vector3 initialValue() {
+            return new Vector3();
+        }
+    };
 
+    /**
+     * Whether a point can be seen, by the depth maps: its distance against what the maps hold
+     * in its direction. The distance is measured from where the maps were taken, which is the
+     * only place they describe the terrain from - the camera's last noted position when there
+     * are no maps yet, and nothing is hidden. Measured from the noted position alone, a pass
+     * whose note was older than its maps (one begun before a move to a distant place) found
+     * every label of the new place "hidden".
+     */
     public boolean checkVisible(Vector3 destination, ImpactPixmap impactPixmap) {
-        tempVisibility.set(destination);
-        float distanceLatits = tempVisibility.sub(cameraPosLatits).len();
-        float distancePseudometers = convertLatitsToMeters(distanceLatits);
+        Vector3 from = origin.get();
+        if (!impactPixmap.renderedCameraPosition(from)) {
+            from.set(cameraPosLatits);
+        }
+        float distancePseudometers = convertLatitsToMeters(destination.dst(from));
         return impactPixmap.checkIfDistanceIsVisible(distancePseudometers, destination);
     }
 

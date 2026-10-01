@@ -675,6 +675,10 @@ public class MapTile {
         // blockSatelliteTexture = getSatelliteTextureBlock(getMinZoomTileWithElevFactor());
 
         setMapTileState(MapTileState.IS_DRAWN);
+        // The labels are checked against the terrain again, now that there is more of it.
+        if (getC().dataRetrieveThreadManager != null) {
+            getC().dataRetrieveThreadManager.terrainDrawn();
+        }
     }
 
     public Future<?> submitToExecutor(ElevationImageProvider provider) {

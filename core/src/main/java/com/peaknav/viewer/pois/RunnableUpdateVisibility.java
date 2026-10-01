@@ -203,6 +203,11 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
 
         MapViewerScreen mapViewerScreen = getC().getMapViewerScreen();
         mapViewerScreen.impactPixmap.requestUpdatedImpactPixmap();
+        // The camera's position noted again, now that the picture has been taken: one run
+        // serves every request that comes in while it is going, and the note of one begun
+        // before a move to a distant place was still the old place's (see
+        // Visibility.checkVisible, which no longer depends on it once there is a picture).
+        getC().visibility.updateCameraPosLatits();
 
         newVisiblePeaks.clear();
         newVisiblePois.clear();
