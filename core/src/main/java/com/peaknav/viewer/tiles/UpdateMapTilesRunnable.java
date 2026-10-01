@@ -239,7 +239,11 @@ public class UpdateMapTilesRunnable extends StoppableRunnable {
             // nothing downloaded, declined the download, and was brought back here - it no longer
             // describes what is on screen, and nothing else would ever take it down.
             LabelLoading labelLoading = loadingBanner();
-            if (labelLoading != null && labelLoading.getState() == NO_DATA) {
+            // The same for a rebuild that was given up half way - one for a place left again
+            // before it was done: its "loading" is taken down only by a tile finishing, and
+            // the tiles on screen finished long ago.
+            if (labelLoading != null && (labelLoading.getState() == NO_DATA
+                    || labelLoading.getState() == LOADING_UPDATING)) {
                 labelLoading.setState(LOADED);
                 if (getC().getMapViewerScreen() != null) {
                     getC().getMapViewerScreen().setDownloadDataOffered(false);

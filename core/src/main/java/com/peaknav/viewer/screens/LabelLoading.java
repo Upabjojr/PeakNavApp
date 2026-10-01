@@ -24,7 +24,18 @@ public class LabelLoading {
      */
     public boolean isAnimating() {
         return state == State.LOADING || state == State.LOADING_UPDATING
-                || (downloadPercent >= 0 && state != State.LOADED);
+                || waitingForDownload();
+    }
+
+    /**
+     * A download is running and this place has nothing to draw until it brings it: the wait the
+     * percentage and the pictures are for. Not a place that has its data and is only loading
+     * it - the one gone back to while another's download runs - where they stayed up, over
+     * "Download in progress", for as long as its tiles took; the download's own bar goes on
+     * saying how far it has got.
+     */
+    private boolean waitingForDownload() {
+        return downloadPercent >= 0 && state == State.NO_DATA;
     }
 
     public void setState(State state) {
@@ -36,7 +47,7 @@ public class LabelLoading {
                 break;
             case LOADING_UPDATING:
             case LOADING:
-                setMessage(downloadingOr(s("Loading")));
+                setMessage(s("Loading"));
                 tableCenterNoData.setVisible(true);
                 getAppState().setLoadingMapData(true);
                 break;
@@ -71,7 +82,7 @@ public class LabelLoading {
      */
     public void update(float delta) {
         renderThread = Thread.currentThread();
-        boolean show = downloadPercent >= 0 && state != State.LOADED;
+        boolean show = waitingForDownload();
         if (show && !slideShowRunning) {
             slideShow.restart();   // each wait gets its own run of pictures
         }
@@ -153,7 +164,7 @@ public class LabelLoading {
 
     /**
      * While map data downloads, the centre of the screen says so and how far it has got - "Download
-     * in progress..." with "42%" on the line below - in place of "Loading..." or "No data for this area", which is what the
+     * in progress..." with "42%" on the line below - in place of "No data for this area", which is what the
      * download is about to change. -1 when the download has finished: the state's own text again.
      * Render thread only.
      */
@@ -168,7 +179,7 @@ public class LabelLoading {
     }
 
     private String downloadingOr(String text) {
-        return downloadPercent < 0 ? text : s("Download_in_progress") + "\n" + downloadPercent + "%";
+        return !waitingForDownload() ? text : s("Download_in_progress") + "\n" + downloadPercent + "%";
     }
 
     public Table getTableCenterNoData() {
