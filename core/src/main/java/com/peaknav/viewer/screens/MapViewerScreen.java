@@ -1371,6 +1371,25 @@ public class MapViewerScreen implements Screen {
 	}
 
 	/** The field of view the camera starts at, unzoomed, in degrees (vertical). */
+	/** Degrees across the screen the view opens with, where the base field of view gives less. */
+	private static final float START_HORIZONTAL_FIELD_OF_VIEW = 40f;
+
+	/**
+	 * The field of view the camera starts with. It is the angle from top to bottom, so on a
+	 * phone held upright the base one left some 14° from side to side: a slit, with one or two
+	 * summits in it. There the view opens at {@link #START_HORIZONTAL_FIELD_OF_VIEW} across;
+	 * a screen wider than it is high - a desktop window, a phone on its side - starts as
+	 * it did.
+	 */
+	static float startFieldOfView(float baseFieldOfView, int width, int height) {
+		if (width <= 0 || height <= width) {
+			return baseFieldOfView;
+		}
+		double vertical = 2 * Math.toDegrees(Math.atan(
+				Math.tan(Math.toRadians(START_HORIZONTAL_FIELD_OF_VIEW) / 2) * height / width));
+		return (float) Math.max(baseFieldOfView, vertical);
+	}
+
 	public float getBaseFieldOfView() {
 		return baseFieldOfView;
 	}
@@ -1611,6 +1630,7 @@ public class MapViewerScreen implements Screen {
 		// shapeRenderer.setAutoShapeType(true);
 
 		cam = new PerspectiveCameraExt(baseFieldOfView, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+		cam.fieldOfView = startFieldOfView(baseFieldOfView, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 		cam.near = 0.0001f;
 		cam.far = 15f;
 		cam.direction.set(P.getLastCameraDirectionFlat());

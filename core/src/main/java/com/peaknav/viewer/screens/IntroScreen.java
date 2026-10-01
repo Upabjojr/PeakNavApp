@@ -577,6 +577,9 @@ public class IntroScreen implements Screen {
         spriteBatch.begin();
         spriteBatch.end();
 
+        // Stage.draw does not apply its viewport itself, and this one is inset to the safe
+        // area: everything from here on is drawn in the stage's coordinates.
+        stage.getViewport().apply();
         stage.act(delta);
         // Not while the download chooser is open over this screen: the arrows point at a
         // button it covers, and were drawn over the chooser's map.
@@ -603,6 +606,7 @@ public class IntroScreen implements Screen {
             shapeRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());
             Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
         }
+        Gdx.gl.glViewport(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
     }
 
     /** Seconds the pointers have been animating; only the fraction of each period matters. */
@@ -719,12 +723,20 @@ public class IntroScreen implements Screen {
 
     @Override
     public void resize(int width, int height) {
+        // Inside the display's safe area, as the map screen's stage is: the search field of
+        // the place chooser opened over this screen was under the iPhone's camera. The insets
+        // are zero on desktop and on Android, where nothing changes.
+        int insetLeft = Gdx.graphics.getSafeInsetLeft();
+        int insetBottom = Gdx.graphics.getSafeInsetBottom();
+        int stageWidth = Math.max(1, width - insetLeft - Gdx.graphics.getSafeInsetRight());
+        int stageHeight = Math.max(1, height - insetBottom - Gdx.graphics.getSafeInsetTop());
         if (!Units.isProportionalInterface() && stage.getViewport() instanceof ExtendViewport) {
             // One stage unit per pixel, as on the map screen: no growing with the window.
-            ((ExtendViewport) stage.getViewport()).setMinWorldWidth(width);
-            ((ExtendViewport) stage.getViewport()).setMinWorldHeight(height);
+            ((ExtendViewport) stage.getViewport()).setMinWorldWidth(stageWidth);
+            ((ExtendViewport) stage.getViewport()).setMinWorldHeight(stageHeight);
         }
-        stage.getViewport().update(width, height, true);
+        stage.getViewport().update(stageWidth, stageHeight, true);
+        stage.getViewport().setScreenPosition(insetLeft, insetBottom);
         applyOrientation(false);
         // The picture's size is worked out from the stage, and scene2d only asks for it again
         // when the layout is invalidated: without this the picture on screen when the phone
