@@ -40,6 +40,8 @@ public class MapDataDownloadService extends Service {
 
     private static final String CHANNEL_ID = "peaknav_map_data_download";
     private static final int NOTIFICATION_ID = 2;
+    /** Sent by the notification's Stop button. */
+    private static final String ACTION_STOP = "com.peaknav.action.STOP_MAP_DATA_DOWNLOAD";
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
@@ -116,6 +118,13 @@ public class MapDataDownloadService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            stopDownload();
+            if (!wanted) {
+                finish();   // nothing running that will end it
+            }
+            return START_NOT_STICKY;
+        }
         // Always, even when about to stop: see the class comment.
         goForeground(Math.max(0, percentShown));
         if (!wanted) {
@@ -176,6 +185,21 @@ public class MapDataDownloadService extends Service {
         percentShown = percent;
     }
 
+    /**
+     * The notification's Stop button: the same as the one under the progress bar, without the
+     * question - there is nowhere to ask it, and what has arrived is kept. The service goes when
+     * the download reports its end, as after any other.
+     */
+    private void stopDownload() {
+        try {
+            // Off the main thread: stopping closes connections and reads the disk.
+            PeakNavUtils.getC().submitExecutorGeneric(() ->
+                    PeakNavAppState.getAppState().cancelMapDataDownload());
+        } catch (RuntimeException noApp) {
+            System.err.println("[Download] could not stop: " + noApp);
+        }
+    }
+
     private void finish() {
         releaseWakeLock();
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
@@ -206,6 +230,9 @@ public class MapDataDownloadService extends Service {
         int immutable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0;
         PendingIntent tap = PendingIntent.getActivity(this, 0, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | immutable);
+        PendingIntent stop = PendingIntent.getService(this, 1,
+                new Intent(this, MapDataDownloadService.class).setAction(ACTION_STOP),
+                PendingIntent.FLAG_UPDATE_CURRENT | immutable);
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle(PeakNavUtils.s("Download_in_progress"))
@@ -215,6 +242,8 @@ public class MapDataDownloadService extends Service {
                 .setOnlyAlertOnce(true)
                 .setSilent(true)
                 .setContentIntent(tap)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel,
+                        PeakNavUtils.s("Download_stop"), stop)
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .build();
     }
