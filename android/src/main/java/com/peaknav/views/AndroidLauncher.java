@@ -54,6 +54,7 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 	public static final String[] CAMERA_PERMISSION = new String[]{Manifest.permission.CAMERA};
 	public static final int CAMERA_REQUEST_CODE = 10;
 	public static final int MEDIA_LOCATION_REQUEST_CODE = 41;
+	public static final int NOTIFICATIONS_REQUEST_CODE = 42;
 
 	@Override
 	public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
@@ -95,6 +96,11 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 					(com.peaknav.compatibility.NativeScreenCallerAndroid) getNativeScreenCaller();
 			if (nsc != null) {
 				nsc.launchGalleryPicker();
+			}
+		} else if (requestCode == NOTIFICATIONS_REQUEST_CODE) {
+			// What the service posted before the answer was dropped: post it again.
+			if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+				com.peaknav.compatibility.MapDataDownloadService.showAgain();
 			}
 		}
 	}

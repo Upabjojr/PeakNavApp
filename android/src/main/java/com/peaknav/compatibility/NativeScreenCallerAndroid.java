@@ -9,6 +9,7 @@ import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.views.AndroidLauncher.CAMERA_PERMISSION;
 import static com.peaknav.views.AndroidLauncher.CAMERA_REQUEST_CODE;
 import static com.peaknav.views.AndroidLauncher.MEDIA_LOCATION_REQUEST_CODE;
+import static com.peaknav.views.AndroidLauncher.NOTIFICATIONS_REQUEST_CODE;
 import static com.peaknav.views.AndroidLauncher.PICK_GPX;
 import static com.peaknav.views.AndroidLauncher.PICK_IMAGE;
 
@@ -76,9 +77,29 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
     public void setMapDataDownloadRunning(boolean running) {
         if (running) {
             MapDataDownloadService.start(context);
+            askToShowDownloadNotification();
         } else {
             MapDataDownloadService.stop();
         }
+    }
+
+    /**
+     * Android 13 on: the download's notification is shown only with POST_NOTIFICATIONS, which
+     * has to be asked for. The service runs either way, so a refusal costs the notification
+     * and nothing else; the system itself stops asking after the second "Don't allow".
+     */
+    private void askToShowDownloadNotification() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return;
+        }
+        mainActivity.runOnUiThread(() -> {
+            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(mainActivity,
+                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        NOTIFICATIONS_REQUEST_CODE);
+            }
+        });
     }
 
     @Override

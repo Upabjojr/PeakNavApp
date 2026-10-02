@@ -31,6 +31,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Android 13+: without it the service runs but its notification is never shown, and the
+         user cannot even switch the app's notifications on. Asked for when a download starts. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Android 10+ redacts GPS EXIF from imported images unless the app holds this;
          without it the "go to where this photo was taken" import cannot read a location. -->

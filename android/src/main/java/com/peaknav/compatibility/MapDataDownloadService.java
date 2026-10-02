@@ -99,6 +99,15 @@ public class MapDataDownloadService extends Service {
         });
     }
 
+    /** The notification once more, as it stands: after the permission to show it was given. */
+    public static void showAgain() {
+        MAIN.post(() -> {
+            if (instance != null && wanted) {
+                instance.notifyProgress(Math.max(0, percentShown));
+            }
+        });
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
