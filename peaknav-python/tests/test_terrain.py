@@ -55,13 +55,19 @@ def _find_local_pair():
 
     The app's crops carry a detail suffix f>=2 rather than the dataset's f000, but
     the ENCODING is the same - which is exactly what this fixture checks.
+
+    The largest JPEG is taken, not the first: open sea is a whole tile at 0 m, and it
+    compresses to almost nothing, so the biggest file is the most rugged terrain.
     """
-    for jpg in sorted(glob.glob(os.path.join(_APP_TILES, "x_*", "y_*", "*.jpg"))):
+    pairs = []
+    for jpg in glob.glob(os.path.join(_APP_TILES, "x_*", "y_*", "*.jpg")):
         png = jpg[:-4] + ".png"
         m = re.search(r"x(\d{5})\.y(\d{5})", jpg)
         if os.path.exists(png) and m:
-            return jpg, png, int(m.group(1)), int(m.group(2))
-    return None
+            pairs.append((os.path.getsize(jpg), jpg, png, int(m.group(1)), int(m.group(2))))
+    if not pairs:
+        return None
+    return max(pairs)[1:]
 
 
 @pytest.mark.skipif(_find_local_pair() is None,
@@ -81,7 +87,7 @@ def test_decodes_a_real_tile_to_plausible_terrain():
     # produces values near ±32000; a swapped pair produces a mountain range of
     # rubble around zero.
     assert -500 <= lo <= hi <= 8900, "decoded range %d..%d m" % (lo, hi)
-    assert hi - lo > 100, "a whole tile is never flat to within 100 m"
+    assert hi - lo > 100, "the most detailed tile is never flat to within 100 m"
 
 
 # ------------------------------------------------------------------ the live dataset
