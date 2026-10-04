@@ -66,7 +66,11 @@ public class IntroScreen implements Screen {
         if (tableDownloadMap != null) {
             tableDownloadMap.setVisible(false);
         }
-        mapApp.setScreen(mapApp.mapViewerScreen);
+        // Not again when the map is already on: Game.setScreen hides and shows even the same
+        // screen, and the app now starts on the map when there is data (MapApp.create).
+        if (mapApp.getScreen() != mapApp.mapViewerScreen) {
+            mapApp.setScreen(mapApp.mapViewerScreen);
+        }
         if (labelDownloadState != null) {
             labelDownloadState.setText("Download complete!");
             refreshStatePlate();

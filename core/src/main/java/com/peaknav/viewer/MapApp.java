@@ -64,9 +64,13 @@ public class MapApp extends Game {
             mapViewerScreen.showOnce();
         }
 
-        setScreen(introScreen);
+        // Straight to the map when there is data to show. The welcome screen used to come first
+        // whatever the case, and gave way to the map only on a later frame (setMapDataDownloaded
+        // below hands its switch to the render thread), so every start flashed it for a moment.
+        boolean downloaded = getC().mapSqlite.existDownloadedTiles();
+        setScreen(downloaded ? mapViewerScreen : introScreen);
 
-        getAppState().setMapDataDownloaded(getC().mapSqlite.existDownloadedTiles());
+        getAppState().setMapDataDownloaded(downloaded);
         created = true;
     }
 
