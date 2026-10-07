@@ -480,6 +480,12 @@ class PeakNavRendererTest {
         renderer.settle(2_000);
     }
 
+    /** The GPX pane's body scrolled (nearly) to its end - or not scrollable at all. */
+    private static void assertScrolledToTheBottom(float[] scroll, String when) {
+        assertTrue(scroll[0] <= 0 || scroll[1] / scroll[0] > 0.9f,
+                "the pane went back up " + when + ": " + java.util.Arrays.toString(scroll));
+    }
+
     private File newTempFile(String name) {
         try {
             return Files.createTempDirectory("peaknav-test").resolve(name).toFile();
@@ -1043,6 +1049,15 @@ class PeakNavRendererTest {
                     "a UI screenshot is the whole window, not cropped to the photo");
             http(port, "DELETE", "/photo", null);
             assertTrue(!renderer.hasPhoto());
+            // a toast is read back over REST, whichever screen is up, and is not a prompt
+            int seen = (int) jsonNumber(http(port, "GET", "/messages", null), "last_seq");
+            int prompts = renderer.suppressedPrompts();
+            com.peaknav.utils.PeakNavUtils.getNativeScreenCaller().makeToast("hello from the test");
+            String messages = http(port, "GET", "/messages?after=" + seen, null);
+            assertTrue(messages.contains("\"detail\":\"hello from the test\"")
+                    && messages.contains("\"kind\":\"toast\""), messages);
+            assertEquals(seen + 1, (int) jsonNumber(messages, "last_seq"), messages);
+            assertEquals(prompts, renderer.suppressedPrompts(), "a toast asks nothing");
         } finally {
             server.stop();
         }
@@ -1190,13 +1205,19 @@ class PeakNavRendererTest {
         assertTrue(pulsing[0], "the match button should be pulsing once the photo is ready");
 
         // ... and it must settle back exactly as it was, or it stays big and amber for ever.
-        renderer.settle(4500);
-        renderer.runOnRenderThread(() -> {
-            com.badlogic.gdx.scenes.scene2d.ui.Button b = com.peaknav.viewer.MapViewerSingleton
-                    .getViewerInstance().tableTool.buttonMatchPhoto;
-            pulsing[0] = b.getActions().size > 0;
-            scale[0] = b.getScaleX();
-        });
+        // Waited for, not timed: the stage advances its actions by at most 1/30 s a frame, and
+        // the renderer here draws a few frames a second, so the 3.6 s pulse takes longer than
+        // 3.6 s of wall time. What matters is that it ends by itself.
+        long deadline = System.currentTimeMillis() + 30_000;
+        do {
+            renderer.settle(500);
+            renderer.runOnRenderThread(() -> {
+                com.badlogic.gdx.scenes.scene2d.ui.Button b = com.peaknav.viewer.MapViewerSingleton
+                        .getViewerInstance().tableTool.buttonMatchPhoto;
+                pulsing[0] = b.getActions().size > 0;
+                scale[0] = b.getScaleX();
+            });
+        } while (pulsing[0] && System.currentTimeMillis() < deadline);
         assertTrue(!pulsing[0], "the pulse should have finished by itself");
         assertEquals(1f, scale[0], 0.001f, "and left the button at its normal size");
         renderer.clearPhoto();
@@ -1419,6 +1440,75 @@ class PeakNavRendererTest {
             File framed = newTempFile("route.png");
             renderer.capture(framed);
             System.out.println("route frame: " + framed.getAbsolutePath());
+
+            // The ways it follows: in the file, as every way's first point names it...
+            java.util.List<com.peaknav.routing.WalkingRouter.Stretch> stretches = route.stretches();
+            String gpx = renderer.routeGpx(route, toLat, toLon);
+            System.out.println("route gpx description:\n" + gpx.substring(gpx.indexOf("<desc>"), gpx.indexOf("</desc>") + 7));
+            assertTrue(stretches.size() >= 2, "a walk up to Findeln changes way: " + stretches.size());
+            int named = 0;
+            for (com.peaknav.routing.WalkingRouter.Stretch stretch : stretches) {
+                if (stretch.way != null && (stretch.way.name != null || stretch.way.number != null)) {
+                    named++;
+                }
+            }
+            assertTrue(named > 0, "Zermatt's paths have names and numbers, and the route says them");
+            // ...and in the pane: a row for each, and while the tour is paused halfway, the way there.
+            String[] ways = renderer.gpxInfoWayTexts();
+            assertEquals(3 + stretches.size(), ways.length, "a row for every way");
+            renderer.seekGpxTour(0.5f);
+            renderer.settle(800);
+            ways = renderer.gpxInfoWayTexts();
+            System.out.println("halfway: " + ways[0] + " | " + ways[1] + " | " + ways[2]);
+            assertTrue(!ways[0].isEmpty() && !ways[1].isEmpty() && !ways[2].isEmpty(),
+                    "the way, its kind and the time where the tour is");
+            File panel = newTempFile("route_ways.png");
+            renderer.captureWithUi(panel);
+            System.out.println("route ways: " + panel.getAbsolutePath());
+            int[] waysState = renderer.gpxInfoWaysState();
+            assertEquals(1, waysState[0], "the list of ways starts open");
+            assertTrue(waysState[1] >= 0 && waysState[1] < stretches.size(),
+                    "the way the tour is on is lit: " + waysState[1]);
+            String litRow = ways[3 + waysState[1]];
+            String wayLabel = ways[0].substring(ways[0].indexOf(": ") + 2);
+            assertTrue(litRow.contains(ways[1]) && (litRow.startsWith(wayLabel) || litRow.startsWith(ways[1])),
+                    "and it is the way the pane names: " + ways[0] + " | " + ways[1] + " vs " + litRow);
+            // A tapped way takes the tour to where it starts, and is then the lit one. The first
+            // way long enough for the tour's frames to stop on, from the end: 100 m or more.
+            int target = -1;
+            for (int k = stretches.size() - 1; k > 0 && target < 0; k--) {
+                if (stretches.get(k).metres >= 100 && k != waysState[1]) {
+                    target = k;
+                }
+            }
+            assertTrue(target > 0, "a way to tap");
+            // Not in one jump: a quick flight along the track, which lands within 1.2 s.
+            renderer.tapGpxInfoWay(target).settle(150);
+            final boolean[] gliding = new boolean[1];
+            renderer.runOnRenderThread(() -> gliding[0] =
+                    com.peaknav.viewer.MapViewerSingleton.getViewerInstance().isGpxTourGliding());
+            assertTrue(gliding[0], "the tapped way was jumped to, not flown to");
+            renderer.settle(1_500);
+            renderer.runOnRenderThread(() -> gliding[0] =
+                    com.peaknav.viewer.MapViewerSingleton.getViewerInstance().isGpxTourGliding());
+            assertFalse(gliding[0], "still flying to the tapped way");
+            assertEquals(target, renderer.gpxInfoWaysState()[1],
+                    "tapped, way " + target + " is where the tour went: " + renderer.gpxInfoWayTexts()[0]);
+            File tapped = newTempFile("route_way_tapped.png");
+            renderer.captureWithUi(tapped);
+            System.out.println("route way tapped: " + tapped.getAbsolutePath() + " -> " + renderer.gpxInfoWayTexts()[0]);
+
+            renderer.setGpxInfoMaximized(true).scrollGpxInfo(1f).settle(300);
+            File list = newTempFile("route_ways_list.png");
+            renderer.captureWithUi(list);
+            System.out.println("route ways list: " + list.getAbsolutePath());
+            renderer.setGpxInfoWaysOpen(false).settle(300);
+            float[] folded = renderer.gpxInfoScroll();
+            File closed = newTempFile("route_ways_folded.png");
+            renderer.captureWithUi(closed);
+            System.out.println("route ways folded: " + closed.getAbsolutePath() + " scroll " + folded[0]);
+            assertEquals(0, renderer.gpxInfoWaysState()[0], "folded away");
+            renderer.setGpxInfoWaysOpen(true).setGpxInfoMaximized(false);
         } finally {
             renderer.clearGpx();
         }
@@ -1630,8 +1720,10 @@ class PeakNavRendererTest {
             renderer.captureWithUi(large);
             float[] largeBounds = renderer.gpxInfoBounds();
             float[] largeGraphs = renderer.gpxInfoGraphSizes();
+            // Within a pixel of the small graph's height: it is some thirty pixels tall, and laid
+            // out to whole pixels, so one pixel of rounding is already over 3 %.
             assertTrue(Math.abs(largeGraphs[2] / largeGraphs[3] - smallGraphs[2] / smallGraphs[3])
-                            < 0.02f * smallGraphs[2] / smallGraphs[3],
+                            <= (smallGraphs[2] / smallGraphs[3]) * (1.5f / smallGraphs[3]),
                     "the speed graph keeps its proportions too: " + java.util.Arrays.toString(smallGraphs)
                             + " vs " + java.util.Arrays.toString(largeGraphs));
             assertTrue(largeBounds[1] >= 0 && largeBounds[1] + largeBounds[3] <= largeBounds[5],
@@ -1642,6 +1734,15 @@ class PeakNavRendererTest {
             File bottom = newTempFile("gpx-speed-large-bottom.png");
             renderer.captureWithUi(bottom);
             assertTrue(renderer.gpxInfoScroll()[1] > 0, "scrolled down to the speed graph");
+            // Resized, folded and opened again, the pane keeps its place instead of going back
+            // to the top.
+            renderer.setGpxInfoMaximized(false).settle(300);
+            assertScrolledToTheBottom(renderer.gpxInfoScroll(), "after restoring the pane's size");
+            renderer.setGpxInfoOpen(false).settle(200);
+            renderer.setGpxInfoOpen(true).settle(300);
+            assertScrolledToTheBottom(renderer.gpxInfoScroll(), "after folding the pane and opening it again");
+            renderer.setGpxInfoMaximized(true).settle(300);
+            assertScrolledToTheBottom(renderer.gpxInfoScroll(), "after maximizing it again");
             renderer.setGpxInfoMaximized(false).settle(300);
             System.out.println("gpx speed frames: " + small.getAbsolutePath() + " " + large.getAbsolutePath()
                     + " " + bottom.getAbsolutePath());

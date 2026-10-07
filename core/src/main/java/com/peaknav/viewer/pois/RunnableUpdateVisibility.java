@@ -108,16 +108,20 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
 
         getC().visibility.updateCameraPosLatits();
 
-        Iterator<DataRetrieveThreadManager.MapDataUpdateRequest> iterator = updateRequests.iterator();
-
-        while (iterator.hasNext()) {
+        while (true) {
+            // One request at a time, taken under the set's own lock. The set is a synchronized
+            // one, which does not guard iteration: the render thread adding a request between
+            // next() and remove() made remove() throw, and the pass ended there with its
+            // worker thread.
             DataRetrieveThreadManager.MapDataUpdateRequest updateRequest;
-            try {
+            synchronized (updateRequests) {
+                Iterator<DataRetrieveThreadManager.MapDataUpdateRequest> iterator = updateRequests.iterator();
+                if (!iterator.hasNext()) {
+                    break;
+                }
                 updateRequest = iterator.next();
-            } catch (ConcurrentModificationException concurrentModificationException) {
-                return;
+                iterator.remove();
             }
-            iterator.remove();
 
             switch (updateRequest) {
                 case DATA_SORT_POI_LIST_BY_RELEVANCE:
@@ -199,11 +203,19 @@ public class RunnableUpdateVisibility extends StoppableRunnable {
 
         MapViewerScreen mapViewerScreen = getC().getMapViewerScreen();
         mapViewerScreen.impactPixmap.requestUpdatedImpactPixmap();
+        // The camera's position noted again, now that the picture has been taken: one run
+        // serves every request that comes in while it is going, and the note of one begun
+        // before a move to a distant place was still the old place's (see
+        // Visibility.checkVisible, which no longer depends on it once there is a picture).
+        getC().visibility.updateCameraPosLatits();
 
         newVisiblePeaks.clear();
         newVisiblePois.clear();
 
         C.O.iterateOverAllLists(poiObject -> {
+            // A place whose height is not known yet has no position to label.
+            if (!poiObject.resolveElevation())
+                return;
             DrawLabel drawLabel = poiObject.drawLabel;
 
             drawLabel.lock.lock();

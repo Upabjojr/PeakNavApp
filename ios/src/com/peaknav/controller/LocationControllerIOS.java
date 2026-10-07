@@ -22,8 +22,10 @@ import java.util.List;
  * <p>Authorization is asynchronous on iOS exactly as the runtime permission is on Android,
  * and the same trick answers it: callbacks that arrive before the user has decided wait in
  * {@link #waiting}, and the authorization-change delegate callback drains the queue the
- * moment the grant lands. A denial leaves the queue in place silently - the Android side
- * returns without an answer there too, and the "here" button simply stays un-lit.
+ * moment the grant lands. A denial hands the queue to core
+ * ({@code NativeScreenCaller.locationPermissionDenied}), which on a first run estimates the
+ * position from the internet connection instead and otherwise leaves it unanswered, as
+ * Android does.
  *
  * <p>Everything here must run on the main thread: the delegate's callbacks arrive on the
  * run loop of the thread the manager was created on, and on this backend the main thread is
@@ -34,6 +36,9 @@ public class LocationControllerIOS {
 
     private CLLocationManager manager;
     private final List<CurrentLocationCallback> waiting = new ArrayList<>();
+
+    /** Whether the request under way has handed over the cached position already. */
+    private boolean cachedDelivered;
 
     // The delegate must be reachable from a Java field for as long as the manager lives:
     // the manager's back-reference is a weak Objective-C pointer that RoboVM's collector
@@ -50,8 +55,17 @@ public class LocationControllerIOS {
 
         @Override
         public void didFail(CLLocationManager m, NSError error) {
-            // requestLocation() reports exactly once, here on failure. The queue stays:
-            // a later grant or a fresh tap of the button retries and drains it.
+            // requestLocation() reports exactly once, here on failure: location switched off,
+            // or no signal. A refusal is answered by authorizationChanged(); anything else
+            // is answered here, unless the cached position already was.
+            if (isDenied() || waiting.isEmpty()) {
+                return;
+            }
+            List<CurrentLocationCallback> failed = new ArrayList<>(waiting);
+            waiting.clear();
+            if (!cachedDelivered) {
+                unavailable(failed);
+            }
         }
 
         // iOS 14 calls the second form and the adapter implements both selectors, so the
@@ -93,6 +107,9 @@ public class LocationControllerIOS {
     public void getCurrentLocation(CurrentLocationCallback callback) {
         ensureManager();
         if (isDenied()) {
+            List<CurrentLocationCallback> refused = new ArrayList<>();
+            refused.add(callback);
+            refused(refused);
             return;
         }
         waiting.add(callback);
@@ -107,6 +124,12 @@ public class LocationControllerIOS {
     }
 
     private void authorizationChanged() {
+        if (!waiting.isEmpty() && isDenied()) {
+            List<CurrentLocationCallback> refused = new ArrayList<>(waiting);
+            waiting.clear();
+            refused(refused);
+            return;
+        }
         if (!waiting.isEmpty() && !isDenied()
                 && CLLocationManager.getAuthorizationStatus() != CLAuthorizationStatus.NotDetermined) {
             requestFix();
@@ -117,6 +140,7 @@ public class LocationControllerIOS {
         // The cached fix first, exactly as Android hands over getLastKnownLocation: the
         // camera jumps somewhere close immediately, and the fresh fix corrects it after.
         CLLocation cached = manager.getLocation();
+        cachedDelivered = cached != null;
         if (cached != null) {
             deliver(cached, false);
         }
@@ -141,5 +165,33 @@ public class LocationControllerIOS {
                 work.run();
             }
         }
+    }
+
+    /** Requests that no position came for: one answer for them all, as for a refusal. */
+    private static void unavailable(List<CurrentLocationCallback> callbacks) {
+        com.peaknav.compatibility.NativeScreenCaller caller =
+                com.peaknav.utils.PeakNavUtils.getNativeScreenCaller();
+        if (caller == null) {
+            return;
+        }
+        caller.locationUnavailable((longitude, latitude) -> {
+            for (CurrentLocationCallback callback : callbacks) {
+                callback.setCurrentLocation(longitude, latitude);
+            }
+        });
+    }
+
+    /** Requests that location access was refused to: one answer for them all, if core has one. */
+    private static void refused(List<CurrentLocationCallback> callbacks) {
+        com.peaknav.compatibility.NativeScreenCaller caller =
+                com.peaknav.utils.PeakNavUtils.getNativeScreenCaller();
+        if (caller == null) {
+            return;
+        }
+        caller.locationPermissionDenied((longitude, latitude) -> {
+            for (CurrentLocationCallback callback : callbacks) {
+                callback.setCurrentLocation(longitude, latitude);
+            }
+        });
     }
 }

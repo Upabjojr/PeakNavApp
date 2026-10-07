@@ -277,6 +277,11 @@ public final class PhotoSkylineAligner {
         if (p == null || getC() == null || getC().L == null || getC().L.isCurrentLocationNotSet()) {
             return;
         }
+        // One at a time: a second press while a match runs started another worker beside it,
+        // and each turned the camera to its own result.
+        if (!MATCHING.compareAndSet(false, true)) {
+            return;
+        }
         // held on screen until the result replaces it: the two forests and the pose
         // search take a few seconds on a phone
         toast(s("Match_photo_direction_running"), true);
@@ -290,12 +295,19 @@ public final class PhotoSkylineAligner {
                         toast(s("Match_photo_direction_failed"), false);
                         return;
                     }
+                    if (!isCurrent(p)) {
+                        // Closed or replaced during the match, which takes seconds.
+                        releaseToast();
+                        return;
+                    }
                     apply(m, p);
                     toast(s("Match_photo_direction_applied") + " " + Math.round(m.bearingDeg) + "\u00b0"
                             + (m.isConfident() ? "" : " (" + s("Match_photo_direction_uncertain") + ")"), false);
                 } catch (Throwable t) {
                     getLogger().error(TAG, "forced skyline match failed: " + t);
                     releaseToast();
+                } finally {
+                    MATCHING.set(false);
                 }
             }
         }, "skyline-match");
@@ -664,19 +676,19 @@ public final class PhotoSkylineAligner {
     /**
      * The terrain as the viewer has it loaded: NaN where no tile with elevation is in memory.
      *
-     * <p>Not {@code ElevationUtils.getElevationLatitsFromMaxCoords}: that goes through
-     * {@code CheckMissingData.getMaxZoomTile}, which builds its finest-zoom index from
-     * zoom-8 column and row numbers, so the walk up the tile pyramid starts from a tile
-     * that never exists and the lookup always comes back empty. Fixing it there changes
-     * what the label loader does with every POI lacking an {@code ele} tag (they are
-     * dropped today), so it is left alone here and the index is built properly instead.
+     * <p>Not {@code ElevationUtils.getElevationLatitsFromMaxCoords}: that one reads a tile
+     * whatever its state, which is safe only on the render thread (see below). The label
+     * loader reads this sampler too (MapDataManager, PoiObject.resolveElevation).
      */
     private static final ElevationSampler LOADED_TERRAIN = new ElevationSampler() {
         @Override
         public float elevationMeters(double latitude, double longitude) {
             Tile index = CheckMissingData.getTileAtZoomLevel(latitude, longitude, MapTile.ZOOM_LEVEL_MAX);
             MapTile mapTile = getC().mapTileStorage.getFromMapIndexLessEq(index);
-            if (mapTile == null || mapTile.isDisposed() || mapTile.elevationImage == null) {
+            // Read once: the render thread sets it to null when it disposes the tile, and a
+            // second read after the check threw in the middle of a horizon's lookups.
+            com.peaknav.elevation.ElevationImageAbstract image = mapTile == null ? null : mapTile.elevationImage;
+            if (image == null || mapTile.isDisposed()) {
                 return Float.NaN;
             }
             // Only tiles whose elevations are already decoded: a tile still loading would
@@ -687,7 +699,7 @@ public final class PhotoSkylineAligner {
                 return Float.NaN;
             }
             return Units.convertLatitsToMeters(
-                    mapTile.elevationImage.getTileElevationLatitsFromMaxCoords(longitude, latitude));
+                    image.getTileElevationLatitsFromMaxCoords(longitude, latitude));
         }
     };
 
@@ -795,9 +807,27 @@ public final class PhotoSkylineAligner {
         });
     }
 
+    /** Whether {@code p} is still the photo behind the terrain. */
+    private static boolean isCurrent(Pending p) {
+        synchronized (LOCK) {
+            return pending == p;
+        }
+    }
+
+    /** Whether a match the button started is running. */
+    private static final java.util.concurrent.atomic.AtomicBoolean MATCHING =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     private static void applyOnRenderThread(SkylineMatcher.Match m, Pending p) {
         MapViewerScreen screen = getC().getMapViewerScreen();
         if (screen == null) {
+            return;
+        }
+        // Checked here, on the thread that clears the photo, as well as where the match
+        // ended: a match found for a photo since closed or replaced turned the camera, set
+        // its field of view and switched the gyroscope off, for a picture no longer there.
+        // The automatic match's "yes" can come long after the question was asked.
+        if (!isCurrent(p)) {
             return;
         }
         com.peaknav.gesture.PhotoPin.clear();   // the pose is replaced wholesale

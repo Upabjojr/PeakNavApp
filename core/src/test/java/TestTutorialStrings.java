@@ -8,6 +8,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
+import java.util.Arrays;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
@@ -67,49 +70,19 @@ class TestTutorialStrings {
     }
 
     @Test
-    @DisplayName("A string with quotes, backslashes and accents survives into JavaScript")
-    void quotingIsSafe() {
-        assertEquals("\"plain\"", TutorialStrings.quote("plain"));
-        assertEquals("\"say \\\"hi\\\"\"", TutorialStrings.quote("say \"hi\""));
-        assertEquals("\"a\\\\b\"", TutorialStrings.quote("a\\b"));
-        assertEquals("\"line\\nbreak\"", TutorialStrings.quote("line\nbreak"));
-        // Accented prose must not go through raw: the page is handed over as a string by
-        // three platforms and only one of them controls the encoding.
-        assertEquals("\"caf\\u00e9\"", TutorialStrings.quote("caf\u00e9"));
-        assertTrue(TutorialStrings.quote("l'altitude").contains("l'altitude"),
-                "an apostrophe is fine inside double quotes");
-    }
-
-    @Test
-    @DisplayName("The injected snippet defines get_string and mentions every key")
-    void snippetShape() {
-        String js = TutorialStrings.asJavaScript();
-        assertTrue(js.startsWith("function get_string(k) {"), js.substring(0, Math.min(40, js.length())));
-        assertTrue(js.contains("return (k in t) ? t[k] : k;"), "must fall back to the key");
-        for (String key : TutorialStrings.KEYS) {
-            assertTrue(js.contains("\"" + key + "\""), "no entry for " + key);
-            assertTrue(js.contains("\"" + key + "_detail\""), "no entry for " + key + "_detail");
+    @DisplayName("Every slide names a caption key the catalogue knows, in the order of KEYS")
+    void slidesUseTheKeys() throws Exception {
+        File slidesFile = new File("../assets/info/tutorial_slides.json");
+        if (!slidesFile.exists()) {
+            slidesFile = new File("assets/info/tutorial_slides.json");
         }
-        // Balanced quotes: an unescaped one would blank the page rather than fail loudly.
-        int quotes = 0;
-        for (int i = 0; i < js.length(); i++) {
-            if (js.charAt(i) == '"' && (i == 0 || js.charAt(i - 1) != '\\')) {
-                quotes++;
-            }
+        String json = new String(Files.readAllBytes(slidesFile.toPath()), StandardCharsets.UTF_8);
+        List<String> keysInOrder = new ArrayList<>();
+        Matcher matcher = Pattern.compile("\"key\"\\s*:\\s*\"([^\"]+)\"").matcher(json);
+        while (matcher.find()) {
+            keysInOrder.add(matcher.group(1));
         }
-        assertEquals(0, quotes % 2, "unbalanced quotes in the generated JavaScript");
-    }
-
-    @Test
-    @DisplayName("The page asks for its captions by key and carries the injection point")
-    void pageUsesTheKeys() throws Exception {
-        File page = new File("../assets/info/app_tutorial.html");
-        if (!page.exists()) {
-            page = new File("assets/info/app_tutorial.html");
-        }
-        String html = new String(Files.readAllBytes(page.toPath()), StandardCharsets.UTF_8);
-        assertTrue(html.contains("// OVERLOAD::get_string"), "the platforms need this marker");
-        assertTrue(html.contains("get_string(slide.key)"), "captions must come from the catalogue");
-        assertTrue(html.contains("get_string(slide.key + \"_detail\")"), "explanations too");
+        assertEquals(Arrays.asList(TutorialStrings.KEYS), keysInOrder,
+                "the slides and TutorialStrings.KEYS must say the same thing in the same order");
     }
 }

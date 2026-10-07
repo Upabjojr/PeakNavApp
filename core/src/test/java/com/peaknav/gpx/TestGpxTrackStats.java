@@ -83,6 +83,41 @@ public class TestGpxTrackStats {
     }
 
     @Test
+    void terrainNoiseAlongAPathIsNotCountedAsClimbing() {
+        // 3 km north at a point every 30 m, climbing 300 m steadily, while the terrain under the
+        // path swings 40 m either way from one point to the next - a path along the foot of a cliff.
+        double[][] points = new double[101][];
+        for (int i = 0; i <= 100; i++) {
+            points[i] = new double[]{46.0 + i * 30 / 111_195.0, 7.7};
+        }
+        GpxTrack t = track(points);
+        GpxTrackStats stats = GpxTrackStats.of(t, (lat, lon) -> {
+            int i = (int) Math.round((lat - 46.0) * 111_195.0 / 30);
+            return (float) (1000 + 3.0 * i + (i % 2 == 0 ? 40 : -40));
+        });
+        assertEquals(300, stats.ascentMetres, 40, "the climb, not the swings: " + stats.ascentMetres);
+        assertTrue(stats.descentMetres < 40, "no real descent: " + stats.descentMetres);
+        assertEquals(1340, stats.highestMetres, 1e-3, "highest and lowest stay the terrain's own");
+
+        // The same swings recorded by a GPS are left as they are: a recorded track keeps its rule.
+        double[][] recorded = new double[101][];
+        for (int i = 0; i <= 100; i++) {
+            recorded[i] = new double[]{points[i][0], 7.7, 1000 + 3.0 * i + (i % 2 == 0 ? 40 : -40)};
+        }
+        assertTrue(GpxTrackStats.of(track(recorded), null).ascentMetres > 3000);
+    }
+
+    @Test
+    void smoothingKeepsTheEndsAndASteadyClimb() {
+        double[] along = {0, 100, 200, 300, 400, 500};
+        double[] heights = {0, 10, 20, 30, 40, 50};
+        double[] smooth = GpxTrackStats.smoothAlong(along, heights, 300);
+        for (int i = 0; i < heights.length; i++) {
+            assertEquals(heights[i], smooth[i], 1e-9, "a straight climb is its own average: " + i);
+        }
+    }
+
+    @Test
     void aRecordedTrackGetsTheTerrainsProfileBesideItsOwn() {
         GpxTrack t = track(new double[][]{{46.000, 7.700, 1000}, {46.010, 7.700, 1100}, {46.020, 7.700, 1200}});
         GpxTrackStats.Elevation terrainTwentyHigher = (lat, lon) -> (float) (1020 + (lat - 46.0) * 10_000);

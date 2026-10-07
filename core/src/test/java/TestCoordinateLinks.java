@@ -88,6 +88,26 @@ class TestCoordinateLinks {
     }
 
     @Test
+    @DisplayName("a broken percent escape is no coordinate, and no exception")
+    void brokenEscapes() {
+        // "q=46.02%" is what the search box holds on the way to "%2C" being typed: URLDecoder
+        // throws on it, which from the box's key listener ended the app.
+        assertArrayEquals(new double[]{1, 2}, CoordinateLinks.parseGeoUri("geo:1,2?q=5%"), 1e-9);
+        assertNull(CoordinateLinks.parseGeoUri("geo:0,0?q=%zz"));
+        assertArrayEquals(new double[]{46.02, 7.74}, CoordinateLinks.parseGeoUri("geo:0,0?q=46.02%2C7.74"), 1e-9);
+    }
+
+    @Test
+    @DisplayName("NaN and infinity are not coordinates")
+    void notNumbers() {
+        // parseDouble reads these, and NaN is neither below -90 nor above 90.
+        assertNull(CoordinateLinks.parseLatLon("NaN,7"));
+        assertNull(CoordinateLinks.parseLatLon("46,NaN"));
+        assertNull(CoordinateLinks.parseLatLon("Infinity,7"));
+        assertNull(CoordinateLinks.parseGeoUri("geo:NaN,NaN"));
+    }
+
+    @Test
     @DisplayName("a link built from a point parses back to that point")
     void roundTrips() {
         double[][] points = {{46.0207, 7.7491}, {-43.5950, 170.1418}, {28.2724, -16.6425}};

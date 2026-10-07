@@ -113,14 +113,16 @@ project(':core') {
         description = 'Writes assets/assets.txt, the list of every file under assets/.'
         // After the files that are themselves generated into assets/, or they would be missing
         // from the list on a fresh clone. (The list used to be written while the task was being
-        // configured, i.e. before either of them had run.)
+        // configured, i.e. before either of them had run.) Not the baked fonts: bakeFonts runs
+        // core's own classes, whose resources wait for this list, so it cannot come first; the
+        // fonts are left out of the list instead, which nothing reads them from.
         dependsOn 'generateIcons', 'generateGeonamesAssetIndex'
         File assetsFolder = new File("${rootDir}/assets/")
         File assetsFile = new File(assetsFolder, "assets.txt")
-        inputs.files(fileTree(assetsFolder) { exclude 'assets.txt' })
+        inputs.files(fileTree(assetsFolder) { exclude 'assets.txt', 'fonts_baked/**' })
         outputs.file(assetsFile)
         doLast {
-            assetsFile.text = fileTree(assetsFolder) { exclude 'assets.txt' }
+            assetsFile.text = fileTree(assetsFolder) { exclude 'assets.txt', 'fonts_baked/**' }
                     .collect { assetsFolder.relativePath(it) }.sort().join("\n") + "\n"
         }
     }

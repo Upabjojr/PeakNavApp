@@ -62,8 +62,9 @@ public final class GpxTileRasterizer {
             }
             boolean intersects = anyPath && !(maxLon < bb.west || minLon > bb.east
                     || maxLat < bb.south || minLat > bb.north);
-            if (intersects) {
-                tile.setTexturePixmap(PixmapLayerName.GPX_PATH, rasterize(bb, tracks));
+            Pixmap drawn = intersects ? rasterize(bb, tracks) : null;
+            if (drawn != null) {
+                tile.setTexturePixmap(PixmapLayerName.GPX_PATH, drawn);
                 tile.hasGpxTexture = true;
             } else if (tile.hasGpxTexture) {
                 // This tile had a path and no longer does (cleared, or the tracks moved off it):
@@ -130,9 +131,14 @@ public final class GpxTileRasterizer {
                 }
             }
         }
-        if (any) {
-            writeToPixmap(pixmap, cov, phase);
+        if (!any) {
+            // The track's box covers the tile, the track does not: no texture for it. Every
+            // tile in the box used to get one, a megabyte each and a texture fetch per
+            // fragment, blank on most of them for a long or diagonal track.
+            pixmap.dispose();
+            return null;
         }
+        writeToPixmap(pixmap, cov, phase);
         return pixmap;
     }
 

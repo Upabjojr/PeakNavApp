@@ -23,7 +23,8 @@ bare clone with no manual steps, and a packaging recipe merged into
   the non-Android targets instead of patching build files.
 * **No offline place index.** `assets/geonames_index.362/` is built separately from the GeoNames
   dumps and is not something F-Droid's server can rebuild, so this build ships without it; the
-  app then searches online only (Nominatim), as the listing says.
+  app then searches online only: Search (or Enter) asks OpenStreetMap's Nominatim. (In 1.3.2
+  nothing called the online search, so this build found no place at all; fixed in 1.3.3.)
 * **The store listing** in [`fastlane/metadata/android/`](../fastlane/metadata/android/): title,
   summary, description in the app's seven languages, the icon and eight portrait store
   screenshots; the credit for the photo in the picture-overlay one is in the descriptions and in

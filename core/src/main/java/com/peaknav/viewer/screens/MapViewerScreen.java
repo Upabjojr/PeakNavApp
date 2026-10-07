@@ -58,6 +58,7 @@ import com.peaknav.viewer.renderer_gdx.TileBatchRenderer;
 import com.peaknav.gesture.MountainInputController;
 import com.peaknav.gesture.PositionChangeListener;
 import com.peaknav.utils.Units;
+import com.peaknav.viewer.labels.PoiObject;
 import com.peaknav.viewer.tiles.MapTile;
 import com.peaknav.viewer.widgets.KeyboardHelpOverlay;
 import com.peaknav.viewer.widgets.WidgetGetter;
@@ -73,18 +74,22 @@ public class MapViewerScreen implements Screen {
 	public Table tableWatermark;
 	public WidgetGetter.TableTool tableTool;
 	private KeyboardHelpOverlay keyboardHelpOverlay;
+	/** The "?" slideshow, drawn by the app itself; see TutorialOverlay. */
+	public com.peaknav.viewer.widgets.TutorialOverlay tutorialOverlay;
 
 	public MountainInputController controller;
 	private final float baseFieldOfView;
 	public volatile boolean needToBeShown = true;
 	private InputMultiplexer multiplexer;
+	/** Fewer frames while nothing happens, on iOS; see IdleFrameRate. */
+	private final IdleFrameRate idleFrameRate = new IdleFrameRate();
 	public Label labelElevationChange;
 	public Table tableCenter;
 	public long lastElevationChange = 0;
 	private Window window = null;
 	public Vector3 impact = null;
 
-	private Viewport stageViewport;
+	private ExtendViewport stageViewport;
 	private Viewport stageNavigationViewport;
 	private final float sidebarProp = 0.2f;
 
@@ -104,31 +109,44 @@ public class MapViewerScreen implements Screen {
 	private TileBatchRenderer tileBatchRenderer;
 	private volatile GpxFrameRequest pendingGpxFrame;
 
-	/** Low/high points of a just-loaded GPX, so the next location settle can frame the track. */
+	/**
+	 * A just-loaded GPX, so the next location settle can frame the track: a sample of its points,
+	 * and its low and high points, which say which way is up the track.
+	 */
 	private static final class GpxFrameRequest {
 		final double lowLat, lowLon, highLat, highLon;
 		final float lowEleMeters, highEleMeters; // NaN when the GPX had no elevation
+		final float[] lats, lons, eles;         // eles NaN where a point had none
 		GpxFrameRequest(double lowLat, double lowLon, float lowEleMeters,
-						double highLat, double highLon, float highEleMeters) {
+						double highLat, double highLon, float highEleMeters,
+						float[] lats, float[] lons, float[] eles) {
 			this.lowLat = lowLat;
 			this.lowLon = lowLon;
 			this.lowEleMeters = lowEleMeters;
 			this.highLat = highLat;
 			this.highLon = highLon;
 			this.highEleMeters = highEleMeters;
+			this.lats = lats;
+			this.lons = lons;
+			this.eles = eles;
 		}
 	}
 
 	public void requestGpxFraming(double lowLat, double lowLon, float lowEleMeters,
-								  double highLat, double highLon, float highEleMeters) {
+								  double highLat, double highLon, float highEleMeters,
+								  float[] lats, float[] lons, float[] eles) {
 		pendingGpxFrame = new GpxFrameRequest(lowLat, lowLon, lowEleMeters,
-				highLat, highLon, highEleMeters);
+				highLat, highLon, highEleMeters, lats, lons, eles);
 	}
 
 	public final MoveCameraAction moveCameraAction = new MoveCameraAction();
 	public volatile ImpactPixmap impactPixmap;
 	public LabelLoading labelLoading;
+	/** The pictures of the app, shown on their own when the menu asks for them. */
+	public com.peaknav.viewer.widgets.SlideShowOverlay slideShowOverlay;
 	public OptionPane optionPane;
+	/** Fine moves of the terrain over a photo, and fine turns and stretches about a pin. */
+	public com.peaknav.viewer.widgets.PhotoNudgePad photoNudgePad;
 	public final BackgroundPicManager backgroundPicManager = new BackgroundPicManager();
 	private volatile boolean flagTakeSnapshot = false;
 	private volatile boolean paused = false;
@@ -171,6 +189,20 @@ public class MapViewerScreen implements Screen {
 
 	public void addPositionChangeListener(PositionChangeListener positionChangeListener) {
 		this.positionChangeListeners.add(positionChangeListener);
+	}
+
+	/**
+	 * Shows or hides the "download data for this area" button at the top of the screen. Normally
+	 * driven by an arrival (below), but the tile updater raises it too, for the case where there
+	 * is no arrival to drive it: nothing can be built for the target, so nothing calls back, and
+	 * the button is then the only way out of an empty screen.
+	 */
+	public void setDownloadDataOffered(final boolean offered) {
+		Gdx.app.postRunnable(() -> {
+			if (tableDownloadData != null) {
+				tableDownloadData.getTable().setVisible(offered);
+			}
+		});
 	}
 
 	// TODO: this should only be called from ElevationImageProviderManager:
@@ -282,114 +314,202 @@ public class MapViewerScreen implements Screen {
 
 	/** Seconds of the smooth fly-and-rotate into the GPX framing. */
 	private static final float GPX_FLY_SECONDS = 2.6f;
-	/** Minimum camera height above the track's low point, so the whole path is seen from high up. */
-	private static final float GPX_MIN_HEIGHT_METERS = 5000f;
+	/** The nearest the framing camera comes to a short track's centre. */
+	private static final float GPX_MIN_DISTANCE_METERS = 1500f;
+	/** The least height of the framing camera above the ground and above the track's top. */
+	private static final float GPX_CLEARANCE_METERS = 400f;
+	/** Extra room around the track, as a fraction of the screen, so it does not touch the controls. */
+	private static final float GPX_FRAME_MARGIN = 0.04f;
+	/** Where the track's pane usually ends, in widget units: its bottom in portrait, from the top... */
+	private static final float GPX_PANE_BOTTOM_UNITS = 6.2f;
+	/** ...and its right edge in landscape, from the left. */
+	private static final float GPX_PANE_RIGHT_UNITS = 4.6f;
 	/** How long, after a GPX framing, to ignore re-fired location callbacks for the same target. */
 	private static final long GPX_FRAME_HOLD_MS = 9000L;
 
 	private long gpxFrameHoldUntilMs = 0L;
 	private double gpxFrameLat, gpxFrameLon;
+	/** Seconds of the correcting fly, once the terrain under the track has loaded. */
+	private static final float GPX_REFINE_FLY_SECONDS = 1.4f;
+	/** How long after a framing its correction may still come. */
+	private static final long GPX_REFINE_WITHIN_MS = 20000L;
+	/** A framing made before the terrain under the track loaded, to redo once it has; else null. */
+	private GpxFrameRequest gpxRefineRequest;
+	private long gpxRefineUntilMs, gpxRefineNextCheckMs;
 
 	/**
-	 * Frames the loaded track vertically: the low point on the bottom edge of the screen, the high
-	 * point on the top edge, from a camera at least {@link #GPX_MIN_HEIGHT_METERS} above the low
-	 * point (higher for long tracks). It then flies there smoothly, rotating as it goes.
+	 * Flies to a view of the whole loaded track (see {@link com.peaknav.gpx.GpxFraming}): every
+	 * point inside the part of the screen the controls leave free, from a three-quarter view,
+	 * looking up the track where that costs little.
 	 *
-	 * <p>The camera, low point and high point are coplanar (the vertical plane through the low point
-	 * along the low->high heading), so it solves in that plane: the camera sits at height H behind
-	 * the low point; the look pitch is fixed to put the low point on the bottom frustum edge, and
-	 * the back-distance B is solved so the high point lands on the top edge.
+	 * <p>Heights: a point's own where the GPX has them, else the loaded terrain's under it, else
+	 * the average of those known, else the ground at the map target.
 	 */
 	private void applyGpxFraming(GpxFrameRequest r) {
-		gpxWorld(r.lowLat, r.lowLon, r.lowEleMeters, gpxLowW);
-		gpxWorld(r.highLat, r.highLon, r.highEleMeters, gpxHighW);
+		applyGpxFraming(r, false);
+	}
 
-		float dhx = gpxHighW.x - gpxLowW.x;
-		float dhy = gpxHighW.y - gpxLowW.y;
-		float dh = (float) Math.sqrt(dhx * dhx + dhy * dhy); // horizontal separation
-		float dz = gpxHighW.z - gpxLowW.z;                   // elevation gain (latits)
-		float len = (float) Math.sqrt(dh * dh + dz * dz);    // low->high 3D distance
+	/**
+	 * Redoes a framing made on guessed heights once the terrain under the track has loaded:
+	 * a track with no heights of its own was fitted as if flat, and a climb then lifts its far end
+	 * under the pane. Only while the camera still stands where the framing put it - a user who
+	 * has moved it keeps their view - and only once.
+	 */
+	private void refineGpxFramingWhenTerrainArrives() {
+		GpxFrameRequest r = gpxRefineRequest;
+		long now = System.currentTimeMillis();
+		if (r == null || now < gpxRefineNextCheckMs) {
+			return;
+		}
+		gpxRefineNextCheckMs = now + 500L;
+		if (now > gpxRefineUntilMs) {
+			gpxRefineRequest = null;
+			return;
+		}
+		if (moveCameraAction.remainingSteps() > 0) {
+			return;   // still flying there
+		}
+		if (cam.position.dst(gpxCamPos) > Units.convertMetersToLatits(30f)) {
+			gpxRefineRequest = null;   // the user has moved the camera
+			return;
+		}
+		com.peaknav.skyline.ElevationSampler terrain = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain();
+		int missing = 0, known = 0;
+		for (int i = 0; i < r.lats.length; i++) {
+			if (Float.isNaN(r.eles[i])) {
+				missing++;
+				if (!Float.isNaN(terrain.elevationMeters(r.lats[i], r.lons[i]))) {
+					known++;
+				}
+			}
+		}
+		if (known < 0.95f * missing) {
+			return;
+		}
+		gpxRefineRequest = null;
+		applyGpxFraming(r, true);
+		tableTool.sliderElevation.setVisualPercent(convertUnitsZ2ElevationBar(gpxCamPos.z));
+	}
 
-		// Horizontal heading low->high; if the two are vertically stacked, stand off to the south.
-		float ux, uy;
-		if (dh < 1e-7f) {
-			ux = 0f;
-			uy = -1f;
-		} else {
-			ux = dhx / dh;
-			uy = dhy / dh;
+	private void applyGpxFraming(GpxFrameRequest r, boolean refining) {
+		com.peaknav.skyline.ElevationSampler terrain =
+				com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain();
+		final double refLat = getC().L.getTargetLatitude();
+		int n = r.lats.length;
+		if (n == 0) {
+			return;
+		}
+		float[] xs = new float[n], ys = new float[n], zs = new float[n];
+		boolean[] known = new boolean[n];
+		float knownSum = 0f;
+		int knownCount = 0;
+		for (int i = 0; i < n; i++) {
+			float metres = r.eles[i];
+			if (Float.isNaN(metres)) {
+				metres = terrain.elevationMeters(r.lats[i], r.lons[i]);
+			}
+			gpxWorld(r.lats[i], r.lons[i], metres, gpxLowW);
+			xs[i] = gpxLowW.x;
+			ys[i] = gpxLowW.y;
+			zs[i] = gpxLowW.z;
+			known[i] = !Float.isNaN(metres);
+			if (known[i]) {
+				knownSum += zs[i];
+				knownCount++;
+			}
+		}
+		if (!refining && knownCount < n) {
+			gpxRefineRequest = r;
+			gpxRefineUntilMs = System.currentTimeMillis() + GPX_REFINE_WITHIN_MS;
+		}
+		if (knownCount > 0 && knownCount < n) {
+			// Points with no height of their own and no terrain loaded yet: the others' average
+			// is a better guess than the ground at the map target, which may be far off.
+			for (int i = 0; i < n; i++) {
+				if (!known[i]) {
+					zs[i] = knownSum / knownCount;
+				}
+			}
 		}
 
-		float theta = (float) Math.toRadians(cam.fieldOfView); // vertical field of view
-		// At least 5000 m above the low point, and higher for a long track so it isn't cramped.
-		float height = Math.max(0.5f * len, Units.convertMetersToLatits(GPX_MIN_HEIGHT_METERS));
-		float back = solveGpxBack(dh, dz, height, theta);
+		// Up the track: from its low point to its high point.
+		gpxWorld(r.lowLat, r.lowLon, r.lowEleMeters, gpxLowW);
+		gpxWorld(r.highLat, r.highLon, r.highEleMeters, gpxHighW);
+		float upX = gpxHighW.x - gpxLowW.x, upY = gpxHighW.y - gpxLowW.y;
+		float preferHeading = upX * upX + upY * upY < 1e-14f ? Float.NaN
+				: (float) Math.toDegrees(Math.atan2(upX, upY));
 
-		gpxCamPos.set(gpxLowW.x - ux * back, gpxLowW.y - uy * back, gpxLowW.z + height);
-
-		// Look pitch: depression down to the low point, raised by half the FOV so the low point sits
-		// exactly on the bottom frustum edge.
-		float depression = (float) Math.atan2(height, back);
-		float af = -depression + theta * 0.5f;
-		float cosF = (float) Math.cos(af);
-		float sinF = (float) Math.sin(af);
-		gpxLookDir.set(ux * cosF, uy * cosF, sinF).nor();
+		com.peaknav.gpx.GpxFraming.Result framing = com.peaknav.gpx.GpxFraming.frame(xs, ys, zs,
+				gpxFramingScreen(), preferHeading,
+				Units.convertMetersToLatits(GPX_MIN_DISTANCE_METERS),
+				Units.convertMetersToLatits(GPX_CLEARANCE_METERS),
+				(x, y) -> {
+					float metres = terrain.elevationMeters(y, Units.convertLatitsToLonits(x, (float) refLat));
+					return Float.isNaN(metres) ? Float.NaN
+							: Units.convertMetersToLatits(metres) - com.peaknav.elevation.ElevationUtils
+							.getElevationCorrectionForRoundEarth(y, Units.convertLatitsToLonits(x, (float) refLat));
+				});
+		gpxCamPos.set(framing.x, framing.y, framing.z);
+		gpxLookDir.set(framing.dirX, framing.dirY, framing.dirZ);
 
 		// The elevation bar measures altitude above the ground under the camera, but the camera is
-		// no longer over the map target — so point that ground reference at the camera's own spot.
-		// Read the terrain there if it's loaded; otherwise use the track's high point, a safe floor
-		// that keeps scrolling the bar down from diving underground.
+		// no longer over the map target - so point that ground reference at the camera's own spot.
+		// Read the terrain there if it's loaded; otherwise use the track's highest point, a safe
+		// floor that keeps scrolling the bar down from diving underground.
 		float camLat = gpxCamPos.y;
-		float camLon = Units.convertLatitsToLonits(gpxCamPos.x, camLat);
-		Float sampled = com.peaknav.elevation.ElevationUtils.getElevationLatitsFromMaxCoords(
-				camLon, camLat, false);
+		float camLon = Units.convertLatitsToLonits(gpxCamPos.x, (float) refLat);
+		float groundMetres = terrain.elevationMeters(camLat, camLon);
 		float groundZ;
-		if (sampled != null) {
-			groundZ = sampled - com.peaknav.elevation.ElevationUtils
-					.getElevationCorrectionForRoundEarth(camLat, camLon);
+		if (!Float.isNaN(groundMetres)) {
+			groundZ = Units.convertMetersToLatits(groundMetres)
+					- com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(camLat, camLon);
 		} else {
-			groundZ = Math.max(gpxLowW.z, gpxHighW.z);
+			groundZ = -Float.MAX_VALUE;
+			for (float z : zs) {
+				groundZ = Math.max(groundZ, z);
+			}
 		}
 		getC().L.setCurrentTerrainEleQuiet(groundZ);
 
-		flyToGpxFraming();
-	}
-
-	private void flyToGpxFraming() {
-		// Smooth ease-in-out fly, position and heading interpolating together over the whole move.
-		moveCameraAction.setCameraVectors(gpxCamPos, gpxLookDir, Vector3.Z,
-				false, Interpolation.smooth, false, 0f, 1f, GPX_FLY_SECONDS);
+		flyToGpxFraming(refining ? GPX_REFINE_FLY_SECONDS : GPX_FLY_SECONDS);
 	}
 
 	/**
-	 * With the camera at (-B, H) in the vertical plane (low=(0,0), high=(dh,dz)) and the look pitch
-	 * pinned so the low point is on the bottom edge, the high point lands on the top edge when
-	 * atan2(dz-H, dh+B) + atan2(H, B) = theta. Solve that for the back-distance B by bisection.
+	 * The screen as the framing sees it: the camera's lens, and the margins the controls take -
+	 * the elevation bar on the left, the buttons on the right and along the top, the readouts at
+	 * the bottom, and the track's pane, above the track in portrait and beside it in landscape.
 	 */
-	private static float solveGpxBack(float dh, float dz, float height, float theta) {
-		float lo = 1e-6f;
-		float hi = 1.0f; // latits; ~100 km, plenty of range
-		float glo = gpxBackResidual(lo, dh, dz, height, theta);
-		float ghi = gpxBackResidual(hi, dh, dz, height, theta);
-		if ((glo < 0f) == (ghi < 0f)) {
-			return height; // no bracket (near-vertical/degenerate): fall back to a 45-degree look
-		}
-		for (int i = 0; i < 40; i++) {
-			float mid = 0.5f * (lo + hi);
-			float gm = gpxBackResidual(mid, dh, dz, height, theta);
-			if ((gm < 0f) == (glo < 0f)) {
-				lo = mid;
-				glo = gm;
+	private com.peaknav.gpx.GpxFraming.Screen gpxFramingScreen() {
+		float width = Gdx.graphics.getWidth(), height = Gdx.graphics.getHeight();
+		float unit = Units.getWidgetUnitStep();
+		float left = 1.5f * unit / width, right = 1.3f * unit / width;
+		float top = 1.4f * unit / height, bottom = 3.8f * unit / height;
+		// The pane opens with the track, but is often laid out only after this runs: its real
+		// size where it is on screen already, else room for its usual one.
+		com.badlogic.gdx.scenes.scene2d.ui.Table pane = gpxInfoPane == null ? null : gpxInfoPane.getPanel();
+		if (pane != null && gpxInfoPane.getTable().isVisible() && pane.getStage() != null
+				&& pane.getHeight() > 0f) {
+			com.badlogic.gdx.math.Vector2 corner = pane.localToStageCoordinates(new com.badlogic.gdx.math.Vector2(
+					pane.getWidth(), 0f));
+			if (height >= width) {
+				top = Math.max(top, 1f - corner.y / pane.getStage().getHeight());
 			} else {
-				hi = mid;
+				left = Math.max(left, corner.x / pane.getStage().getWidth());
 			}
+		} else if (height >= width) {
+			top = GPX_PANE_BOTTOM_UNITS * unit / height;
+		} else {
+			left = GPX_PANE_RIGHT_UNITS * unit / width;
 		}
-		return 0.5f * (lo + hi);
+		return new com.peaknav.gpx.GpxFraming.Screen(cam.fieldOfView, width / height,
+				Math.min(0.45f, left + GPX_FRAME_MARGIN), Math.min(0.45f, right + GPX_FRAME_MARGIN),
+				Math.min(0.45f, top + GPX_FRAME_MARGIN), Math.min(0.45f, bottom + GPX_FRAME_MARGIN));
 	}
 
-	private static float gpxBackResidual(float back, float dh, float dz, float height, float theta) {
-		return (float) Math.atan2(dz - height, dh + back)
-				+ (float) Math.atan2(height, back) - theta;
+	private void flyToGpxFraming(float seconds) {
+		// Smooth ease-in-out fly, position and heading interpolating together over the whole move.
+		moveCameraAction.setCameraVectors(gpxCamPos, gpxLookDir, Vector3.Z,
+				false, Interpolation.smooth, false, 0f, 1f, seconds);
 	}
 
 	// --- Cinematic GPX tour: fly along the track from above, then orbit its end 360 degrees. ---
@@ -584,6 +704,8 @@ public class MapViewerScreen implements Screen {
 	/** The frame the queued moves start from: that first move goes straight onto it. */
 	private int gpxTourQueuedFrom = 0;
 
+	/** The pane a tapped label opens (see FeatureInfoPane); null until the stage is built. */
+	public com.peaknav.viewer.widgets.FeatureInfoPane featureInfoPane;
 	/** The GPX info pane (see GpxInfoPane); null until the stage is built. */
 	public com.peaknav.viewer.widgets.GpxInfoPane gpxInfoPane;
 
@@ -594,6 +716,9 @@ public class MapViewerScreen implements Screen {
 	 * the first move queued, which flies (or holds) straight onto its own frame.
 	 */
 	public float getGpxTourFraction() {
+		if (gpxGlideActive && gpxTourTrackFrames >= 2) {
+			return MathUtils.clamp(gpxGlideFrameAt(gpxGlideElapsed) / (gpxTourTrackFrames - 1), 0f, 1f);
+		}
 		int total = gpxTourFrames.size();
 		if (!gpxTourActive || total == 0 || moveCameraAction.isComplete() || gpxTourTrackFrames < 2) {
 			return -1f;
@@ -625,9 +750,11 @@ public class MapViewerScreen implements Screen {
 			GpxTourFrame f = gpxTourFrames.get(i);
 			total += f.seconds;
 			if (i == firstFrame && easeIn) {
-				// Ease in from the current view rather than cutting to the new pose.
+				// Ease in from the current view rather than cutting to the new pose. Not an
+				// "immediate" move: that one takes no time at all whatever duration it is given,
+				// and the ease-in was a cut. The queue was cleared above.
 				moveCameraAction.setCameraVectors(f.pos, f.dir, Vector3.Z,
-						true, Interpolation.smooth, false, 0f, 1f,
+						false, Interpolation.smooth, false, 0f, 1f,
 						f.intro ? GPX_TOUR_INTRO_SECONDS : GPX_TOUR_SEEK_SECONDS);
 			} else {
 				moveCameraAction.addFlatStep(f.pos, f.dir, Vector3.Z,
@@ -743,6 +870,107 @@ public class MapViewerScreen implements Screen {
 	}
 
 	/**
+	 * Jumps the tour to a point of the track, {@code fraction} of its length along - the measure
+	 * {@link #getGpxTourFraction} reports - and never short of it: the frame there, or the first
+	 * after. For going to where a way of the list starts, which must then be the way the pane
+	 * lights, not the end of the one before. {@link #seekGpxTour} spreads its fraction over the
+	 * frames circling the end too, a different measure, right for a scrub bar that reaches them.
+	 */
+	public void seekGpxTourAlongTrack(float fraction) {
+		if (!gpxTourActive || moveCameraAction.isComplete()) {
+			seekGpxTour(0f);   // sets the tour up, paused, as a first drag of the bar does
+			if (!gpxTourActive) {
+				return;
+			}
+		}
+		int total = gpxTourFrames.size();
+		if (total < 2 || gpxTourTrackFrames < 2) {
+			return;
+		}
+		int frame = Math.min(gpxTourTrackFrames - 1,
+				(int) Math.ceil(MathUtils.clamp(fraction, 0f, 1f) * (gpxTourTrackFrames - 1) - 1e-4f));
+		glideGpxTourTo(frame);
+	}
+
+	// ---- Gliding along the track to a point of it -----------------------------------------
+	//
+	// A way tapped in the GPX pane's list takes the tour to where it starts - not in one jump,
+	// which left no sense of where along the track that is, but in a quick flight along the
+	// tour's own frames, easing in and out: half a second for a neighbouring way, at most
+	// 1.2 s for the far end. The tour is held while it flies, and lands as a seek does - paused
+	// if it was, carrying on if it was playing.
+
+	private static final float GLIDE_MIN_SECONDS = 0.5f;
+	private static final float GLIDE_MAX_SECONDS = 1.2f;
+	private boolean gpxGlideActive;
+	private float gpxGlideFrom, gpxGlideTo, gpxGlideElapsed, gpxGlideSeconds;
+	private boolean gpxGlideWasPaused;
+	private final Vector3 gpxGlideDir = new Vector3();
+
+	/** Where the tour is now, in frames along the track (fractional while it flies between two). */
+	private float gpxTourFrameNow() {
+		float fraction = getGpxTourFraction();
+		return fraction < 0 ? 0f : fraction * (gpxTourTrackFrames - 1);
+	}
+
+	private void glideGpxTourTo(int frame) {
+		float from = gpxGlideActive ? gpxGlideFrameAt(gpxGlideElapsed) : gpxTourFrameNow();
+		if (Math.abs(frame - from) < 0.5f) {
+			seekGpxTour(frame / (float) (gpxTourFrames.size() - 1));
+			return;
+		}
+		gpxGlideWasPaused = gpxGlideActive ? gpxGlideWasPaused : moveCameraAction.isPaused();
+		moveCameraAction.setPaused(true);
+		gpxGlideFrom = from;
+		gpxGlideTo = frame;
+		gpxGlideElapsed = 0f;
+		float share = Math.abs(frame - from) / Math.max(1, gpxTourTrackFrames - 1);
+		gpxGlideSeconds = MathUtils.clamp(GLIDE_MIN_SECONDS + share * (GLIDE_MAX_SECONDS - GLIDE_MIN_SECONDS),
+				GLIDE_MIN_SECONDS, GLIDE_MAX_SECONDS);
+		gpxGlideActive = true;
+	}
+
+	/** The frame, fractional, the glide has reached after {@code elapsed} seconds: eased in and out. */
+	private float gpxGlideFrameAt(float elapsed) {
+		float t = MathUtils.clamp(elapsed / gpxGlideSeconds, 0f, 1f);
+		float eased = t * t * (3f - 2f * t);
+		return gpxGlideFrom + (gpxGlideTo - gpxGlideFrom) * eased;
+	}
+
+	/** One frame of a glide: the camera between the two tour frames it has reached. */
+	private void stepGpxGlide(float deltaTime) {
+		if (!gpxGlideActive) {
+			return;
+		}
+		if (!gpxTourActive || gpxTourFrames.size() < 2) {
+			gpxGlideActive = false;
+			return;
+		}
+		gpxGlideElapsed += deltaTime;
+		if (gpxGlideElapsed >= gpxGlideSeconds) {
+			// Landed: exactly as a seek puts it there, and the tour as it was before.
+			gpxGlideActive = false;
+			seekGpxTour(gpxGlideTo / (float) (gpxTourFrames.size() - 1));
+			moveCameraAction.setPaused(gpxGlideWasPaused);
+			return;
+		}
+		float at = gpxGlideFrameAt(gpxGlideElapsed);
+		int a = MathUtils.clamp((int) Math.floor(at), 0, gpxTourFrames.size() - 1);
+		int b = Math.min(a + 1, gpxTourFrames.size() - 1);
+		float t = at - a;
+		GpxTourFrame fa = gpxTourFrames.get(a), fb = gpxTourFrames.get(b);
+		cam.position.set(fa.pos).lerp(fb.pos, t);
+		cam.direction.set(gpxGlideDir.set(fa.dir).lerp(fb.dir, t).nor());
+		cam.up.set(Vector3.Z);
+		cam.update();
+	}
+
+	/** Whether the tour is gliding to a way picked from the list; see {@link #seekGpxTourAlongTrack}. */
+	public boolean isGpxTourGliding() {
+		return gpxGlideActive;
+	}
+
+	/**
 	 * Jumps the tour to a fraction of the way along and carries on from there - or, when the
 	 * tour is paused, stays paused but shows that point.
 	 *
@@ -753,6 +981,20 @@ public class MapViewerScreen implements Screen {
 	 * from exactly the view on screen.
 	 */
 	public void seekGpxTour(float fraction) {
+		if (gpxGlideActive) {
+			// The bar dragged mid-glide: the drag wins, and the tour stays as it was before.
+			gpxGlideActive = false;
+			moveCameraAction.setPaused(gpxGlideWasPaused);
+		}
+		if (!gpxTourActive || moveCameraAction.isComplete()) {
+			// The bar is there before the tour has been started, or after it has played out:
+			// dragging it sets the tour up, paused, at that point - play then carries on from it.
+			startGpxFlythrough();
+			if (!gpxTourActive) {
+				return; // no track long enough to fly
+			}
+			moveCameraAction.setPaused(true);
+		}
 		if (gpxTourFrames.isEmpty()) {
 			return;
 		}
@@ -767,6 +1009,9 @@ public class MapViewerScreen implements Screen {
 		}
 		queueGpxTourFrom(frame, !wasPaused);
 		moveCameraAction.setPaused(wasPaused);
+		if (wasPaused) {
+			groundElevationBarUnderCamera();
+		}
 	}
 
 	/**
@@ -846,7 +1091,7 @@ public class MapViewerScreen implements Screen {
 			return;
 		}
 		if (gpxTourActive && moveCameraAction.isComplete()) {
-			endGpxTour(); // the tour played out on its own
+			endGpxTour(true); // the tour played out on its own
 		}
 		boolean hasGpx = !getC().gpxManager.isEmpty();
 		tableLocation.buttonGpxFly.setVisible(hasGpx);
@@ -867,19 +1112,27 @@ public class MapViewerScreen implements Screen {
 					showPause ? "icons/icon_gpx_pause.png" : "icons/icon_gpx_play.png");
 		}
 
-		// Scrub bar: visible for as long as a tour is loaded (playing or paused), tracking
-		// progress except while the user has hold of the knob.
+		// Scrub bar: visible as soon as a track is on the map - loaded or made - not only once the
+		// tour has been started, so it can be dragged to any point before pressing play (see
+		// seekGpxTour). It tracks the tour's progress except while the user has hold of the knob,
+		// and goes back to the start whenever the tracks change.
 		boolean tourLive = gpxTourActive && !moveCameraAction.isComplete();
-		tableLocation.gpxSeekTable.setVisible(tourLive);
-		if (tourLive && !tableLocation.gpxSeekSlider.isDragging()) {
+		tableLocation.gpxSeekTable.setVisible(hasGpx || tourLive);
+		int gpxVersion = getC().gpxManager.getVersion();
+		if (!tableLocation.gpxSeekSlider.isDragging()
+				&& (tourLive || gpxVersion != gpxSeekSliderVersion)) {
+			gpxSeekSliderVersion = gpxVersion;
 			gpxSeekSliderUpdating = true;
 			try {
-				tableLocation.gpxSeekSlider.setValue(getGpxTourProgress());
+				tableLocation.gpxSeekSlider.setValue(tourLive ? getGpxTourProgress() : 0f);
 			} finally {
 				gpxSeekSliderUpdating = false;
 			}
 		}
 	}
+
+	/** The GPX tracks' version the scrub bar was last reset for; see updateGpxButtons. */
+	private int gpxSeekSliderVersion = -1;
 
 	/** Guards the scrub bar's change listener while the code (not the user) moves the knob. */
 	private boolean gpxSeekSliderUpdating = false;
@@ -897,6 +1150,7 @@ public class MapViewerScreen implements Screen {
 	public void toggleGpxFlythrough() {
 		if (isGpxTourPlaying()) {
 			moveCameraAction.setPaused(true);
+			groundElevationBarUnderCamera();   // the camera stops over the track, not the target
 		} else if (isGpxTourPaused()) {
 			moveCameraAction.setPaused(false);
 			// The hold expires while paused; extend it so the resumed tour is not interrupted.
@@ -909,7 +1163,12 @@ public class MapViewerScreen implements Screen {
 
 	/** Abandons a running tour and releases the camera (used when the GPX itself is cleared). */
 	public void stopGpxFlythrough() {
-		endGpxTour();
+		stopGpxFlythrough(true);
+	}
+
+	private void stopGpxFlythrough(boolean groundBar) {
+		gpxGlideActive = false;
+		endGpxTour(groundBar);
 		moveCameraAction.clearSteps();
 		gpxTourFrames.clear(); // don't keep keyframes for a track that is going away
 		gpxFrameHoldUntilMs = 0L;
@@ -919,12 +1178,15 @@ public class MapViewerScreen implements Screen {
 	private float gpxFieldOfViewBeforeTour = Float.NaN;
 
 	/** Marks the tour finished and restores the pre-tour field of view. */
-	private void endGpxTour() {
+	private void endGpxTour(boolean groundBar) {
 		gpxTourActive = false;
 		if (!Float.isNaN(gpxFieldOfViewBeforeTour)) {
 			cam.fieldOfView = gpxFieldOfViewBeforeTour;
 			gpxFieldOfViewBeforeTour = Float.NaN;
 			cam.update();
+		}
+		if (groundBar) {
+			Gdx.app.postRunnable(this::groundElevationBarUnderCamera);
 		}
 	}
 
@@ -1109,6 +1371,25 @@ public class MapViewerScreen implements Screen {
 	}
 
 	/** The field of view the camera starts at, unzoomed, in degrees (vertical). */
+	/** Degrees across the screen the view opens with, where the base field of view gives less. */
+	private static final float START_HORIZONTAL_FIELD_OF_VIEW = 40f;
+
+	/**
+	 * The field of view the camera starts with. It is the angle from top to bottom, so on a
+	 * phone held upright the base one left some 14° from side to side: a slit, with one or two
+	 * summits in it. There the view opens at {@link #START_HORIZONTAL_FIELD_OF_VIEW} across;
+	 * a screen wider than it is high - a desktop window, a phone on its side - starts as
+	 * it did.
+	 */
+	static float startFieldOfView(float baseFieldOfView, int width, int height) {
+		if (width <= 0 || height <= width) {
+			return baseFieldOfView;
+		}
+		double vertical = 2 * Math.toDegrees(Math.atan(
+				Math.tan(Math.toRadians(START_HORIZONTAL_FIELD_OF_VIEW) / 2) * height / width));
+		return (float) Math.max(baseFieldOfView, vertical);
+	}
+
 	public float getBaseFieldOfView() {
 		return baseFieldOfView;
 	}
@@ -1225,6 +1506,9 @@ public class MapViewerScreen implements Screen {
 	/** Shows or hides the "Loading..." screen for a photo being decoded; any thread. */
 	public void setPhotoLoading(final boolean loading) {
 		photoLoading = loading;
+		if (Gdx.app == null) {
+			return;   // libGDX not started yet: nothing on screen to update
+		}
 		Gdx.app.postRunnable(new Runnable() {
 			@Override
 			public void run() {
@@ -1326,6 +1610,11 @@ public class MapViewerScreen implements Screen {
 	}
 
 	private Stage stage;
+
+	/** The interface's stage, which the search and download screens are laid over. */
+	public Stage getStage() {
+		return stage;
+	}
 	private Stage stageCopyright;
 	private Stage stageNavigationOverview;
 
@@ -1341,6 +1630,7 @@ public class MapViewerScreen implements Screen {
 		// shapeRenderer.setAutoShapeType(true);
 
 		cam = new PerspectiveCameraExt(baseFieldOfView, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+		cam.fieldOfView = startFieldOfView(baseFieldOfView, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 		cam.near = 0.0001f;
 		cam.far = 15f;
 		cam.direction.set(P.getLastCameraDirectionFlat());
@@ -1393,6 +1683,8 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(tableLocation.gpxSeekTable);
 		gpxInfoPane = new com.peaknav.viewer.widgets.GpxInfoPane(widgetUnitStep);
 		stage.addActor(gpxInfoPane.getTable());
+		featureInfoPane = new com.peaknav.viewer.widgets.FeatureInfoPane(widgetUnitStep);
+		stage.addActor(featureInfoPane.getTable());
 		tableLocation.gpxSeekSlider.addListener(new ChangeListener() {
 			@Override
 			public void changed(ChangeEvent event, Actor actor) {
@@ -1405,24 +1697,10 @@ public class MapViewerScreen implements Screen {
 		});
 
 		optionPane = new OptionPane(tableLocation.optionsButton, widgetUnitStep);
-		stage.addActor(optionPane.getTable());
-		stage.addActor(optionPane.getTableOneColumn());
-		stage.addActor(optionPane.getSelectBoxSatelliteSource());
-		stage.addActor(optionPane.getSelectBoxDownloadSource());
-		stage.addActor(optionPane.getSelectBoxUnits());
-		stage.addActor(optionPane.getSelectInfoOpts());
-		stage.addActor(optionPane.getSelectGpx());
-		stage.addActor(optionPane.getSelectLabels());
-		stage.addActor(optionPane.getSelectSky());
-		stage.addActor(optionPane.getSelectCompass());
-		stage.addActor(optionPane.getSelectRoads());
-		stage.addActor(optionPane.getSelectRoadsOneColumn());
-		stage.addActor(optionPane.getSelectRoadsGroup());
-		stage.addActor(optionPane.getSelectPistes());
-		// stage.addActor(optionPane.getTableAppInfo());
 		optionPane.hide();
 
 		buttonPinLoc = new ImageButton(getC().widgetTextures.getTextureRegionDrawable("icons/icon_loc_pin.png"));
+		buttonPinLoc.setName("tap_pin");   // for /widgets, which places the tutorial's markers
 		buttonPinLoc.setWidth(25);
 		buttonPinLoc.setHeight(50);
 		buttonPinLoc.addListener(new ChangeListener() {
@@ -1435,6 +1713,9 @@ public class MapViewerScreen implements Screen {
 		buttonPinLoc.setVisible(false);
 		tableLocation.tableCancelGoToDest.setVisible(false);
 		stage.addActor(buttonPinLoc);
+		// A mark on the map, so under the panes and menus: added after them, it was drawn
+		// over the info pane of the very label that was tapped.
+		buttonPinLoc.setZIndex(gpxInfoPane.getTable().getZIndex());
 
 		tableDownloadData = widgetGetter.getTableDownloadData();
 		stage.addActor(tableDownloadData.getTable());
@@ -1454,14 +1735,50 @@ public class MapViewerScreen implements Screen {
 		stage.addActor(tableTool.getTable());
 		stage.addActor(tableTool.tableCameraControl);
 		stage.addActor(tableTool.buttonUnpin);
+		photoNudgePad = new com.peaknav.viewer.widgets.PhotoNudgePad(widgetUnitStep);
+		stage.addActor(photoNudgePad);
+
+		// The options menu and its submenus, over every button and pin added above: scene2d draws
+		// actors in the order they were added, and with the menu added first the location pin,
+		// the unpin button and the photo controls were drawn across an open menu. The toast,
+		// the loading label and the keyboard help below still come out on top of it.
+		stage.addActor(optionPane.getTable());
+		stage.addActor(optionPane.getTableOneColumn());
+		stage.addActor(optionPane.getSelectBoxSatelliteSource());
+		stage.addActor(optionPane.getSelectBoxDownloadSource());
+		stage.addActor(optionPane.getSelectBoxUnits());
+		stage.addActor(optionPane.getSelectInfoOpts());
+		stage.addActor(optionPane.getSelectLanguage());
+		stage.addActor(optionPane.getSelectStorage());
+		stage.addActor(optionPane.getSelectGpx());
+		stage.addActor(optionPane.getSelectPathsAndMarkers());
+		stage.addActor(optionPane.getSelectMarkers());
+		stage.addActor(optionPane.getSelectLabels());
+		stage.addActor(optionPane.getSelectLabelsOneColumn());
+		stage.addActor(optionPane.getSelectSky());
+		stage.addActor(optionPane.getSelectCompass());
+		stage.addActor(optionPane.getSelectRoads());
+		stage.addActor(optionPane.getSelectRoadsOneColumn());
+		stage.addActor(optionPane.getSelectRoadsGroup());
+		stage.addActor(optionPane.getSelectPistes());
+		// stage.addActor(optionPane.getTableAppInfo());
 		stage.addActor(tableCenter);
 
 		labelLoading = new LabelLoading(widgetUnitStep);
 		stage.addActor(labelLoading.getTableCenterNoData());
 
+		// The slideshow on its own, opened from the menu's Info submenu (OptionPane).
+		Label.LabelStyle slideCaptionStyle = new Label.LabelStyle();
+		slideCaptionStyle.font = getC().styleSingleton.getBitmapFontSmallWhite();
+		slideShowOverlay = new com.peaknav.viewer.widgets.SlideShowOverlay(
+				widgetUnitStep, slideCaptionStyle);
+		stage.addActor(slideShowOverlay.getTable());
+
 		// Added last so its scrim draws on top of every other widget when shown.
 		keyboardHelpOverlay = new KeyboardHelpOverlay(widgetUnitStep);
 		stage.addActor(keyboardHelpOverlay.getRoot());
+		tutorialOverlay = new com.peaknav.viewer.widgets.TutorialOverlay(widgetUnitStep);
+		stage.addActor(tutorialOverlay.getRoot());
 
 		labelRenderer = new LabelRenderer(
 				spriteBatch, shapeRenderer, new Texture(Gdx.files.internal("icons/icon_compass.png")),
@@ -1485,7 +1802,20 @@ public class MapViewerScreen implements Screen {
 			mapSqlite.createTables();
 		}
 
-		mapSqlite.cleanQueue();
+		// Tiles still queued are a download the app was closed during: finished tiles carry their
+		// time and failed ones are dropped, so nothing else stays. They used to be dropped here
+		// (the desktop never got round to it), so a first run closed half way through came back
+		// with half a place and nothing fetching the rest. Taken up again instead, once the
+		// screen is built - unless downloads were never consented to, when there is nothing to
+		// take up.
+		boolean resumeDownload = P.isCollectDownloadInfo() && !mapSqlite.getDownloadQueue().isEmpty();
+		if (!resumeDownload) {
+			mapSqlite.cleanQueue();
+		} else {
+			// Said now, before the saved place is loaded below: arriving there with its data
+			// still coming, the missing-data check would otherwise offer to download it again.
+			com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloadStarted(true);
+		}
 
 		getC().tileManager.tileRenderer.initialize();
 		getC().cacheDirManager = new CacheDirManager();
@@ -1522,10 +1852,34 @@ public class MapViewerScreen implements Screen {
 		resetMultiplexerOnce();
 
 		needToBeShown = false;
+
+		if (resumeDownload) {
+			resumeInterruptedDownload();
+		}
+	}
+
+	/**
+	 * The download a previous run was closed during, fetched as the download screen fetches one;
+	 * showOnce has already said it is running.
+	 */
+	private void resumeInterruptedDownload() {
+		Thread thread = new Thread(() -> {
+			com.peaknav.network.PeakNavDownloadManager.Outcome outcome = null;
+			try {
+				outcome = getC().missingDataDownloader.resumeQueued();
+			} finally {
+				com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloadStarted(false);
+				com.peaknav.compatibility.PeakNavAppState.getAppState().mapDataDownloadEnded(outcome, false);
+			}
+		}, "download-resume");
+		thread.setDaemon(true);
+		thread.start();
 	}
 
 	private void resetMultiplexerOnce() {
 		multiplexer = new InputMultiplexer();
+		// First, so it sees every touch before the widgets or the map take it.
+		multiplexer.addProcessor(idleFrameRate.inputWatcher);
 		multiplexer.addProcessor(stage);
 		multiplexer.addProcessor(stageNavigationOverview);
 		multiplexer.addProcessor(controller);
@@ -1561,15 +1915,28 @@ public class MapViewerScreen implements Screen {
 		int insetRight = Gdx.graphics.getSafeInsetRight();
 		int insetTop = Gdx.graphics.getSafeInsetTop();
 		int insetBottom = Gdx.graphics.getSafeInsetBottom();
-		stageViewport.update(
-				Math.max(1, width - insetLeft - insetRight),
-				Math.max(1, height - insetTop - insetBottom),
-				true);
+		int stageWidth = Math.max(1, width - insetLeft - insetRight);
+		int stageHeight = Math.max(1, height - insetTop - insetBottom);
+		if (!Units.isProportionalInterface()) {
+			// One stage unit per pixel, whatever the window's size: the widgets were sized once,
+			// in pixels, and an ExtendViewport over the first size scaled them all up with every
+			// larger window - buttons twice as big in a maximised desktop window.
+			stageViewport.setMinWorldWidth(stageWidth);
+			stageViewport.setMinWorldHeight(stageHeight);
+		}
+		stageViewport.update(stageWidth, stageHeight, true);
 		stageViewport.setScreenPosition(insetLeft, insetBottom);
 	}
 
 	@Override
 	public void resize(int width, int height) {
+		// A window minimised on Windows is resized to 0 x 0. Taken as a size, the field of view
+		// was scaled by an angle of NaN, and stayed NaN - every later scaling of it keeps it
+		// so - and the view was blank until the app was restarted. Nothing to fit to: the
+		// window gets its real size back when it is restored.
+		if (width <= 0 || height <= 0) {
+			return;
+		}
 		// spriteBatch = new SpriteBatch();
 		Gdx.app.postRunnable(() -> {
 			cam.viewportWidth = width;
@@ -1582,6 +1949,19 @@ public class MapViewerScreen implements Screen {
 			cam.resizeGeographicCameras(width, height);
 
 			updateStageViewportInsideSafeArea(width, height);
+			if (labelLoading != null) {
+				labelLoading.resize();
+			}
+			if (slideShowOverlay != null) {
+				slideShowOverlay.resize();
+			}
+			if (tutorialOverlay != null && tutorialOverlay.isVisible()) {
+				// Upright or on its side, the slideshow is laid out differently.
+				tutorialOverlay.layout();
+			}
+			if (featureInfoPane != null) {
+				featureInfoPane.relayout();
+			}
 			stageNavigationViewport.update(width, height, true);
 
 			labelRenderer.resize(width, height);
@@ -1602,9 +1982,8 @@ public class MapViewerScreen implements Screen {
 
 			getC().dataRetrieveThreadManager.triggerUpdateVisibilityByZooming();
 
-			if (optionPane.isVisible()) {
-				optionPane.show();
-			}
+			// Each menu on show takes the layout for the screen's new shape (OrientedMenu).
+			optionPane.onResize();
 			backgroundPicManager.recomputeSizes();
 		});
 	}
@@ -1683,8 +2062,21 @@ public class MapViewerScreen implements Screen {
 			return;
 		}
 
-		advanceOrbit(deltaTime);
+		idleFrameRate.update(deltaTime, cam, stage != null ? stage.getRoot() : null,
+				labelLoading != null && labelLoading.getTableCenterNoData().isVisible()
+						&& labelLoading.isAnimating());
 
+		advanceOrbit(deltaTime);
+		refineGpxFramingWhenTerrainArrives();
+
+		if (labelLoading != null) {
+			labelLoading.update(deltaTime);
+		}
+		if (slideShowOverlay != null) {
+			slideShowOverlay.update(deltaTime);
+		}
+
+		stepGpxGlide(deltaTime);
 		updateGpxButtons();
 
 		float targetLat = getC().L.getTargetLatitude();
@@ -1763,6 +2155,9 @@ public class MapViewerScreen implements Screen {
 			getC().dataRetrieveThreadManager.triggerUpdateVisibilityLabelOverlap();
 		}
 
+		// And one against the terrain, once the tiles of a new place have been drawn.
+		getC().dataRetrieveThreadManager.checkTerrainSettled();
+
 		/*
 		if (flagChange) {
 			getAppState().setLastAnyMapTileUpdateTimeToNow();
@@ -1840,6 +2235,11 @@ public class MapViewerScreen implements Screen {
 
 		if (flagChange) {
 			updateImpact();
+		} else if (impact != null && buttonPinLoc != null && optionPane != null
+				&& buttonPinLoc.isVisible() == optionPane.isAnyMenuVisible()) {
+			// The menu opened or closed with the camera still: the pin hides under it, or
+			// comes back (see buttonPinLocUpdatePosition).
+			buttonPinLocUpdatePosition();
 		}
 
 		Texture sobelTexture = tileBatchRenderer.getSobelTexture();
@@ -1864,8 +2264,18 @@ public class MapViewerScreen implements Screen {
 			 */
 			Pixmap snapshot = getSnapshotForSharing();
 			final com.peaknav.utils.SnapshotInfo info = snapshotInfo(snapshot.getWidth(), snapshot.getHeight());
+			// Encoding the picture and handing it to the system takes a moment on a large
+			// screen, with nothing on screen to say so. The wait is announced the way a photo
+			// being decoded is - but only now, with the picture already read from this frame:
+			// raised any earlier, the busy ring is drawn into the picture being shared.
+			setPhotoLoading(true);
 			getC().submitExecutorGeneric(() -> {
-				mapApp.nativeScreenCaller.shareSnapshot(snapshot, info);
+				try {
+					mapApp.nativeScreenCaller.shareSnapshot(snapshot, info);
+				} finally {
+					// Whatever happened - shared, saved, refused, thrown - the wait is over.
+					setPhotoLoading(false);
+				}
 			});
 		}
 
@@ -1882,6 +2292,9 @@ public class MapViewerScreen implements Screen {
 		if (tableTool != null) {
 			tableTool.setPinned(pinned);
 		}
+		if (photoNudgePad != null) {
+			photoNudgePad.update(backgroundPicManager.getBackgroundPixmap() != null, pinned);
+		}
 		if (tableLocation != null && backgroundPicManager.getBackgroundPixmap() != null) {
 			tableLocation.placePhotoColumn();   // follows the share button through resizes
 		}
@@ -1896,6 +2309,12 @@ public class MapViewerScreen implements Screen {
 		// viewport itself - without this the widgets would still be drawn across
 		// the full glViewport while touch handling used the inset bounds.
 		stageViewport.apply();
+		// The "no data" and "loading" plate is added to the stage after the menus, so it was
+		// drawn over an open one, across its second row. Faded out under a menu, not hidden:
+		// its visibility is the loading state's, which other things read.
+		if (labelLoading != null && optionPane != null) {
+			labelLoading.getTableCenterNoData().getColor().a = optionPane.isAnyMenuVisible() ? 0f : 1f;
+		}
 		stage.act();
 		try {
 			stage.draw();
@@ -2013,11 +2432,28 @@ public class MapViewerScreen implements Screen {
 			// No keyUp arrives for a key that was held when the window went away.
 			controller.clearKeyboardLook();
 		}
+		// The orientation sensor too, while the gyroscope mode is on: only its button stopped
+		// it, and in the background it went on at 50 readings a second, turning the camera of
+		// an app nobody was looking at. It starts again on resume.
+		if (gyroscopeOn()) {
+			mapApp.nativeScreenCaller.getOrientationPointerListener().stop();
+		}
+	}
+
+	private boolean gyroscopeOn() {
+		return tableTool != null && tableTool.buttonOrientation != null
+				&& tableTool.buttonOrientation.isChecked()
+				&& mapApp != null && mapApp.nativeScreenCaller != null
+				&& mapApp.nativeScreenCaller.getOrientationPointerListener() != null;
 	}
 
 	@Override
 	public void resume() {
 		paused = false;
+		idleFrameRate.wake();
+		if (gyroscopeOn()) {
+			mapApp.nativeScreenCaller.getOrientationPointerListener().start();
+		}
 		if (tileBatchRenderer != null) {
 			// Android drops the contents of every frame buffer when the GL context goes
 			// away, so the cached pseudodistances cannot be reused across a resume.
@@ -2027,7 +2463,8 @@ public class MapViewerScreen implements Screen {
 
 	@Override
 	public void hide() {
-
+		// Other screens do not track activity, so they get the full frame rate.
+		idleFrameRate.wake();
 	}
 
 	/**
@@ -2070,6 +2507,10 @@ public class MapViewerScreen implements Screen {
 		// texture) was freed and all other GL/native resources leaked per screen lifecycle.
 		if (labelRenderer != null)
 			labelRenderer.dispose();
+		if (labelLoading != null)
+			labelLoading.dispose();
+		if (slideShowOverlay != null)
+			slideShowOverlay.dispose();
 		if (skyRenderer != null)
 			skyRenderer.dispose();
 		if (tileBatchRenderer != null)
@@ -2093,6 +2534,230 @@ public class MapViewerScreen implements Screen {
 		}
 		if (shapeRenderer != null)
 			shapeRenderer.dispose();
+	}
+
+	/**
+	 * A tap at a point of the screen (pixels, y down): on a label, opens the pane about what it
+	 * names and, for a peak, hut or place, puts the pin there as a tap on the ground would, so
+	 * flying, orbiting and routing to it work as they do for any point. Anywhere else, closes the
+	 * pane and returns false, so the tap goes on to do what it does.
+	 */
+	public boolean showFeatureAt(float screenX, float screenY) {
+		if (featureInfoPane == null || labelRenderer == null) {
+			return false;
+		}
+		// A fingertip's width around the label's plate still counts as on it.
+		float slack = 0.12f * Units.getWidgetUnitStep() * Gdx.graphics.getWidth() / Math.max(1f, stage.getWidth());
+		Object feature = labelRenderer.featureAt(screenX, Gdx.graphics.getHeight() - screenY, slack);
+		if (feature == null) {
+			featureInfoPane.hide();
+			return false;
+		}
+		com.peaknav.viewer.labels.FeatureInfo.Viewer viewer = featureViewer();
+		featureShown = feature;
+		if (feature instanceof com.peaknav.markers.Marker) {
+			showMarkerPane((com.peaknav.markers.Marker) feature, viewer);
+		} else if (feature instanceof PoiObject) {
+			final PoiObject poi = (PoiObject) feature;
+			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(poi, viewer),
+					s("Marker_save"), () -> {
+						saveMarker(poi.getUiName(), poi.lat, poi.lon, poi.elevation);
+						// The flag takes the pin's place.
+						removeImpact();
+					});
+			stopOrbit();
+			impact = poi.getPosition3D(new Vector3());
+			updateImpact();
+		} else {
+			final com.peaknav.areas.MapArea area = (com.peaknav.areas.MapArea) feature;
+			// The pin at its middle, on the ground there, where the terrain is loaded.
+			final float ground = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(area.lat, area.lon);
+			featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(area, viewer),
+					Float.isNaN(ground) ? null : s("Marker_save"),
+					Float.isNaN(ground) ? null : () -> {
+						saveMarker(area.name, area.lat, area.lon, ground);
+						removeImpact();
+					});
+			if (!Float.isNaN(ground)) {
+				stopOrbit();
+				impact = new Vector3(
+						(float) Units.convertLonitsToLatits(area.lon, getC().L.getTargetLatitude()),
+						area.lat,
+						Units.convertMetersToLatits(ground)
+								- com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(area.lat, area.lon));
+				updateImpact();
+			}
+		}
+		return true;
+	}
+
+	/** Where the pane's distances and directions are measured from, and in which units. */
+	private com.peaknav.viewer.labels.FeatureInfo.Viewer featureViewer() {
+		return new com.peaknav.viewer.labels.FeatureInfo.Viewer(
+				cam.position.y,
+				Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude()),
+				getC().i18n != null ? getC().i18n.getLanguage() : null,
+				P.getUnitSystem());
+	}
+
+	/** What the feature pane was last opened on: a PoiObject, a MapArea or a Marker. */
+	private Object featureShown;
+
+	/**
+	 * The units were switched: the open pane described again in the new ones. Its text is built
+	 * once, when it opens, and kept "2145 m" and kilometres after a switch to feet and miles until
+	 * it was opened again. Render thread.
+	 */
+	public void refreshFeaturePaneUnits() {
+		if (featureInfoPane == null || !featureInfoPane.isShown() || featureShown == null) {
+			return;
+		}
+		com.peaknav.viewer.labels.FeatureInfo.Viewer viewer = featureViewer();
+		com.peaknav.viewer.labels.FeatureInfo info;
+		if (featureShown instanceof com.peaknav.markers.Marker) {
+			info = com.peaknav.viewer.labels.FeatureInfo.of((com.peaknav.markers.Marker) featureShown, viewer);
+		} else if (featureShown instanceof PoiObject) {
+			info = com.peaknav.viewer.labels.FeatureInfo.of((PoiObject) featureShown, viewer);
+		} else {
+			info = com.peaknav.viewer.labels.FeatureInfo.of((com.peaknav.areas.MapArea) featureShown, viewer);
+		}
+		featureInfoPane.replaceInfo(info);
+	}
+
+	/**
+	 * A marker's pane, and the pin on it: its colours to pick from, the flag recoloured at once,
+	 * and Rename and Delete buttons.
+	 */
+	private void showMarkerPane(final com.peaknav.markers.Marker marker, final com.peaknav.viewer.labels.FeatureInfo.Viewer viewer) {
+		featureShown = marker;   // recoloured or renamed, the marker the pane now shows
+		final com.peaknav.markers.MarkerColor[] colors = com.peaknav.markers.MarkerColor.values();
+		String[] swatches = new String[colors.length];
+		for (int i = 0; i < colors.length; i++) {
+			swatches[i] = colors[i].hex;
+		}
+		featureInfoPane.show(com.peaknav.viewer.labels.FeatureInfo.of(marker, viewer),
+				new String[]{s("Marker_rename"), s("Marker_delete")},
+				new Runnable[]{
+						() -> renameMarker(marker, viewer),
+						() -> {
+							getC().markerStore.remove(marker.latitude, marker.longitude);
+							removeImpact();
+							toast(" " + s("Marker_deleted") + " ");
+						}},
+				swatches, marker.color.ordinal(),
+				index -> {
+					com.peaknav.markers.Marker recoloured = marker.withColor(colors[index]);
+					getC().markerStore.update(recoloured);
+					showMarkerPane(recoloured, viewer);
+				});
+		stopOrbit();
+		impact = markerWorldPosition(marker);
+		updateImpact();
+	}
+
+	/** Asks for a marker's new name; its pane opens again under it. An empty name changes nothing. */
+	private void renameMarker(final com.peaknav.markers.Marker marker, final com.peaknav.viewer.labels.FeatureInfo.Viewer viewer) {
+		getNativeScreenCaller().promptForTextFields(s("Marker_rename"), null,
+				new String[]{s("Marker_name")}, new String[]{marker.name},
+				new com.peaknav.ui.TextFieldsCallback() {
+					@Override
+					public void onEntered(String[] values) {
+						final String name = values == null || values.length == 0 || values[0] == null
+								? "" : values[0].trim();
+						// The dialog answers on the platform's own thread; the store and the pane
+						// belong to the render thread.
+						Gdx.app.postRunnable(() -> {
+							com.peaknav.markers.Marker renamed = name.isEmpty() ? marker : marker.withName(name);
+							if (renamed != marker) {
+								getC().markerStore.update(renamed);
+							}
+							showMarkerPane(renamed, viewer);
+						});
+					}
+
+					@Override
+					public void onCancelled() {
+						Gdx.app.postRunnable(() -> showMarkerPane(marker, viewer));
+					}
+				});
+	}
+
+	/** Near enough to turn and look at a marker; farther, the view goes there instead. */
+	private static final float MARKER_LOOK_METRES = 60_000f;
+
+	/**
+	 * A marker picked from the list of them: the view turns to face it where it is near, pin and
+	 * pane on it; and goes to it where it is not, as a search result's Go To does.
+	 */
+	public void goToMarker(com.peaknav.markers.Marker marker) {
+		if (featureInfoPane == null) {
+			return;
+		}
+		Vector3 at = markerWorldPosition(marker);
+		Vector3 toward = at.cpy().sub(cam.position);
+		if (Units.convertLatitsToMeters(toward.len()) > MARKER_LOOK_METRES || at.z == 0f) {
+			stopOrbit();
+			getC().L.setCurrentTargetCoords(marker.latitude, marker.longitude);
+			toast(" " + marker.name + " ");
+			return;
+		}
+		tableTool.buttonOrientation.setChecked(false);   // the gyroscope would turn it straight back
+		Vector3 direction = toward.nor();
+		// Level with the world, whatever the old up was: up is the vertical, less its part along
+		// the new direction.
+		Vector3 up = new Vector3(0, 0, 1).mulAdd(direction, -direction.z).nor();
+		moveCameraAction.setCameraVectors(cam.position.cpy(), direction, up, false,
+				com.badlogic.gdx.math.Interpolation.smooth, false);
+		showMarkerPane(marker, new com.peaknav.viewer.labels.FeatureInfo.Viewer(
+				cam.position.y,
+				Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude()),
+				getC().i18n != null ? getC().i18n.getLanguage() : null,
+				P.getUnitSystem()));
+	}
+
+	/** Where a marker's flag stands in the world frame: on the loaded ground, else its saved height. */
+	private Vector3 markerWorldPosition(com.peaknav.markers.Marker marker) {
+		float lat = (float) marker.latitude, lon = (float) marker.longitude;
+		double ground = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+		double metres = !Double.isNaN(ground) ? ground : marker.elevation;
+		return new Vector3(
+				(float) Units.convertLonitsToLatits(lon, getC().L.getTargetLatitude()),
+				lat,
+				Double.isNaN(metres) ? 0f : Units.convertMetersToLatits(metres)
+						- com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+	}
+
+	/** Keeps a point as a marker, a flag on the map from now on; says so. */
+	public void saveMarker(String name, double latitude, double longitude, double elevationMetres) {
+		String kept = name == null || name.trim().isEmpty()
+				? getC().markerStore.nextDefaultName(s("Marker_kind")) : name.trim();
+		getC().markerStore.add(new com.peaknav.markers.Marker(kept, latitude, longitude, elevationMetres,
+				System.currentTimeMillis()));
+		toast(" " + s("Marker_saved") + ": " + kept + " ");
+	}
+
+	/**
+	 * The pin's point kept as a marker, from its button. Named after what the info pane shows,
+	 * when that is about the same spot - a peak tapped, then saved - and "Marker 3" otherwise.
+	 */
+	public void saveImpactAsMarker() {
+		if (impact == null) {
+			return;
+		}
+		float lat = impact.y;
+		float lon = Units.convertLatitsToLonits(impact.x, getC().L.getTargetLatitude());
+		double metres = Units.convertLatitsToMeters(impact.z
+				+ com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+		String name = null;
+		com.peaknav.viewer.labels.FeatureInfo shown = featureInfoPane == null ? null : featureInfoPane.getShown();
+		if (shown != null && Math.abs(shown.latitude - lat) < 1e-4 && Math.abs(shown.longitude - lon) < 1e-4) {
+			name = shown.title;
+		}
+		saveMarker(name, lat, lon, metres);
+		if (featureInfoPane != null) {
+			featureInfoPane.hide();
+		}
+		removeImpact();
 	}
 
 	public boolean updateImpact() {
@@ -2151,8 +2816,12 @@ public class MapViewerScreen implements Screen {
 			return false;
 		}
 		 */
-		buttonPinLoc.setVisible(true);
-		tableLocation.tableCancelGoToDest.setVisible(true);
+		// Not while the options menu is open: the pin and the tap's buttons are under it, but
+		// they showed through the gaps between its rows, as if drawn over it. The menu covers
+		// the map; they come back when it closes.
+		boolean underMenu = optionPane != null && optionPane.isAnyMenuVisible();
+		buttonPinLoc.setVisible(!underMenu);
+		tableLocation.tableCancelGoToDest.setVisible(!underMenu);
 		buttonPinLoc.setPosition(
 				pinStageCoords.x - 0.5f*buttonPinLoc.getWidth(),
 				pinStageCoords.y);
@@ -2210,7 +2879,49 @@ public class MapViewerScreen implements Screen {
 	}
 
 	public void stopOrbit() {
-		orbiting = false;
+		if (orbiting) {
+			orbiting = false;
+			// Called from the input thread's handlers and from elsewhere: the bar is scene2d.
+			Gdx.app.postRunnable(this::groundElevationBarUnderCamera);
+		}
+	}
+
+	/**
+	 * Measures the elevation bar from the ground under the camera, where an orbit or a GPX tour
+	 * has left it (issue #35). Both carry the camera across the map without moving the target,
+	 * and the bar's zero is the ground under the target: left there, the knob sat at the wrong
+	 * height, its toast measured from ground kilometres away, and dragging it to the bottom
+	 * put the camera underground or hundreds of metres up. Once, when the camera comes to
+	 * rest, not every frame, which would slide the knob under a finger dragging it. The quiet
+	 * setter: nothing is re-targeted and the camera stays where it is, unless it is now below
+	 * the ground, where the bar's floor lifts it out.
+	 */
+	private void groundElevationBarUnderCamera() {
+		float lat = cam.position.y;
+		// World x is the longitude scaled by the TARGET's latitude, as every mesh is.
+		float lon = Units.convertLatitsToLonits(cam.position.x, (float) getC().L.getTargetLatitude());
+		float groundMeters = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+		if (Float.isNaN(groundMeters)) {
+			return;   // not loaded there: the old ground is a better guess than none
+		}
+		float ground = Units.convertMetersToLatits(groundMeters)
+				- com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon);
+		getC().L.setCurrentTerrainEleQuiet(ground);
+		if (tableTool != null) {
+			// Only the knob moves: the camera is where it should be, and a change event would
+			// pop the "+height" toast on every drag of a paused tour's scrub bar.
+			Slider slider = tableTool.sliderElevation;
+			boolean events = slider.getProgrammaticChangeEvents();
+			slider.setProgrammaticChangeEvents(false);
+			try {
+				slider.setVisualPercent(convertUnitsZ2ElevationBar(cam.position.z));
+			} finally {
+				slider.setProgrammaticChangeEvents(events);
+			}
+		}
+		if (cam.position.z < ground + LIFT_ELEV) {
+			setCameraElevationMeters(0);   // it stopped under the ground: onto it
+		}
 	}
 
 	/**
@@ -2221,9 +2932,11 @@ public class MapViewerScreen implements Screen {
 	 * request before re-targeting, and that fly belongs to the new destination, not the old.
 	 */
 	public void cancelScheduledCameraPath() {
-		stopOrbit();
+		// Not stopOrbit or stopGpxFlythrough, which measure the bar from the ground the camera
+		// stopped over: the new destination's own ground is about to be measured instead.
+		orbiting = false;
 		if (gpxTourActive) {
-			stopGpxFlythrough(); // also clears the queued steps and the framing hold
+			stopGpxFlythrough(false); // also clears the queued steps and the framing hold
 		} else {
 			moveCameraAction.clearSteps();
 		}

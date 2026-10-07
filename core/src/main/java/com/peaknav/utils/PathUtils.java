@@ -56,6 +56,17 @@ public class PathUtils {
         return path;
     }
 
+    /** As {@link #getPbfExternalFilePath}, under a root given: for code that works on files alone. */
+    public static File getPbfFilePath(File root, Tile tile, PbfLayer pbfLayer) {
+        LinkedList<String> dirs = getDirsOfOsmPbfFile(
+                getMapFolder() + "/" + pbfLayer.name(), tile, pbfLayer.getFileExtension(), pbfLayer.name());
+        File path = root;
+        while (!dirs.isEmpty()) {
+            path = new File(path, dirs.removeFirst());
+        }
+        return path;
+    }
+
     public static String createRecurrentPathsForOsmTilesInExternal(String basePath, Tile tile, String extension, String category) {
         List<String> dirs = getDirsOfOsmPbfFile(basePath, tile, extension, category);
         createRecurrentPathsForOsmTilesInExternal(dirs.subList(0, dirs.size()-1));

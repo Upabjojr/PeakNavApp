@@ -208,8 +208,9 @@ J=-Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
   - The download consent (`P.setCollectDownloadInfo`) must be set **in the same
     task** as the download it enables. `PeakNavDownloadManager` skips every request
     without it, so a download that starts first shows progress and fetches nothing.
-  - `OnlineSearch.failed()` never calls its listener, so anything waiting on a
-    Nominatim response needs its own timeout or it waits forever.
+  - `OnlineSearch` answers its listener on every path - results, an error status,
+    a failure, a cancellation, a 15 s timeout - with an empty list when there are
+    none, so a caller need not keep a timeout of its own.
 
   What is still missing — shipped gaps, not release blockers, and each surfaces at
   runtime rather than at compile time:
@@ -267,6 +268,9 @@ Android's libcore and predates Java 8:
 - **No Java 8 constants** like `Float.BYTES` (javac inlines them, so these are
   compile-audit noise rather than runtime crashes — but keep them out anyway).
 - **No `Locale.getScript()`**, a Java 7 method Android added late.
+- **No `URLConnection.getContentLengthLong()`** (Java 7): read the `Content-Length`
+  header instead. It would throw `NoSuchMethodError` on every download, past every
+  `IOException` handler.
 - **No `java.io.File.toPath()`** either, so code cannot even reach `java.nio.file`.
   To rename a finished file into place, use
   `PeakNavUtils.getLoadFactory().getFileMover()` — a `com.peaknav.utils.FileMover`
@@ -380,9 +384,21 @@ that is not something the build can fix.
 ## Internationalization
 
 User-facing strings live in `assets/i18n/strings_<lang>.properties` for
-**en, it, fr, de, es, pt, no**. There is no base `strings.properties`, and missing
-keys render as `???key???` — so **add every new key to all 7 files**. Look strings
+**en, it, fr, de, es, pt, no, nl, sv, da, fi, pl, cs, sk, sl, hr, sr, ro, ru, uk, bg, el**
+(Serbian in Cyrillic). There is no base `strings.properties`, and missing
+keys render as `???key???` — so **add every new key to all 22 files**. A new language
+also goes into `CFBundleLocalizations` in `ios/Info.plist.xml`. Look strings
 up with `PeakNavUtils.s("Key")`.
+
+## Fonts
+
+The fonts are baked when the app is built: `:core:bakeFonts` (com.peaknav.tools.FontBaker)
+lays out every font of `FontSpecs` with FreeType into `assets/fonts_baked/` (not in git),
+and the android, desktop, headless and ios builds run it first. `StyleSingleton` loads them
+and scales them to the screen; it lays a font out itself only when a screen needs it larger
+than baked (the headless renderer's big pictures). The glyph set is `FontCharacters` - Latin,
+Greek and Cyrillic; a new script goes into its `SCRIPT_RANGES`. Map labels are written in
+Latin letters regardless (`PoiObject` transliterates names).
 
 ## Gotchas
 

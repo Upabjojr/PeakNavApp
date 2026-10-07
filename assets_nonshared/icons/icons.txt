@@ -31,6 +31,7 @@ icon_checkbox_lakes:128:128
 icon_gpx_play:128:128
 icon_gpx_pause:128:128
 icon_gpx_clear:128:128
+icon_download_cancel:128:128
 icon_route_to:128:128
 icon_gpx_share:128:128
 icon_gpx_info:128:128
@@ -57,15 +58,31 @@ icon_sky_grid:128:128
 icon_sky_ecliptic:128:128
 icon_sky_labels:128:128
 icon_loc_pin:128:256
-# These eight are loaded by the app exactly like the rest but were missing from this
+icon_elevation_readout:128:128
+icon_marker_add:128:128
+icon_marker_flag:128:192
+icon_marker_flag_cloth:128:192
+icon_marker_flag_pole:128:192
+# These nine are loaded by the app exactly like the rest but were missing from this
 # list, so a build from a clean checkout came up short of the icons it asks for.
 icon_checkbox_sky:128:128
 icon_info:128:128
+icon_language:128:128
+icon_more:128:128
 icon_sky_constellations:128:128
 icon_sky_mode:128:128
 icon_sky_time:128:128
 icon_slider_alpha:128:128
 icon_units:128:128
+# Photo overlay: fine nudges, and fine turns and stretches about a pinned point.
+icon_nudge_up:128:128
+icon_nudge_down:128:128
+icon_nudge_left:128:128
+icon_nudge_right:128:128
+icon_nudge_rotate_ccw:128:128
+icon_nudge_rotate_cw:128:128
+icon_nudge_stretch:128:128
+icon_nudge_shrink:128:128
 # 30x50 is not a free choice: WidgetTextures.getNinePatchDrawable builds this one with
 # hard-coded 10px splits on all four sides, which land on the bar in the artwork only at
 # the SVG's own size. Rendering it larger stretches the wrong pixels.

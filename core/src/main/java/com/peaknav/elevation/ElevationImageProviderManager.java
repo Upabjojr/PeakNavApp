@@ -108,8 +108,15 @@ public class ElevationImageProviderManager {
         }
         List<MapTile> mapTiles  = getC().mapTileStorage.getMapTiles();
         ElevationImageAbstract elevationImage = null;
-        if (mapTiles.size() > 0) {
-            MapTile mapTile = mapTiles.get(0);
+        // The list is cleared and filled again by the tile updater: between size() and get(0)
+        // it could empty, and get(0) threw on this thread.
+        MapTile mapTile = null;
+        try {
+            mapTile = mapTiles.isEmpty() ? null : mapTiles.get(0);
+        } catch (IndexOutOfBoundsException emptiedMeanwhile) {
+            // no tile to read from
+        }
+        if (mapTile != null) {
             if (mapTile.tileBoundingBox.toBoundingBox().contains(
                     new LatLong(targetLat, targetLon))) {
                 elevationImage = mapTile.elevationImage;
@@ -167,9 +174,50 @@ public class ElevationImageProviderManager {
         }
     }
 
+    /**
+     * After a download: every provider is dropped, so the blocks load again from what is now
+     * on the device. Dropped, not disposed here - this runs on the downloader's thread, and a
+     * tile may be about to crop from one of them. They are disposed by the next sweep
+     * ({@link #disposeRetired}); cleared without that, each left two pixmaps of native memory
+     * behind, after every download.
+     */
     public void clearProviders() {
-        mapToRescale.clear();
-        providers.clear();
+        synchronized (providers) {
+            long now = System.currentTimeMillis();
+            for (ElevationImageProvider provider : providers.values()) {
+                retired.add(new Retired(provider, now));
+            }
+            mapToRescale.clear();
+            providers.clear();
+        }
+    }
+
+    private static final class Retired {
+        final ElevationImageProvider provider;
+        final long since;
+
+        Retired(ElevationImageProvider provider, long since) {
+            this.provider = provider;
+            this.since = since;
+        }
+    }
+
+    /** Guarded by {@code providers}' monitor. */
+    private final List<Retired> retired = new ArrayList<>();
+    /** Long enough for whoever took a provider just before it was retired to be done with it. */
+    private static final long RETIRED_GRACE_MILLIS = 10_000L;
+
+    /** Called with {@code providers}' monitor held, from the elevation-retrieval thread. */
+    private void disposeRetired() {
+        long now = System.currentTimeMillis();
+        for (java.util.Iterator<Retired> it = retired.iterator(); it.hasNext(); ) {
+            Retired old = it.next();
+            if (now - old.since < RETIRED_GRACE_MILLIS || old.provider.getReferenceCount() != 0) {
+                continue;
+            }
+            it.remove();
+            old.provider.dispose();
+        }
     }
 
     // Elevation providers used to accumulate for the whole session: one per (min-zoom tile,
@@ -188,6 +236,7 @@ public class ElevationImageProviderManager {
     public void evictUnneededProviders(Set<TileAndZoomElevFactor> stillNeeded,
                                        int targetTileX, int targetTileY) {
         synchronized (providers) {
+            disposeRetired();
             int over = providers.size() - MAX_PROVIDERS;
             if (over <= 0)
                 return;

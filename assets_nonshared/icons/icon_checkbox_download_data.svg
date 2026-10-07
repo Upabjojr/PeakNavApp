@@ -20,11 +20,9 @@
              a30 30 0 0 1 6 73 z"
           fill="url(#cloud)" stroke="#255a94" stroke-width="3" stroke-linejoin="round"/>
 
-    <!-- download arrow -->
-    <g stroke="#1f4a7c" stroke-width="3">
-      <rect x="108" y="120" width="24" height="42" fill="#ffffff"/>
-      <path d="M92 158 L120 192 L148 158 Z" fill="#ffffff"/>
-    </g>
+    <!-- download arrow: one outline, so no line crosses between the shaft and the head -->
+    <path d="M108 120 H132 V158 H148 L120 192 L92 158 H108 Z"
+          fill="#ffffff" stroke="#1f4a7c" stroke-width="3" stroke-linejoin="round"/>
 
     <!-- ground / receiving tray -->
     <rect x="70" y="196" width="100" height="10" rx="4" fill="#255a94"/>

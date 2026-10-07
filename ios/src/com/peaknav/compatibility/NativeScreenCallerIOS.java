@@ -1,20 +1,15 @@
 package com.peaknav.compatibility;
 
-import static com.peaknav.compatibility.PeakNavAppState.getAppState;
+import com.peaknav.viewer.mapscreens.MapScreens;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.s;
-import static com.peaknav.utils.PreferencesManager.P;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Pixmap;
-import com.badlogic.gdx.utils.Base64Coder;
 
 import com.peaknav.controller.LocationControllerIOS;
 import com.peaknav.controller.OrientationPointerControllerIOS;
-import com.peaknav.database.LuceneGeonameSearch;
-import com.peaknav.database.MissingDataDownloader;
 import com.peaknav.gesture.OrientationPointerListener;
-import com.peaknav.network.NominatimResponse;
 import com.peaknav.ui.ClickCallback;
 import com.peaknav.ui.CurrentLocationCallback;
 import com.peaknav.ui.CurrentLocationListener;
@@ -46,6 +41,9 @@ import org.robovm.apple.uikit.UIDocumentPickerDelegateAdapter;
 import org.robovm.apple.uikit.UIDocumentPickerMode;
 import org.robovm.apple.uikit.UIDocumentPickerViewController;
 import org.robovm.apple.uikit.UIImage;
+import org.robovm.apple.avfoundation.AVAuthorizationStatus;
+import org.robovm.apple.avfoundation.AVCaptureDevice;
+import org.robovm.apple.avfoundation.AVMediaType;
 import org.robovm.apple.uikit.UIImagePickerController;
 import org.robovm.apple.uikit.UIImagePickerControllerDelegateAdapter;
 import org.robovm.apple.uikit.UIImagePickerControllerEditingInfo;
@@ -61,8 +59,6 @@ import org.robovm.apple.webkit.WKWebView;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Pattern;
 
 /**
  * The iOS side of everything the app asks the platform for: alerts, sharing, the browser,
@@ -89,6 +85,42 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
 
     /** Dismisses the toast alerts. Daemon, so it can never hold the app open. */
     private static final java.util.Timer DISMISS_TIMER = new java.util.Timer("ios-toast", true);
+
+    // ------------------------------------------------------------------ downloads
+
+    /** The background time asked for while a download runs; UIBackgroundTaskInvalid when none. */
+    private long downloadBackgroundTask = UIApplication.getInvalidBackgroundTask();
+
+    /**
+     * Asks iOS for time to go on with a download after the app leaves the screen. iOS suspends
+     * an app in the background, and gives one that asks this only a while - around half a
+     * minute - not the whole of a long download; enough for one nearly done. What was not
+     * fetched stays in the queue and is taken up when the app comes back.
+     * begin/endBackgroundTask may be called from any thread.
+     */
+    @Override
+    public synchronized void setMapDataDownloadRunning(boolean running) {
+        UIApplication application = UIApplication.getSharedApplication();
+        if (application == null) {
+            return;
+        }
+        long invalid = UIApplication.getInvalidBackgroundTask();
+        if (running && downloadBackgroundTask == invalid) {
+            downloadBackgroundTask = application.beginBackgroundTask("PeakNav map data download",
+                    this::endDownloadBackgroundTask);
+        } else if (!running) {
+            endDownloadBackgroundTask();
+        }
+    }
+
+    /** Hands the background time back: the download ended, or iOS says the time is up. */
+    private synchronized void endDownloadBackgroundTask() {
+        long invalid = UIApplication.getInvalidBackgroundTask();
+        if (downloadBackgroundTask != invalid) {
+            UIApplication.getSharedApplication().endBackgroundTask(downloadBackgroundTask);
+            downloadBackgroundTask = invalid;
+        }
+    }
 
     // ------------------------------------------------------------------ plumbing
 
@@ -240,13 +272,25 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
      * otherwise take the dialog down with it.
      */
     private volatile UIViewController activeToast;
+    /** Counts the toasts shown, a replaced one too, so only the latest's timer dismisses it. Main thread. */
+    private int toastShown;
 
     @Override
     public void makeToast(final String message) {
         onMainThread(() -> {
+            UIViewController root = rootController();
+            UIViewController showing = activeToast;
+            if (showing instanceof UIAlertController && root != null
+                    && root.getPresentedViewController() == showing) {
+                // A toast is up - "Estimating your position..." while the estimate is made:
+                // the new message takes its place, with a full turn of its own. Dropped, the
+                // place the estimate found, which comes within a second or two, was never said.
+                ((UIAlertController) showing).setMessage(message);
+                dismissLater((UIAlertController) showing);
+                return;
+            }
             final UIAlertController controller = new UIAlertController(
                     null, message, UIAlertControllerStyle.Alert);
-            UIViewController root = rootController();
             if (root == null || root.getPresentedViewController() != null) {
                 // Something real is up (a dialog, a screen - or another toast): a toast is
                 // too unimportant to queue behind it, and presenting from busy root was a
@@ -255,23 +299,31 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
             }
             activeToast = controller;
             root.presentViewController(controller, true, null);
-            // Dismissed on a plain timer that hands the work back to the main thread. The
-            // Objective-C way would be performSelector:withObject:afterDelay:, but a
-            // scheduled Runnable posted through libGDX lands on the same thread with none
-            // of the selector plumbing, and is far easier to see the correctness of.
-            DISMISS_TIMER.schedule(new java.util.TimerTask() {
-                @Override
-                public void run() {
-                    onMainThread(() -> {
-                        if (activeToast == controller) {
-                            activeToast = null;
-                            controller.dismissViewController(true, null);
-                        }
-                        // else presentWhenIdle already dismissed it to make room.
-                    });
-                }
-            }, (long) (TOAST_SECONDS * 1000));
+            dismissLater(controller);
         });
+    }
+
+    /**
+     * Dismissed on a plain timer that hands the work back to the main thread. The Objective-C
+     * way would be performSelector:withObject:afterDelay:, but a scheduled Runnable posted
+     * through libGDX lands on the same thread with none of the selector plumbing, and is far
+     * easier to see the correctness of. Main thread.
+     */
+    private void dismissLater(final UIAlertController controller) {
+        final int shown = ++toastShown;
+        DISMISS_TIMER.schedule(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                onMainThread(() -> {
+                    // Not if presentWhenIdle already dismissed it to make room, nor if a newer
+                    // message has taken it over since.
+                    if (activeToast == controller && shown == toastShown) {
+                        activeToast = null;
+                        controller.dismissViewController(true, null);
+                    }
+                });
+            }
+        }, (long) (TOAST_SECONDS * 1000));
     }
 
     @Override
@@ -314,6 +366,63 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     }
 
     /**
+     * The sky's date and time, in the device's zone: an alert with one field, which a date
+     * picker fills in place of the keyboard. OK holds the sky at the time shown; "Device clock"
+     * lets it run again. The base class's chooseSkyTime does nothing, and with no override here
+     * the menu's button closed the menu, switched the sky on, and showed no picker.
+     */
+    @Override
+    public void chooseSkyTime() {
+        onMainThread(() -> {
+            final com.peaknav.sky.SkyModel sky = getC().skyModel;
+            final java.text.SimpleDateFormat shown =
+                    new java.text.SimpleDateFormat("yyyy-MM-dd  HH:mm", java.util.Locale.ENGLISH);
+            final org.robovm.apple.uikit.UIDatePicker picker = new org.robovm.apple.uikit.UIDatePicker();
+            picker.setDatePickerMode(org.robovm.apple.uikit.UIDatePickerMode.DateAndTime);
+            // Wheels, where there is a choice (iOS 13.4): the default since iOS 14 is a label
+            // that opens a calendar of its own, which is no replacement for a keyboard.
+            if (NSProcessInfo.getSharedProcessInfo().isOperatingSystemAtLeastVersion(
+                    new org.robovm.apple.foundation.NSOperatingSystemVersion(13, 4, 0))) {
+                picker.setPreferredDatePickerStyle(org.robovm.apple.uikit.UIDatePickerStyle.Wheels);
+                picker.sizeToFit();
+            }
+            picker.setDate(new org.robovm.apple.foundation.NSDate(new java.util.Date(sky.currentTimeMillis())));
+
+            UIAlertController controller = new UIAlertController(
+                    s("Sky_time"), null, UIAlertControllerStyle.Alert);
+            controller.addTextField((UITextField field) -> {
+                field.setText(shown.format(picker.getDate().toDate()));
+                field.setTextAlignment(org.robovm.apple.uikit.NSTextAlignment.Center);
+                field.setInputView(picker);
+                picker.addOnValueChangedListener(
+                        control -> field.setText(shown.format(picker.getDate().toDate())));
+            });
+            controller.addAction(new UIAlertAction(s("OK"), UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> sky.setCustomTimeMillis(picker.getDate().toDate().getTime())));
+            controller.addAction(new UIAlertAction(s("Sky_time_device_clock"), UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> sky.clearCustomTime()));
+            controller.addAction(new UIAlertAction(s("Cancel"), UIAlertActionStyle.Cancel,
+                    (UIAlertAction action) -> { }));
+            present(controller);
+        });
+    }
+
+    @Override
+    public void promptChoice(final String title, final String message, final String first,
+                             final String second, final Runnable onFirst, final Runnable onSecond) {
+        onMainThread(() -> {
+            UIAlertController controller = new UIAlertController(
+                    title == null ? "" : title, message == null ? "" : message,
+                    UIAlertControllerStyle.Alert);
+            controller.addAction(new UIAlertAction(first, UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> onFirst.run()));
+            controller.addAction(new UIAlertAction(second, UIAlertActionStyle.Default,
+                    (UIAlertAction action) -> onSecond.run()));
+            present(controller);
+        });
+    }
+
+    /**
      * Asks for a set of values in one alert. iOS alerts take text fields directly, so this
      * is the platform's own dialogue rather than anything hand-built.
      */
@@ -337,7 +446,7 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                     fields.add(field);
                 });
             }
-            controller.addAction(new UIAlertAction("OK", UIAlertActionStyle.Default,
+            controller.addAction(new UIAlertAction(s("OK"), UIAlertActionStyle.Default,
                     (UIAlertAction action) -> {
                         String[] values = new String[fields.size()];
                         for (int i = 0; i < values.length; i++) {
@@ -345,7 +454,7 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                         }
                         callback.onEntered(values);
                     }));
-            controller.addAction(new UIAlertAction("Cancel", UIAlertActionStyle.Cancel,
+            controller.addAction(new UIAlertAction(s("Cancel"), UIAlertActionStyle.Cancel,
                     (UIAlertAction action) -> callback.onCancelled()));
             present(controller);
         });
@@ -361,7 +470,14 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     public void shareSnapshot(final Pixmap pixmap, final com.peaknav.utils.SnapshotInfo info) {
         // Encoded on the calling thread: it is megabytes of work and the main thread is
         // also the render thread here, so doing it there would stall the picture.
-        final byte[] png = new UtilsOSIOS().encodePng(pixmap);
+        final byte[] png;
+        try {
+            png = new UtilsOSIOS().encodePng(pixmap);
+        } finally {
+            // The picture is this method's to release, as it is Android's and the desktop's:
+            // kept, every share left a screen's worth of native memory behind.
+            pixmap.dispose();
+        }
         onMainThread(() -> {
             UIImage image = new UIImage(new NSData(png));
             // Shared as a JPEG file rather than a UIImage: the file keeps the EXIF block
@@ -450,11 +566,18 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         });
     }
 
-    /** A bundled HTML page, full screen, with a Back button to come home on. */
+    /** A bundled HTML page, full screen, with a Back button to come home on: the licence page. */
     private void presentHtml(final String html) {
         onMainThread(() -> {
             WKWebView webView = new WKWebView(UIScreen.getMainScreen().getBounds());
             webView.loadHTMLString(html, null);
+            presentWebView(webView);
+        });
+    }
+
+    /** A full-screen web view, with a Back button to come home on. */
+    private void presentWebView(final WKWebView webView) {
+        onMainThread(() -> {
             UIViewController content = new UIViewController();
             content.setView(webView);
             final UINavigationController nav = new UINavigationController(content);
@@ -517,20 +640,27 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         onMainThread(() -> {
             LocationControllerIOS controller = locationController();
             if (controller.isDenied()) {
+                if (isFirstRun()) {
+                    // The request that follows is answered from the internet connection
+                    // instead (locationPermissionDenied), with a dialog of its own: iOS shows
+                    // one alert at a time, and that one is the more useful on a first run.
+                    return;
+                }
                 // The user said no earlier; only the Settings app can change that answer
                 // now, so point there rather than silently doing nothing forever.
-                askOpenSettings();
+                askOpenSettings("Location_permission_missing",
+                        "Location_permissions_in_device_settings_are_advised_to_use_app");
                 return;
             }
             controller.ensureAuthorization();
         });
     }
 
-    /** The "location is off for this app" dialog: explain, and offer the Settings page. */
-    private void askOpenSettings() {
+    /** The "this permission is off for the app" dialog: explain, and offer the Settings page. */
+    private void askOpenSettings(String titleKey, String messageKey) {
         UIAlertController controller = new UIAlertController(
-                s("Location_permission_missing"),
-                s("Location_permissions_in_device_settings_are_advised_to_use_app"),
+                s(titleKey),
+                s(messageKey),
                 UIAlertControllerStyle.Alert);
         controller.addAction(new UIAlertAction(s("Cancel"), UIAlertActionStyle.Cancel,
                 (UIAlertAction action) -> { }));
@@ -588,77 +718,25 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
     // ------------------------------------------------------------------ downloading data
 
     /**
-     * Fetches the elevation and map data around a point.
-     *
-     * <p>No chooser screen, despite the name: Android opens a region picker here, and this
-     * does what the desktop does instead - download for the point it was handed. The work is
-     * all {@code core}'s; what a platform has to get right is doing it off the render thread
-     * and clearing the started flag afterwards.
+     * The download chooser with its map, shared with the other platforms: see
+     * {@link MapScreens}. iOS used to have no chooser and downloaded around the point.
      */
     @Override
     public void openMapDataDownloadChooser(double lat, double lon, boolean goToAfterDownload) {
-        getC().submitExecutorGeneric(() -> downloadAround(lat, lon, goToAfterDownload));
+        MapScreens.openDownloadChooser(lat, lon, goToAfterDownload, false);
     }
 
     /**
-     * The download itself, on whatever thread the caller is already on.
-     *
-     * <p>Separate from {@link #openMapDataDownloadChooser} so the consent prompt can set the
-     * preference and download in one task rather than submitting two and hoping they run in
-     * order - a download that starts before the consent lands fetches nothing at all, silently
-     * (see {@code PeakNavDownloadManager}, which skips every request without it).
-     */
-    private void downloadAround(double lat, double lon, boolean goToAfterDownload) {
-        MissingDataDownloader missingDataDownloader = getC().missingDataDownloader;
-        missingDataDownloader.setCoords(lat, lon);
-        // The started flag suppresses the missing-data prompt while a download runs
-        // (CurrentLocation.shouldAskToDownloadMissingData). It MUST be cleared on every exit
-        // path: left set, the prompt never appears again for the whole session.
-        getAppState().setMapDataDownloadStarted(true);
-        try {
-            missingDataDownloader.doDownload(goToAfterDownload);
-        } finally {
-            getAppState().setMapDataDownloadStarted(false);
-        }
-        getAppState().setMapDataDownloaded(true);
-    }
-
-    /**
-     * The intro screen's download button.
-     *
-     * <p>The button sets the download consent before calling this, so the workers really
-     * fetch. On a first launch nothing is chosen yet, and this is where Android prompts for
-     * GPS (its region-picker wizard asks the moment it opens) - so iOS asks here too, and
-     * with no picker to show, the fix itself chooses the download region. On denial or no
-     * fix the behaviour is exactly the old one: the intro is let through, and the search
-     * dialog / missing-data prompt take over once the user picks a place by hand.
+     * The welcome screen's download button: the chooser, starting on the whole world. It asks
+     * for the position itself, and a fix moves its point there, as Android's does.
      */
     @Override
     public void openMapDataDownloadChooserWizard() {
-        if (getC().L.isCurrentLocationNotSet()) {
-            // The fix can arrive twice - the cached position first, the fresh one after -
-            // and both may aim the camera, but only one download should start.
-            final AtomicBoolean downloadStarted = new AtomicBoolean(false);
-            ensureLocationPermissions();
-            onMainThread(() -> locationController().getCurrentLocation(
-                    (longitude, latitude) -> {
-                        // Delivered on the render thread (LocationControllerIOS posts), so
-                        // the camera move is safe to make directly.
-                        getC().L.setCurrentTargetCoordsFromGPS(latitude, longitude);
-                        if (downloadStarted.compareAndSet(false, true)) {
-                            getC().submitExecutorGeneric(
-                                    () -> downloadAround(latitude, longitude, false));
-                        }
-                    }));
-            // Let the intro through now rather than after the fix: the permission answer
-            // may never come, and the app must not hang on it.
-            getAppState().setMapDataDownloaded(true);
-            return;
-        }
-        getC().submitExecutorGeneric(() -> {
-            downloadAround(getC().L.getTargetLatitude(), getC().L.getTargetLongitude(), false);
-            getAppState().setMapDataDownloaded(true);
-        });
+        boolean located = !getC().L.isCurrentLocationNotSet();
+        MapScreens.openDownloadChooser(
+                located ? getC().L.getTargetLatitude() : 0,
+                located ? getC().L.getTargetLongitude() : 0,
+                false, true);
     }
 
     /**
@@ -674,7 +752,8 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
             UIAlertController controller = new UIAlertController(
                     s("Missing_data_prompt"), null, UIAlertControllerStyle.Alert);
             controller.addAction(new UIAlertAction(s("Yes"), UIAlertActionStyle.Default,
-                    (UIAlertAction action) -> askConsentThenDownload(lat, lon)));
+                    // The chooser, as on Android; it asks for the download consent itself.
+                    (UIAlertAction action) -> openMapDataDownloadChooser(lat, lon, true)));
             controller.addAction(new UIAlertAction(s("No"), UIAlertActionStyle.Cancel,
                     (UIAlertAction action) -> Gdx.app.postRunnable(
                             // Back where we were, WITHOUT re-running the missing-data check:
@@ -688,154 +767,16 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
         });
     }
 
-    /**
-     * Asks for the download consent if it has not been given, then downloads.
-     *
-     * <p>Without this the download runs and fetches nothing: every request in
-     * {@code PeakNavDownloadManager} is skipped unless {@code P.isCollectDownloadInfo()}, so a
-     * user who reached the missing-data prompt without passing the intro button would get a
-     * progress bar and no data. Android asks here too.
-     */
-    private void askConsentThenDownload(final double lat, final double lon) {
-        if (P.isCollectDownloadInfo()) {
-            openMapDataDownloadChooser(lat, lon, false);
-            return;
-        }
-        onMainThread(() -> {
-            UIAlertController consent = new UIAlertController(
-                    s("Missing_data_download"), s("Missing_download_info_consent"),
-                    UIAlertControllerStyle.Alert);
-            consent.addAction(new UIAlertAction(s("Yes"), UIAlertActionStyle.Default,
-                    (UIAlertAction action) -> getC().submitExecutorGeneric(() -> {
-                        P.setCollectDownloadInfo(true);
-                        downloadAround(lat, lon, false);
-                    })));
-            // No consent, no download - and no silent pretend-download either.
-            consent.addAction(new UIAlertAction(s("No"), UIAlertActionStyle.Cancel,
-                    (UIAlertAction action) -> { }));
-            present(consent);
-        });
-    }
 
     // ------------------------------------------------------------------ search
 
     /**
-     * "lat, lon" typed into the search box. Mirrors the pattern in {@code OnlineSearch}, which
-     * navigates on a match and never calls the results listener - so this has to recognise the
-     * same input, or the results dialogue below would sit waiting for a callback that is never
-     * coming.
-     */
-    private static final Pattern COORDINATE_TEXT =
-            Pattern.compile("\\s*(-?\\d+\\.?\\d*)\\s*,\\s*(-?\\d+\\.?\\d*)\\s*");
-
-    /** Enough results to choose from; an alert with forty actions is not a list. */
-    private static final int MAX_SEARCH_RESULTS = 10;
-
-    /** How long to wait for Nominatim before showing whatever the offline index found. */
-    private static final long ONLINE_SEARCH_TIMEOUT_MS = 8000;
-
-    /**
-     * Search, as an alert asking for text and a second alert offering what was found.
-     *
-     * <p>Not the scrolling result screen the desktop and Android build - this is the platform's
-     * own dialogue, which needs no view controller of its own and is honest about being a
-     * first implementation. Both sources the other platforms use are queried: the offline
-     * geonames index (empty here unless {@code assets/geonames_index.362} was built) and
-     * Nominatim. Typing coordinates goes straight there.
-     *
-     * <p>{@code callback} is unused, as on the desktop: picking a result sets the target
-     * location, which is what every caller passing null wants.
+     * The search screen with its map, shared with the other platforms: see {@link MapScreens}.
+     * It replaced a text prompt followed by an alert listing the results.
      */
     @Override
     public void openScreenSearchLocation(ClickCallback callback) {
-        promptForTextFields(s("Search_place_title"), s("Search_prompt"),
-                new String[]{s("Search")}, new String[]{""},
-                new TextFieldsCallback() {
-                    @Override
-                    public void onEntered(String[] values) {
-                        if (values.length > 0 && values[0] != null && !values[0].trim().isEmpty()) {
-                            runSearch(values[0].trim());
-                        }
-                    }
-
-                    @Override
-                    public void onCancelled() {
-                    }
-                });
-    }
-
-    private void runSearch(final String query) {
-        if (COORDINATE_TEXT.matcher(query).matches()) {
-            // OnlineSearch navigates for this itself, on the render thread where target
-            // mutation belongs. Nothing to choose from, so no results dialogue - but the
-            // listener is a no-op rather than null: if this pattern and OnlineSearch's ever
-            // drift apart, the text falls through to Nominatim, and null would be an NPE on
-            // the network thread instead of simply finding nothing.
-            Gdx.app.postRunnable(() -> getC().onlineSearch.parseDestinationText(
-                    query, (ArrayList<NominatimResponse> ignored) -> { }));
-            return;
-        }
-
-        final List<LuceneGeonameSearch.GeonameResult> found = new ArrayList<>();
-        LuceneGeonameSearch offline = getC().luceneGeonameSearch;
-        if (offline != null) {
-            // Safe with no index: searchGeoName returns empty rather than throwing when the
-            // searcher never loaded, which is the normal state until the index is built.
-            found.addAll(offline.searchGeoName(query));
-        }
-
-        // Presented once, by whichever arrives first - the response or the timeout. Without
-        // the guard a slow-then-arriving response would stack a second dialogue on the first.
-        final AtomicBoolean presented = new AtomicBoolean(false);
-
-        getC().onlineSearch.parseDestinationText(query, (ArrayList<NominatimResponse> responses) -> {
-            if (responses != null) {
-                for (NominatimResponse response : responses) {
-                    found.add(new LuceneGeonameSearch.GeonameResult(
-                            response.displayName, response.displayName,
-                            response.lat, response.lon, -1));
-                }
-            }
-            if (presented.compareAndSet(false, true)) {
-                showSearchResults(found);
-            }
-        });
-
-        // OnlineSearch.failed() does not call the listener, so a network error would otherwise
-        // leave the user staring at nothing. Show what the offline index gave instead.
-        DISMISS_TIMER.schedule(new java.util.TimerTask() {
-            @Override
-            public void run() {
-                if (presented.compareAndSet(false, true)) {
-                    showSearchResults(found);
-                }
-            }
-        }, ONLINE_SEARCH_TIMEOUT_MS);
-    }
-
-    private void showSearchResults(final List<LuceneGeonameSearch.GeonameResult> results) {
-        onMainThread(() -> {
-            if (results.isEmpty()) {
-                alert(s("Search_place_title"), s("Search_results_hint"), s("OK"));
-                return;
-            }
-            UIAlertController controller = new UIAlertController(
-                    s("Search_place_title"), s("Search_results_hint"),
-                    UIAlertControllerStyle.Alert);
-            int shown = Math.min(results.size(), MAX_SEARCH_RESULTS);
-            for (int i = 0; i < shown; i++) {
-                final LuceneGeonameSearch.GeonameResult result = results.get(i);
-                controller.addAction(new UIAlertAction(result.getFullName(),
-                        UIAlertActionStyle.Default,
-                        // Target mutation belongs on the render thread, not on whichever
-                        // thread UIKit called this action back on.
-                        (UIAlertAction action) -> Gdx.app.postRunnable(
-                                () -> getC().L.setCurrentTargetCoords(result.lat, result.lon))));
-            }
-            controller.addAction(new UIAlertAction(s("Cancel"), UIAlertActionStyle.Cancel,
-                    (UIAlertAction action) -> { }));
-            present(controller);
-        });
+        MapScreens.openSearch();
     }
 
     @Override
@@ -846,7 +787,26 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                 // The simulator, in practice. Every real target device has a camera.
                 return;
             }
-            presentImagePicker(UIImagePickerControllerSourceType.Camera);
+            // The camera picker opens whether or not the app may use the camera, and with
+            // access denied it shows a black viewfinder and hands back a black photo, which
+            // was then loaded behind the terrain as if it were a picture. So the permission is
+            // settled first: asked for the first time, and after a "no" - now or earlier -
+            // explained, with the Settings page offered, since only Settings can change it.
+            AVAuthorizationStatus status = AVCaptureDevice.getAuthorizationStatusForMediaType(AVMediaType.Video);
+            if (status == AVAuthorizationStatus.Authorized) {
+                presentImagePicker(UIImagePickerControllerSourceType.Camera);
+            } else if (status == AVAuthorizationStatus.NotDetermined) {
+                AVCaptureDevice.requestAccessForMediaType(AVMediaType.Video, (boolean granted) -> onMainThread(() -> {
+                    if (granted) {
+                        presentImagePicker(UIImagePickerControllerSourceType.Camera);
+                    } else {
+                        askOpenSettings("Camera_permission_missing", "Camera_permission_needed_to_take_pictures");
+                    }
+                }));
+            } else {
+                // Denied, or Restricted by parental controls or device management.
+                askOpenSettings("Camera_permission_missing", "Camera_permission_needed_to_take_pictures");
+            }
         });
     }
 
@@ -864,33 +824,6 @@ public class NativeScreenCallerIOS extends NativeScreenCaller {
                 return;
             }
             presentImagePicker(UIImagePickerControllerSourceType.PhotoLibrary);
-        });
-    }
-
-    /**
-     * The slideshow tutorial - the same bundled page as Android, with the same trick: the
-     * screenshots are substituted into the page as base64 data URLs, because a page loaded
-     * from a string has no base directory to resolve relative image paths against.
-     */
-    @Override
-    public void openAppTutorial() {
-        onMainThread(() -> {
-            String html = Gdx.files.internal("info/app_tutorial.html").readString();
-            StringBuilder getImage = new StringBuilder("function get_image(k) {\n");
-            // The tutorial's screenshots, as tools/tutorial_screenshots.py writes them.
-            String[] imgFiles = {
-                    "imageBase.jpg", "imageOptions.jpg", "imageBaseSat.jpg", "imagePhoto.jpg", "imagePhotoTerrain.jpg", "imagePhotoPin.jpg", "imageGpx.jpg", "imageTap.jpg"};
-            for (String imgFile : imgFiles) {
-                byte[] imgBytes = Gdx.files.internal("info/" + imgFile).readBytes();
-                getImage.append("if (k == '").append(imgFile)
-                        .append("') data = 'data:image/jpeg;base64,")
-                        .append(new String(Base64Coder.encode(imgBytes)))
-                        .append("';\n");
-            }
-            getImage.append("\nlet img = new Image();\nimg.src = data;\nreturn img;\n}\n");
-            // The captions, in the device's language, from the app's own catalogue.
-            presentHtml(html.replace("// OVERLOAD::get_image", getImage.toString())
-                    .replace("// OVERLOAD::get_string", com.peaknav.viewer.TutorialStrings.asJavaScript()));
         });
     }
 

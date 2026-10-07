@@ -29,6 +29,7 @@ import com.peaknav.viewer.PerspectiveCameraExt;
 import com.peaknav.viewer.labels.AreaLabelStability;
 import com.peaknav.viewer.labels.DrawLabel;
 import com.peaknav.viewer.labels.DrawLabelCategory;
+import com.peaknav.viewer.labels.PoiObject;
 import com.peaknav.viewer.render_tiles.ImpactPixmap;
 import com.peaknav.viewer.screens.BackgroundPicManager;
 import com.peaknav.viewer.screens.MapViewerScreen;
@@ -126,6 +127,8 @@ public class LabelRenderer {
             renderLabelLines();
             renderLabelTexts();
         }
+        // The user's own markers over the map's labels: they are what was put there on purpose.
+        renderMarkers();
         renderHorizonCompass();
         MapViewerScreen viewer = MapViewerSingleton.getViewerInstance();
         if (getAppState().isLoadingMapData() || (viewer != null && viewer.isBusy())) {
@@ -158,7 +161,7 @@ public class LabelRenderer {
      * compass-and-location group, so it obeys that master switch plus its own toggle.
      */
     private void renderCoordinates() {
-        if (!P.isCompassLocation() || !P.isShowCoordinates())
+        if (!P.isCompassLocation() || (!P.isShowCoordinates() && !P.isShowElevation()))
             return;
         // Where the CAMERA is, not where the target is. They are usually the same, but not
         // while the camera is moving under its own steam: orbiting a clicked point circles
@@ -171,38 +174,91 @@ public class LabelRenderer {
         PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
         float lat = cam.position.y;
         float lon = Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude());
-        // Rebuild only when the text would actually change. Comparing the raw floats would
-        // reformat every frame of an orbit, which is exactly the garbage this cache avoids.
-        // Written as a negated "close enough" so the first frame formats too: the cache starts
-        // at NaN, and every comparison against NaN is false.
-        if (!(Math.abs(lat - coordinatesCachedLat) < 1e-5f
-                && Math.abs(lon - coordinatesCachedLon) < 1e-5f)) {
-            coordinatesCachedLat = lat;
-            coordinatesCachedLon = lon;
-            coordinatesText = String.format(java.util.Locale.ENGLISH, "%.5f° %s   %.5f° %s",
-                    Math.abs(lat), lat >= 0 ? "N" : "S",
-                    Math.abs(lon), lon >= 0 ? "E" : "W");
+        // Above the copyright notice at the bottom, clear of the corner buttons.
+        float py = COORDINATES_PILL_Y * widgetUnitStep;
+        float elevationY = py;
+        if (P.isShowCoordinates()) {
+            // Rebuild only when the text would actually change. Comparing the raw floats would
+            // reformat every frame of an orbit, which is exactly the garbage this cache avoids.
+            // Written as a negated "close enough" so the first frame formats too: the cache starts
+            // at NaN, and every comparison against NaN is false.
+            if (!(Math.abs(lat - coordinatesCachedLat) < 1e-5f
+                    && Math.abs(lon - coordinatesCachedLon) < 1e-5f)) {
+                coordinatesCachedLat = lat;
+                coordinatesCachedLon = lon;
+                coordinatesText = String.format(java.util.Locale.ENGLISH, "%.5f° %s   %.5f° %s",
+                        Math.abs(lat), lat >= 0 ? "N" : "S",
+                        Math.abs(lon), lon >= 0 ? "E" : "W");
+            }
+            float ph = drawReadoutPill(coordinatesGlyph, coordinatesText, py);
+            elevationY = py + ph + READOUT_GAP * widgetUnitStep;
         }
-        String text = coordinatesText;
+        if (P.isShowElevation()) {
+            // The viewpoint's height above the sea: the camera's, put back on the round Earth
+            // the world frame flattens it off.
+            float metres = Units.convertLatitsToMeters(cam.position.z
+                    + ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+            int shown = Math.round(P.getUnitSystem() == com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL
+                    ? metres * 3.28084f : metres);
+            if (shown != elevationCachedValue || P.getUnitSystem() != elevationCachedUnits) {
+                elevationCachedValue = shown;
+                elevationCachedUnits = P.getUnitSystem();
+                elevationText = s("Feature_elevation") + "  " + shown
+                        + (elevationCachedUnits == com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL ? " ft" : " m");
+            }
+            drawReadoutPill(elevationGlyph, elevationText, Math.max(elevationY, aboveScrubBar()));
+        }
+    }
+
+    /** The elevation readout's text as last drawn, for tests. */
+    public String getElevationText() {
+        return elevationText;
+    }
+
+    /** Between two readout pills stacked one on the other, in widget units. */
+    private static final float READOUT_GAP = 0.22f;
+
+    private final GlyphLayout elevationGlyph = new GlyphLayout();
+    private int elevationCachedValue = Integer.MIN_VALUE;
+    private com.peaknav.utils.PreferencesManager.UnitSystem elevationCachedUnits;
+    private String elevationText = "";
+
+    /**
+     * Where a pill must start to clear the GPX scrub bar, pixels up from the bottom; 0 while the
+     * bar is hidden. The bar runs just above the coordinates while a track is loaded.
+     */
+    private float aboveScrubBar() {
+        MapViewerScreen viewer = MapViewerSingleton.getViewerInstance();
+        if (viewer == null || viewer.tableLocation == null || !viewer.tableLocation.gpxSeekTable.isVisible()) {
+            return 0f;
+        }
+        com.badlogic.gdx.scenes.scene2d.Actor bar = viewer.tableLocation.gpxSeekSlider;
+        com.badlogic.gdx.math.Vector2 top = bar.localToStageCoordinates(scrubBarTop.set(0, bar.getHeight()));
+        viewer.getStage().stageToScreenCoordinates(top);
+        return Gdx.graphics.getHeight() - top.y + READOUT_GAP * widgetUnitStep;
+    }
+
+    private final com.badlogic.gdx.math.Vector2 scrubBarTop = new com.badlogic.gdx.math.Vector2();
+
+    /** A line of text on a dark pill, centred across the screen, {@code y} pixels up; returns its height. */
+    private float drawReadoutPill(GlyphLayout glyph, String text, float y) {
         BitmapFont font = getC().styleSingleton.getBitmapFontSmallWhite();
-        coordinatesGlyph.setText(font, text);
-        float tw = coordinatesGlyph.width;
-        float th = coordinatesGlyph.height;
+        glyph.setText(font, text);
+        float tw = glyph.width;
+        float th = glyph.height;
         float padX = 0.4f * widgetUnitStep;
         float padY = 0.18f * widgetUnitStep;
         float pw = tw + 2f * padX;
         float ph = th + 2f * padY;
         float cx = Gdx.graphics.getWidth() * 0.5f;
         float px = cx - pw * 0.5f;
-        // Above the copyright notice at the bottom, clear of the corner buttons.
-        float py = COORDINATES_PILL_Y * widgetUnitStep;
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         try {
             shapeRenderer.setColor(0.05f, 0.06f, 0.13f, 0.78f);
-            fillPill(px, py, pw, ph, ph * 0.5f);
+            fillPill(px, y, pw, ph, ph * 0.5f);
         } finally {
             shapeRenderer.end();
         }
@@ -212,10 +268,11 @@ public class LabelRenderer {
         spriteBatch.begin();
         try {
             font.setColor(Color.WHITE);
-            font.draw(spriteBatch, text, cx - tw * 0.5f, py + ph * 0.5f + th * 0.5f);
+            font.draw(spriteBatch, text, cx - tw * 0.5f, y + ph * 0.5f + th * 0.5f);
         } finally {
             spriteBatch.end();
         }
+        return ph;
     }
 
     private final GlyphLayout clockGlyph = new GlyphLayout();
@@ -223,8 +280,11 @@ public class LabelRenderer {
     // The clock text is rebuilt only when the minute changes: constructing a SimpleDateFormat is
     // expensive (pattern compile + Calendar + locale data) and doing it every frame at 60 fps was
     // significant steady-state garbage while a custom sky time was set.
+    // Locale.ROOT for the digits: a device set to Arabic, Persian or Bengali formats them in its
+    // own script, which the fonts do not have, and the clock was a row of boxes. The time zone
+    // is still the device's.
     private final java.text.SimpleDateFormat clockFormat =
-            new java.text.SimpleDateFormat("yyyy-MM-dd  HH:mm", java.util.Locale.getDefault());
+            new java.text.SimpleDateFormat("yyyy-MM-dd  HH:mm", java.util.Locale.ROOT);
     private final java.util.Date clockDate = new java.util.Date();
     private long clockCachedMinute = Long.MIN_VALUE;
     private String clockText = "";
@@ -264,8 +324,9 @@ public class LabelRenderer {
         // Directly under the coordinates pill when that is showing, and in its place when it is
         // not - so the clock never floats alone over a gap where the coordinates would have been.
         float py = COORDINATES_PILL_Y * widgetUnitStep;
-        if (P.isCompassLocation() && P.isShowCoordinates()) {
-            py -= ph + 0.22f * widgetUnitStep;
+        // The elevation takes the coordinates' place when they are off, so it counts the same.
+        if (P.isCompassLocation() && (P.isShowCoordinates() || P.isShowElevation())) {
+            py -= ph + READOUT_GAP * widgetUnitStep;
         }
         // The attribution line runs along the very bottom; do not sit on it.
         py = Math.max(py, 0.2f * widgetUnitStep);
@@ -429,6 +490,11 @@ public class LabelRenderer {
     // (setTransformMatrix copies the values into the batch). Avoids a per-frame allocation.
     private final Matrix4 identityMat = new Matrix4();
 
+    /** Radius of the field-of-view beam behind the rose, in rose widths: the rose is 0.5. */
+    private static final float COMPASS_BEAM_RADIUS = 0.72f;
+    private static final Color COMPASS_BEAM_FILL = new Color(0.93f, 0.16f, 0.16f, 0.55f);
+    private static final Color COMPASS_BEAM_EDGE = new Color(0.93f, 0.16f, 0.16f, 1f);
+
     private void renderCompass() {
         // The rose in the top-right corner was always drawn; it now honours the
         // compass-and-location group's master switch and its own toggle.
@@ -439,12 +505,23 @@ public class LabelRenderer {
         float angle2 = cam.getAngleForCompass2();
         float deltaAngle = cam.getAngleForCompassDelta();
 
+        // The field of view, as a beam out of the rose. The rose is an opaque disc, so a wedge
+        // of its own radius showed only as a sliver at the rim; this one reaches past it, a
+        // translucent fill with a solid edge.
+        float beamRadius = w * COMPASS_BEAM_RADIUS;
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         try {
-            shapeRenderer.setColor(Color.RED);
-            shapeRenderer.arc(x, y, w/2f, angle2, deltaAngle);
-        } catch (Throwable throwable) {
-            System.err.println("error!");
+            shapeRenderer.setColor(COMPASS_BEAM_FILL);
+            shapeRenderer.arc(x, y, beamRadius, angle2, deltaAngle);
+        } finally {
+            shapeRenderer.end();
+        }
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        try {
+            shapeRenderer.setColor(COMPASS_BEAM_EDGE);
+            shapeRenderer.arc(x, y, beamRadius, angle2, deltaAngle);
         } finally {
             shapeRenderer.end();
         }
@@ -475,6 +552,16 @@ public class LabelRenderer {
     // of area read as visually distinct. The peak/town labels alone never say which island or range
     // you are looking at.
     private static final int AREA_SEGMENTS = 48;
+    /** The cosine and sine of each point's angle round an area's ellipse: the same for every area. */
+    private static final float[] AREA_SEGMENT_COS = new float[AREA_SEGMENTS];
+    private static final float[] AREA_SEGMENT_SIN = new float[AREA_SEGMENTS];
+    static {
+        for (int k = 0; k < AREA_SEGMENTS; k++) {
+            float t = (float) (2.0 * Math.PI * k / AREA_SEGMENTS);
+            AREA_SEGMENT_COS[k] = (float) Math.cos(t);
+            AREA_SEGMENT_SIN[k] = (float) Math.sin(t);
+        }
+    }
     private static final float KM_PER_DEG_LAT = 111.32f;
     private final Vector3 areaTmp = new Vector3();
     private final GlyphLayout areaGlyph = new GlyphLayout();
@@ -574,6 +661,243 @@ public class LabelRenderer {
         return out;
     }
 
+    // ---- Markers ---------------------------------------------------------------------------
+    //
+    // The user's saved points (MarkerStore), each a flag standing on its spot with its name beside
+    // it - over the labels, since a marker is there because someone put it there. A flag behind
+    // the camera, behind the terrain or too far away to matter is not drawn, and what was drawn
+    // is kept, flag and name, for a tap to find (featureAt).
+
+    /** Farther than this a marker is not drawn: it would be a speck, and far off the map loaded. */
+    private static final float MARKER_MAX_METRES = 200_000f;
+    /** A flag's height on screen, in widget units. */
+    private static final float MARKER_FLAG_UNITS = 1.25f;
+    /** Where the pole's foot is across the flag's image, as a share of its width (icon_marker_flag). */
+    private static final float MARKER_FOOT_X = 22f / 128f;
+    /** The flag's top, roughly, for the occlusion test's second try (see renderMarkers). */
+    private static final float MARKER_LIFT_METRES = 8f;
+
+    /** The flag in two layers: its cloth, white, tinted to the marker's colour; the pole and outline over it. */
+    private com.badlogic.gdx.graphics.g2d.TextureRegion markerCloth;
+    private com.badlogic.gdx.graphics.g2d.TextureRegion markerPole;
+    private final java.util.EnumMap<com.peaknav.markers.MarkerColor, Color> markerColors =
+            new java.util.EnumMap<>(com.peaknav.markers.MarkerColor.class);
+    private final GlyphLayout markerGlyph = new GlyphLayout();
+    private final Vector3 markerWorld = new Vector3();
+    private final Vector3 markerScreen = new Vector3();
+    private final Vector3 markerToward = new Vector3();
+
+    /** A marker as it was last drawn: the marker, and its flag and name's box on screen, pixels, y up. */
+    private static final class DrawnMarker {
+        final com.peaknav.markers.Marker marker;
+        final float x, y, width, height;
+        final float distance;
+
+        DrawnMarker(com.peaknav.markers.Marker marker, float x, float y, float width, float height, float distance) {
+            this.marker = marker;
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.distance = distance;
+        }
+    }
+
+    /** What the last frame drew, nearest last - it is drawn over the others. Render thread only. */
+    private final List<DrawnMarker> drawnMarkers = new java.util.ArrayList<>();
+
+    /** The markers the last frame drew, for tests: their names. Render thread only. */
+    public List<String> drawnMarkerNames() {
+        List<String> out = new java.util.ArrayList<>();
+        for (DrawnMarker d : drawnMarkers) {
+            out.add(d.marker.name);
+        }
+        return out;
+    }
+
+    /** The screen box of the marker drawn with that name, pixels, y up; null if none. For tests. */
+    public float[] drawnMarkerBox(String name) {
+        for (DrawnMarker d : drawnMarkers) {
+            if (d.marker.name.equals(name)) {
+                return new float[]{d.x, d.y, d.width, d.height};
+            }
+        }
+        return null;
+    }
+
+    private void renderMarkers() {
+        drawnMarkers.clear();
+        MapViewerScreen viewer = MapViewerSingleton.getViewerInstance();
+        if (viewer == null || viewer.cam == null) {
+            return;
+        }
+        if (!P.isShowMarkers()) {
+            return;
+        }
+        List<com.peaknav.markers.Marker> markers = getC().markerStore.getMarkers();
+        if (markers.isEmpty()) {
+            return;
+        }
+        if (markerCloth == null) {
+            markerCloth = getC().widgetTextures.getTextureRegionDrawable("icons/icon_marker_flag_cloth.png").getRegion();
+            markerPole = getC().widgetTextures.getTextureRegionDrawable("icons/icon_marker_flag_pole.png").getRegion();
+            for (com.peaknav.markers.MarkerColor c : com.peaknav.markers.MarkerColor.values()) {
+                markerColors.put(c, Color.valueOf(c.hex));
+            }
+        }
+        float targetLatitude = getC().L.getTargetLatitude();
+        float flagHeight = MARKER_FLAG_UNITS * widgetUnitStep;
+        float flagWidth = flagHeight * markerPole.getRegionWidth() / markerPole.getRegionHeight();
+        BitmapFont font = getC().styleSingleton.getBitmapFontVerySmallWhite();
+        for (com.peaknav.markers.Marker m : markers) {
+            float lat = (float) m.latitude, lon = (float) m.longitude;
+            // On the ground as the terrain has it, where it is loaded: a height saved from other
+            // data - another app's GPX, a label's tag - can lie under this terrain, and the flag
+            // would stand buried out of sight. The saved height is for where there is no terrain.
+            double ground = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+            double metres = !Double.isNaN(ground) ? ground : m.elevation;
+            if (Double.isNaN(metres)) {
+                continue;
+            }
+            markerWorld.set((float) Units.convertLonitsToLatits(lon, targetLatitude), lat,
+                    Units.convertMetersToLatits(metres)
+                            - ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+            markerToward.set(markerWorld).sub(viewer.cam.position);
+            float distance = Units.convertLatitsToMeters(markerToward.len());
+            if (distance > MARKER_MAX_METRES || markerToward.dot(viewer.cam.direction) <= 0) {
+                continue;
+            }
+            if (viewer.impactPixmap != null) {
+                // The depth test asks whether the point's distance matches the terrain's in its
+                // direction: the foot on the ground itself does, as a label's summit does. A point
+                // lifted over it looks past the ground at what lies behind, so that is only the
+                // fallback, for a foot the terrain in front just covers.
+                boolean visible = getC().visibility.checkVisible(markerWorld, viewer.impactPixmap);
+                if (!visible) {
+                    markerScreen.set(markerWorld);
+                    markerScreen.z += Units.convertMetersToLatits(MARKER_LIFT_METRES);
+                    visible = getC().visibility.checkVisible(markerScreen, viewer.impactPixmap);
+                }
+                if (!visible) {
+                    continue;
+                }
+            }
+            viewer.cam.project(markerScreen.set(markerWorld));
+            float footX = markerScreen.x, footY = markerScreen.y;
+            if (footX < -flagWidth || footX > Gdx.graphics.getWidth() + flagWidth
+                    || footY < -flagHeight || footY > Gdx.graphics.getHeight()) {
+                continue;
+            }
+            markerGlyph.setText(font, m.name);
+            float x = footX - MARKER_FOOT_X * flagWidth;
+            float width = flagWidth + (m.name.isEmpty() ? 0 : markerGlyph.width + 0.3f * widgetUnitStep);
+            drawnMarkers.add(new DrawnMarker(m, x, footY, width, flagHeight, distance));
+        }
+        if (drawnMarkers.isEmpty()) {
+            return;
+        }
+        // Far to near: a near flag stands in front of a far one.
+        java.util.Collections.sort(drawnMarkers, (a, b) -> Float.compare(b.distance, a.distance));
+
+        float padX = 0.12f * widgetUnitStep, padY = 0.06f * widgetUnitStep;
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        spriteBatch.setTransformMatrix(identityMat);
+        for (DrawnMarker d : drawnMarkers) {
+            // The name on a dark plate by the flag's cloth, then the flag over the plate's end.
+            if (!d.marker.name.isEmpty()) {
+                markerGlyph.setText(font, d.marker.name);
+                float plateX = d.x + flagWidth * 0.55f;
+                float plateH = markerGlyph.height + 2 * padY;
+                float plateY = d.y + flagHeight * 0.62f - plateH * 0.5f;
+                float plateW = markerGlyph.width + 2 * padX + flagWidth * 0.45f;
+                // Again for each plate: the sprite batch's end() below turns blending off, and
+                // every marker's plate after the first was drawn opaque.
+                Gdx.gl.glEnable(GL20.GL_BLEND);
+                shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+                try {
+                    shapeRenderer.setColor(0.05f, 0.06f, 0.13f, 0.78f);
+                    fillPill(plateX, plateY, plateW, plateH, plateH * 0.5f);
+                } finally {
+                    shapeRenderer.end();
+                }
+                spriteBatch.begin();
+                try {
+                    font.setColor(Color.WHITE);
+                    font.draw(spriteBatch, d.marker.name, plateX + flagWidth * 0.45f + padX,
+                            plateY + plateH * 0.5f + markerGlyph.height * 0.5f);
+                } finally {
+                    spriteBatch.end();
+                }
+            }
+            spriteBatch.begin();
+            try {
+                spriteBatch.setColor(markerColors.get(d.marker.color));
+                spriteBatch.draw(markerCloth, d.x, d.y, flagWidth, flagHeight);
+                spriteBatch.setColor(Color.WHITE);
+                spriteBatch.draw(markerPole, d.x, d.y, flagWidth, flagHeight);
+            } finally {
+                spriteBatch.end();
+            }
+        }
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    /**
+     * What the label at a point of the screen names: a {@link com.peaknav.markers.Marker} for one
+     * of the user's flags, a {@link PoiObject} for a peak, hut or place, a {@link MapArea} for a
+     * lake, island, range or town, null where nothing is drawn. The point is in pixels, y up. What
+     * is under the point itself wins over what is only near it, and what is drawn on top - flags,
+     * then peaks' and places' labels - over what is beneath. Call on the render thread.
+     */
+    public Object featureAt(final float x, final float y, final float slack) {
+        // A marker first, nearest first: the flags are drawn over everything else.
+        com.peaknav.markers.Marker nearMarker = null;
+        for (int i = drawnMarkers.size() - 1; i >= 0; i--) {
+            DrawnMarker d = drawnMarkers.get(i);
+            if (x >= d.x && x <= d.x + d.width && y >= d.y && y <= d.y + d.height) {
+                return d.marker;
+            }
+            if (nearMarker == null && x >= d.x - slack && x <= d.x + d.width + slack
+                    && y >= d.y - slack && y <= d.y + d.height + slack) {
+                nearMarker = d.marker;
+            }
+        }
+        if (nearMarker != null) {
+            return nearMarker;
+        }
+        if (!P.isLabelsVisible()) {
+            return null;
+        }
+        final PoiObject[] hit = new PoiObject[2]; // under the point; near it
+        getC().O.iterateOverDisplayablePois(poiObject -> {
+            DrawLabel label = poiObject.drawLabel;
+            if (hit[0] != null || label == null || !label.isVisible()) {
+                return;
+            }
+            if (label.plateContains(x, y, 0)) {
+                hit[0] = poiObject;
+            } else if (hit[1] == null && label.plateContains(x, y, slack)) {
+                hit[1] = poiObject;
+            }
+        });
+        if (hit[0] != null) {
+            return hit[0];
+        }
+        MapArea near = null;
+        for (int i = areaDrawn.size() - 1; i >= 0; i--) {
+            PendingArea a = areaDrawn.get(i);
+            if (x >= a.rx && x <= a.rx + a.rw && y >= a.ry && y <= a.ry + a.rh) {
+                return hit[1] != null ? hit[1] : a.area;
+            }
+            if (near == null && x >= a.rx - slack && x <= a.rx + a.rw + slack
+                    && y >= a.ry - slack && y <= a.ry + a.rh + slack) {
+                near = a.area;
+            }
+        }
+        return hit[1] != null ? hit[1] : near;
+    }
+
     /**
      * The areas that survived the geometric culls of the last {@code renderAreas} pass - in
      * range, in front of the camera, on screen, summit in view, not behind terrain - whether
@@ -643,15 +967,14 @@ public class LabelRenderer {
     }
 
     private void renderAreas() {
-        areaDrawn.clear();
         float targetLat = getC().L.getTargetLatitude();
         float targetLon = (float) getC().L.getTargetLongitude();
         List<MapArea> areas = getC().areaRegistry.getAreasNear(targetLat, targetLon);
-        if (areas.isEmpty())
-            return;
         PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
-        if (cam == null)
+        if (areas.isEmpty() || cam == null) {
+            areaDrawn.clear();
             return;
+        }
 
         // Is this a DECISION frame - one on which the set of area labels may change?
         // Between decisions the labels already on screen keep their places and simply
@@ -675,6 +998,22 @@ public class LabelRenderer {
         boolean decide = held
                 ? version != frozenAreaVersion
                 : now - lastAreaSelectionMs >= AREA_SELECTION_DEBOUNCE_MS;
+        // A still camera between decisions: the same labels in the same places as last frame,
+        // so they are drawn again as they were. Measuring them - an ellipse of points per area,
+        // each corrected for the earth's curvature and projected - was half of every frame's
+        // work on a phone, and made the idle frame rate unreachable. Anything else that could
+        // change them (the areas loaded, the fonts) is taken up at the next decision, at most
+        // half a second away - but not with the label updates held, as the headless renderer
+        // holds them, when the next decision waits for a label pass. So the switches of the
+        // area kinds are compared too: turned off, a kind went on being drawn until then.
+        if (!decide && areaCameraUnchanged(cam, areas)) {
+            for (int i = 0; i < areaDrawn.size(); i++) {
+                drawAreaName(areaDrawn.get(i));
+                labelsDrawnThisFrame++;
+            }
+            return;
+        }
+        areaDrawn.clear();
         if (decide) {
             // The cached terrain verdicts describe the view from the depth maps the last
             // decision read. Once the maps are re-rendered from kilometres away - a scripted
@@ -701,6 +1040,12 @@ public class LabelRenderer {
         }
 
         float cosTargetLat = (float) Math.cos(Math.toRadians(targetLat));
+        // What every point of every ellipse below is placed with. Taken once: asked again for
+        // each of the 48 points of each area, the trigonometry in them was most of this
+        // method's time - and this method the largest part of a moving frame's label work
+        // among mountains, where some three hundred ranges and groups are in range at once.
+        double lonitsToLatits = Units.convertLonitsToLatits(1.0, targetLat);
+        float longitudeScaleSquared = ElevationUtils.longitudeScaleSquared(targetLat);
         int screenW = Gdx.graphics.getWidth();
         int screenH = Gdx.graphics.getHeight();
 
@@ -709,6 +1054,8 @@ public class LabelRenderer {
         // the factor is ~1; it roughly doubles a few km up.
         float camHeightMeters = Math.max(0f, Units.convertLatitsToMeters(cam.position.z));
         float altitudeRangeFactor = Math.min(8f, 1f + camHeightMeters / 3500f);
+        // How far the camera sees to the sea horizon; each area adds its own peak's reach.
+        double camHorizonReach = Math.sqrt(2.0 * Units.radiusOfEarth * camHeightMeters);
 
         // Pass 1: measure every label that survives the culls; the actual drawing happens after the
         // de-overlap pass so a label hidden behind a higher-priority one is dropped, not stacked.
@@ -749,8 +1096,9 @@ public class LabelRenderer {
             boolean standing = frozenAreaSelection.contains(area);
 
             // Centre at sea level (elevation 0, round-earth corrected).
-            float centreCorr = ElevationUtils.getElevationCorrectionForRoundEarth(area.lat, areaLon);
-            float centreX = (float) Units.convertLonitsToLatits(areaLon, targetLat);
+            float centreCorr = ElevationUtils.roundEarthDropLatitsScaled(
+                    area.lat - targetLat, areaLon - targetLon, longitudeScaleSquared);
+            float centreX = (float) (areaLon * lonitsToLatits);
             float centreY = area.lat;
             float centreZ = -centreCorr;
             float toX = centreX - cam.position.x;
@@ -767,9 +1115,24 @@ public class LabelRenderer {
             // sea-level horizon of its (missing) elevation.
             float effPeakMeters = "island".equals(area.type)
                     ? Math.max(area.peakMeters, 200f) : area.peakMeters;
-            float horizonReach = (float) (Math.sqrt(2.0 * Units.radiusOfEarth * camHeightMeters)
+            float horizonReach = (float) (camHorizonReach
                     + Math.sqrt(2.0 * Units.radiusOfEarth * effPeakMeters));
             if (distMeters > (standing ? horizonReach * BORDER_STICKY_RANGE : horizonReach)) {
+                frozenAreaSelection.remove(area);
+                continue;
+            }
+
+            // Gate on the summit being inside the frustum, so no ghost pill shows when you face
+            // away. Before the ellipse, which this does not need: of the areas in range only
+            // those the camera faces go on to be measured, a dozenth of them in a mountain view.
+            float summitZ = centreZ + Units.convertMetersToLatits(area.peakMeters);
+            if (!areaSummitInView(centreX, centreY, summitZ, cam, standing)) {
+                // A standing plate that fails a geometric cull LEAVES the selection. Left in
+                // it, a plate whose summit sits on the padded frustum edge - a range the
+                // camera is flying across - failed on one camera placement and passed on
+                // the next, blinking for single frames until the summit was well outside.
+                // Gone, it can only come back through a decision, whose entry test is the
+                // strict frustum: the exit happens once, and cleanly.
                 frozenAreaSelection.remove(area);
                 continue;
             }
@@ -786,15 +1149,15 @@ public class LabelRenderer {
             float minY = Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
             int inFront = 0;
             for (int k = 0; k < AREA_SEGMENTS; k++) {
-                float t = (float) (2.0 * Math.PI * k / AREA_SEGMENTS);
-                float localE = area.semiMajorKm * (float) Math.cos(t);
-                float localN = area.semiMinorKm * (float) Math.sin(t);
+                float localE = area.semiMajorKm * AREA_SEGMENT_COS[k];
+                float localN = area.semiMinorKm * AREA_SEGMENT_SIN[k];
                 float eastKm = localE * cosR - localN * sinR;
                 float northKm = localE * sinR + localN * cosR;
                 float ptLat = area.lat + northKm / KM_PER_DEG_LAT;
                 float ptLon = areaLon + eastKm / kmPerDegLon;
-                float corr = ElevationUtils.getElevationCorrectionForRoundEarth(ptLat, ptLon);
-                float wx = (float) Units.convertLonitsToLatits(ptLon, targetLat);
+                float corr = ElevationUtils.roundEarthDropLatitsScaled(
+                        ptLat - targetLat, ptLon - targetLon, longitudeScaleSquared);
+                float wx = (float) (ptLon * lonitsToLatits);
                 // Skip boundary points behind the camera: projecting them divides by a negative w
                 // and mirrors the screen coordinates, which used to blow the silhouette box up
                 // (huge or misplaced pills when standing on/inside a large area).
@@ -823,19 +1186,7 @@ public class LabelRenderer {
             // terrain — at any distance or camera pitch (a fixed world-height lift collapses to a
             // few pixels when the area is far or seen from straight above). The silhouette top is
             // the higher (on screen) of the sea-level footprint's top edge and the projected summit:
-            // from the side the summit wins, from straight above the footprint does. Gate on the
-            // summit being inside the frustum, so no ghost pill shows when you face away.
-            float summitZ = centreZ + Units.convertMetersToLatits(area.peakMeters);
-            if (!areaSummitInView(centreX, centreY, summitZ, cam, standing)) {
-                // A standing plate that fails a geometric cull LEAVES the selection. Left in
-                // it, a plate whose summit sits on the padded frustum edge - a range the
-                // camera is flying across - failed on one camera placement and passed on
-                // the next, blinking for single frames until the summit was well outside.
-                // Gone, it can only come back through a decision, whose entry test is the
-                // strict frustum: the exit happens once, and cleanly.
-                frozenAreaSelection.remove(area);
-                continue;
-            }
+            // from the side the summit wins, from straight above the footprint does.
             areaTmp.set(centreX, centreY, summitZ);
             cam.project(areaTmp);
             float summitX = areaTmp.x;
@@ -969,6 +1320,48 @@ public class LabelRenderer {
                 labelsDrawnThisFrame++;
             }
         }
+    }
+
+    private final Vector3 areaCamPosition = new Vector3(Float.NaN, 0, 0);
+    private final Vector3 areaCamDirection = new Vector3();
+    private final Vector3 areaCamUp = new Vector3();
+    private float areaCamFov = Float.NaN;
+    private int areaCamWidth, areaCamHeight;
+    private List<MapArea> areaCamAreas;
+    private int areaCamAreaCount;
+    private int areaCamSwitches = -1;
+
+    /** Which kinds of area are switched on, as bits: a change is a change of the labels shown. */
+    private static int areaSwitches() {
+        return (P.isVisibleCities() ? 1 : 0) | (P.isVisibleMountainRanges() ? 2 : 0)
+                | (P.isVisibleIslands() ? 4 : 0) | (P.isVisibleLakes() ? 8 : 0);
+    }
+
+    /**
+     * Whether the camera, the screen, the areas nearby and the switches of their kinds are
+     * exactly as they were when the area labels were last measured; notes them for the next
+     * frame when not.
+     */
+    private boolean areaCameraUnchanged(PerspectiveCameraExt cam, List<MapArea> areas) {
+        int w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
+        int switches = areaSwitches();
+        boolean same = cam.position.equals(areaCamPosition) && cam.direction.equals(areaCamDirection)
+                && cam.up.equals(areaCamUp) && cam.fieldOfView == areaCamFov
+                && w == areaCamWidth && h == areaCamHeight
+                && areas == areaCamAreas && areas.size() == areaCamAreaCount
+                && switches == areaCamSwitches;
+        if (!same) {
+            areaCamSwitches = switches;
+            areaCamPosition.set(cam.position);
+            areaCamDirection.set(cam.direction);
+            areaCamUp.set(cam.up);
+            areaCamFov = cam.fieldOfView;
+            areaCamWidth = w;
+            areaCamHeight = h;
+            areaCamAreas = areas;
+            areaCamAreaCount = areas.size();
+        }
+        return same;
     }
 
     /** Interactive re-decision cadence for the area winners; see the comment above. */
@@ -1347,7 +1740,9 @@ public class LabelRenderer {
         float platePadX = 0.14f * widgetUnitStep;
         float platePadY = 0.07f * widgetUnitStep;
 
-        // Bars and the dark plates behind the labels.
+        // Bars and the dark plates behind the labels - translucent, so with blending on, which
+        // nothing had turned on at this point of the frame.
+        Gdx.gl.glEnable(GL20.GL_BLEND);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         try {
             for (int i = 0; i < n; i++) {
@@ -1375,6 +1770,7 @@ public class LabelRenderer {
             }
         } finally {
             shapeRenderer.end();
+            Gdx.gl.glDisable(GL20.GL_BLEND);   // back as the 3D pass's render context expects it
         }
 
         // Labels on top of their plates.

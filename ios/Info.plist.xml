@@ -4,6 +4,36 @@
 <dict>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
+    <!-- The languages the app is translated into (assets/i18n/strings_*.properties). iOS runs
+         an app in the first of the user's languages that the app declares, and without this
+         list it declares English alone, so every device got English whatever it was set to.
+         The translations are not .lproj folders, which is why they are listed by hand.
+         Norwegian is "nb", the code iOS uses; the app reads strings_no for it. -->
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>de</string>
+        <string>es</string>
+        <string>fr</string>
+        <string>it</string>
+        <string>nb</string>
+        <string>pt</string>
+        <string>nl</string>
+        <string>sv</string>
+        <string>da</string>
+        <string>fi</string>
+        <string>pl</string>
+        <string>cs</string>
+        <string>sk</string>
+        <string>sl</string>
+        <string>hr</string>
+        <string>sr</string>
+        <string>ro</string>
+        <string>ru</string>
+        <string>uk</string>
+        <string>bg</string>
+        <string>el</string>
+    </array>
     <key>CFBundleDisplayName</key>
     <string>${app.name}</string>
     <key>CFBundleExecutable</key>
@@ -84,8 +114,8 @@
     <!-- Termination, not a prompt, if the camera is reached without it - as with motion. -->
     <key>NSCameraUsageDescription</key>
     <string>PeakNav uses the camera to place a photo behind the mountain view.</string>
-    <!-- Registers the app as a .gpx handler, so "Open in PeakNav" appears in Files, Mail
-         and other apps' share sheets - the counterpart of the Android manifest's VIEW/SEND
+    <!-- Registers the app as a .gpx, .jpeg and .png handler, so "Open in PeakNav" appears
+         in Files, Mail and other apps' share sheets - the counterpart of the Android manifest's VIEW/SEND
          filters. The type is declared here as well as claimed: GPX has no system-known
          identifier, and an imported declaration is what ties the extension and MIME type
          to it. Incoming files are copied to Documents/Inbox and arrive in the app
@@ -109,6 +139,21 @@
             <key>LSItemContentTypes</key>
             <array>
                 <string>com.topografix.gpx</string>
+            </array>
+        </dict>
+        <!-- A photo opened from Files or Mail becomes the background, as a picked one
+             does. Alternate, so PeakNav is offered without becoming the default viewer. -->
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Photo</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.jpeg</string>
+                <string>public.png</string>
             </array>
         </dict>
     </array>

@@ -167,12 +167,15 @@ public class GpxManager {
         return base + ".gpx";
     }
 
+    /** Points of the loaded tracks the framing looks at, at most: a sample is plenty. */
+    private static final int FRAMING_POINTS = 400;
+
     /**
      * Move the map so the user can survey the just-loaded track. MapViewerScreen (once the location
-     * settles) flies the camera to frame the track vertically: the low point at the bottom of the
-     * screen, the high point at the top. "Low" and "high" are the lowest- and highest-elevation
-     * points of the track when it has elevation, otherwise its start and end. We target the low
-     * point so the terrain around the camera loads. Navigation is the same call the search uses, so
+     * settles) flies the camera to a view of the whole track (see GpxFraming), looking up it from
+     * its low end: "low" and "high" are the lowest- and highest-elevation points of the track when
+     * it has elevation, otherwise its start and end. We target the low point so the terrain around
+     * the camera loads. Navigation is the same call the search uses, so
      * running it off this thread is fine.
      */
     private void goToTracks(List<GpxTrack> tracks) {
@@ -214,9 +217,34 @@ public class GpxManager {
             high = last;
         }
         if (getC().getMapViewerScreen() != null) {
+            // Every track, sampled: the framing fits all of it on screen, not just its ends.
+            int total = 0;
+            for (GpxTrack track : tracks) {
+                total += track.getPoints().size();
+            }
+            int step = Math.max(1, total / FRAMING_POINTS);
+            int count = 0;
+            float[] lats = new float[total / step + tracks.size()];
+            float[] lons = new float[lats.length];
+            float[] eles = new float[lats.length];
+            for (GpxTrack track : tracks) {
+                List<GpxTrack.Point> pts = track.getPoints();
+                for (int i = 0; i < pts.size(); i += step) {
+                    GpxTrack.Point p = pts.get(i);
+                    if (count == lats.length) {
+                        break;
+                    }
+                    lats[count] = p.lat;
+                    lons[count] = p.lon;
+                    eles[count] = p.hasElevation ? p.eleMeters : Float.NaN;
+                    count++;
+                }
+            }
             getC().getMapViewerScreen().requestGpxFraming(
                     low.lat, low.lon, low.hasElevation ? low.eleMeters : Float.NaN,
-                    high.lat, high.lon, high.hasElevation ? high.eleMeters : Float.NaN);
+                    high.lat, high.lon, high.hasElevation ? high.eleMeters : Float.NaN,
+                    java.util.Arrays.copyOf(lats, count), java.util.Arrays.copyOf(lons, count),
+                    java.util.Arrays.copyOf(eles, count));
         }
         // false: don't nag about missing downloads just because we're jumping to a track.
         getC().L.setCurrentTargetCoords(low.lat, low.lon, false);

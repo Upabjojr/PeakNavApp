@@ -1,0 +1,7 @@
+- Place search works: Search or Enter asks OpenStreetMap's Nominatim
+- Search: pasted text searches; coordinates in any common form
+- Downloads go on in the background, with a Stop button and a notification
+- Settings show how much storage the downloads take, and free it
+- Photo overlay: fine nudge, turn and stretch buttons
+- Place names in their own script
+- Many fixes for crashes, memory and labels

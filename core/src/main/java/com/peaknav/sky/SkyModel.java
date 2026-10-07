@@ -107,12 +107,14 @@ public final class SkyModel {
         everComputed = false;
     }
 
-    // Optional frozen "custom" time. Null means follow the device clock.
-    private Long customTimeMillis = null;
+    // Optional frozen "custom" time. Null means follow the device clock. Cleared from the
+    // Android UI thread while the render thread reads it.
+    private volatile Long customTimeMillis = null;
 
     /** The time the sky should be computed for: a user-set custom instant, or the live device clock. */
     public long currentTimeMillis() {
-        return customTimeMillis != null ? customTimeMillis : System.currentTimeMillis();
+        Long custom = customTimeMillis;   // once: a clear between two reads threw
+        return custom != null ? custom : System.currentTimeMillis();
     }
 
     /** Freezes the sky at a specific instant (UTC millis since the epoch). */

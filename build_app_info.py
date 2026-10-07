@@ -1,6 +1,11 @@
 from pathlib import Path
 import markdown
 
+# The license texts are quoted in ``` fences; Python-Markdown only reads those with the
+# fenced_code extension, and without it the fences came out as literal backticks and the
+# text inside was re-flowed into paragraphs and numbered lists.
+EXTENSIONS = ["fenced_code"]
+
 
 # Every HTML page below is generated from a Markdown source and must never be edited
 # by hand - see CLAUDE.md.  The styling therefore lives here, in the one template, so
@@ -32,26 +37,26 @@ a {{ overflow-wrap: anywhere; }}
 
 privacy = open("privacy_statement.md", "r").read()
 
-privacy_html = markdown.markdown(privacy)
+privacy_html = markdown.markdown(privacy, extensions=EXTENSIONS)
 
 with open("privacy_statement.html", "w", encoding="utf-8", newline="\n") as fout:
     fout.write(html_template.format(body=privacy_html))
 
 license_file = "# License\n\n" + open("LICENSE", "r").read()
 
-license_html = markdown.markdown(license_file)
+license_html = markdown.markdown(license_file, extensions=EXTENSIONS)
 
 with open("LICENSE.html", "w", encoding="utf-8", newline="\n") as fout:
     fout.write(html_template.format(body=license_html))
 
 third_party_licenses = open("THIRD_PARTY_LICENSES.md", "r").read()
 
-third_party_licenses_html = markdown.markdown(third_party_licenses)
+third_party_licenses_html = markdown.markdown(third_party_licenses, extensions=EXTENSIONS)
 
 with open("THIRD_PARTY_LICENSES.html", "w", encoding="utf-8", newline="\n") as fout:
     fout.write(html_template.format(body=third_party_licenses_html))
 
-app_info_body = markdown.markdown(license_file + "\n\n" + privacy + "\n\n" + third_party_licenses)
+app_info_body = markdown.markdown(license_file + "\n\n" + privacy + "\n\n" + third_party_licenses, extensions=EXTENSIONS)
 
 app_info = html_template.format(body=app_info_body)
 

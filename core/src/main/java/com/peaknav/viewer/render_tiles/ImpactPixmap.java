@@ -338,23 +338,80 @@ public class ImpactPixmap {
         try {
             if (pixmapNorth == null || pixmapEast == null || pixmapSouth == null || pixmapWest == null)
                 return null;
-            int distanceMeters = getPseudometerPixelDistance(screenX, screenY, false);
-            if (distanceMeters <= 0) {
-                // Nothing was hit, or the click was outside what the depth maps cover -
-                // steeply downward, in practice. Returning a point anyway would place it
-                // on top of the camera; the caller shows no pin, which is at least honest.
-                return null;
-            }
-            float distanceLatits = Units.convertMetersToLatits(distanceMeters);
             // The stable (analytic) ray: the matrix-inverting getPickRay is too imprecise
             // at this camera's near/far ratio, and its hits re-projected off the click.
             Ray pickRay = cam.getPickRayStable(screenX, screenY);
+            int distanceMeters = getPseudometerPixelDistance(screenX, screenY, false);
+            if (distanceMeters <= 0) {
+                // Nothing was hit, or the click was outside what the depth maps cover: they
+                // reach only about 28 degrees below the horizon, so the ground close to the
+                // viewer, which is seen looking steeply down, could not be clicked at all.
+                // There the ray is followed over the terrain itself instead.
+                return marchToTerrain(pickRay);
+            }
+            float distanceLatits = Units.convertMetersToLatits(distanceMeters);
             Vector3 dest = new Vector3();
             pickRay.getEndPoint(dest, distanceLatits);
             return dest;
         } finally {
             lock.readLock().unlock();
         }
+    }
+
+    /** How far {@link #marchToTerrain} follows a ray before giving up, in metres. */
+    private static final float MARCH_MAX_METERS = 60000f;
+
+    /**
+     * Where a ray first meets the loaded terrain, or null. Only for rays pointing down, where
+     * the depth maps have no reading: steps along the ray, each a little longer than the last
+     * (the ground far away needs less precision than the ground at one's feet), until the ray
+     * is below the ground, then halves the last step until the crossing is within a metre.
+     * The terrain is the same world the renderer draws: x the longitude scaled by the target's
+     * latitude, and the round Earth's drop taken off the height.
+     */
+    private Vector3 marchToTerrain(Ray ray) {
+        if (ray.direction.z >= 0f) {
+            return null;   // up or level: the sky, which the depth maps rightly said
+        }
+        final float metersPerLatit = Units.convertLatitsToMeters(1f);
+        Vector3 point = new Vector3();
+        float before = 0f;
+        float step = 2f;
+        for (float along = step; along <= MARCH_MAX_METERS; along += step) {
+            float height = heightAboveTerrain(ray, along / metersPerLatit, point);
+            if (!Float.isNaN(height) && height <= 0f) {
+                float low = before, high = along;
+                while (high - low > 1f) {
+                    float mid = 0.5f * (low + high);
+                    float h = heightAboveTerrain(ray, mid / metersPerLatit, point);
+                    if (!Float.isNaN(h) && h <= 0f) {
+                        high = mid;
+                    } else {
+                        low = mid;
+                    }
+                }
+                return ray.getEndPoint(new Vector3(), high / metersPerLatit);
+            }
+            before = along;
+            step = Math.max(2f, 0.02f * along);
+        }
+        return null;
+    }
+
+    /** How far the ray's point {@code alongLatits} out is above the ground, or NaN if unknown. */
+    private float heightAboveTerrain(Ray ray, float alongLatits, Vector3 point) {
+        ray.getEndPoint(point, alongLatits);
+        double targetLatitude = getC().L.getTargetLatitude();
+        float latitude = point.y;
+        float longitude = Units.convertLatitsToLonits(point.x, (float) targetLatitude);
+        float groundMeters = com.peaknav.viewer.PhotoSkylineAligner.loadedTerrain()
+                .elevationMeters(latitude, longitude);
+        if (Float.isNaN(groundMeters)) {
+            return Float.NaN;
+        }
+        float ground = Units.convertMetersToLatits(groundMeters)
+                - com.peaknav.elevation.ElevationUtils.getElevationCorrectionForRoundEarth(latitude, longitude);
+        return point.z - ground;
     }
 
     /*

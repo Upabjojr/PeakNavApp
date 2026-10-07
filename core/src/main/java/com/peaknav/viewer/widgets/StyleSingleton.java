@@ -3,7 +3,6 @@ package com.peaknav.viewer.widgets;
 import static com.peaknav.utils.Constants.peakNavGreyColor;
 import static com.peaknav.utils.PeakNavUtils.getC;
 
-import com.peaknav.utils.FontCharacters;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
@@ -27,6 +26,7 @@ public class StyleSingleton {
     private BitmapFont bitmapFont = null;
     private BitmapFont bitmapFontSmall = null;
     private BitmapFont bitmapFontVerySmall = null;
+    private BitmapFont bitmapFontVerySmallDark = null;
     private BitmapFont bitmapFontSmallWhite = null;
     private BitmapFont bitmapFontVerySmallWhite = null;
     private BitmapFont bitmapFontMedium = null;
@@ -36,81 +36,120 @@ public class StyleSingleton {
     private float minSize;
 
     public void updateMinSize() {
-        minSize = Math.min(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        // The short side as far as sizes go: capped on a tablet, fixed on the desktop.
+        minSize = com.peaknav.utils.Units.getUiShortSide();
     }
 
     /**
-     * How much larger than the on-screen target size the glyph atlas is baked. Text in this app is
-     * frequently scaled up (large map / area labels, toasts), and a BitmapFont scaled beyond its
-     * baked size samples a low-res atlas. Baking at a multiple of the display size gives the glyphs
-     * enough real pixels to stay crisp when enlarged; combined with linear+mipmap filtering the
-     * result is smooth both when magnified and minified. 2x is a good sharpness/VRAM trade-off.
+     * How much larger than the on-screen size a font is laid out when the app has to make it
+     * itself (see {@link #generateAllFonts}). Text is often drawn larger than its size - map
+     * and area labels, toasts - and a font scaled beyond its atlas samples too few pixels.
      */
     private static final float FONT_SUPERSAMPLE = 2.0f;
 
     /**
-     * Applies the supersample factor to the requested display size and enables smooth filtering.
-     * A Linear mag filter removes the blocky look when text is drawn larger than the atlas; a Linear
-     * min filter (no mip-maps) antialiases it when drawn smaller — because the atlas is baked bigger
-     * than the display size, ordinary labels are down-sampled, which with bilinear filtering is
-     * effectively supersampled anti-aliasing. Mip-maps are deliberately avoided: FreeType packs
-     * glyphs into a non-power-of-two atlas, and NPOT + mip-maps is unsupported on OpenGL ES 2.0
-     * (older Android), where it can render the font black. The font's own scale is divided back down
-     * so metrics — and therefore all existing layout — are unchanged.
+     * The fonts, as {@link FontSpecs} describes them. Normally the ones baked when the app was
+     * built (assets/fonts_baked/), drawn at their size for this screen: loading them is much
+     * quicker than laying them out, which with Greek and Cyrillic took seconds on a phone at
+     * every start. A font is made here with FreeType, as all of them used to be, only when this
+     * screen needs it larger than it was baked - the headless renderer's large pictures - or
+     * when the baked one is missing or unreadable.
      */
-    private BitmapFont generateFont(FreeTypeFontGenerator generator,
-                                    FreeTypeFontGenerator.FreeTypeFontParameter parameter,
-                                    int displaySize) {
-        // Every font gets the same glyph set, set here rather than per call site so none can be
-        // generated with FreeType's default (which stops at Latin-1 and drew Croatian, Czech,
-        // Hungarian … names as boxes). See FontCharacters.
-        parameter.characters = FontCharacters.BAKED;
-        parameter.size = Math.round(displaySize * FONT_SUPERSAMPLE);
-        parameter.minFilter = Texture.TextureFilter.Linear;
-        parameter.magFilter = Texture.TextureFilter.Linear;
-        // Border width, if any, is specified in target pixels, so scale it up to match the atlas.
-        if (parameter.borderWidth > 0f) {
-            parameter.borderWidth *= FONT_SUPERSAMPLE;
+    public synchronized void generateAllFonts() {
+        FreeTypeFontGenerator generator = null;
+        BitmapFont[] fonts = new BitmapFont[FontSpecs.ALL.length];
+        try {
+            for (int i = 0; i < FontSpecs.ALL.length; i++) {
+                FontSpecs.Spec spec = FontSpecs.ALL[i];
+                int displaySize = spec.displaySize(minSize);
+                BitmapFont font = loadBakedFont(spec, displaySize);
+                if (font == null) {
+                    if (generator == null) {
+                        generator = new FreeTypeFontGenerator(Gdx.files.internal(FontSpecs.TTF));
+                    }
+                    font = generateFont(generator, spec, displaySize);
+                }
+                fonts[i] = font;
+            }
+        } finally {
+            if (generator != null) {
+                generator.dispose();
+            }
         }
+        bitmapFont = fonts[indexOf(FontSpecs.LARGE)];
+        bitmapFontMedium = fonts[indexOf(FontSpecs.MEDIUM)];
+        bitmapFontSmall = fonts[indexOf(FontSpecs.SMALL)];
+        bitmapFontVerySmall = fonts[indexOf(FontSpecs.VERY_SMALL)];
+        bitmapFontVerySmallDark = fonts[indexOf(FontSpecs.VERY_SMALL_DARK)];
+        bitmapFontSmallWhite = fonts[indexOf(FontSpecs.SMALL_WHITE)];
+        bitmapFontVerySmallWhite = fonts[indexOf(FontSpecs.VERY_SMALL_WHITE)];
+    }
+
+    private static int indexOf(FontSpecs.Spec spec) {
+        for (int i = 0; i < FontSpecs.ALL.length; i++) {
+            if (FontSpecs.ALL[i] == spec) {
+                return i;
+            }
+        }
+        throw new IllegalArgumentException(spec.name);
+    }
+
+    /**
+     * The baked font, scaled to {@code displaySize}; null where it would have to be enlarged
+     * (it would blur) or cannot be read. Its pages carry mipmaps - they are square powers of
+     * two, which OpenGL ES 2 wants for them - so drawn smaller it stays smooth.
+     */
+    private static BitmapFont loadBakedFont(FontSpecs.Spec spec, int displaySize) {
+        if (displaySize > spec.bakedSize() * 1.02f) {
+            return null;
+        }
+        com.badlogic.gdx.files.FileHandle metrics =
+                Gdx.files.internal(FontSpecs.DIRECTORY + "/" + spec.name + ".bin");
+        if (!metrics.exists()) {
+            return null;
+        }
+        com.badlogic.gdx.utils.Array<com.badlogic.gdx.graphics.g2d.TextureRegion> pages =
+                new com.badlogic.gdx.utils.Array<>();
+        try {
+            BakedFontFile.Loaded loaded;
+            java.io.InputStream in = metrics.read();
+            try {
+                loaded = BakedFontFile.read(new java.io.BufferedInputStream(in));
+            } finally {
+                in.close();
+            }
+            for (int i = 0; i < loaded.pages; i++) {
+                Texture page = new Texture(
+                        Gdx.files.internal(FontSpecs.DIRECTORY + "/" + spec.name + "_" + i + ".png"), true);
+                page.setFilter(Texture.TextureFilter.MipMapLinearLinear, Texture.TextureFilter.Linear);
+                pages.add(new com.badlogic.gdx.graphics.g2d.TextureRegion(page));
+            }
+            BitmapFont font = new BitmapFont(loaded.data, pages, false);
+            font.setOwnsTexture(true);
+            font.getData().setScale((float) displaySize / spec.bakedSize());
+            return font;
+        } catch (Exception unreadable) {
+            for (com.badlogic.gdx.graphics.g2d.TextureRegion page : pages) {
+                page.getTexture().dispose();
+            }
+            Gdx.app.error("StyleSingleton", "baked font " + spec.name + " unreadable, generating it", unreadable);
+            return null;
+        }
+    }
+
+    /** The font laid out here with FreeType, larger than shown (see FONT_SUPERSAMPLE). */
+    private BitmapFont generateFont(FreeTypeFontGenerator generator, FontSpecs.Spec spec, int displaySize) {
+        FreeTypeFontGenerator.FreeTypeFontParameter parameter =
+                spec.parameter(Math.round(displaySize * FONT_SUPERSAMPLE), minSize);
         BitmapFont font = generator.generateFont(parameter);
-        // Draw glyphs at their intended display size: metrics stay identical to the old 1x fonts,
-        // only the underlying atlas is higher resolution.
-        font.getData().setScale(1f / FONT_SUPERSAMPLE);
+        // Draw glyphs at their intended display size: the atlas is only higher resolution.
+        font.getData().setScale((float) displaySize / parameter.size);
         return font;
     }
 
-    public synchronized void generateAllFonts() {
-        FreeTypeFontGenerator freeTypeFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("liberation_fonts/LiberationSans-Regular.ttf"));
-
-        FreeTypeFontGenerator.FreeTypeFontParameter freeTypeFontParameter;
-
-
-        freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        bitmapFont = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.08f));
-
-        freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        freeTypeFontParameter.color = Color.BLACK;
-        bitmapFontMedium = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.06f));
-
-        freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        freeTypeFontParameter.color = Color.BLACK;
-        bitmapFontSmall = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.04f));
-
-        freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        freeTypeFontParameter.borderColor = Color.WHITE;
-        freeTypeFontParameter.color = Color.BLACK;
-        freeTypeFontParameter.borderWidth = 2f;
-        bitmapFontVerySmall = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.025f));
-
-        freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        freeTypeFontParameter.color = Color.WHITE;
-        bitmapFontSmallWhite = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.04f));
-
-        freeTypeFontParameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        freeTypeFontParameter.color = Color.WHITE;
-        bitmapFontVerySmallWhite = generateFont(freeTypeFontGenerator, freeTypeFontParameter, Math.round(minSize*0.03f));
-
-        freeTypeFontGenerator.dispose();
+    /** The size in pixels, on this screen, of a font {@link FontSpecs} describes. */
+    public int textPixelSize(FontSpecs.Spec spec) {
+        return spec.displaySize(minSize);
     }
 
     public BitmapFont getBitmapFont() {
@@ -123,6 +162,11 @@ public class StyleSingleton {
 
     public BitmapFont getBitmapFontSmall() {
         return bitmapFontSmall;
+    }
+
+    /** The small dark font for text on the menus' own white panels; see generateAllFonts. */
+    public BitmapFont getBitmapFontVerySmallDark() {
+        return bitmapFontVerySmallDark;
     }
 
     public BitmapFont getBitmapFontVerySmall() {

@@ -17,7 +17,7 @@ halves that share nothing but a namespace:
 ```python
 >>> from peaknav.terrain import elevation_at
 >>> elevation_at(45.9417, 7.7480)          # the Breithorn
-4160
+4156
 ```
 
 (The dataset carries summit corrections against surveyed heights. Raw ASTER, like
@@ -31,8 +31,9 @@ the coordinate you have for a peak — the classic Matterhorn coordinate reads
 ```python
 from peaknav.headless import PeakNavHeadless
 
-with PeakNavHeadless(45.9763, 7.6586) as nav:
-    nav.move_to(45.9763, 7.6586, download_timeout_ms=600_000, await_tiles_ms=120_000)
+# Above Zermatt, facing the Matterhorn (from its own summit, 3200 m is under the ground).
+with PeakNavHeadless(46.0207, 7.7491) as nav:
+    nav.move_to(46.0207, 7.7491, download_timeout_ms=600_000, await_tiles_ms=120_000)
     nav.look(bearing_deg=230, pitch_deg=-4)
     nav.set_altitude_asl(3200)
     nav.set_view(sky=True, sky_mode="day", labels=["peaks", "roads"])

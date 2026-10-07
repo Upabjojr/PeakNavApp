@@ -42,9 +42,7 @@ public class CheckMissingData {
     }
 
     public static Tile getMaxZoomTile(double latitude, double longitude) {
-        int tileX = MercatorProjection.longitudeToTileX(longitude, MapTile.ZOOM_LEVEL_MIN);
-        int tileY = MercatorProjection.latitudeToTileY(latitude, MapTile.ZOOM_LEVEL_MIN);
-        return new Tile(tileX, tileY, MapTile.ZOOM_LEVEL_MAX, MapTile.TILE_SIZE);
+        return getTileAtZoomLevel(latitude, longitude, MapTile.ZOOM_LEVEL_MAX);
     }
 
     public static Tile getTileAtZoomLevel(double latitude, double longitude, byte zoomLevel) {
@@ -87,10 +85,35 @@ public class CheckMissingData {
         int y = MercatorProjection.latitudeToTileY(lat, zoomLevel);
         Tile tile = new Tile(x, y, zoomLevel, 256);
         Tile dataTile = findTileWithDataByZoomingOut(tile, pbfLayer);
-        boolean missing = (dataTile == null);
+        boolean missing = (dataTile == null) && !isArchiveDownloaded(lat, lon, pbfLayer);
         getLogger().debug(TAG, "checkMissingByLayerForCoord for " + lat + ", " + lon +
                     " missing is " + missing);
         return missing;
+    }
+
+    /**
+     * Whether the archive that covers a place was downloaded. An archive carries no file for a
+     * tile with nothing in it - no road in a stretch of tundra, no peak on a plain - so a
+     * missing file is not always missing data. Judged by the file alone, such a place was
+     * offered for download for ever: downloaded, and offered again on the next arrival.
+     */
+    private boolean isArchiveDownloaded(double lat, double lon, PbfLayer pbfLayer) {
+        if (mapSqlite == null) {
+            return false;
+        }
+        byte zoom = pbfLayer.getArchiveZoom();
+        int x = MercatorProjection.longitudeToTileX(lon, zoom);
+        int y = MercatorProjection.latitudeToTileY(lat, zoom);
+        try {
+            for (Tile archive : mapSqlite.getListOfDownloadedTiles(pbfLayer)) {
+                if (archive.zoomLevel == zoom && archive.tileX == x && archive.tileY == y) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException noDatabaseYet) {
+            // A first run, before the database: nothing is downloaded.
+        }
+        return false;
     }
 
     private boolean checkMissingHighwaysForCoord(double lat, double lon) {
@@ -153,8 +176,20 @@ public class CheckMissingData {
                 checkMissingPoiForCoord(lat, lon) ||
                 checkMissingHighwaysForCoord(lat, lon)
         ) {
-            getC().missingDataDownloader.setCoords(lat, lon);
-            getC().missingDataDownloader.doDownload();
+            // Counted as running, as the place screen's download is: without, the app offered
+            // to download this very area again while it was being fetched.
+            com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloadStarted(true);
+            com.peaknav.network.PeakNavDownloadManager.Outcome outcome;
+            try {
+                outcome = getC().missingDataDownloader.download(lat, lon, false);
+            } finally {
+                com.peaknav.compatibility.PeakNavAppState.getAppState().setMapDataDownloadStarted(false);
+            }
+            if (outcome.failed > 0 && !outcome.cancelled) {
+                com.peaknav.utils.PeakNavUtils.getNativeScreenCaller().makeToast(
+                        com.peaknav.utils.PeakNavUtils.s(
+                                outcome.nothingFetched() ? "Download_failed" : "Download_incomplete"));
+            }
         }
     }
 

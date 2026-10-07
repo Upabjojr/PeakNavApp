@@ -15,7 +15,7 @@ Available for **Android**, **iOS**, **Windows**, **macOS** and **Linux**.
 
 <!-- An <iframe> is stripped entirely by GitHub, so the video is a thumbnail that links
      to YouTube instead of an embedded player. -->
-[![Watch PeakNav in action](https://img.youtube.com/vi/y4WspQmcwQw/hqdefault.jpg)](https://www.youtube.com/watch?v=y4WspQmcwQw)
+[![Watch PeakNav in action](https://img.youtube.com/vi/0-PLkxRTcPE/hqdefault.jpg)](https://www.youtube.com/watch?v=0-PLkxRTcPE)
 
 ## Download
 
@@ -65,7 +65,7 @@ Three modules, in increasing order of what they need from the machine:
   ```python
   >>> from peaknav.terrain import elevation_at
   >>> elevation_at(45.9417, 7.7480)          # the Breithorn
-  4160
+  4156
   ```
 
 * **`peaknav.headless`** — the real PeakNav renderer running off-screen, driven
@@ -80,7 +80,7 @@ Three modules, in increasing order of what they need from the machine:
   ```python
   from peaknav.headless import PeakNavHeadless
 
-  with PeakNavHeadless(45.9763, 7.6586) as nav:
+  with PeakNavHeadless(46.0207, 7.7491) as nav:   # above Zermatt, facing the Matterhorn
       nav.look(bearing_deg=230, pitch_deg=-4)
       nav.set_altitude_asl(3200)
       nav.save_frame("matterhorn.png")
@@ -149,6 +149,26 @@ To build the project, follow these steps:
     A third argument sets a minimum elevation; peaks with a Wikipedia article are kept
     regardless of it. Search results show peaks with their elevation — "Matterhorn (4478 m)" —
     and rank them below any city sharing their name.
+
+  * The extracts only cover the countries whose `.osm.pbf` files were downloaded, so the
+    world's best-known mountains are missing unless every country was. Wikidata fills them
+    in — every mountain, volcano, massif and range with at least ten Wikipedia articles,
+    about 7,000 of them, with their names in the app's languages:
+
+    ```bash
+    python3 tools/fetch_wikidata_peaks.py peaks_wikidata.tsv
+    ./gradlew :core:addPeaksToIndex --args="peaks_wikidata.tsv assets/geonames_index.362"
+    ```
+
+    A second argument to the script sets how many Wikipedia articles count as well known.
+    Peaks the index already holds under the same name, within 3 km, are skipped, so the two
+    sources can be appended in either order and re-run at will. The number of articles ranks
+    the result: "K2" finds the 8611 m one in the Karakoram, not the 3253 m namesake in the
+    Alps, and "Cervino", "Fuji-san" and "Sagarmatha" find their mountains.
+
+  * These peaks also carry their country, shown beside the name as a city's is — "Mount
+    Everest (CN/NP) (8850 m)", both codes where a summit sits on a border. Peaks from the
+    OSM extracts have no country: the extraction does not work one out.
 * Build the project with Gradle — this process is straightforward when using Android Studio, and supports both Android and Desktop builds.
 * The iOS build (RoboVM) only runs on a Mac with full Xcode installed; `./gradlew :ios:build`
   compiles its Java on any OS. See the "iOS" notes in [AGENTS.md](./AGENTS.md) for the

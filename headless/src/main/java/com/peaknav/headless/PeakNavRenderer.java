@@ -147,6 +147,12 @@ public final class PeakNavRenderer implements AutoCloseable {
         // wherever the last shot was taken. Map data is unaffected; only settings are isolated.
         PreferencesManager.setEphemeral(true);
 
+        // The renderer's pictures stand for a phone's screen, at whatever size they are drawn:
+        // buttons and text keep to fractions of it rather than the desktop's fixed pixel sizes.
+        com.peaknav.utils.Units.setProportionalInterface(true);
+        // Labels in scripts the app's fonts lack are drawn by Java2D, as on the desktop.
+        com.peaknav.viewer.desktop.DesktopLauncher.installLabelRasterizer();
+
         MapViewerDesktopSingleton.initializeDesktopLoadFactory();
         // What this renders is the phones' interface - the tutorial's screenshots and their
         // markers come from here - so it keeps the camera and gyroscope buttons the desktop
@@ -197,9 +203,12 @@ public final class PeakNavRenderer implements AutoCloseable {
         PeakNavRenderer renderer = new PeakNavRenderer(width, height, thread, app);
         // MapApp opens on the intro screen, which is a menu, not the map.
         renderer.onRenderThread(() -> {
-            app.setScreen(app.mapViewerScreen);
-            // Redirects finished snapshots to a file instead of the desktop save dialog.
+            // Redirects finished snapshots to a file instead of the desktop save dialog, and
+            // every prompt, chooser and browser launch into a log instead of onto the screen.
+            // Installed before the map screen opens, so nothing it does can get past.
             app.nativeScreenCaller = renderer.snapshotWriter;
+            com.badlogic.gdx.Gdx.net = renderer.snapshotWriter.withoutBrowser(com.badlogic.gdx.Gdx.net);
+            app.setScreen(app.mapViewerScreen);
             renderer.renderIntoOffscreenBuffer();
         });
         return renderer;
@@ -746,7 +755,8 @@ public final class PeakNavRenderer implements AutoCloseable {
                 }
                 o.addChild("lat", new JsonValue(poi.lat));
                 o.addChild("lon", new JsonValue(poi.lon));
-                o.addChild("elevation_m", new JsonValue(poi.elevation));
+                if (!Float.isNaN(poi.elevation))
+                    o.addChild("elevation_m", new JsonValue(poi.elevation));
                 if (poi.prominence > 0) {
                     o.addChild("prominence_m", new JsonValue(poi.prominence));
                 }
@@ -961,6 +971,58 @@ public final class PeakNavRenderer implements AutoCloseable {
         return out[0];
     }
 
+    /**
+     * The GPX info pane's ways: the way where a tour is, what kind, the time there, then a row
+     * for every way of the track (see GpxInfoPane.getWayTexts); null while the pane is hidden.
+     */
+    public String[] gpxInfoWayTexts() {
+        final String[][] out = new String[1][];
+        onRenderThread(() -> {
+            com.peaknav.viewer.widgets.GpxInfoPane pane = mapApp.mapViewerScreen.gpxInfoPane;
+            out[0] = pane == null || !pane.getTable().isVisible() ? null : pane.getWayTexts();
+        });
+        return out[0];
+    }
+
+    /** Whether the GPX pane's list of ways is open, and which row is lit (-1: none). */
+    public int[] gpxInfoWaysState() {
+        final int[][] out = new int[1][];
+        onRenderThread(() -> out[0] = mapApp.mapViewerScreen.gpxInfoPane.waysState());
+        return out[0];
+    }
+
+    /** Taps the row of way {@code k} in the GPX pane's list, through the stage as a finger does. */
+    public PeakNavRenderer tapGpxInfoWay(final int k) {
+        // Scrolled into view first, then tapped once a frame has drawn it there: a scroll pane
+        // moves what it holds when it draws, not when it is told to scroll.
+        onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.wayRowOnStage(k));
+        settle(300);
+        onRenderThread(() -> {
+            float[] at = mapApp.mapViewerScreen.gpxInfoPane.wayRowOnStage(k);
+            if (at == null) {
+                throw new IllegalStateException("no row " + k + " in the list of ways");
+            }
+            com.badlogic.gdx.scenes.scene2d.Stage stage = mapApp.mapViewerScreen.getStage();
+            com.badlogic.gdx.math.Vector2 screen = stage.stageToScreenCoordinates(new com.badlogic.gdx.math.Vector2(at[0], at[1]));
+            stage.touchDown((int) screen.x, (int) screen.y, 0, com.badlogic.gdx.Input.Buttons.LEFT);
+            stage.touchUp((int) screen.x, (int) screen.y, 0, com.badlogic.gdx.Input.Buttons.LEFT);
+        });
+        return this;
+    }
+
+    /** Opens the GPX pane's list of ways or folds it away, as its header does. */
+    public PeakNavRenderer setGpxInfoWaysOpen(final boolean open) {
+        onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.setWaysOpen(open));
+        return this;
+    }
+
+    /** The GPX that "route to here" writes for a route, as it is opened, saved and shared. */
+    public String routeGpx(com.peaknav.routing.WalkingRouter.Route route, double toLatitude, double toLongitude) {
+        final String[] out = new String[1];
+        onRenderThread(() -> out[0] = com.peaknav.routing.RouteToPoint.gpxFor(route, toLatitude, toLongitude));
+        return out[0];
+    }
+
     /** Folds the GPX info pane open or shut, as its header does. */
     public PeakNavRenderer setGpxInfoOpen(final boolean open) {
         onRenderThread(() -> mapApp.mapViewerScreen.gpxInfoPane.setOpen(open));
@@ -1139,6 +1201,16 @@ public final class PeakNavRenderer implements AutoCloseable {
 
         onRenderThread(() -> getC().checkMissingData.downloadMissingData(latitude, longitude));
 
+        // That call ran the download to its end. One that fetched nothing leaves the ratio at 0
+        // (it used to be set to 1 whatever came of it), and waiting for it to fill would burn
+        // the whole timeout: say so now.
+        final boolean[] fetchedNothing = new boolean[1];
+        onRenderThread(() -> fetchedNothing[0] = !getAppState().isMapDataDownloadStarted()
+                && getAppState().getMapDataDownloadProgressRatio() <= 0.999f);
+        if (fetchedNothing[0]) {
+            return false;
+        }
+
         long deadline = System.currentTimeMillis() + timeoutMillis;
         while (System.currentTimeMillis() < deadline) {
             final float[] progress = new float[1];
@@ -1165,6 +1237,24 @@ public final class PeakNavRenderer implements AutoCloseable {
      */
     public int suppressedPrompts() {
         return snapshotWriter.suppressedPromptCount();
+    }
+
+    /**
+     * The intercepted prompts with a sequence number above {@code afterSeq}, oldest first:
+     * what the app would have asked a person, and so what a client should know it did not.
+     */
+    List<FileSnapshotWriter.SuppressedPrompt> suppressedPromptsAfter(int afterSeq) {
+        return snapshotWriter.suppressedPromptsAfter(afterSeq);
+    }
+
+    /** How many toasts the app showed: messages that ask nothing, so not prompts. */
+    public int messages() {
+        return snapshotWriter.messageCount();
+    }
+
+    /** The toasts with a sequence number above {@code afterSeq}, oldest first. */
+    List<FileSnapshotWriter.SuppressedPrompt> messagesAfter(int afterSeq) {
+        return snapshotWriter.messagesAfter(afterSeq);
     }
 
     /**

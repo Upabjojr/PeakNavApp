@@ -45,6 +45,17 @@ public class MapApp extends Game {
         introScreen = new IntroScreen(this);
     }
 
+    /**
+     * Whether {@link #create} has run: libGDX is up and the screens can be used. The screens
+     * themselves exist from the constructor on, well before that - on Android, before the
+     * activity's onCreate has even returned.
+     */
+    private volatile boolean created;
+
+    public boolean isCreated() {
+        return created;
+    }
+
     @Override
     public void create() {
         // if no location has ever been created, ask for one:
@@ -53,9 +64,14 @@ public class MapApp extends Game {
             mapViewerScreen.showOnce();
         }
 
-        setScreen(introScreen);
+        // Straight to the map when there is data to show. The welcome screen used to come first
+        // whatever the case, and gave way to the map only on a later frame (setMapDataDownloaded
+        // below hands its switch to the render thread), so every start flashed it for a moment.
+        boolean downloaded = getC().mapSqlite.existDownloadedTiles();
+        setScreen(downloaded ? mapViewerScreen : introScreen);
 
-        getAppState().setMapDataDownloaded(getC().mapSqlite.existDownloadedTiles());
+        getAppState().setMapDataDownloaded(downloaded);
+        created = true;
     }
 
     @Override

@@ -44,9 +44,7 @@ public class AndroidUI {
                     }
                 })
                 .setCancelable(false);
-        // .show();
-        AlertDialog alert = alertBuilder.create();
-        alert.show();
+        com.peaknav.compatibility.NativeScreenCallerAndroid.show(alertBuilder);
     }
 
 }

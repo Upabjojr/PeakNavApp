@@ -24,6 +24,12 @@ AutoName: PeakNav
 AntiFeatures:
   NonFreeAssets:
     en-US: The logo and launcher icon artwork are all rights reserved; the code and every other asset are GPL-3.0.
+  # Asked for in the fdroiddata review. The map data is downloaded from Hugging Face; the imagery
+  # from NASA GIBS (satellite) and USGS (the area-selection map); with no position from the device,
+  # an estimate from the IP address comes from ipwho.is or GeoJS. Place search uses OpenStreetMap's
+  # Nominatim, which is free.
+  NonFreeNet:
+    en-US: Map data is downloaded from Hugging Face, imagery from NASA and USGS servers, and without a position from the device an approximate one is looked up from the IP address (ipwho.is, GeoJS).
 
 RepoType: git
 Repo: https://github.com/Upabjojr/PeakNavApp.git
@@ -32,9 +38,9 @@ Builds:
   # The F-Droid build is made from the fdroid branch, which is kept apart from main and brought
   # up to date with it for each release, and tagged fdroid-X.Y.Z; android/build.gradle at the tag
   # must carry exactly this versionCode and versionName.
-  - versionName: 1.3.2
-    versionCode: 157
-    commit: fdroid-1.3.2
+  - versionName: 1.3.3
+    versionCode: 173
+    commit: fdroid-1.3.3
     subdir: android
     gradle:
       - yes
@@ -62,5 +68,5 @@ Builds:
 AutoUpdateMode: Version
 # Only the fdroid-X.Y.Z tags: the plain X.Y.Z release tags are on main, which does not build here.
 UpdateCheckMode: Tags ^fdroid-[0-9]+\.[0-9]+\.[0-9]+$
-CurrentVersion: 1.3.2
-CurrentVersionCode: 157
+CurrentVersion: 1.3.3
+CurrentVersionCode: 173

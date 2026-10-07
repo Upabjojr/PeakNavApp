@@ -340,7 +340,7 @@ public final class SkyRenderer {
         int pct = (int) Math.round(moon.phase * 100.0);
         if (moonLabelCache == null || pct != moonLabelPct) {
             moonLabelPct = pct;
-            moonLabelCache = String.format(java.util.Locale.getDefault(), "%s %d%%", name, pct);
+            moonLabelCache = String.format(java.util.Locale.ROOT, "%s %d%%", name, pct);   // Latin digits: see LabelRenderer's clock
         }
         return moonLabelCache;
     }
@@ -427,6 +427,8 @@ public final class SkyRenderer {
         float ux = (float) Math.cos(ang), uy = (float) Math.sin(ang);
         float vx = -uy, vy = ux;
         int nSeg = 28;
+        // The shadow is not quite opaque; after the sprite batch's end() blending was off.
+        com.badlogic.gdx.Gdx.gl.glEnable(com.badlogic.gdx.graphics.GL20.GL_BLEND);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(0.04f, 0.05f, 0.09f, 0.9f);
         for (int s = 0; s < nSeg; s++) {
@@ -442,6 +444,7 @@ public final class SkyRenderer {
             shapeRenderer.triangle(ax, ay, cx, cy, dx, dy);
         }
         shapeRenderer.end();
+        com.badlogic.gdx.Gdx.gl.glDisable(com.badlogic.gdx.graphics.GL20.GL_BLEND);
     }
 
     /**

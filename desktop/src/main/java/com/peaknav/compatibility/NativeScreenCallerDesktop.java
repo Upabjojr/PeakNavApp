@@ -1,6 +1,6 @@
 package com.peaknav.compatibility;
 
-import static com.peaknav.compatibility.PeakNavAppState.getAppState;
+import com.peaknav.viewer.mapscreens.MapScreens;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.utils.PreferencesManager.P;
@@ -8,9 +8,7 @@ import static com.peaknav.utils.PreferencesManager.P;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.peaknav.database.LuceneGeonameSearch;
-import com.peaknav.database.MissingDataDownloader;
 import com.peaknav.gesture.OrientationPointerListener;
-import com.peaknav.network.NominatimResponse;
 import com.peaknav.ui.ClickCallback;
 import com.peaknav.ui.CurrentLocationCallback;
 import com.peaknav.ui.CurrentLocationListener;
@@ -18,36 +16,19 @@ import com.peaknav.ui.TextFieldsCallback;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.viewer.desktop.DesktopSwing;
 import com.peaknav.viewer.desktop.GalleryPickDesktop;
-import com.peaknav.viewer.desktop.MapViewerDesktopSingleton;
 
 import java.awt.BorderLayout;
 import java.awt.Desktop;
-import java.awt.Dimension;
 import java.awt.Rectangle;
-import java.awt.event.KeyEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import java.awt.Component;
-import javax.swing.Box;
-import javax.swing.JComponent;
-import javax.swing.KeyStroke;
 import javax.swing.JLabel;
-import javax.swing.BoxLayout;
-import javax.swing.DefaultListModel;
-import javax.swing.JButton;
-import javax.swing.JFrame;
-import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JTextField;
-import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
-import javax.swing.border.EmptyBorder;
 
 public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
@@ -58,201 +39,29 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         runnable.run();
     }
 
+    /**
+     * The download chooser, the map screen the phones have: see {@link MapScreens}. The desktop
+     * used to have no chooser at all and downloaded around the point it was handed.
+     */
     @Override
     public void openMapDataDownloadChooser(double lat, double lon, boolean goToAfterDownload) {
-        getC().submitExecutorGeneric(() -> {
-
-            MissingDataDownloader missingDataDownloader = getC().missingDataDownloader;
-            missingDataDownloader.setCoords(lat, lon);
-
-            // The started flag suppresses the missing-data prompt while a download runs
-            // (CurrentLocation.shouldAskToDownloadMissingData). It MUST be cleared on every
-            // exit path: left set, the prompt never appears again for the whole session.
-            getAppState().setMapDataDownloadStarted(true);
-            try {
-                missingDataDownloader.doDownload(goToAfterDownload);
-            } finally {
-                getAppState().setMapDataDownloadStarted(false);
-            }
-            getAppState().setMapDataDownloaded(true);
-        });
+        MapScreens.openDownloadChooser(lat, lon, goToAfterDownload, false);
     }
 
+    /** The welcome screen's download button: the chooser, starting on the whole world. */
     @Override
     public void openMapDataDownloadChooserWizard() {
-        // This used to only setMapDataDownloaded(true): the intro screen's "download data"
-        // button marked the data as present without fetching a single byte, which is why the
-        // desktop app "could not download map data" - it never tried. Android opens a
-        // region-chooser wizard here; the desktop has no such screen, so do the honest
-        // minimum instead: actually download for the current target location. The intro
-        // button sets the download consent before calling this, so the workers really fetch.
-        getC().submitExecutorGeneric(() -> {
-            if (!getC().L.isCurrentLocationNotSet()) {
-                double lat = getC().L.getTargetLatitude();
-                double lon = getC().L.getTargetLongitude();
-                MissingDataDownloader missingDataDownloader = getC().missingDataDownloader;
-                missingDataDownloader.setCoords(lat, lon);
-                // Cleared in finally, or this suppresses the missing-data prompt for the
-                // rest of the session - which is exactly the bug this once caused.
-                getAppState().setMapDataDownloadStarted(true);
-                try {
-                    missingDataDownloader.doDownload(false);
-                } finally {
-                    getAppState().setMapDataDownloadStarted(false);
-                }
-            }
-            // Lets the intro proceed either way; with no location set yet there is nothing
-            // sensible to fetch, and the missing-data prompt takes over once one is chosen.
-            getAppState().setMapDataDownloaded(true);
-        });
+        boolean located = !getC().L.isCurrentLocationNotSet();
+        MapScreens.openDownloadChooser(
+                located ? getC().L.getTargetLatitude() : 0,
+                located ? getC().L.getTargetLongitude() : 0,
+                false, true);
     }
 
-    /**
-     * Distinguishes the latest search from earlier ones, so a slow online (Nominatim) response
-     * arriving after the user has already searched again cannot interleave stale rows into the
-     * list (clicking a row would then navigate to the wrong place). Only touched on the EDT.
-     */
-    private int searchGeneration = 0;
-
-    /**
-     * The search window while it is open, so a second click raises it instead of building
-     * another one. Clicking the button twice used to leave two identical windows stacked,
-     * each with its own result list, and typing into the one on top searched in a window
-     * the user could no longer see. Only touched on the EDT.
-     */
-    private JFrame openSearchFrame;
-
+    /** The search screen with its map, drawn by libGDX; it replaced a Swing window. */
     @Override
     public void openScreenSearchLocation(ClickCallback callback) {
-        // The whole window is built on the EDT (this method is called from the GL render thread;
-        // constructing Swing UI there is undefined behaviour and deadlock-prone on macOS).
-        DesktopSwing.onEdt(() -> {
-            if (openSearchFrame != null) {
-                // One search window, and clicking the button again is a request to SEE it:
-                // un-minimised, above the map, with the caret back in the search box.
-                com.peaknav.viewer.desktop.WindowRaiser.bringToFront(openSearchFrame);
-                return;
-            }
-            JFrame searchFrame = new JFrame();
-            openSearchFrame = searchFrame;
-            // Closing it - by the window button, by Escape, or by picking a result - must
-            // release the slot above, or search would open once per session and never again.
-            searchFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-            searchFrame.addWindowListener(new java.awt.event.WindowAdapter() {
-                @Override
-                public void windowClosed(java.awt.event.WindowEvent event) {
-                    openSearchFrame = null;
-                }
-            });
-            searchFrame.setLayout(null);
-            searchFrame.setSize(800, 600);
-            searchFrame.setTitle(s("Search_place_title"));
-            JPanel panel = new JPanel();
-            BoxLayout layout = new BoxLayout(panel, BoxLayout.PAGE_AXIS);
-            panel.setLayout(layout);
-            panel.setBounds(0, 0, 800, 600);
-            panel.setBorder(new EmptyBorder(12, 12, 12, 12));
-            searchFrame.add(panel);
-
-            // The pane used to be a bare text field over an unlabeled list - nothing said
-            // what to type or what the list was for. Each part now announces itself.
-            JLabel promptLabel = new JLabel(s("Search_prompt"));
-            promptLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            panel.add(promptLabel);
-            panel.add(Box.createVerticalStrut(6));
-
-            JTextField textField = new JTextField("", 1);
-            textField.setMaximumSize(new Dimension(300, 65));
-            textField.setAlignmentX(Component.LEFT_ALIGNMENT);
-            textField.setToolTipText(s("Search_prompt"));
-            panel.add(textField, BorderLayout.CENTER);
-            JButton searchButton = new JButton();
-            searchButton.setText(s("Search"));
-            searchButton.setSize(new Dimension(150, 50));
-            searchButton.setAlignmentX(Component.LEFT_ALIGNMENT);
-            panel.add(searchButton);
-            panel.add(Box.createVerticalStrut(12));
-
-            JLabel resultsLabel = new JLabel(s("Search_results_hint"));
-            resultsLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            panel.add(resultsLabel);
-            panel.add(Box.createVerticalStrut(4));
-            // No vertical glue here: it would expand between the label and the result list
-            // below it; the scroll pane itself takes the remaining height.
-
-            SwingUtilities.getRootPane(searchButton).setDefaultButton(searchButton);
-
-            DefaultListModel<String> model = new DefaultListModel<>();
-
-            JList<String> list = new JList<>(model);
-            list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-            list.setVisibleRowCount(10);
-            list.setFixedCellHeight(28);
-            list.setBorder(new EmptyBorder(6, 6, 6, 6));
-
-            list.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    int idx = list.locationToIndex(e.getPoint());
-                    if (idx != -1) {
-                        Rectangle cellBounds = list.getCellBounds(idx, idx);
-                        if (cellBounds != null && cellBounds.contains(e.getPoint())
-                                && idx < jGeonameResults.size()) {
-                            LuceneGeonameSearch.GeonameResult result = jGeonameResults.get(idx);
-                            // Core-state mutation (tile updates, missing-data checks) belongs on
-                            // the GL thread, not the EDT.
-                            Gdx.app.postRunnable(
-                                    () -> getC().L.setCurrentTargetCoords(result.lat, result.lon));
-                            searchFrame.dispose();
-                        }
-                    }
-                }
-            });
-
-            JScrollPane resultsPane = new JScrollPane(list);
-            resultsPane.setAlignmentX(Component.LEFT_ALIGNMENT);
-            panel.add(resultsPane, BorderLayout.CENTER);
-
-            searchButton.addActionListener(actionEvent -> {
-                final int generation = ++searchGeneration;
-                String searchText = textField.getText();
-                List<LuceneGeonameSearch.GeonameResult> geonameResults = getC().luceneGeonameSearch.searchGeoName(searchText);
-                model.clear();
-                for (LuceneGeonameSearch.GeonameResult gr : geonameResults) {
-                    model.addElement(gr.getFullName());
-                }
-                jGeonameResults.clear();
-                jGeonameResults.addAll(geonameResults);
-
-                // The callback arrives on a network thread: the list model and the shared result
-                // list may only be touched on the EDT, and only if no newer search superseded us.
-                getC().onlineSearch.parseDestinationText(searchText,
-                        nominatimResponses -> DesktopSwing.onEdt(() -> {
-                    if (generation != searchGeneration) {
-                        return; // stale response of an earlier search
-                    }
-                    for (NominatimResponse nominatimResponse : nominatimResponses) {
-                        LuceneGeonameSearch.GeonameResult geonameResult = new LuceneGeonameSearch.GeonameResult(
-                                nominatimResponse.displayName, nominatimResponse.displayName,
-                                nominatimResponse.lat, nominatimResponse.lon, -1
-                        );
-                        model.addElement(geonameResult.getFullName());
-                        jGeonameResults.add(geonameResult);
-                    }
-                }));
-                MapViewerSingleton.getAppInstance().resume();
-            });
-            // Escape closes the panel, from anywhere inside it - WHEN_IN_FOCUSED_WINDOW, so
-            // it works while the caret is in the search box, which is where it always is.
-            // Bound to Escape alone: Delete has to keep deleting characters as one types.
-            searchFrame.getRootPane().registerKeyboardAction(
-                    closeEvent -> searchFrame.dispose(),
-                    KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-                    JComponent.WHEN_IN_FOCUSED_WINDOW);
-
-            searchFrame.setVisible(true);
-            textField.requestFocus();
-        });
+        MapScreens.openSearch();
     }
 
     /**
@@ -299,7 +108,18 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     @Override
     public void pickGpxFile() {
-        DesktopSwing.onEdt(() -> {
+        // One chooser at a time: a second click while one is up does nothing.
+        DesktopSwing.chooser(() -> {
+            // The system's own dialog where there is one; Swing's otherwise.
+            java.io.File picked = com.peaknav.viewer.desktop.NativeFileDialogs.open(null,
+                    new com.peaknav.viewer.desktop.NativeFileDialogs.Filter("GPX tracks", "gpx"));
+            if (picked == null) {
+                return;
+            }
+            if (picked != com.peaknav.viewer.desktop.NativeFileDialogs.UNAVAILABLE) {
+                loadGpxFile(picked);
+                return;
+            }
             javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
             chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
             chooser.setAcceptAllFileFilterUsed(false);
@@ -321,16 +141,21 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
             if (file == null) {
                 return;
             }
-            getC().submitExecutorGeneric(() -> {
-                try {
-                    String xml = new String(
-                            java.nio.file.Files.readAllBytes(file.toPath()),
-                            java.nio.charset.StandardCharsets.UTF_8);
-                    getC().gpxManager.loadFromXml(xml);
-                } catch (java.io.IOException e) {
-                    System.err.println("[GPX] could not read " + file + ": " + e.getMessage());
-                }
-            });
+            loadGpxFile(file);
+        }, null);
+    }
+
+    /** Reads a .gpx on a worker and adds its paths; from the chooser or a drop on the window. */
+    public static void loadGpxFile(java.io.File file) {
+        getC().submitExecutorGeneric(() -> {
+            try {
+                String xml = new String(
+                        java.nio.file.Files.readAllBytes(file.toPath()),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                getC().gpxManager.loadFromXml(xml);
+            } catch (java.io.IOException e) {
+                System.err.println("[GPX] could not read " + file + ": " + e.getMessage());
+            }
         });
     }
 
@@ -353,12 +178,31 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
     @Override
     public void promptYesNo(String title, String message, Runnable onYes) {
         DesktopSwing.onEdt(() -> {
+            // Wrapped: a paragraph handed to JOptionPane as plain text is laid out on one
+            // line, and a long one came out a metre and a half wide.
             int dialogResult = JOptionPane.showConfirmDialog(
-                    null, message, title, JOptionPane.YES_NO_OPTION);
+                    null,
+                    "<html><body style='width:380px'>" + escapeHtml(message).replace("\n", "<br>") + "</body></html>",
+                    title, JOptionPane.YES_NO_OPTION);
             if (dialogResult == JOptionPane.YES_OPTION) {
                 onYes.run();
             }
         });
+    }
+
+    @Override
+    public void promptChoice(String title, String message, String first, String second,
+                             Runnable onFirst, Runnable onSecond) {
+        DesktopSwing.onEdt(() -> {
+            Object[] options = {first, second};
+            int answer = JOptionPane.showOptionDialog(
+                    null,
+                    "<html><body style='width:380px'>" + escapeHtml(message).replace("\n", "<br>") + "</body></html>",
+                    title, JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+                    null, options, options[0]);
+            // Closed without an answer counts as the second one.
+            (answer == 0 ? onFirst : onSecond).run();
+        }, onSecond);
     }
 
     @Override
@@ -375,19 +219,6 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         openBundledHtml("info/app_info.html");
     }
 
-    @Override
-    public void openAppTutorial() {
-        // Just the tutorial slideshow; the keyboard-controls overlay is separate (raised
-        // in core when an unbound key is pressed). Desktop has no WebView, so — like
-        // openAppInfoScreen — the tutorial is handed to the system browser.
-        //
-        // The screenshots have to be named explicitly: the page references them with
-        // relative URLs, and a FileHandle inside a jar cannot list its own directory,
-        // so there is no way to discover them at runtime.
-        // The tutorial's screenshots, as tools/tutorial_screenshots.py writes them.
-        openBundledHtml("info/app_tutorial.html",
-                "imageBase.jpg", "imageOptions.jpg", "imageBaseSat.jpg", "imagePhoto.jpg", "imagePhotoTerrain.jpg", "imagePhotoPin.jpg", "imageGpx.jpg", "imageTap.jpg");
-    }
 
     /**
      * Opens a bundled HTML page in the system browser, together with any files it references
@@ -416,14 +247,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
             java.io.File page = new java.io.File(dir, pageName);
             page.deleteOnExit();
-            // Copied through a string rather than byte for byte, so the tutorial's captions
-            // can be filled in from the app's own translations on the way - the desktop has
-            // no web view to inject them into, as the phones do. A page without the marker
-            // (the licence and privacy page) comes through unchanged.
-            String html = Gdx.files.internal(internalPath).readString("UTF-8")
-                    .replace("// OVERLOAD::get_string",
-                            com.peaknav.viewer.TutorialStrings.asJavaScript());
-            new com.badlogic.gdx.files.FileHandle(page).writeString(html, false, "UTF-8");
+            Gdx.files.internal(internalPath).copyTo(new com.badlogic.gdx.files.FileHandle(page));
 
             for (String related : relatedFiles) {
                 java.io.File target = new java.io.File(dir, related);
@@ -467,63 +291,18 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
 
     /**
      * "Go to my position" on a machine with no GPS: the position is estimated from the
-     * internet connection (see {@link com.peaknav.viewer.desktop.IpLocationDesktop}), which
-     * is the only source a desktop has. It used to do nothing at all - the button was there,
-     * and pressing it produced neither a move nor a word.
-     *
-     * <p>The estimate leaves the machine's address with an online service, so it is asked
-     * for once and the answer remembered; and it is an estimate, so the toast names the
-     * place it landed on rather than quietly moving the map somewhere odd.
+     * internet connection, which is the only source a desktop has - asked for once, and named
+     * in a toast (see {@link #estimateLocationFromNetwork}). It used to do nothing at all.
+     * On a first run, where the download chooser asks, searching is offered beside it, as on
+     * a phone with location access off.
      */
-    private final CurrentLocationListener currentLocationListener = new CurrentLocationListener() {
-        @Override
-        public void getCurrentLocation(CurrentLocationCallback currentLocationCallback) {
-            if (P.isIpLocationConsent()) {
-                estimatePositionFromNetwork(currentLocationCallback);
-                return;
-            }
-            DesktopSwing.onEdt(() -> {
-                // Wrapped: a paragraph handed to JOptionPane as plain text is laid out on one
-                // line, and this one came out a metre and a half wide.
-                int answer = JOptionPane.showConfirmDialog(
-                        null,
-                        "<html><body style='width:380px'>"
-                                + escapeHtml(s("Ip_location_consent")) + "</body></html>",
-                        s("Ip_location_title"),
-                        JOptionPane.YES_NO_OPTION);
-                if (answer != JOptionPane.YES_OPTION) {
-                    return;
-                }
-                // Off the EDT: writing a preference flushes it to disk.
-                getC().submitExecutorGeneric(() -> P.setIpLocationConsent(true));
-                estimatePositionFromNetwork(currentLocationCallback);
-            });
+    private final CurrentLocationListener currentLocationListener = callback -> {
+        if (isFirstRun()) {
+            offerEstimateOrSearch(callback, "Ip_location_choice_desktop");
+        } else {
+            estimateLocationFromNetwork(callback, "Ip_location_consent");
         }
     };
-
-    /** Asks the network where this machine is, and hands the answer to the map. */
-    private void estimatePositionFromNetwork(CurrentLocationCallback callback) {
-        makeToast(s("Ip_location_searching"));
-        com.peaknav.viewer.desktop.IpLocationDesktop.locate(
-                new com.peaknav.viewer.desktop.IpLocationDesktop.Listener() {
-                    @Override
-                    public void located(double latitude, double longitude, String placeName) {
-                        // The callback moves the camera, which belongs on the render thread;
-                        // the HTTP answer arrives on a network one.
-                        Gdx.app.postRunnable(() -> callback.setCurrentLocation(
-                                (float) longitude, (float) latitude));
-                        String where = placeName.isEmpty()
-                                ? String.format(java.util.Locale.ROOT, "%.3f, %.3f", latitude, longitude)
-                                : placeName;
-                        makeToast(s("Ip_location_estimated") + " " + where);
-                    }
-
-                    @Override
-                    public void failed() {
-                        makeToast(s("Ip_location_failed"));
-                    }
-                });
-    }
 
     @Override
     public CurrentLocationListener getCurrentLocationListener() {
@@ -581,7 +360,10 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                     }
                     getC().submitExecutorGeneric(() -> P.setCollectDownloadInfo(true));
                 }
-                this.openMapDataDownloadChooser();
+                // The place the prompt is about, not the current target: from the search
+                // screen's Go To the prompt comes before the flight, with the target still on
+                // the old spot, and the chooser opened there. goToAfterDownload as on Android.
+                openMapDataDownloadChooser(lat, lon, true);
             } else if (dialogResult == JOptionPane.NO_OPTION) {
                 // Go back to where we were, without re-running the missing-data check: doing that
                 // here would pop this very dialog straight back up when the old spot lacks data
@@ -602,44 +384,69 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         }
         // Default file name carries a timestamp so successive shots don't collide.
         String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
-        final String defaultName = "PeakNav_" + stamp + ".png";
-        DesktopSwing.onEdt(() -> {
+        // JPEG by default, as on the phones: a render of terrain and photographs is several
+        // times smaller so, and the EXIF block (where and which way) travels with it.
+        final String defaultName = "PeakNav_" + stamp + ".jpg";
+        // One chooser at a time; with one already up, this snapshot is not saved.
+        boolean asking = DesktopSwing.chooser(() -> {
             try {
-                javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
-                chooser.setDialogTitle(s("Save_image"));
-                chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
-                chooser.setSelectedFile(new java.io.File(defaultName));
-                javax.swing.filechooser.FileNameExtensionFilter pngFilter =
-                        new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_png"), "png");
-                javax.swing.filechooser.FileNameExtensionFilter jpgFilter =
-                        new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_jpeg"), "jpg", "jpeg");
-                chooser.setAcceptAllFileFilterUsed(false);
-                chooser.addChoosableFileFilter(pngFilter);
-                chooser.addChoosableFileFilter(jpgFilter);
-                chooser.setFileFilter(pngFilter);
-
-                if (chooser.showSaveDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION) {
-                    pixmap.dispose();
-                    return;
-                }
-                java.io.File file = chooser.getSelectedFile();
-                if (file == null) {
-                    pixmap.dispose();
-                    return;
-                }
-                // Pick the format from the file extension; JPEG for .jpg/.jpeg, PNG otherwise. When
-                // no known extension is typed, fall back to the selected filter and append it.
-                String lower = file.getName().toLowerCase(java.util.Locale.ROOT);
+                // The system's own dialog where there is one, which asks before overwriting;
+                // then only a name this code changes needs asking about. Swing's otherwise.
+                java.io.File file;
                 boolean jpeg;
-                if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
-                    jpeg = true;
-                } else if (lower.endsWith(".png")) {
-                    jpeg = false;
-                } else {
-                    jpeg = chooser.getFileFilter() == jpgFilter;
-                    file = new java.io.File(file.getParentFile(), file.getName() + (jpeg ? ".jpg" : ".png"));
+                boolean askOverwrite = true;
+                java.io.File picked = com.peaknav.viewer.desktop.NativeFileDialogs.save(s("Save_image"),
+                        new com.peaknav.viewer.desktop.NativeFileDialogs.Filter("JPEG, PNG", "jpg", "jpeg", "png"),
+                        defaultName);
+                if (picked == null) {
+                    pixmap.dispose();
+                    return;
                 }
-                if (file.exists()) {
+                if (picked != com.peaknav.viewer.desktop.NativeFileDialogs.UNAVAILABLE) {
+                    String name = picked.getName().toLowerCase(java.util.Locale.ROOT);
+                    jpeg = !name.endsWith(".png");
+                    file = picked;
+                    askOverwrite = false;
+                    if (jpeg && !name.endsWith(".jpg") && !name.endsWith(".jpeg")) {
+                        file = new java.io.File(picked.getParentFile(), picked.getName() + ".jpg");
+                        askOverwrite = true;
+                    }
+                } else {
+                    javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+                    chooser.setDialogTitle(s("Save_image"));
+                    chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
+                    chooser.setSelectedFile(new java.io.File(defaultName));
+                    javax.swing.filechooser.FileNameExtensionFilter pngFilter =
+                            new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_png"), "png");
+                    javax.swing.filechooser.FileNameExtensionFilter jpgFilter =
+                            new javax.swing.filechooser.FileNameExtensionFilter(s("Save_image_jpeg"), "jpg", "jpeg");
+                    chooser.setAcceptAllFileFilterUsed(false);
+                    chooser.addChoosableFileFilter(jpgFilter);
+                    chooser.addChoosableFileFilter(pngFilter);
+                    chooser.setFileFilter(jpgFilter);
+
+                    if (chooser.showSaveDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION) {
+                        pixmap.dispose();
+                        return;
+                    }
+                    file = chooser.getSelectedFile();
+                    if (file == null) {
+                        pixmap.dispose();
+                        return;
+                    }
+                    // Pick the format from the file extension; JPEG for .jpg/.jpeg, PNG otherwise. When
+                    // no known extension is typed, fall back to the selected filter and append it.
+                    String lower = file.getName().toLowerCase(java.util.Locale.ROOT);
+                    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+                        jpeg = true;
+                    } else if (lower.endsWith(".png")) {
+                        jpeg = false;
+                    } else {
+                        jpeg = chooser.getFileFilter() == jpgFilter;
+                        file = new java.io.File(file.getParentFile(), file.getName() + (jpeg ? ".jpg" : ".png"));
+                    }
+                }
+                if (askOverwrite && file.exists()) {
                     int overwrite = javax.swing.JOptionPane.showConfirmDialog(null,
                             s("Overwrite_prompt"), s("File_exists"),
                             javax.swing.JOptionPane.YES_NO_OPTION);
@@ -668,7 +475,10 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
             } catch (Throwable t) {
                 pixmap.dispose();
             }
-        });
+        }, pixmap::dispose);
+        if (!asking) {
+            pixmap.dispose();
+        }
     }
 
     /**
@@ -736,21 +546,33 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
             return;
         }
         DesktopSwing.onEdt(() -> {
-            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
-            chooser.setDialogTitle(s("Save_gpx"));
-            chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
-            chooser.setAcceptAllFileFilterUsed(false);
-            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("GPX (*.gpx)", "gpx"));
-            chooser.setSelectedFile(new java.io.File(fileName));
-            if (chooser.showSaveDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION
-                    || chooser.getSelectedFile() == null) {
+            // The system's own dialog where there is one, which asks before overwriting itself;
+            // Swing's otherwise, after which this code asks.
+            java.io.File file = com.peaknav.viewer.desktop.NativeFileDialogs.save(s("Save_gpx"),
+                    new com.peaknav.viewer.desktop.NativeFileDialogs.Filter("GPX", "gpx"), fileName);
+            if (file == null) {
                 return;
             }
-            java.io.File file = chooser.getSelectedFile();
+            boolean askOverwrite = false;
+            if (file == com.peaknav.viewer.desktop.NativeFileDialogs.UNAVAILABLE) {
+                javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+                chooser.setDialogTitle(s("Save_gpx"));
+                chooser.setFileSelectionMode(javax.swing.JFileChooser.FILES_ONLY);
+                chooser.setAcceptAllFileFilterUsed(false);
+                chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("GPX (*.gpx)", "gpx"));
+                chooser.setSelectedFile(new java.io.File(fileName));
+                if (chooser.showSaveDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION
+                        || chooser.getSelectedFile() == null) {
+                    return;
+                }
+                file = chooser.getSelectedFile();
+                askOverwrite = true;
+            }
             if (!file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".gpx")) {
                 file = new java.io.File(file.getParentFile(), file.getName() + ".gpx");
+                askOverwrite = true;   // a name the dialog never saw
             }
-            if (file.exists() && javax.swing.JOptionPane.showConfirmDialog(null, s("Overwrite_prompt"),
+            if (askOverwrite && file.exists() && javax.swing.JOptionPane.showConfirmDialog(null, s("Overwrite_prompt"),
                     s("File_exists"), javax.swing.JOptionPane.YES_NO_OPTION) != javax.swing.JOptionPane.YES_OPTION) {
                 return;
             }
@@ -780,10 +602,15 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
         if (!com.peaknav.viewer.desktop.DesktopSwing.isAvailable()) {
             // No AWT to float a window over the map: the map has a toast of its own, and
             // saying so on the console costs nothing. Deliberately not DesktopSwing.onEdt:
-            // a toast is not worth explaining the runtime for, once per toast.
+            // a toast is not worth explaining the runtime for, once per toast. The map's toast
+            // only while the map is up: on its stage under the welcome screen, nobody saw it.
             System.err.println("[Toast] " + message);
-            com.badlogic.gdx.Gdx.app.postRunnable(
-                    () -> com.peaknav.viewer.MapViewerSingleton.getViewerInstance().toast(message));
+            com.badlogic.gdx.Gdx.app.postRunnable(() -> {
+                com.peaknav.viewer.MapApp app = com.peaknav.viewer.MapViewerSingleton.getAppInstance();
+                if (app.getScreen() == app.mapViewerScreen) {
+                    app.mapViewerScreen.toast(message);
+                }
+            });
             return;
         }
         javax.swing.SwingUtilities.invokeLater(() -> {
@@ -891,7 +718,7 @@ public class NativeScreenCallerDesktop extends NativeScreenCaller {
                 values[i] = fields[i].getText();
             }
             callback.onEntered(values);
-        });
+        }, callback::onCancelled);
     }
 
     /**

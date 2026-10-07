@@ -45,6 +45,19 @@ if (JavaVersion.current().isJava9Compatible()) {
 // The root build only configures its own Test tasks, so this module needs its own.
 test {
     useJUnitPlatform()
+    // One JVM per test class. Each class boots the whole app, and libGDX's application keeps
+    // its state in statics that assume one per process: in a shared JVM every class after the
+    // first rendered nothing - captures timed out, flags were not drawn - while each passed
+    // alone.
+    forkEvery = 1
+    // The renderer's own heap, as its command line runs it: Gradle's default of 512 MB ran out
+    // listing every loaded object (objectsAreListed), which ended the JVM and the class with it.
+    maxHeapSize = '4g'
+    // A private display when one is given (PEAKNAV_TEST_DISPLAY=:99 with Xvfb running), so the
+    // windows the renderer opens do not appear on the desktop in use.
+    if (System.getenv('PEAKNAV_TEST_DISPLAY')) {
+        environment 'DISPLAY', System.getenv('PEAKNAV_TEST_DISPLAY')
+    }
     // The renderer boots the whole app once per class; the default timeout is generous
     // but the output is what matters when something hangs.
     testLogging {
@@ -77,3 +90,7 @@ tasks.register('renderJar', Jar) {
         attributes 'Main-Class': project.mainClassName, 'Enable-Native-Access': 'ALL-UNNAMED'
     }
 }
+
+// The fonts are baked when the app is built (:core:bakeFonts) into assets/fonts_baked/, which
+// this build packs with the other assets.
+processResources.dependsOn ':core:bakeFonts'

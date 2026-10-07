@@ -68,6 +68,11 @@ dependencies {
     // dataset, so the tools see the shared code; gson reads the dataset manifest.
     toolsImplementation sourceSets.main.output
     toolsImplementation 'com.google.code.gson:gson:2.14.0'
+    // The font baker (see bakeFonts) lays the fonts out with the same FreeType the app uses,
+    // on the build machine: the desktop natives, from the same libGDX release.
+    toolsImplementation "com.badlogicgames.gdx:gdx-freetype:$gdxVersion"
+    toolsRuntimeOnly "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+    toolsRuntimeOnly "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-desktop"
 
     // Test dependencies :
     testImplementation "org.junit.jupiter:junit-jupiter-api:5.8.2"
@@ -177,5 +182,26 @@ tasks.register('addPeaksToIndex', JavaExec) {
     classpath = sourceSets.tools.runtimeClasspath
     mainClass = 'com.peaknav.tools.PeakIndexAppender'
     workingDir = rootProject.projectDir   // see buildGeonamesIndex
+}
+
+/*
+ * Bakes the fonts into assets/fonts_baked/ (com.peaknav.tools.FontBaker), so the app loads
+ * them instead of laying them out with FreeType at every start. Every app build runs it first
+ * (android preBuild, and processResources of desktop, headless and ios); it is redone only
+ * when the font, the glyph set or the font descriptions change. The output is not in git.
+ */
+tasks.register('bakeFonts', JavaExec) {
+    group = 'peaknav'
+    description = 'Bakes the app fonts into assets/fonts_baked/.'
+    classpath = sourceSets.tools.runtimeClasspath
+    mainClass = 'com.peaknav.tools.FontBaker'
+    args "${rootDir}/assets"
+    inputs.file("${rootDir}/assets/liberation_fonts/LiberationSans-Regular.ttf")
+    inputs.files(
+            'src/main/java/com/peaknav/utils/FontCharacters.java',
+            'src/main/java/com/peaknav/viewer/widgets/FontSpecs.java',
+            'src/main/java/com/peaknav/viewer/widgets/BakedFontFile.java',
+            'src/tools/java/com/peaknav/tools/FontBaker.java')
+    outputs.dir("${rootDir}/assets/fonts_baked")
 }
 

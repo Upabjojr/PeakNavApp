@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Photo overlay: nudge the terrain up by a hair. -->
+<svg width="240" height="240" viewBox="0 0 240 240" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+  <polyline points="70,146 120,96 170,146" fill="none" stroke="#2b333c" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#2b333c" stroke-width="3"/>
+</svg>

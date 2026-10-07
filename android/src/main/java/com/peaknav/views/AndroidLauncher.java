@@ -6,6 +6,7 @@ import static com.peaknav.utils.PeakNavPermissions.handleLocationPermission;
 import static com.peaknav.utils.PeakNavUtils.getC;
 import static com.peaknav.utils.PeakNavUtils.getLoadFactory;
 import static com.peaknav.utils.PeakNavUtils.getNativeScreenCaller;
+import static com.peaknav.utils.PeakNavUtils.looksLikeImage;
 import static com.peaknav.utils.PeakNavUtils.checkImageGpsAndPrompt;
 import static com.peaknav.utils.PeakNavUtils.setBytesAsBackgroundImage;
 import static com.peaknav.viewer.controller.MapController.setNumOfCpuCores;
@@ -53,6 +54,7 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 	public static final String[] CAMERA_PERMISSION = new String[]{Manifest.permission.CAMERA};
 	public static final int CAMERA_REQUEST_CODE = 10;
 	public static final int MEDIA_LOCATION_REQUEST_CODE = 41;
+	public static final int NOTIFICATIONS_REQUEST_CODE = 42;
 
 	@Override
 	public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
@@ -67,15 +69,26 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 					!ActivityCompat.shouldShowRequestPermissionRationale(
 							this, Manifest.permission.CAMERA)) {
 					showCameraSettingsDialog(this);
+				} else {
+					// A plain "Deny": the next tap on the camera asks again, but say why nothing
+					// opened this time rather than leaving the tap without an answer.
+					android.widget.Toast.makeText(this,
+							com.peaknav.utils.PeakNavUtils.s("Camera_permission_needed_to_take_pictures"),
+							android.widget.Toast.LENGTH_LONG).show();
 				}
 			}
 		} else if (requestCode == LOCATION_REQUEST_CODE) {
-			handleLocationPermission(this, grantResults, () -> {
+			com.peaknav.compatibility.NativeScreenCallerAndroid nsc =
+					(com.peaknav.compatibility.NativeScreenCallerAndroid) getNativeScreenCaller();
+			handleLocationPermission(this, () -> {
+				if (nsc != null) {
+					nsc.locationPermissionAnswered(true);
+				}
 				while (!locationPermissionCallbacks.isEmpty()) {
 					Runnable runnable = locationPermissionCallbacks.poll();
 					runnable.run();
 				}
-			});
+			}, () -> nsc != null && nsc.locationPermissionAnswered(false));
 		} else if (requestCode == MEDIA_LOCATION_REQUEST_CODE) {
 			// Open the picker whether or not media-location access was granted. If it was
 			// denied, the import will simply warn that the image location cannot be read.
@@ -83,6 +96,11 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 					(com.peaknav.compatibility.NativeScreenCallerAndroid) getNativeScreenCaller();
 			if (nsc != null) {
 				nsc.launchGalleryPicker();
+			}
+		} else if (requestCode == NOTIFICATIONS_REQUEST_CODE) {
+			// What the service posted before the answer was dropped: post it again.
+			if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+				com.peaknav.compatibility.MapDataDownloadService.showAgain();
 			}
 		}
 	}
@@ -106,6 +124,36 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 				new androidx.activity.OnBackPressedCallback(true) {
 			@Override
 			public void handleOnBackPressed() {
+				// The search and download screens are drawn by libGDX, not fragments: with
+				// nothing on the back stack, Back would have left the app from inside them.
+				if (com.peaknav.viewer.mapscreens.MapScreens.isOpen()) {
+					com.peaknav.viewer.mapscreens.MapScreens.back();
+					return;
+				}
+				// Nor is the tutorial: Back closes it and shows the map again, as its own
+				// close button and the desktop's Escape do, rather than leaving the app.
+				com.peaknav.viewer.MapApp app = com.peaknav.viewer.MapViewerSingleton.getAppInstance();
+				if (app != null && app.mapViewerScreen != null && app.mapViewerScreen.tutorialOverlay != null
+						&& app.mapViewerScreen.tutorialOverlay.isVisible()) {
+					// On the render thread, which the stage belongs to.
+					com.badlogic.gdx.Gdx.app.postRunnable(() -> app.mapViewerScreen.tutorialOverlay.hide());
+					return;
+				}
+				// Nor is the slideshow, which hides the menu it was opened from: with no menu
+				// on show, Back fell through to the end and left the app.
+				if (app != null && app.mapViewerScreen != null && app.mapViewerScreen.slideShowOverlay != null
+						&& app.mapViewerScreen.slideShowOverlay.isVisible()) {
+					com.badlogic.gdx.Gdx.app.postRunnable(() -> app.mapViewerScreen.slideShowOverlay.hide());
+					return;
+				}
+				// Nor are the options menu and its submenus: Back does what their own Back
+				// button does - a submenu back to its menu, the menu closed - instead of
+				// leaving the app.
+				if (app != null && app.mapViewerScreen != null && app.mapViewerScreen.optionPane != null
+						&& app.mapViewerScreen.optionPane.isAnyMenuVisible()) {
+					com.badlogic.gdx.Gdx.app.postRunnable(() -> app.mapViewerScreen.optionPane.pressBack());
+					return;
+				}
 				if (getSupportFragmentManager().getBackStackEntryCount() > 0) {
 					com.peaknav.compatibility.NativeScreenCaller caller =
 							com.peaknav.utils.PeakNavUtils.getNativeScreenCaller();
@@ -122,7 +170,30 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 			}
 		});
 
-		super.onCreate(savedInstanceState);
+		// Nothing is restored, deliberately: a relaunch after the process was killed starts
+		// from the map, as a first launch does.
+		//
+		// Given the saved state, FragmentActivity rebuilds every fragment that was open by
+		// calling its no-argument constructor - and the download chooser and the "go to
+		// download" dialog have none, since they are made with the area they are about. So
+		// an app killed in the background with one of them open (the first-run wizard, left
+		// for Settings to allow location, is exactly where Android does that) threw
+		// Fragment.InstantiationException on every relaunch, reported from the field on
+		// 1.3.1. A constructor alone would not have helped: whatever came back would be empty,
+		// and so would the rest - this method builds MapApp and its main fragment afresh on
+		// every call and replaces whatever sits in the map container, and the other screens
+		// lean on that state. Passing null drops the saved fragments before anything reads
+		// them.
+		super.onCreate(null);
+
+		// 20 frames a second while nothing on the map is happening, to save battery; see
+		// IdleFrameRate. libGDX ignores setForegroundFPS on Android, hence the pacer.
+		com.peaknav.viewer.screens.IdleFrameRate.setPacer(new AndroidIdlePacer(this));
+		com.peaknav.viewer.screens.IdleFrameRate.setEnabled(true);
+
+		// Labels in scripts the app's fonts lack - a place's own name, for a reader of that
+		// script - are drawn by Android's text; see LabelTextRasterizer.
+		com.peaknav.viewer.labels.LabelTextRasterizers.set(new AndroidLabelRasterizer());
 
 		setContentView(R.layout.activity_main);
 
@@ -185,7 +256,13 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		trans.commit();
 
 		// A photo or GPX may have launched us via the share sheet.
-		handleIncomingShare(getIntent());
+		// Not an intent the app is being relaunched with from Recents: that is the one it was
+		// first started with, and its share or geo: link was applied again at every relaunch.
+		Intent launch = getIntent();
+		if (launch != null && (launch.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0
+				&& savedInstanceState == null) {
+			handleIncomingShare(launch);
+		}
 	}
 
 	@Override
@@ -228,15 +305,50 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 			}
 			return;
 		}
-		byte[] data = readShareBytes(uri);
-		if (data == null || data.length == 0) {
-			return;
-		}
-		pendingShareData = data;
-		// The bytes themselves are the reliable signal: JPEG/PNG magic means image, anything else
-		// (GPX is XML text) is treated as a track.
-		pendingShareIsGpx = !looksLikeImage(data);
-		processPendingShare(0);
+		// Read on a thread of its own, not here on the main thread: a file in Drive or a mail
+		// attachment is fetched over the network as it is read, and a large one held the app
+		// unresponsive, or ran it out of memory. The read starts now, while the grant holds.
+		final Uri shared = uri;
+		Thread reader = new Thread(() -> {
+			String problem = null;
+			byte[] data = null;
+			boolean gpx = false;
+			try {
+				data = readShareBytes(shared);
+				if (data != null && data.length > 0) {
+					// Decided by the bytes: a picture Android can decode is a picture, text that
+					// starts like XML is a track, anything else is neither. Everything that was
+					// not a JPEG or a PNG used to be taken for a track.
+					byte[] image = com.peaknav.utils.ImportedFiles.asReadableImage(this, data);
+					if (image != null) {
+						data = image;
+					} else if (com.peaknav.utils.ImportedFiles.looksLikeXml(data)) {
+						gpx = true;
+					} else {
+						problem = "Share_unreadable";
+					}
+				}
+			} catch (com.peaknav.utils.ImportedFiles.TooLarge tooLarge) {
+				problem = "Share_too_large";
+			}
+			final byte[] read = data;
+			final boolean isGpx = gpx;
+			final String message = problem;
+			shareHandler.post(() -> {
+				if (message != null) {
+					android.widget.Toast.makeText(this, com.peaknav.utils.PeakNavUtils.s(message), android.widget.Toast.LENGTH_LONG).show();
+					return;
+				}
+				if (read == null || read.length == 0) {
+					return;
+				}
+				pendingShareData = read;
+				pendingShareIsGpx = isGpx;
+				processPendingShare(0);
+			});
+		}, "share-reader");
+		reader.setDaemon(true);
+		reader.start();
 	}
 
 	/** Applies the pending share once the map controller and its screen exist, retrying briefly. */
@@ -244,9 +356,14 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		if (pendingShareData == null) {
 			return;
 		}
-		if (getC() == null || getC().getMapViewerScreen() == null) {
-			if (attempt < 60) {
+		if (!mapReady()) {
+			if (attempt < 120) {
 				shareHandler.postDelayed(() -> processPendingShare(attempt + 1), 250);
+			} else {
+				// Given up on: said, and the bytes let go. They were kept, and nothing said.
+				pendingShareData = null;
+				android.widget.Toast.makeText(this, com.peaknav.utils.PeakNavUtils.s("Share_not_ready"),
+						android.widget.Toast.LENGTH_LONG).show();
 			}
 			return;
 		}
@@ -254,11 +371,15 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		boolean isGpx = pendingShareIsGpx;
 		pendingShareData = null;
 		if (isGpx) {
-			try {
-				getC().gpxManager.loadFromXml(new String(data, java.nio.charset.StandardCharsets.UTF_8));
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+			// On the render thread, as the other platforms do: it toasts and moves the camera.
+			final String xml = new String(data, java.nio.charset.StandardCharsets.UTF_8);
+			com.badlogic.gdx.Gdx.app.postRunnable(() -> {
+				try {
+					getC().gpxManager.loadFromXml(xml);
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			});
 			return;
 		}
 		// Decoded on a worker with the "Loading..." screen up, as a picked photo is.
@@ -272,6 +393,17 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 				setPhotoLoading(false);
 			}
 		});
+	}
+
+	/**
+	 * Whether a share can be applied: this activity's app has been created by libGDX. The map
+	 * screen alone was the old test, and it exists from MapApp's constructor on - so a photo
+	 * shared into a PeakNav that was not running was applied in onCreate, before libGDX had
+	 * started, and crashed the app on the missing Gdx.app. Up to half a minute is waited.
+	 */
+	private boolean mapReady() {
+		return mapApp != null && mapApp.isCreated() && com.badlogic.gdx.Gdx.app != null
+				&& getC() != null && getC().getMapViewerScreen() != null;
 	}
 
 	/** The map's "Loading..." screen while a photo is read and decoded; safe from any thread. */
@@ -289,9 +421,14 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		if (pendingGeoLat == null || pendingGeoLon == null) {
 			return;
 		}
-		if (getC() == null || getC().getMapViewerScreen() == null) {
-			if (attempt < 60) {
+		if (!mapReady()) {
+			if (attempt < 120) {
 				shareHandler.postDelayed(() -> processPendingGeo(attempt + 1), 250);
+			} else {
+				pendingGeoLat = null;
+				pendingGeoLon = null;
+				android.widget.Toast.makeText(this, com.peaknav.utils.PeakNavUtils.s("Share_not_ready"),
+						android.widget.Toast.LENGTH_LONG).show();
 			}
 			return;
 		}
@@ -299,23 +436,24 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		double lon = pendingGeoLon;
 		pendingGeoLat = null;
 		pendingGeoLon = null;
-		try {
-			// Ask about missing data for this area, as a tap on the map would: arriving from
-			// another app is exactly when the region is likely to be one never visited.
-			getC().L.setCurrentTargetCoords(lat, lon);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		// Ask about missing data for this area, as a tap on the map would: arriving from
+		// another app is exactly when the region is likely to be one never visited. On the
+		// render thread, which core's state belongs to.
+		com.badlogic.gdx.Gdx.app.postRunnable(() -> {
+			try {
+				getC().L.setCurrentTargetCoords(lat, lon);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		});
 	}
 
-	private static boolean looksLikeImage(byte[] d) {
-		if (d.length >= 3 && (d[0] & 0xFF) == 0xFF && (d[1] & 0xFF) == 0xD8 && (d[2] & 0xFF) == 0xFF) {
-			return true; // JPEG
-		}
-		return d.length >= 4 && (d[0] & 0xFF) == 0x89 && d[1] == 'P' && d[2] == 'N' && d[3] == 'G'; // PNG
+	/** Every byte of a picked picture, or null if the provider has no stream for it. */
+	private byte[] readPickedBytes(Uri uri) throws java.io.IOException {
+		return com.peaknav.utils.ImportedFiles.read(getContentResolver(), uri);
 	}
 
-	private byte[] readShareBytes(Uri uri) {
+	private byte[] readShareBytes(Uri uri) throws com.peaknav.utils.ImportedFiles.TooLarge {
 		Uri readUri = uri;
 		// On Android 10+ ask for the un-redacted original so an image's GPS EXIF survives; harmless
 		// (and reversible) if the URI isn't a MediaStore item.
@@ -333,18 +471,11 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 		return bytes;
 	}
 
-	private byte[] readAllBytes(Uri uri) {
-		try (InputStream inputStream = getContentResolver().openInputStream(uri)) {
-			if (inputStream == null) {
-				return null;
-			}
-			ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-			byte[] chunk = new byte[16384];
-			int numRead;
-			while ((numRead = inputStream.read(chunk, 0, chunk.length)) != -1) {
-				buffer.write(chunk, 0, numRead);
-			}
-			return buffer.toByteArray();
+	private byte[] readAllBytes(Uri uri) throws com.peaknav.utils.ImportedFiles.TooLarge {
+		try {
+			return com.peaknav.utils.ImportedFiles.read(getContentResolver(), uri);
+		} catch (com.peaknav.utils.ImportedFiles.TooLarge tooLarge) {
+			throw tooLarge;
 		} catch (Exception e) {
 			return null;
 		}
@@ -378,25 +509,37 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 			// so the render thread is still paused and would show nothing - not even the
 			// "Loading..." screen - until the whole file had been read and decoded.
 			final Uri pickedUri = imageUri;
+			final Uri plainUri = data.getData();
 			setPhotoLoading(true);
 			getC().submitExecutorGeneric(() -> {
 				// A deleted file, revoked permission, or corrupt image must fail
 				// gracefully here rather than crash the app.
-				try (InputStream inputStream = getContentResolver().openInputStream(pickedUri)) {
-					if (inputStream == null) {
+				try {
+					byte[] b;
+					try {
+						b = readPickedBytes(pickedUri);
+					} catch (Exception withoutPermission) {
+						// The original bytes are refused without ACCESS_MEDIA_LOCATION, by an
+						// exception from openInputStream. The photo was then not shown at all,
+						// with nothing said. The plain uri gives it without its location,
+						// which checkImageGpsAndPrompt then asks for.
+						if (pickedUri.equals(plainUri)) {
+							throw withoutPermission;
+						}
+						b = readPickedBytes(plainUri);
+					}
+					if (b == null) {
 						setPhotoLoading(false);
 						return;
 					}
-					ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-
-					int numRead;
-					byte[] d = new byte[16384];
-
-					while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
-						buffer.write(d, 0, numRead);
+					byte[] readable = com.peaknav.utils.ImportedFiles.asReadableImage(this, b);
+					if (readable == null) {
+						setPhotoLoading(false);
+						runOnUiThread(() -> android.widget.Toast.makeText(this, com.peaknav.utils.PeakNavUtils.s("Share_unreadable"),
+								android.widget.Toast.LENGTH_LONG).show());
+						return;
 					}
-
-					byte[] b = buffer.toByteArray();
+					b = readable;
 
 					setBytesAsBackgroundImage(b);
 					checkImageGpsAndPrompt(b);
@@ -409,22 +552,24 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 
 		if (requestCode == PICK_GPX && resultCode == RESULT_OK
 				&& data != null && data.getData() != null) {
-			try (InputStream inputStream = getContentResolver().openInputStream(data.getData())) {
-				if (inputStream == null) {
-					return;
+			// Read on a worker and parsed on the render thread, as a shared track is: here on
+			// the main thread a large file, or one fetched from Drive, held the app unresponsive.
+			final Uri picked = data.getData();
+			getC().submitExecutorGeneric(() -> {
+				try {
+					byte[] bytes = com.peaknav.utils.ImportedFiles.read(getContentResolver(), picked);
+					if (bytes == null) {
+						return;
+					}
+					final String xml = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+					com.badlogic.gdx.Gdx.app.postRunnable(() -> getC().gpxManager.loadFromXml(xml));
+				} catch (com.peaknav.utils.ImportedFiles.TooLarge tooLarge) {
+					runOnUiThread(() -> android.widget.Toast.makeText(this,
+							com.peaknav.utils.PeakNavUtils.s("Share_too_large"), android.widget.Toast.LENGTH_LONG).show());
+				} catch (Exception e) {
+					e.printStackTrace();
 				}
-				ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-				int numRead;
-				byte[] d = new byte[16384];
-				while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
-					buffer.write(d, 0, numRead);
-				}
-				String xml = new String(buffer.toByteArray(),
-						java.nio.charset.StandardCharsets.UTF_8);
-				getC().gpxManager.loadFromXml(xml);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+			});
 		}
 	}
 

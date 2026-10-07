@@ -50,6 +50,47 @@ import java.util.List;
 public class CameraPictureView extends Fragment {
 
     private static final int PICK_IMAGE = 159;
+    /**
+     * The longest edge a photo may have, in pixels. Twice the width of the widest phone screen,
+     * and four times what the skyline match looks at, which is as much detail as anything here
+     * can use; see the note in surfaceCreated for what the size is really guarding against.
+     */
+    private static final int MAX_PICTURE_EDGE = 2048;
+
+    /**
+     * The photo's size, of the {@code {width, height}} pairs the camera offers: the largest in
+     * area with both edges within {@code maxEdge}, of the 4:3 ones - the viewfinder's shape -
+     * if there are any. The lists often hold one width in two shapes (2048x1536 and
+     * 2048x1152), in no set order, and the widest was taken, whichever came first: on a phone
+     * listing the 16:9 one first, the photo lost the top and bottom of what the viewfinder
+     * framed, and the top is where the skyline is. With every size above the ceiling, the
+     * smallest in area, of the 4:3 ones again if any.
+     */
+    static int[] choosePictureSize(int[][] sizes, int maxEdge) {
+        int[] best = null;
+        boolean bestFits = false;
+        boolean bestFourThree = false;
+        for (int[] size : sizes) {
+            boolean fits = size[0] <= maxEdge && size[1] <= maxEdge;
+            boolean fourThree = 3L * Math.max(size[0], size[1]) == 4L * Math.min(size[0], size[1]);
+            long area = (long) size[0] * size[1];
+            boolean better;
+            if (best == null || fits != bestFits) {
+                better = best == null || fits;
+            } else if (fourThree != bestFourThree) {
+                better = fourThree;
+            } else {
+                long bestArea = (long) best[0] * best[1];
+                better = fits ? area > bestArea : area < bestArea;
+            }
+            if (better) {
+                best = size;
+                bestFits = fits;
+                bestFourThree = fourThree;
+            }
+        }
+        return best;
+    }
     private SurfaceView surfaceView;
     private SurfaceHolder surfaceHolder;
     private ImageReader imageReader;
@@ -74,24 +115,29 @@ public class CameraPictureView extends Fragment {
                     // Any failure here (detached fragment, unreadable URI, corrupt
                     // image) must not escape: an uncaught exception on this worker
                     // thread would trip the app's global handler and System.exit.
-                    try (InputStream inputStream =
-                                 activity.getContentResolver().openInputStream(data.getData())) {
-                        if (inputStream == null) {
+                    try {
+                        byte[] bytes = com.peaknav.utils.ImportedFiles.read(
+                                activity.getContentResolver(), data.getData());
+                        byte[] readable = bytes == null ? null
+                                : com.peaknav.utils.ImportedFiles.asReadableImage(activity, bytes);
+                        if (readable == null) {
+                            // No stream, or no picture: said, and "Loading..." taken down -
+                            // it stayed up for good.
+                            if (getC().getMapViewerScreen() != null) {
+                                getC().getMapViewerScreen().setPhotoLoading(false);
+                            }
+                            activity.runOnUiThread(() -> android.widget.Toast.makeText(activity,
+                                    com.peaknav.utils.PeakNavUtils.s("Share_unreadable"),
+                                    android.widget.Toast.LENGTH_LONG).show());
                             return;
                         }
-                        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-
-                        int numRead;
-                        byte[] d = new byte[16384];
-
-                        while ((numRead = inputStream.read(d, 0, d.length)) != -1) {
-                            buffer.write(d, 0, numRead);
-                        }
-
-                        setBytesAsBackgroundImage(buffer.toByteArray());
+                        setBytesAsBackgroundImage(readable);
                         com.peaknav.viewer.PhotoSkylineAligner.photoTakenHere();
                     } catch (Exception e) {
                         e.printStackTrace();
+                        if (getC().getMapViewerScreen() != null) {
+                            getC().getMapViewerScreen().setPhotoLoading(false);
+                        }
                     }
                 });
             }
@@ -104,6 +150,8 @@ public class CameraPictureView extends Fragment {
     private CameraDevice cameraDevice;
     private Handler handler;
     private Camera camera;
+    /** Set by the first tap of the shutter, so the second one is ignored rather than obeyed. */
+    private boolean pictureRequested = false;
     private int w = 640, h = 480;
 
     public CameraPictureView() {
@@ -166,6 +214,31 @@ public class CameraPictureView extends Fragment {
         surfaceHolder.addCallback(new SurfaceHolder.Callback() {
             @Override
             public void surfaceCreated(@NonNull SurfaceHolder holder) {
+                // Camera.open() does not only return null: with the camera held by another
+                // app (a video call in a window) or switched off by the device's policy it
+                // throws, and so can every call after it. Unhandled here, that ended the app.
+                try {
+                    startCamera();
+                } catch (RuntimeException unavailable) {
+                    unavailable.printStackTrace();
+                    if (camera != null) {
+                        try {
+                            camera.release();
+                        } catch (RuntimeException ignored) {
+                            // already gone
+                        }
+                        camera = null;
+                    }
+                    if (getActivity() != null) {
+                        android.widget.Toast.makeText(getActivity(),
+                                com.peaknav.utils.PeakNavUtils.s("Camera_unavailable"),
+                                android.widget.Toast.LENGTH_LONG).show();
+                    }
+                    finish();
+                }
+            }
+
+            private void startCamera() {
                 camera = Camera.open();
                 if (camera == null) {
                     // Camera unavailable or in use by another app.
@@ -173,17 +246,41 @@ public class CameraPictureView extends Fragment {
                     return;
                 }
                 Camera.Parameters param = camera.getParameters();
-                List<Camera.Size> previewSizes = param.getSupportedPreviewSizes();
-                int maxWidth = 0;
-                for (Camera.Size size : previewSizes) {
-                    if (size.width <= maxWidth)
-                        continue;
-                    w = size.width;
-                    maxWidth = w;
-                    h = size.height;
+                // The size of the photo has to come from the list of photo sizes. This used to
+                // read getSupportedPreviewSizes() instead, and on most phones the two lists
+                // overlap enough that the largest preview size is a legal photo size as well -
+                // so the mistake stayed invisible here. On a phone where it is not, the driver
+                // accepts the parameters and then refuses to take the picture, and takePicture
+                // throws "takePicture failed" from native code. That crash was reported from
+                // the field in August 2026.
+                //
+                // Of those sizes the biggest is not wanted either. The photo is decoded whole
+                // and handed to the GL side as one texture, so a 50 Mpx sensor would ask for a
+                // 8160x6120 texture - 200 MB of pixels, above the largest texture a good many
+                // phones will make at all. Nothing needs that: BackgroundPicManager draws the
+                // picture scaled to the screen, and PhotoSkylineAligner reduces it to 480 px
+                // wide before matching it. The bytes are kept only for their Exif tags. So the
+                // size is capped well below what the sensor can do, which also keeps a photo
+                // costing about what it cost when this code was reading the preview sizes.
+                List<Camera.Size> pictureSizes = param.getSupportedPictureSizes();
+                if (pictureSizes != null && !pictureSizes.isEmpty()) {
+                    int[][] sizes = new int[pictureSizes.size()][];
+                    for (int i = 0; i < sizes.length; i++) {
+                        sizes[i] = new int[] {pictureSizes.get(i).width, pictureSizes.get(i).height};
+                    }
+                    int[] chosen = choosePictureSize(sizes, MAX_PICTURE_EDGE);
+                    w = chosen[0];
+                    h = chosen[1];
+                    param.setPictureSize(w, h);
                 }
-                param.setPictureSize(w, h);
-                camera.setParameters(param);
+                try {
+                    camera.setParameters(param);
+                } catch (RuntimeException refused) {
+                    // A driver may reject a size it listed itself. Its own default is always
+                    // one it can honour, so the picture is worth taking at whatever size that
+                    // turns out to be, rather than not at all.
+                    refused.printStackTrace();
+                }
 
                 Camera.CameraInfo info = new Camera.CameraInfo();
                 Camera.getCameraInfo(0, info);
@@ -201,19 +298,33 @@ public class CameraPictureView extends Fragment {
 
             @Override
             public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
-                camera.stopPreview();
+                // The surface outlives the camera: these two run whether or not Camera.open()
+                // above gave us one, and surfaceDestroyed runs again on the way out.
+                if (camera == null) {
+                    return;
+                }
                 try {
+                    camera.stopPreview();
                     camera.setPreviewDisplay(holder);
                     camera.startPreview();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
+                } catch (IOException | RuntimeException e) {
+                    // The preview stays as it was; the camera is released with the surface.
+                    e.printStackTrace();
                 }
             }
 
             @Override
             public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
-                camera.stopPreview();
-                camera.release();
+                if (camera == null) {
+                    return;
+                }
+                try {
+                    camera.stopPreview();
+                    camera.release();
+                } catch (RuntimeException e) {
+                    e.printStackTrace();
+                }
+                camera = null;
             }
         });
 
@@ -304,36 +415,57 @@ public class CameraPictureView extends Fragment {
 
         Button click = view.findViewById(R.id.button_camera_click);
         click.setText(s("Click"));
+        pictureRequested = false;
         click.setOnClickListener(v -> {
-            camera.takePicture(null, null, (data, camera) -> {
-                // Back to the map at once, with its "Loading..." screen up while the
-                // picture is turned upright, encoded and decoded on a worker.
-                final int rotation = getRotationDegrees();
-                if (getC() != null && getC().getMapViewerScreen() != null) {
-                    getC().getMapViewerScreen().setPhotoLoading(true);
-                }
-                finish();
-                getC().submitExecutorGeneric(() -> {
-                    try {
-                        Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
-                        Matrix matrix = new Matrix();
-                        matrix.postRotate(rotation);
-                        Bitmap rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
-
-                        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-                        rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
-
-                        byte[] bytesJpeg = outputStream.toByteArray();
-                        setBytesAsBackgroundImage(bytesJpeg);
-                        com.peaknav.viewer.PhotoSkylineAligner.photoTakenHere();
-                    } catch (RuntimeException e) {
-                        e.printStackTrace();
-                        if (getC() != null && getC().getMapViewerScreen() != null) {
-                            getC().getMapViewerScreen().setPhotoLoading(false);
-                        }
+            // A photo can only be asked for once. Taking one stops the preview, and asking a
+            // stopped preview for another throws "takePicture failed" - which is what a second
+            // tap did, and a second tap is what a shutter button invites while the phone spends
+            // the better part of a second focusing and showing nothing for it.
+            if (pictureRequested || camera == null) {
+                return;
+            }
+            pictureRequested = true;
+            v.setEnabled(false);
+            try {
+                camera.takePicture(null, null, (data, camera) -> {
+                    // Back to the map at once, with its "Loading..." screen up while the
+                    // picture is turned upright, encoded and decoded on a worker.
+                    final int rotation = getRotationDegrees();
+                    if (getC() != null && getC().getMapViewerScreen() != null) {
+                        getC().getMapViewerScreen().setPhotoLoading(true);
                     }
+                    finish();
+                    getC().submitExecutorGeneric(() -> {
+                        try {
+                            Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
+                            Matrix matrix = new Matrix();
+                            matrix.postRotate(rotation);
+                            Bitmap rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+
+                            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+                            rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
+
+                            byte[] bytesJpeg = outputStream.toByteArray();
+                            setBytesAsBackgroundImage(bytesJpeg);
+                            com.peaknav.viewer.PhotoSkylineAligner.photoTakenHere();
+                        } catch (RuntimeException e) {
+                            e.printStackTrace();
+                            if (getC() != null && getC().getMapViewerScreen() != null) {
+                                getC().getMapViewerScreen().setPhotoLoading(false);
+                            }
+                        }
+                    });
                 });
-            });
+            } catch (RuntimeException driverRefused) {
+                // Whatever the camera's reason, it is not worth the app for: this runs on the
+                // UI thread, where an exception goes straight to the global handler and takes
+                // the process with it. Back to the map instead, where everything else still
+                // works and the picture can be picked from the gallery.
+                driverRefused.printStackTrace();
+                pictureRequested = false;
+                v.setEnabled(true);
+                finish();
+            }
         });
 
         Button chooseFromGallery = view.findViewById(R.id.button_choose_from_gallery);

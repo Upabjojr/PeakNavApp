@@ -2,13 +2,14 @@ package com.peaknav.viewer.desktop;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Pixmap;
+import com.peaknav.compatibility.NativeScreenCallerDesktop;
 import com.peaknav.utils.PeakNavUtils;
+import com.peaknav.viewer.MapApp;
 import com.peaknav.viewer.MapViewerSingleton;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.swing.JFileChooser;
 import javax.swing.SwingUtilities;
@@ -37,9 +38,6 @@ import javax.swing.filechooser.FileFilter;
  */
 public class GalleryPickDesktop {
 
-    /** True while a chooser is on screen. Only one may be; see the class comment. */
-    private static final AtomicBoolean OPEN = new AtomicBoolean(false);
-
     /** The chooser on screen, so a second request can raise it instead of stacking one. */
     private static volatile JFileChooser showing;
 
@@ -53,23 +51,72 @@ public class GalleryPickDesktop {
      * the second call brings that one to the front rather than opening another.
      */
     public static void open() {
-        DesktopSwing.onEdt(() -> {
-            if (!OPEN.compareAndSet(false, true)) {
-                // Already asking: show the user the chooser they already have, wherever it
-                // has ended up - behind the map window, or minimised. See WindowRaiser.
-                WindowRaiser.bringToFront(showing);
-                return;
-            }
+        // Only one chooser at a time, of any kind (DesktopSwing.chooser).
+        boolean opening = DesktopSwing.chooser(() -> {
             try {
                 selectImage();
             } finally {
                 showing = null;
-                OPEN.set(false);
             }
-        });
+        }, null);
+        if (!opening) {
+            // Already asking: show the user the chooser they already have, wherever it has
+            // ended up - behind the map window, or minimised. See WindowRaiser. The desktop's
+            // own chooser is another program's window, and is left to it.
+            DesktopSwing.onEdt(() -> {
+                JFileChooser chooser = showing;
+                if (chooser != null) {
+                    WindowRaiser.bringToFront(chooser);
+                }
+            });
+        }
+    }
+
+    /**
+     * Files dragged onto the window: every .gpx among them is loaded as a path, and the
+     * first image becomes the background, exactly as if each had been picked in its
+     * chooser. Anything else is ignored, and so is a drop while the map is not on screen
+     * (the intro, the download chooser).
+     *
+     * <p>Called on the render thread by the window listener; the reading and decoding go
+     * to other threads, as for a picked file.
+     */
+    public static void openDropped(String[] paths) {
+        MapApp app = MapViewerSingleton.getAppInstance();
+        if (app.getScreen() != app.mapViewerScreen) {
+            return;
+        }
+        boolean imageTaken = false;
+        for (String path : paths) {
+            File file = new File(path).getAbsoluteFile();
+            if (!file.isFile()) {
+                continue;
+            }
+            if (file.getName().toLowerCase().endsWith(".gpx")) {
+                NativeScreenCallerDesktop.loadGpxFile(file);
+            } else if (!imageTaken && isImage(file)) {
+                imageTaken = true;
+                new Thread(() -> setAppBackgroundImage(file), "gallery-image-load").start();
+            }
+        }
+    }
+
+    private static boolean isImage(File f) {
+        String name = f.getName().toLowerCase();
+        return name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
     }
 
     private static void selectImage() {
+        // The system's own dialog where there is one, with its previews of the pictures.
+        File picked = NativeFileDialogs.open(null,
+                new NativeFileDialogs.Filter("Gallery files", "png", "jpg", "jpeg"));
+        if (picked == null) {
+            return;
+        }
+        if (picked != NativeFileDialogs.UNAVAILABLE) {
+            new Thread(() -> setAppBackgroundImage(picked), "gallery-image-load").start();
+            return;
+        }
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
         fileChooser.setAcceptAllFileFilterUsed(false);
@@ -77,12 +124,7 @@ public class GalleryPickDesktop {
         fileChooser.addChoosableFileFilter(new FileFilter() {
             @Override
             public boolean accept(File f) {
-                return (
-                    f.getName().toLowerCase().endsWith(".png") ||
-                    f.getName().toLowerCase().endsWith(".jpg") ||
-                    f.getName().toLowerCase().endsWith(".jpeg") ||
-                    f.isDirectory()
-                );
+                return isImage(f) || f.isDirectory();
             }
 
             @Override

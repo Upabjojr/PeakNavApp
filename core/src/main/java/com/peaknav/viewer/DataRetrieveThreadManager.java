@@ -135,6 +135,36 @@ public class DataRetrieveThreadManager {
         execUpdateVisibilityFull.executeStoppableRunnable(new RunnableUpdateVisibility(C, updateRequests));
     }
 
+    /** When terrain was last drawn that no visibility pass has looked at yet; 0 for none. */
+    private volatile long terrainDrawnMillis = 0L;
+
+    /** How long the terrain has to stay as it is before the labels are checked against it. */
+    private static final long TERRAIN_SETTLE_MILLIS = 50L;
+
+    /**
+     * A tile's terrain has just been drawn: which labels the mountains hide is decided against
+     * a picture of the terrain, and that picture is now out of date. On arriving at a place the
+     * passes run while its tiles are still coming - the last of them measured with most of the
+     * terrain yet to be drawn - and nothing asks again when the last tile is up, unless the
+     * camera happens to move.
+     */
+    public void terrainDrawn() {
+        terrainDrawnMillis = System.currentTimeMillis();
+    }
+
+    /**
+     * Every frame: once the tiles have stopped arriving for a moment, one pass for all of them
+     * rather than one for each.
+     */
+    public void checkTerrainSettled() {
+        long drawn = terrainDrawnMillis;
+        if (drawn == 0L || System.currentTimeMillis() - drawn < TERRAIN_SETTLE_MILLIS) {
+            return;
+        }
+        terrainDrawnMillis = 0L;
+        triggerUpdateVisibilityElevationChanged();
+    }
+
     private double prevCameraAngle = 0;
 
     /**

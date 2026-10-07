@@ -39,7 +39,9 @@ public class AppInfoAndroidView extends Fragment {
         WebView appInfo = view.findViewById(R.id.app_info_android_web_view);
 
         String text = Gdx.files.internal("info/app_info.html").readString();
-        appInfo.loadData(text, "text/html", "utf-8");
+        // Not loadData: that takes the page as a data: URL, where the first '#' starts the
+        // fragment - the page was cut off at the "#readme" of the Apache Lucene link.
+        appInfo.loadDataWithBaseURL(null, text, "text/html", "UTF-8", null);
 
         Button buttonAppInfoBack = view.findViewById(R.id.button_app_info_back);
         buttonAppInfoBack.setText(s("Back"));

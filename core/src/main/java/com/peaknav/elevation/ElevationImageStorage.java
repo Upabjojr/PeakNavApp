@@ -151,14 +151,16 @@ public class ElevationImageStorage {
             // TODO: report missing (latitude, longitude);
             return null;
         }
+        com.badlogic.gdx.graphics.Pixmap jpg = null;
         try {
-            return new ElevationImage(
-                    readImageToGreyscale(eleJpg),
-                    readImage(elePng),
-                    getTile(),
-                    getCroppedBoundingBox()
-            );
+            jpg = readImageToGreyscale(eleJpg);
+            com.badlogic.gdx.graphics.Pixmap png = readImage(elePng);
+            return new ElevationImage(jpg, png, getTile(), getCroppedBoundingBox());
         } catch (GdxRuntimeException gdxRuntimeException) {
+            // The first picture decoded and the second did not: the first was left behind.
+            if (jpg != null && !jpg.isDisposed()) {
+                jpg.dispose();
+            }
             gdxRuntimeException.printStackTrace();
             // TODO: report missing (latitude, longitude);
         }

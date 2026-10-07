@@ -15,6 +15,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.LAST_CAMERA_UP_Z;
 import static com.peaknav.utils.Constants.PREFERENCES.LAST_LATITUDE;
 import static com.peaknav.utils.Constants.PREFERENCES.LAST_LONGITUDE;
 import static com.peaknav.utils.Constants.PREFERENCES.IP_LOCATION_CONSENT;
+import static com.peaknav.utils.Constants.PREFERENCES.LANGUAGE;
 import static com.peaknav.utils.Constants.PREFERENCES.LOCATION_PERMISSION_DENIED;
 import static com.peaknav.utils.Constants.PREFERENCES.PREF_NAME;
 import static com.peaknav.utils.Constants.PREFERENCES.UNDERLAY_IMAGE_PROVIDER;
@@ -25,6 +26,8 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SUN_SHADING;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_COMPASS_LOCATION;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_COORDINATES;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_ELEVATION;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_MARKERS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_CORNER_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SKY_CONSTELLATIONS;
@@ -93,6 +96,8 @@ public class PreferencesManager {
     private boolean horizonCompass;
     private boolean compassLocation;
     private boolean showCoordinates;
+    private boolean showElevation;
+    private boolean showMarkers;
     private boolean cornerCompass;
     private boolean skyView;
     private boolean skyConstellations;
@@ -126,6 +131,20 @@ public class PreferencesManager {
     public void setIpLocationConsent(boolean ipLocationConsent) {
         this.ipLocationConsent = ipLocationConsent;
         preferences.putBoolean(IP_LOCATION_CONSENT, ipLocationConsent);
+        preferences.flush();
+    }
+
+    /** The interface language chosen over the device's (a two-letter code), or "" for the device's. */
+    private String language = "";
+
+    public String getLanguage() {
+        return language;
+    }
+
+    /** Saved at once; it takes effect the next time the app starts. */
+    public void setLanguage(String language) {
+        this.language = language == null ? "" : language;
+        preferences.putString(LANGUAGE, this.language);
         preferences.flush();
     }
 
@@ -212,7 +231,7 @@ public class PreferencesManager {
 
     public PreferencesManager() {
         Preferences stored = Gdx.app.getPreferences(PREF_NAME);
-        preferences = ephemeral ? new EphemeralPreferences(stored) : stored;
+        preferences = new SynchronizedPreferences(ephemeral ? new EphemeralPreferences(stored) : stored);
         updatePreferences();
     }
 
@@ -238,6 +257,8 @@ public class PreferencesManager {
         // All three compass-and-location items default to on for a fresh install.
         compassLocation = preferences.getBoolean(VIEWER_COMPASS_LOCATION, true);
         showCoordinates = preferences.getBoolean(VIEWER_SHOW_COORDINATES, true);
+        showElevation = preferences.getBoolean(VIEWER_SHOW_ELEVATION, true);
+        showMarkers = preferences.getBoolean(VIEWER_SHOW_MARKERS, true);
         cornerCompass = preferences.getBoolean(VIEWER_CORNER_COMPASS, true);
         skyView = preferences.getBoolean(VIEWER_SKY, true);
         skyConstellations = preferences.getBoolean(VIEWER_SKY_CONSTELLATIONS, true);
@@ -260,6 +281,7 @@ public class PreferencesManager {
         locationPermissionDenied = preferences.getBoolean(LOCATION_PERMISSION_DENIED, false);
         // Default false: nothing leaves the machine until the user says so.
         ipLocationConsent = preferences.getBoolean(IP_LOCATION_CONSENT, false);
+        language = preferences.getString(LANGUAGE, "");
 
         satelliteProviderRegistry = new SatelliteProviderRegistry(
                 new JsonConfigStore(SatelliteProviderRegistry.CONFIG_FILE));
@@ -276,8 +298,9 @@ public class PreferencesManager {
         try {
             unitSystem = UnitSystem.valueOf(prefUnitSystem);
         } catch (IllegalArgumentException iae) {
-            unitSystem = UnitSystem.METRIC;
-            P.setUnitSystem(unitSystem);
+            // On this, not on P: P is this very object, assigned only once the constructor
+            // has returned, and still null here - the repair threw, at every start.
+            setUnitSystem(UnitSystem.METRIC);
         }
     }
 
@@ -580,6 +603,28 @@ public class PreferencesManager {
     public void setShowCoordinates(boolean enabled) {
         showCoordinates = enabled;
         preferences.putBoolean(VIEWER_SHOW_COORDINATES, enabled);
+        preferences.flush();
+    }
+
+    /** Whether the user's markers stand on the map as flags. */
+    public boolean isShowMarkers() {
+        return showMarkers;
+    }
+
+    public void setShowMarkers(boolean enabled) {
+        showMarkers = enabled;
+        preferences.putBoolean(VIEWER_SHOW_MARKERS, enabled);
+        preferences.flush();
+    }
+
+    /** Whether the viewpoint's elevation is written on screen, over the coordinates. */
+    public boolean isShowElevation() {
+        return showElevation;
+    }
+
+    public void setShowElevation(boolean enabled) {
+        showElevation = enabled;
+        preferences.putBoolean(VIEWER_SHOW_ELEVATION, enabled);
         preferences.flush();
     }
 

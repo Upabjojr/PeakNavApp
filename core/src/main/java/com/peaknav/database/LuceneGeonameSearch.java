@@ -1,23 +1,20 @@
 package com.peaknav.database;
 
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import static com.peaknav.utils.PreferencesManager.P;
+
+import com.badlogic.gdx.Gdx;
+import com.peaknav.utils.PreferencesManager;
+
 import org.apache.lucene.document.Document;
-import org.apache.lucene.queryParser.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.util.Version;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.io.IOException;
 
 public class LuceneGeonameSearch {
 
     private volatile IndexSearcher indexSearcher = null;
     private final int maxResults = 5;
-    private final int maxLevinDist = 2;
 
     public static class GeonameResult {
         public final String name;
@@ -71,61 +68,59 @@ public class LuceneGeonameSearch {
                 stringBuilder.append(')');
             }
             // A peak is told apart from a namesake village by its height - "Matterhorn
-            // (4478 m)" - the way places are told apart by their country code. Digits and
-            // "m", deliberately: this string has no access to translations, and the SI
-            // abbreviation reads the same in every interface language the app has.
+            // (4478 m)" - the way places are told apart by their country code. In the height
+            // the reader chose: the index keeps metres, but someone who set miles and feet is
+            // reading feet everywhere else, the peak labels on the map among them. The unit
+            // is written as digits and an abbreviation, deliberately: this string has no
+            // access to translations, and "m" and "ft" read the same in every language the
+            // app speaks.
             if (this.peak && this.elevation > 0) {
-                stringBuilder.append(" (");
-                stringBuilder.append(this.elevation);
-                stringBuilder.append(" m)");
+                stringBuilder.append(" (")
+                        .append(formatElevation(this.elevation,
+                                P == null ? PreferencesManager.UnitSystem.METRIC : P.getUnitSystem()))
+                        .append(')');
             }
             return stringBuilder.toString();
+        }
+
+        /** A peak's height in the reader's units: the index keeps metres, feet are rounded. */
+        public static String formatElevation(int elevationMeters, PreferencesManager.UnitSystem units) {
+            if (units == PreferencesManager.UnitSystem.IMPERIAL) {
+                return Math.round(3.280839895f * elevationMeters) + " ft";
+            }
+            return elevationMeters + " m";
         }
     }
 
     public LuceneGeonameSearch() {
         LuceneAssetLoader luceneAssetLoader = new LuceneAssetLoader();
-        // Stays null when the build has no index (searchGeoName then returns nothing, and the
-        // online search is all the user gets), and also when unpacking or opening it fails:
-        // logged rather than thrown, since an exception escaping this thread would take the
-        // whole app down on Android.
+        // Unpacking and opening the index takes a moment, so it happens off the drawing thread.
+        // A build without the index (F-Droid's) leaves the searcher null: searchGeoName then
+        // returns nothing, and the online search is all the user gets.
+        // If it throws, the thread would die with nothing but a default stack trace and the
+        // searcher would stay null for the life of the app - every later search silently empty.
         new Thread(() -> {
             try {
                 this.indexSearcher = luceneAssetLoader.getIndexSearcher();
-            } catch (RuntimeException e) {
-                if (com.badlogic.gdx.Gdx.app != null) {
-                    com.badlogic.gdx.Gdx.app.error("LuceneGeonameSearch", "Could not open the place-search index", e);
-                }
+            } catch (Throwable indexUnavailable) {
+                Gdx.app.error("PeakNav", "search: the place index did not open: "
+                        + indexUnavailable);
             }
         }).start();
     }
 
+    /**
+     * The places to offer for what is in the search box, best first. Which places those are, and
+     * in what order, is {@link GeonameSuggester}'s to decide; this reads them off the index.
+     */
     public List<GeonameResult> searchGeoName(String queryName) {
-
-        StandardAnalyzer analyzer = new StandardAnalyzer(Version.LUCENE_36);
-        QueryParser parser = new QueryParser(Version.LUCENE_36, "name", analyzer);
-
         List<GeonameResult> geonameResults = new ArrayList<>();
-
-        Query query;
+        // Anything at all may be typed into a search box, and none of it may crash the app: a
+        // half-written name, punctuation Lucene reads as syntax, a query while the index is
+        // still being unpacked (indexSearcher null). Every one of those is an empty list.
         try {
-            // Escape user input so Lucene special characters can't produce a
-            // ParseException / TokenMgrError; catch anything else defensively so
-            // arbitrary text typed in the search box can never crash the app.
-            query = parser.parse(QueryParser.escape(queryName) + "~0.8");
-        } catch (Throwable t) {
-            return geonameResults;
-        }
-
-        if (indexSearcher == null) {
-            return geonameResults;
-        }
-
-        try {
-            TopDocs topDocs = indexSearcher.search(query, maxResults);
-            for (ScoreDoc sd : topDocs.scoreDocs) {
+            for (Document doc : GeonameSuggester.suggest(indexSearcher, queryName, maxResults)) {
                 try {
-                    Document doc = indexSearcher.doc(sd.doc);
                     String name = doc.get("name");
                     String asciiName = doc.get("asciiname");
                     float lat = Float.parseFloat(doc.get("lat_store"));
@@ -145,13 +140,16 @@ public class LuceneGeonameSearch {
 
                     geonameResults.add(new GeonameResult(
                             name, asciiName, lat, lon, population, country, elevation, peak));
-                    // System.out.printf("%s: %f,%f (pop: %d)\n", name, lat, lon, population);
                 } catch (NumberFormatException | NullPointerException ignored) {
                     // Skip index documents missing the stored coordinate fields.
                 }
             }
-
-        } catch (IOException ignored) {
+        } catch (Throwable searchFailed) {
+            // The search box must survive anything typed into it, so this stays a catch-all -
+            // but a silent one hid a missing analyzer class for three releases, during which
+            // the offline search returned an empty list on a perfectly good index and said
+            // nothing. Whatever goes wrong now says so.
+            Gdx.app.error("PeakNav", "search: \"" + queryName + "\" failed: " + searchFailed);
         }
 
         return geonameResults;

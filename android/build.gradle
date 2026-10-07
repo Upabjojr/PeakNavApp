@@ -54,11 +54,11 @@ android {
         // is left to the system (MapViewerScreen calls setCatchKey(BACK, false)) and nothing
         // overrides onBackPressed.
         targetSdkVersion 36
-        versionCode 157
+        versionCode 173
         // Kept in step with `projectVersion` in gradle.properties, which is what the
         // desktop installers are named after; versionCode stays the Play upload
         // counter and is bumped by hand per upload.
-        versionName "1.3.2"
+        versionName "1.3.3"
     }
     compileOptions {
         sourceCompatibility "8"
@@ -183,8 +183,14 @@ tasks.matching { it.name.contains("merge") && it.name.contains("JniLibFolders") 
 // ':core:generateAssetList' (and the icon and search-index tasks it runs first) writes into the
 // shared '../assets' folder that this module packages. Declare the dependency so Gradle orders
 // the asset merge after it; otherwise mergeAssets fails with an implicit-dependency validation error.
-tasks.matching { it.name == 'mergeDebugAssets' || it.name == 'mergeReleaseAssets' }.configureEach { mergeTask ->
+// Lint reads the assets folder too (the release build runs lintVital, whose model writer failed
+// the same way), so its tasks wait for the same two.
+tasks.matching {
+    it.name == 'mergeDebugAssets' || it.name == 'mergeReleaseAssets' || it.name.toLowerCase().contains('lint')
+}.configureEach { mergeTask ->
     mergeTask.dependsOn ':core:generateAssetList'
+    // And the fonts, baked into assets/fonts_baked/ when the app is built.
+    mergeTask.dependsOn ':core:bakeFonts'
 }
 
 // The launcher icon PNGs, from the PeakNav logo masters in assets_nonshared/icons:

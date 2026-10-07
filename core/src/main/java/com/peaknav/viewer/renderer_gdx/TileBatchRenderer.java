@@ -467,10 +467,14 @@ public class TileBatchRenderer {
                     neededProviders, targetTileX, targetTileY);
             // Paint the GPX paths onto the tiles (cheap once a tile is up to date with the current
             // paths version; draws newly-loaded tiles and redraws all tiles when paths change).
+            // The version before the tracks: a load in between then leaves tiles marked with the
+            // older version, drawn again on the next pass. The other way round, they were marked
+            // with the newer version and drawn without its track, for good.
+            int gpxVersion = getC().gpxManager.getVersion();
             com.peaknav.gpx.GpxTileRasterizer.updateTiles(
                     getC().mapTileStorage.getMapTiles(),
                     getC().gpxManager.getTracks(),
-                    getC().gpxManager.getVersion());
+                    gpxVersion);
             if (flag && MapViewerSingleton.getViewerInstance().labelLoading.getState() == LabelLoading.State.LOADING) {
                 MapViewerSingleton.getViewerInstance().labelLoading.setState(LabelLoading.State.LOADED);
             }
@@ -507,15 +511,13 @@ public class TileBatchRenderer {
                         modelBatch.render(mapTile.instance, environment);
                     }
                 } catch (Throwable throwable) {
-                    // CrashLogger crashLogger = getLoadFactory().getCrashLogger(throwable, "TileBatchRenderer.modelBatch.render(...)");
-                    // crashLogger.logToFile();
+                    logOnce("tile", throwable);
                 }
 
             }
 
         } catch (Throwable throwable) {
-            // CrashLogger crashLogger = getLoadFactory().getCrashLogger(throwable, "modelBatch");
-            // crashLogger.logToFile();
+            logOnce("modelBatch", throwable);
         } finally {
             modelBatch.end();
         }
@@ -541,12 +543,13 @@ public class TileBatchRenderer {
                     if (!mapTile.isDisposed() && mapTile.instance != null) {
                         modelBatchRoadsOverlay.render(mapTile.instance, environmentRoadsOverlay);
                     }
-                } catch (Throwable ignored) {
+                } catch (Throwable throwable) {
                     // As in render(): one bad tile must not take the frame down.
+                    logOnce("roads overlay tile", throwable);
                 }
             }
-        } catch (Throwable ignored) {
-            // ditto
+        } catch (Throwable throwable) {
+            logOnce("roads overlay", throwable);
         } finally {
             modelBatchRoadsOverlay.end();
         }
@@ -573,21 +576,49 @@ public class TileBatchRenderer {
     }
     */
 
+    /** A welding pass is submitted or running: one at a time. */
+    private final java.util.concurrent.atomic.AtomicBoolean weldingScheduled =
+            new java.util.concurrent.atomic.AtomicBoolean();
+    /** What the last pass saw: the tiles' state count, and how many welders it left waiting. */
+    private volatile int weldingSeenChanges = -1, weldingLeftWaiting = -1;
+
+    /**
+     * Welds what can be welded, in a pass off the render thread. Only when something changed
+     * since the last pass: a welder waits on its two tiles' states, so with no new welder and
+     * no tile changed, the last pass's answer stands. This ran on every frame while any welder
+     * waited - forever, for a tile stuck loading - and stamped the tiles as changed each time,
+     * which redrew the pseudodistance buffer and held up the road and piste rasterisers.
+     * The welders that weld stamp that themselves (MapTileWelder.weldLockPositions).
+     */
     private void weldMapTiles() {
+        if (MapTile.stateChanges() == weldingSeenChanges
+                && getC().weldingQueue.size() == weldingLeftWaiting) {
+            return;
+        }
+        if (!weldingScheduled.compareAndSet(false, true)) {
+            return;
+        }
         executorMapTileFixer.submit(() -> {
-            getAppState().setLastAnyMapTileUpdateTimeToNow();
-            List<MapTileWelder> readd = new LinkedList<>();
-            while (!getC().weldingQueue.isEmpty()) {
-                MapTileWelder welder = getC().weldingQueue.remove();
-                if (welder.canWeldIsDrawn()) {
-                    welder.weldLockPositions();
-                } else if (!welder.isTileDisposed() && !welder.isElevationDataNotFound()) {
-                    if (!getC().weldingQueue.contains(welder)) {
-                        readd.add(welder);
+            try {
+                // Before the pass: a tile that changes during it is looked at again.
+                int changes = MapTile.stateChanges();
+                List<MapTileWelder> readd = new LinkedList<>();
+                while (!getC().weldingQueue.isEmpty()) {
+                    MapTileWelder welder = getC().weldingQueue.remove();
+                    if (welder.canWeldIsDrawn()) {
+                        welder.weldLockPositions();
+                    } else if (!welder.isTileDisposed() && !welder.isElevationDataNotFound()) {
+                        if (!getC().weldingQueue.contains(welder)) {
+                            readd.add(welder);
+                        }
                     }
                 }
+                getC().weldingQueue.addAll(readd);
+                weldingLeftWaiting = readd.size();
+                weldingSeenChanges = changes;
+            } finally {
+                weldingScheduled.set(false);
             }
-            getC().weldingQueue.addAll(readd);
         });
     }
 
@@ -637,8 +668,7 @@ public class TileBatchRenderer {
                 }
             }
         } catch (Throwable throwable) {
-            // CrashLogger crashLogger = getLoadFactory().getCrashLogger(throwable, "fbo.modelBatch");
-            // crashLogger.logToFile();
+            logOnce("pseudodistances", throwable);
         } finally {
             modelBatchPseudodistances.end();
         }
@@ -671,8 +701,7 @@ public class TileBatchRenderer {
                 }
             }
         } catch (Throwable throwable) {
-            // CrashLogger crashLogger = getLoadFactory().getCrashLogger(throwable, "fbo.modelBatch");
-            // crashLogger.logToFile();
+            logOnce("pseudodistances", throwable);
         } finally {
             modelBatchPseudodistances.end();
         }
@@ -742,6 +771,23 @@ public class TileBatchRenderer {
         }
         modelBatch.dispose();
         modelBatchPseudodistances.dispose();
+        modelBatchRoadsOverlay.dispose();   // left out when it was added
     }
 
+
+    /** The errors already logged, by where and what: each distinct one once. */
+    private final java.util.Set<String> loggedErrors = new java.util.HashSet<>();
+
+    /**
+     * An error the frame goes on after, said once. They were swallowed with their logging
+     * commented out: a shader that failed to compile showed as blank terrain with nothing to
+     * say why, and was tried again for every tile of every frame.
+     */
+    private void logOnce(String where, Throwable throwable) {
+        String key = where + ": " + throwable;
+        if (loggedErrors.size() < 100 && loggedErrors.add(key)) {
+            com.peaknav.utils.PeakNavUtils.getLogger().error("TileBatchRenderer", key);
+            throwable.printStackTrace();
+        }
+    }
 }

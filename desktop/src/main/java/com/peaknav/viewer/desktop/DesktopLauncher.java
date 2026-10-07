@@ -7,6 +7,7 @@ import com.badlogic.gdx.Files;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Window;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3WindowAdapter;
 import com.peaknav.viewer.MapApp;
 
@@ -58,9 +59,24 @@ public class DesktopLauncher {
 		DesktopSwing.announceIfUnavailable();
 	}
 
+	/**
+	 * Map labels the app's fonts cannot draw (a name in its own script, for a reader of it) are
+	 * drawn by Java2D. A Java without AWT's libraries cannot: the labels stay Latin there.
+	 */
+	public static void installLabelRasterizer() {
+		try {
+			com.peaknav.viewer.desktop.Java2DLabelRasterizer rasterizer = new com.peaknav.viewer.desktop.Java2DLabelRasterizer();
+			rasterizer.canDraw("A");
+			com.peaknav.viewer.labels.LabelTextRasterizers.set(rasterizer);
+		} catch (Throwable noJava2D) {
+			System.err.println("PeakNav: no Java2D text (" + noJava2D + "); labels stay in Latin letters");
+		}
+	}
+
 	public static void main (String[] arg) {
 		prepareMacWindowSystem();
 		warnIfNoDesktopSupport();
+		installLabelRasterizer();
 		Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
 		config.setForegroundFPS(60);
 		config.setTitle(appName);
@@ -69,6 +85,20 @@ public class DesktopLauncher {
 			public boolean closeRequested() {
 				System.exit(0);
 				return true;
+			}
+
+			@Override
+			public void created(Lwjgl3Window window) {
+				// Pinch to zoom on a touchpad, where the X server has it; GLFW does not.
+				if (System.getProperty("os.name", "").toLowerCase().contains("linux")) {
+					TouchpadPinchX11.start(window.getWindowHandle());
+				}
+			}
+
+			@Override
+			public void filesDropped(String[] files) {
+				// A photo dropped on the window becomes the background, a .gpx a path.
+				GalleryPickDesktop.openDropped(files);
 			}
 		});
 		config.setPreferencesConfig(getGdxFilesExternalRootFolderName(), Files.FileType.External);

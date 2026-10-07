@@ -11,10 +11,13 @@ public final class PointOfInterest {
     public final byte layer;
     public final List<Tag> tags;
     public final LatLong position;
+    /** Its OpenStreetMap node id, as the extract keeps it; 0 where not known. */
+    public final long id;
 
-    public PointOfInterest(byte layer, List<Tag> tags, LatLong position) {
+    public PointOfInterest(byte layer, List<Tag> tags, LatLong position, long id) {
         this.layer = layer;
         this.tags = tags;
         this.position = position;
+        this.id = id;
     }
 }

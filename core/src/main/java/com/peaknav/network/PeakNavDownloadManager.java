@@ -128,8 +128,33 @@ public class PeakNavDownloadManager {
         return queue;
     }
 
+    /** How many archives a side each kind of data is fetched in, around the point. */
+    private static final int SPAN_ELEVATION = 2, SPAN_POI = 3, SPAN_HIGHWAYS = 2;
+
+    /**
+     * The ground a download around this point covers, one box for each kind of data the place
+     * screen shades as downloaded: elevation, points of interest, and the roads and pistes,
+     * which share their archives' cut. They differ several times over - the roads cover a
+     * sixth of the width of the points of interest - so no single box is what a download
+     * fetches. Area labels are left out: they are not shaded either.
+     */
+    public List<com.peaknav.geo.BoundingBox> downloadBlocks(double lat, double lon) {
+        List<com.peaknav.geo.BoundingBox> blocks = new ArrayList<>();
+        addBlock(blocks, getQueueMapData(lat, lon, zoomPoiCompressed, SPAN_POI));
+        addBlock(blocks, getQueueMapData(lat, lon, zoomElevationCompressed, SPAN_ELEVATION));
+        addBlock(blocks, getQueueMapData(lat, lon, zoomHighwaysCompressed, SPAN_HIGHWAYS));
+        return blocks;
+    }
+
+    private static void addBlock(List<com.peaknav.geo.BoundingBox> blocks, List<Tile> tiles) {
+        // None at all where the block would fall off the map's edge, at the poles.
+        if (!tiles.isEmpty()) {
+            blocks.add(com.peaknav.database.MissingDataDownloader.getBoundingBoxOfTargetTiles(tiles));
+        }
+    }
+
     private void addQueueElevations(double lat, double lon) {
-        List<Tile> queue = getQueueMapData(lat, lon, zoomElevationCompressed, 2);
+        List<Tile> queue = getQueueMapData(lat, lon, zoomElevationCompressed, SPAN_ELEVATION);
         for (Tile queueTile : queue) {
             // TODO: insert only if not exists? ==> RIGHT!
             mapSqlite.addToDownloadQueueElevationTile(queueTile);
@@ -157,7 +182,7 @@ public class PeakNavDownloadManager {
     }
 
     private void addQueueHighways(double lat, double lon) {
-        addQueueMapData(lat, lon, zoomHighwaysCompressed, 2, PbfLayer.PBF_HIGHWAYS);
+        addQueueMapData(lat, lon, zoomHighwaysCompressed, SPAN_HIGHWAYS, PbfLayer.PBF_HIGHWAYS);
     }
 
     /**
@@ -167,11 +192,11 @@ public class PeakNavDownloadManager {
      * they are switched on.
      */
     private void addQueuePistes(double lat, double lon) {
-        addQueueMapData(lat, lon, zoomHighwaysCompressed, 2, PbfLayer.PBF_PISTES);
+        addQueueMapData(lat, lon, zoomHighwaysCompressed, SPAN_HIGHWAYS, PbfLayer.PBF_PISTES);
     }
 
     private void addQueuePois(double lat, double lon) {
-        addQueueMapData(lat, lon, zoomPoiCompressed, 3, PbfLayer.PBF_POI);
+        addQueueMapData(lat, lon, zoomPoiCompressed, SPAN_POI, PbfLayer.PBF_POI);
     }
 
     /**
@@ -196,6 +221,12 @@ public class PeakNavDownloadManager {
 
         builder.append("Downloaded map data " + counterMapData + " / " + downloadSize);
 
+        if (cancelled()) {
+            // An archive that was being unpacked when the download was stopped: its data is
+            // kept, but the bar that was taken away is not brought back for it.
+            return;
+        }
+
         float progress = 1.f * counterMapData / downloadSize;
         getAppState().setMapDataDownloadProgressRatio(progress);
         // notificationManager.setText(builder.toString(), progress);
@@ -212,28 +243,102 @@ public class PeakNavDownloadManager {
     private static final int DOWNLOAD_READ_TIMEOUT_MILLIS = 60_000;
 
     /**
+     * Counts the times the user stopped the download. A run through the queue is given the
+     * figure it was asked for under, and is stopped once it has moved on: a flag set on
+     * stopping and cleared on starting would lose a stop that came between the two.
+     */
+    private final AtomicInteger cancelGeneration = new AtomicInteger(0);
+    /** The figure the run now going was asked for under; one run at a time. */
+    private volatile int runningGeneration = 0;
+    /** The connections now open, to be dropped by a stop rather than left to time out. */
+    private final java.util.Set<URLConnection> openConnections = java.util.Collections.newSetFromMap(
+            new java.util.concurrent.ConcurrentHashMap<URLConnection, Boolean>());
+
+    /** The download was stopped by the user, not by anything that went wrong. */
+    static final class Cancelled extends IOException {
+        Cancelled() {
+            super("download stopped by the user");
+        }
+    }
+
+    public int cancelGeneration() {
+        return cancelGeneration.get();
+    }
+
+    private boolean cancelled() {
+        return cancelGeneration.get() != runningGeneration;
+    }
+
+    /**
+     * Stops the run now going, and any asked for before this and still waiting for it: no
+     * further archive is fetched, and the ones being fetched are dropped where they are. What
+     * has arrived stays. Not to be called from a platform's UI thread: it closes connections.
+     */
+    public void cancel() {
+        cancelGeneration.incrementAndGet();
+        for (URLConnection conn : openConnections) {
+            if (conn instanceof java.net.HttpURLConnection) {
+                try {
+                    ((java.net.HttpURLConnection) conn).disconnect();
+                } catch (RuntimeException ignored) {
+                    // The read loop sees the stop at its next block anyway.
+                }
+            }
+        }
+    }
+
+    /**
      * Tries each configured provider's URL in turn until the tile downloads, so extra
      * providers act as mirrors: if HuggingFace is unreachable, the next one is tried.
      *
-     * @throws IOException when no provider is configured or every one failed.
+     * @throws IOException when no provider is configured or every one failed: a
+     *         {@link java.io.FileNotFoundException} only when every one said it has no such
+     *         file, and the archive is taken not to exist. One that could not be reached
+     *         does not say that, whichever of them was tried last.
      */
     private void downloadFromProviders(List<String> candidateUrls, File localFile) throws IOException {
         if (candidateUrls == null || candidateUrls.isEmpty()) {
             throw new IOException("No download provider is configured");
         }
         IOException lastFailure = null;
+        IOException notFound = null;
         for (String url : candidateUrls) {
             try {
                 downloadWithRetries(url, localFile);
                 return;
             } catch (IOException ex) {
-                lastFailure = ex;
+                if (ex instanceof Cancelled) {
+                    throw ex;   // not a provider failing: the next one is not tried
+                }
+                if (ex instanceof java.io.FileNotFoundException) {
+                    notFound = ex;
+                } else {
+                    lastFailure = ex;
+                }
                 if (candidateUrls.size() > 1) {
                     getLogger().debug(TAG, "provider failed, trying next: " + url + " -> " + ex);
                 }
             }
         }
-        throw lastFailure;
+        throw lastFailure != null ? lastFailure : notFound;
+    }
+
+    /**
+     * The length the server announced, or -1 when it announced none or an unreadable one. Read
+     * from the header rather than with URLConnection.getContentLengthLong(), a Java 7 method
+     * RoboVM's runtime lacks: on iOS it throws NoSuchMethodError, which no IOException handler
+     * catches, on every download.
+     */
+    private static long contentLength(URLConnection conn) {
+        String header = conn.getHeaderField("Content-Length");
+        if (header == null) {
+            return -1;
+        }
+        try {
+            return Long.parseLong(header.trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     /**
@@ -244,9 +349,16 @@ public class PeakNavDownloadManager {
     private void downloadWithRetries(String urlString, File localFile) throws IOException {
         IOException lastFailure = null;
         for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+            if (cancelled()) {
+                // Also what a connection dropped by cancel() comes to: its "socket closed"
+                // would otherwise be taken for a network error and tried again.
+                throw new Cancelled();
+            }
+            URLConnection conn = null;
             try {
                 URL url = new URL(urlString);
-                URLConnection conn = url.openConnection();
+                conn = url.openConnection();
+                openConnections.add(conn);
                 conn.setConnectTimeout(DOWNLOAD_CONNECT_TIMEOUT_MILLIS);
                 conn.setReadTimeout(DOWNLOAD_READ_TIMEOUT_MILLIS);
 
@@ -258,20 +370,38 @@ public class PeakNavDownloadManager {
                 // and both leave a whole file.
                 File partial = new File(localFile.getPath()
                         + ".part-" + java.util.UUID.randomUUID());
+                long expected = contentLength(conn);
+                long received = 0;
                 try (InputStream in = conn.getInputStream();
                      FileOutputStream fos = new FileOutputStream(partial)) {
                     byte[] readBuf = new byte[8192];
                     int readLen;
                     while ((readLen = in.read(readBuf)) > 0) {
+                        if (cancelled()) {
+                            throw new Cancelled();
+                        }
                         fos.write(readBuf, 0, readLen);
+                        received += readLen;
                     }
                 } catch (IOException e) {
                     partial.delete();
                     throw e;
                 }
+                // Nothing, or less than the server announced, is no archive: an empty body
+                // (a proxy, a mirror answering 200 with nothing) was renamed into place and,
+                // for the .tar layers, unpacked as an archive with no entries - the tile
+                // stamped downloaded with nothing on disk.
+                if (received == 0 || (expected >= 0 && received != expected)) {
+                    partial.delete();
+                    throw new IOException("incomplete download of " + urlString + ": "
+                            + received + " of " + (expected >= 0 ? expected : "?") + " bytes");
+                }
                 getLoadFactory().getFileMover().moveIntoPlace(partial, localFile);
                 return;
             } catch (IOException ex) {
+                if (ex instanceof Cancelled) {
+                    throw ex;
+                }
                 lastFailure = ex;
                 // No half-written archive to clean up: the stream went to the .part file,
                 // which its own catch already removed, and nothing lands on the final name
@@ -296,20 +426,88 @@ public class PeakNavDownloadManager {
                         throw lastFailure;
                     }
                 }
+            } finally {
+                if (conn != null) {
+                    openConnections.remove(conn);
+                }
             }
         }
         throw lastFailure;
     }
 
-    public void processQueue() {
+    /**
+     * What a run through the queue came to. Until this was returned, a run in which every
+     * archive failed ended as one that fetched them all: on a first run with no connection the
+     * welcome screen said "Download complete!" and opened a map with nothing on it.
+     */
+    public static final class Outcome {
+        /** Archives the queue held. */
+        public final int wanted;
+        /** Of those, the ones that could not be fetched or unpacked. Not the ones the server
+         * does not have: a region without area labels has no archive for them. */
+        public final int failed;
+        /** The user stopped it: what was not fetched by then is counted as failed, but nothing
+         * went wrong and nothing is to be said of it. */
+        public final boolean cancelled;
 
-        List<MapSqlite.QueuedTile> queuedTiles = mapSqlite.getDownloadQueue();
+        Outcome(int wanted, int failed) {
+            this(wanted, failed, false);
+        }
+
+        Outcome(int wanted, int failed, boolean cancelled) {
+            this.wanted = wanted;
+            this.failed = failed;
+            this.cancelled = cancelled;
+        }
+
+        /** A download stopped before it began: it was waiting for the one the user stopped. */
+        public static Outcome cancelledBeforeStart() {
+            return new Outcome(0, 0, true);
+        }
+
+        /** Every archive failed: nothing on the device has changed. */
+        public boolean nothingFetched() {
+            return wanted > 0 && failed >= wanted;
+        }
+    }
+
+    /** The host was not found or did not answer: no connection, as far as one archive can tell. */
+    private static boolean isUnreachable(IOException failure) {
+        return failure instanceof java.net.UnknownHostException
+                || failure instanceof java.net.ConnectException
+                || failure instanceof java.net.NoRouteToHostException;
+    }
+
+    /**
+     * @param generation {@link #cancelGeneration()} as it was when this run was asked for
+     */
+    public Outcome processQueue(int generation) {
+        runningGeneration = generation;
+
+        List<MapSqlite.QueuedTile> queuedTiles = new ArrayList<>();
+        for (MapSqlite.QueuedTile queued : mapSqlite.getDownloadQueue()) {
+            // A layer this version does not know - a row written by a newer one, or a branch -
+            // has no archive it could fetch. Kept, it threw on every download before a single
+            // tile was fetched, the start-up resume included, and stayed in the queue for good.
+            if (!MapSqlite.LAYER_ELEV.equals(queued.layer) && queued.pbfLayer == null) {
+                mapSqlite.removeDownloadQueueMapData(queued);
+                continue;
+            }
+            queuedTiles.add(queued);
+        }
 
         Timestamp now = new Timestamp(Calendar.getInstance().getTimeInMillis());
 
         List<PeakNavHttpCompressDownloader.DownloadTarget> targets = eleDown.getDownloadTargets(queuedTiles);
 
+        // The archives fetched so far, which is what the progress shows: counting the ones that
+        // failed too, a download with no connection ran up to 100% having fetched nothing.
         final AtomicInteger counterMapData = new AtomicInteger(0);
+        final AtomicInteger failed = new AtomicInteger(0);
+        // Set by the first archive that finds no connection: the ones after it are not tried,
+        // each of which would take its attempts and the waits between them to say the same.
+        final java.util.concurrent.atomic.AtomicBoolean unreachable =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
 
         List<Future<?>> futures = new LinkedList<>();
         int downloadSize = targets.size();
@@ -318,9 +516,20 @@ public class PeakNavDownloadManager {
             Future<?> e = downloadExecutor.submit(
                     () -> {
                         boolean ok = false;
+                        // Not fetched for want of a connection: the row stays in the queue, to
+                        // be taken up at the next start or the next download. It used to be
+                        // dropped like any failure, and the queue forgot what it still owed.
+                        boolean pending = false;
                         boolean okDownload = false;
                         File localFile = null;
                         try {
+                            if (cancelled()) {
+                                // Left to the clean-up at the end, which drops every row
+                                // not fetched.
+                                pending = true;
+                                failed.incrementAndGet();
+                                return;
+                            }
                             if (!P.isCollectDownloadInfo()) {
                                 // Respect the missing download consent, but never silently:
                                 // this skip used to be invisible, so a download without the
@@ -329,13 +538,21 @@ public class PeakNavDownloadManager {
                                 System.err.println("[Download] skipped " + target.objectKey
                                         + ": download consent not granted"
                                         + " (see Missing_download_info_consent)");
-                                ok = true;
+                                // Left pending, and counted as not fetched: it was counted as
+                                // fetched, and its tile stamped downloaded with nothing on disk.
+                                pending = true;
+                                failed.incrementAndGet();
                                 return;
                             }
 
                             localFile = Gdx.files.external("peaknav_downloads/" + target.objectKey).file();
 
                             if (!localFile.exists()) {
+                                if (unreachable.get()) {
+                                    pending = true;
+                                    failed.incrementAndGet();
+                                    return;
+                                }
                                 List<String> dirs = Arrays.asList(target.objectKey.split("/"));
                                 dirs = dirs.subList(0, dirs.size() - 1);
                                 createRecurrentPathsForOsmTilesInExternal(dirs);
@@ -345,13 +562,42 @@ public class PeakNavDownloadManager {
                                     localFile.getParentFile().mkdirs();
                                 }
 
-                                downloadFromProviders(target.candidateUrls, localFile);
+                                try {
+                                    downloadFromProviders(target.candidateUrls, localFile);
+                                } catch (java.io.FileNotFoundException notOnServer) {
+                                    // Not a failure: there is no such archive - a tile of sea,
+                                    // or of land with nothing of this layer on it. Recorded as
+                                    // downloaded, with nothing to unpack: dropped unrecorded,
+                                    // as it was, the place still looked never downloaded, and
+                                    // the banner offered it again on every arrival.
+                                    ok = true;
+                                    return;
+                                } catch (IOException notFetched) {
+                                    pending = true;
+                                    failed.incrementAndGet();
+                                    if (isUnreachable(notFetched)) {
+                                        unreachable.set(true);
+                                    }
+                                    getLogger().debug(TAG, "not fetched, left in the queue: "
+                                            + target.objectKey + ": " + notFetched);
+                                    return;
+                                }
                             }
 
                             okDownload = true;
 
                             try {
                                 unpackTarGz(localFile, unpackRootFor(target.queuedTile));
+                            } catch (WriteFailed cannotWrite) {
+                                // The device, not the archive: a full disk or a folder that
+                                // cannot be written. Taken for a corrupt archive, the good one
+                                // was deleted, fetched again whole, failed again, and its row
+                                // dropped. Both are kept, and the tile left pending.
+                                pending = true;
+                                failed.incrementAndGet();
+                                getLogger().debug(TAG, "cannot write what " + target.objectKey
+                                        + " holds; left in the queue: " + cannotWrite);
+                                return;
                             } catch (IOException | RuntimeException corrupt) {
                                 // The archive on disk is not to be trusted just because it
                                 // exists: a truncated or stale file (crashes and the
@@ -368,36 +614,65 @@ public class PeakNavDownloadManager {
                             }
 
                             ok = true;
-                        } catch (IOException ex) {
-                            throw new RuntimeException(ex);
+                        } catch (IOException | RuntimeException ex) {
+                            // Counted, and said by the caller; thrown from here it went into
+                            // the Future, which nothing read but to print it.
+                            failed.incrementAndGet();
+                            getLogger().debug(TAG, "failed: " + target.objectKey + ": " + ex);
                         } finally {
                             if (ok) {
                                 mapSqlite.updateDownloadQueueMapDataTimestamp(target.queuedTile, now);
-                            } else {
+                                updateProgressText(counterMapData.incrementAndGet(), downloadSize);
+                            } else if (!pending) {
                                 if (localFile != null && localFile.exists()) {
                                     localFile.delete();
                                 }
                                 mapSqlite.removeDownloadQueueMapData(target.queuedTile);
                             }
-                            updateProgressText(counterMapData.incrementAndGet(), downloadSize);
                         }
                     }
             );
             futures.add(e);
         }
 
+        // Every archive is waited for, as before; an interrupt meanwhile is kept for whoever
+        // asked for it, which the swallowed exception lost.
+        boolean interrupted = false;
         for (Future<?> e : futures) {
-            try {
-                e.get();
-            } catch (InterruptedException | ExecutionException ex) {
-                ex.printStackTrace();
+            while (true) {
+                try {
+                    e.get();
+                    break;
+                } catch (InterruptedException ex) {
+                    interrupted = true;
+                } catch (ExecutionException ex) {
+                    ex.printStackTrace();
+                    break;
+                }
             }
         }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        boolean cancelled = cancelled();
+        if (cancelled) {
+            // What was not fetched is no longer wanted: left queued, it would be fetched by the
+            // next download, or taken up at the next start, as one the app was closed during.
+            mapSqlite.cleanQueue();
+        }
+        Outcome outcome = new Outcome(downloadSize, failed.get(), cancelled);
+        // Finished, whatever the queue held. With nothing left to fetch - every tile already
+        // downloaded - no worker ever reported progress, so the bar the download showed stayed
+        // on screen at 0 for good, and anything waiting for it to fill waited forever. Full only
+        // if something did arrive: one that fetched nothing ends at 0, not at a 100% that was
+        // still what the next download showed until its first archive came in.
+        getAppState().endMapDataDownloadProgress(!cancelled && !outcome.nothingFetched());
 
         NotificationManagerPeakNav notificationManager = getC().getMapViewerScreen().mapApp.loadFactory.getPeakNavNotificationManager();
         if (notificationManager != null) {
             notificationManager.clear();
         }
+        return outcome;
     }
 
     /**
@@ -409,6 +684,13 @@ public class PeakNavDownloadManager {
      */
     private static File unpackRootFor(MapSqlite.QueuedTile queuedTile) {
         return Gdx.files.external(".").file();
+    }
+
+    /** Unpacking failed on the writing side - the device's, not the archive's. */
+    static final class WriteFailed extends IOException {
+        WriteFailed(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     public static void unpackTarGz(File inputFile, File outputDir) throws IOException {
@@ -443,19 +725,64 @@ public class PeakNavDownloadManager {
         }
     }
 
+    /**
+     * Where an archive's entry is written: inside {@code outputDir}, or nowhere. An entry's
+     * name comes from whoever served the archive - a provider the user added, or a mirror
+     * over plain http - and was joined to the folder as it came: "../" or an absolute name
+     * wrote wherever the app can write. Such an archive is refused whole, as a corrupt one is.
+     *
+     * <p>The name is judged by itself, step by step, not by where the path finally resolves
+     * to. An archive cannot make a link here - TarReader skips every entry that is neither a
+     * file nor a folder - so a link on the way is one the user made, a data folder moved to
+     * another disk, and is followed as before.
+     */
+    static File entryTarget(File outputDir, String name) throws IOException {
+        if (name == null || name.isEmpty() || name.indexOf('\0') >= 0) {
+            throw new IOException("archive entry with no usable name");
+        }
+        String relative = name.replace('\\', '/');
+        if (relative.startsWith("/") || (relative.length() > 1 && relative.charAt(1) == ':')) {
+            throw new IOException("archive entry with an absolute name: " + name);
+        }
+        java.util.ArrayList<String> parts = new java.util.ArrayList<>();
+        for (String part : relative.split("/")) {
+            if (part.isEmpty() || part.equals(".")) {
+                continue;
+            }
+            if (part.equals("..")) {
+                if (parts.isEmpty()) {
+                    throw new IOException("archive entry outside the data folder: " + name);
+                }
+                parts.remove(parts.size() - 1);
+            } else {
+                parts.add(part);
+            }
+        }
+        if (parts.isEmpty()) {
+            throw new IOException("archive entry naming the data folder itself: " + name);
+        }
+        File target = outputDir;
+        for (String part : parts) {
+            target = new File(target, part);
+        }
+        return target;
+    }
+
     private static void unpackEntries(TarReader tarInput, File outputDir) throws IOException {
         TarReader.Entry entry;
+        int entries = 0;
         while ((entry = tarInput.next()) != null) {
-            File outputFile = new File(outputDir, entry.getName());
+            entries++;
+            File outputFile = entryTarget(outputDir, entry.getName());
 
             if (entry.isDirectory()) {
                 if (!outputFile.exists() && !outputFile.mkdirs()) {
-                    throw new IOException("Failed to create directory " + outputFile);
+                    throw new WriteFailed("Failed to create directory " + outputFile, null);
                 }
             } else {
                 File parent = outputFile.getParentFile();
                 if (!parent.exists() && !parent.mkdirs()) {
-                    throw new IOException("Failed to create directory " + parent);
+                    throw new WriteFailed("Failed to create directory " + parent, null);
                 }
 
                 // Unpacked the same way tiles are downloaded: to a private name, renamed
@@ -465,22 +792,55 @@ public class PeakNavDownloadManager {
                 File partialEntry = new File(outputFile.getPath()
                         + ".part-" + java.util.UUID.randomUUID());
                 boolean success = false;
-                try (
-                    FileOutputStream fos = new FileOutputStream(partialEntry)
-                ) {
+                FileOutputStream fos = null;
+                try {
+                    try {
+                        fos = new FileOutputStream(partialEntry);
+                    } catch (IOException cannotCreate) {
+                        throw new WriteFailed("Cannot create " + partialEntry, cannotCreate);
+                    }
                     byte[] buffer = new byte[8192];
                     int len;
+                    // Reading is the archive's side - a failure there is a corrupt archive;
+                    // writing is the device's (see WriteFailed).
                     while ((len = tarInput.read(buffer, 0, buffer.length)) != -1) {
-                        fos.write(buffer, 0, len);
+                        try {
+                            fos.write(buffer, 0, len);
+                        } catch (IOException cannotWrite) {
+                            throw new WriteFailed("Cannot write " + partialEntry, cannotWrite);
+                        }
+                    }
+                    try {
+                        fos.close();
+                        fos = null;
+                    } catch (IOException cannotWrite) {
+                        throw new WriteFailed("Cannot write " + partialEntry, cannotWrite);
                     }
                     success = true;
                 } finally {
+                    if (fos != null) {
+                        try {
+                            fos.close();
+                        } catch (IOException ignored) {
+                            // already failing
+                        }
+                    }
                     if (!success) {
                         partialEntry.delete();
                     }
                 }
-                getLoadFactory().getFileMover().moveIntoPlace(partialEntry, outputFile);
+                try {
+                    getLoadFactory().getFileMover().moveIntoPlace(partialEntry, outputFile);
+                } catch (IOException cannotMove) {
+                    partialEntry.delete();
+                    throw new WriteFailed("Cannot move " + partialEntry + " into place", cannotMove);
+                }
             }
+        }
+        if (entries == 0) {
+            // An archive with nothing in it is no archive of ours: every one carries at least
+            // its tile. Refused as a corrupt one is - fetched again once, then counted failed.
+            throw new IOException("empty archive");
         }
     }
 

@@ -1,5 +1,6 @@
 package com.peaknav.compatibility;
 
+import com.peaknav.viewer.mapscreens.MapScreens;
 import static android.Manifest.permission.ACCESS_COARSE_LOCATION;
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
 import static com.peaknav.utils.PeakNavPermissions.checkLocationPermission;
@@ -8,6 +9,7 @@ import static com.peaknav.utils.PeakNavUtils.s;
 import static com.peaknav.views.AndroidLauncher.CAMERA_PERMISSION;
 import static com.peaknav.views.AndroidLauncher.CAMERA_REQUEST_CODE;
 import static com.peaknav.views.AndroidLauncher.MEDIA_LOCATION_REQUEST_CODE;
+import static com.peaknav.views.AndroidLauncher.NOTIFICATIONS_REQUEST_CODE;
 import static com.peaknav.views.AndroidLauncher.PICK_GPX;
 import static com.peaknav.views.AndroidLauncher.PICK_IMAGE;
 
@@ -52,14 +54,12 @@ import com.peaknav.viewer.GoToDownloadDialog;
 import com.peaknav.viewer.MapViewerSingleton;
 import com.peaknav.views.AndroidLauncher;
 import com.peaknav.views.AppInfoAndroidView;
-import com.peaknav.views.AppTutorialAndroidView;
 import com.peaknav.views.CameraPictureView;
-import com.peaknav.views.MapDataDownloadChooser;
-import com.peaknav.views.SearchMenu;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.List;
 
 public class NativeScreenCallerAndroid extends NativeScreenCaller {
@@ -71,6 +71,40 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
     public NativeScreenCallerAndroid(Context context, AndroidLauncher mainActivity) {
         this.context = context;
         this.mainActivity = mainActivity;
+    }
+
+    @Override
+    public void setMapDataDownloadRunning(boolean running) {
+        if (running) {
+            MapDataDownloadService.start(context);
+            askToShowDownloadNotification();
+        } else {
+            MapDataDownloadService.stop();
+        }
+    }
+
+    /**
+     * Android 13 on: the download's notification is shown only with POST_NOTIFICATIONS, which
+     * has to be asked for. The service runs either way, so a refusal costs the notification
+     * and nothing else; the system itself stops asking after the second "Don't allow".
+     */
+    private void askToShowDownloadNotification() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return;
+        }
+        mainActivity.runOnUiThread(() -> {
+            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(mainActivity,
+                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        NOTIFICATIONS_REQUEST_CODE);
+            }
+        });
+    }
+
+    @Override
+    public void setMapDataDownloadProgress(float ratio) {
+        MapDataDownloadService.progress(ratio);
     }
 
     private void startActivityAndPause(Intent intent) {
@@ -144,8 +178,7 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             alertBuilder.setMessage(message)
                     .setPositiveButton(s("OK"), (dialogInterface, i) -> {})
                     .setCancelable(false);
-            AlertDialog alert = alertBuilder.create();
-            alert.show();
+            show(alertBuilder);
         });
     }
 
@@ -195,7 +228,9 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     })
                     .setNegativeButton(s("Cancel"), (dialogInterface, i) -> callback.onCancelled())
                     .setOnCancelListener(dialogInterface -> callback.onCancelled());
-            builder.create().show();
+            if (show(builder) == null) {
+                callback.onCancelled();
+            }
         });
     }
 
@@ -215,7 +250,10 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         FrameLayout mapOverlay = mainActivity.findViewById(R.id.map_container);
         mapOverlay.setVisibility(View.VISIBLE);
 
-        mainActivity.getSupportFragmentManager().popBackStack();
+        FragmentManager fm = mainActivity.getSupportFragmentManager();
+        if (!fm.isStateSaved()) {
+            fm.popBackStack();
+        }
 
         MapViewerSingleton.getAppInstance().resume();
     }
@@ -225,24 +263,79 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         mainActivity.runOnUiThread(runnable);
     }
 
+    /**
+     * The download chooser, drawn by libGDX over the map like the other platforms' (see
+     * {@link MapScreens}). It used to be an osmdroid fragment, MapDataDownloadChooser.
+     */
     @Override
     public void openMapDataDownloadChooser(double lat, double lon, boolean goToAfterDownload) {
-        runOnUiThread(() -> {
-            MapDataDownloadChooser fragment = new MapDataDownloadChooser(lat, lon, goToAfterDownload, false);
-            openFragmentWithTransaction(fragment, "map_data_download_chooser");
-        });
+        MapScreens.openDownloadChooser(lat, lon, goToAfterDownload, false);
     }
 
     @Override
     public void openMapDataDownloadChooserWizard() {
+        MapScreens.openDownloadChooser(0, 0, false, true);
+    }
+
+    /**
+     * Location for the libGDX map screens, which ask from the render thread. LocationManager
+     * wants its requests made on a thread with a Looper - the UI thread - and a request made
+     * before the permission is granted is dropped, so it is queued to be made again when the
+     * answer comes (AndroidLauncher.onRequestPermissionsResult drains the queue). Only then:
+     * a request queued while the permission is already there would sit in the queue until
+     * some later permission prompt, and answer a screen long gone.
+     */
+    @Override
+    public void requestCurrentLocation(com.peaknav.ui.CurrentLocationCallback callback) {
         runOnUiThread(() -> {
-            MapDataDownloadChooser fragment = new MapDataDownloadChooser(0, 0, false, true);
-            openFragmentWithTransaction(fragment, "map_data_download_chooser");
+            boolean granted = ActivityCompat.checkSelfPermission(context, ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    || ActivityCompat.checkSelfPermission(context, ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+            if (!granted) {
+                mainActivity.locationPermissionCallbacks.add(
+                        () -> getCurrentLocationListener(mainActivity).getCurrentLocation(callback));
+                awaitingLocationPermission.add(callback);
+                checkLocationPermission(mainActivity);
+                return;
+            }
+            getCurrentLocationListener(mainActivity).getCurrentLocation(callback);
+        });
+    }
+
+    /** The requests that wait on the permission prompt; UI thread only. */
+    private final List<com.peaknav.ui.CurrentLocationCallback> awaitingLocationPermission = new ArrayList<>();
+
+    /**
+     * The permission prompt has been answered. Refused, the requests that waited on it go to
+     * {@link #locationPermissionDenied} - which, on a first run, estimates the position from the
+     * network instead; true if it did, so no settings dialog goes up on top of its own.
+     */
+    public boolean locationPermissionAnswered(boolean granted) {
+        List<com.peaknav.ui.CurrentLocationCallback> waiting = new ArrayList<>(awaitingLocationPermission);
+        awaitingLocationPermission.clear();
+        if (granted) {
+            return false;
+        }
+        mainActivity.locationPermissionCallbacks.clear();
+        if (waiting.isEmpty()) {
+            return false;
+        }
+        // One estimate, and one dialog asking for it, answering them all.
+        return locationPermissionDenied((longitude, latitude) -> {
+            for (com.peaknav.ui.CurrentLocationCallback callback : waiting) {
+                callback.setCurrentLocation(longitude, latitude);
+            }
         });
     }
 
     private void openFragmentWithTransaction(Fragment fragment, String name) {
         FragmentManager fm = mainActivity.getSupportFragmentManager();
+        // Asked for from a late callback after the app was left: a transaction committed
+        // once the activity has saved its state throws IllegalStateException on the main
+        // thread, which ended the app. Nothing is opened then - the renderer is not paused and
+        // the map not hidden for a screen that would never come.
+        if (fm.isStateSaved() || mainActivity.isFinishing() || mainActivity.isDestroyed()) {
+            return;
+        }
 
         FrameLayout overlay = mainActivity.findViewById(R.id.ui_overlay);
         overlay.setVisibility(View.VISIBLE);
@@ -260,12 +353,10 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         MapViewerSingleton.getAppInstance().pause();
     }
 
+    /** The search screen, drawn by libGDX over the map; it used to be the SearchMenu fragment. */
     @Override
     public void openScreenSearchLocation(com.peaknav.ui.ClickCallback callback) {
-        runOnUiThread(() -> {
-            SearchMenu fragment = new SearchMenu();
-            openFragmentWithTransaction(fragment, "search_menu");
-        });
+        MapScreens.openSearch();
     }
 
     private boolean checkCameraHardware() {
@@ -357,7 +448,7 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             alertBuilder.setTitle(s("Image_location_missing_title"))
                     .setMessage(s("Image_location_missing"))
                     .setPositiveButton(android.R.string.ok, null);
-            alertBuilder.create().show();
+            show(alertBuilder);
         });
     }
 
@@ -368,9 +459,12 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             alertBuilder.setTitle(s("Image_location_found"))
                     .setMessage(s("Go_to_image_location_prompt"))
                     .setPositiveButton(s("Yes"),
-                            (dialogInterface, i) -> getC().L.setCurrentTargetCoords(lat, lon))
+                            (dialogInterface, i) ->
+                                    // Core's state belongs to the render thread, as on the other
+                                    // platforms: a GPX tour's frames were cleared under it.
+                                    com.badlogic.gdx.Gdx.app.postRunnable(() -> getC().L.setCurrentTargetCoords(lat, lon)))
                     .setNegativeButton(s("No"), null);
-            alertBuilder.create().show();
+            show(alertBuilder);
         });
     }
 
@@ -382,8 +476,20 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     .setMessage(message)
                     .setPositiveButton(s("Yes"), (dialogInterface, i) -> onYes.run())
                     .setNegativeButton(s("No"), null);
-            alertBuilder.create().show();
+            show(alertBuilder);
         });
+    }
+
+    @Override
+    public void promptChoice(String title, String message, String first, String second,
+                             Runnable onFirst, Runnable onSecond) {
+        mainActivity.runOnUiThread(() -> show(new AlertDialog.Builder(mainActivity)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton(first, (dialogInterface, i) -> onFirst.run())
+                .setNegativeButton(second, (dialogInterface, i) -> onSecond.run())
+                // Back, or a tap beside the dialog, counts as the second answer.
+                .setOnCancelListener(dialogInterface -> onSecond.run())));
     }
 
     @Override
@@ -393,15 +499,6 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             openFragmentWithTransaction(fragment, "app_info");
         });
     }
-
-    @Override
-    public void openAppTutorial() {
-        runOnUiThread(() -> {
-            AppTutorialAndroidView fragment = new AppTutorialAndroidView();
-            openFragmentWithTransaction(fragment, "app_tutorial");
-        });
-    }
-
     private OrientationPointerController orientationPointerController;
     private OrientationPointerListener orientationPointerListener;
 
@@ -446,25 +543,39 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         }
     }
 
-    public void promptIfLocationNotEnabled(Context locContext) {
+    /**
+     * Offers the location settings if location is switched off on the device. {@code onCancel}
+     * runs if the reader declines, or dismisses the dialog.
+     *
+     * @return whether the dialog was shown
+     */
+    public boolean promptIfLocationNotEnabled(Context locContext, Runnable onCancel) {
         ensureLocationManager();
 
         boolean has_gps_loc = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
         boolean has_network_loc = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
 
         if(!(has_gps_loc || has_network_loc)) {
-            new AlertDialog.Builder((locContext == null)? mainActivity : locContext)
+            final boolean[] toSettings = {false};
+            AlertDialog dialog = show(new AlertDialog.Builder((locContext == null)? mainActivity : locContext)
                     .setMessage(s("Location_not_enabled"))
                     .setPositiveButton(
                             s("ask_open_location_settings"),
                             (paramDialogInterface, paramInt) -> {
+                                toSettings[0] = true;
                                 Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
                                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                                 context.startActivity(intent);
                             })
                     .setNegativeButton(s("Cancel"), null)
-                    .show();
+                    .setOnDismissListener(d -> {
+                        if (!toSettings[0]) {
+                            onCancel.run();
+                        }
+                    }));
+            return dialog != null;
         }
+        return false;
     }
 
     @Override
@@ -482,11 +593,14 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         dialogBuilder.setTitle(s("Location_permission_missing"));
         dialogBuilder.setMessage(s("Location_permissions_in_device_settings_are_advised_to_use_app"));
         dialogBuilder.setPositiveButton(s("Open_settings"), (dialog, which) -> {
-            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            // The app's own page, where its permissions are: the device's location page, which
+            // this opened, only switches location on and off, and grants nothing.
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.fromParts("package", context.getPackageName(), null));
             context.startActivity(intent);
         });
         dialogBuilder.setNegativeButton(s("Cancel"), (dialog, which) -> dialog.dismiss());
-        locationSettingsDialog = dialogBuilder.show();
+        locationSettingsDialog = show(dialogBuilder);
     }
 
     public static void showCameraSettingsDialog(Context context) {
@@ -500,8 +614,40 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             context.startActivity(intent);
         });
         dialogBuilder.setNegativeButton(s("Cancel"), (dialog, which) -> dialog.dismiss());
-        dialogBuilder.show();
+        show(dialogBuilder);
     }
+
+    /**
+     * Shows a dialog if its activity can still show one; null if not. A dialog asked for from
+     * a late callback - a position fix, a photo decoded after the user left the app - came
+     * to an activity already finished or destroyed, and show() threw BadTokenException on the
+     * main thread: the app ended.
+     */
+    public static AlertDialog show(AlertDialog.Builder builder) {
+        Context owner = builder.getContext();
+        while (owner instanceof android.content.ContextWrapper && !(owner instanceof Activity)) {
+            owner = ((android.content.ContextWrapper) owner).getBaseContext();
+        }
+        if (owner instanceof Activity) {
+            Activity activity = (Activity) owner;
+            if (activity.isFinishing() || activity.isDestroyed()) {
+                return null;
+            }
+        }
+        try {
+            AlertDialog dialog = builder.create();
+            dialog.show();
+            return dialog;
+        } catch (android.view.WindowManager.BadTokenException gone) {
+            return null;
+        }
+    }
+
+    /** How long a request for the position may keep the location providers searching. */
+    private static final long LOCATION_REQUEST_MILLIS = 90_000L;
+
+    /** How long a request waits for a first position before the reader is told there is none. */
+    private static final long NO_FIX_MILLIS = 15_000L;
 
     public CurrentLocationListener getCurrentLocationListener(Activity locContext) {
         ensureLocationManager();
@@ -517,7 +663,20 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     return;
                 }
 
-                promptIfLocationNotEnabled(locContext);
+                final int movesAtRequest = getC().L == null ? 0 : getC().L.getMovesByUser();
+                // Whether a position was handed over, or the question otherwise settled; set
+                // and read on the main thread, where both the fixes and the timeout arrive.
+                final boolean[] answered = {false};
+                final Runnable unavailable = () -> {
+                    if (answered[0] || (getC().L != null && getC().L.getMovesByUser() != movesAtRequest)) {
+                        return;
+                    }
+                    answered[0] = true;
+                    locationUnavailable(currentLocationCallback);
+                };
+
+                // Location switched off: declining to switch it on is the same as no fix.
+                boolean offSettingsShown = promptIfLocationNotEnabled(locContext, unavailable);
 
                 if (locationSettingsDialog != null) {
                     locationSettingsDialog.hide();
@@ -526,9 +685,17 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                 LocationListener locationListener = new LocationListener() {
                     @Override
                     public void onLocationChanged(@NonNull Location location) {
+                        if (getC().L != null && getC().L.getMovesByUser() != movesAtRequest) {
+                            // The user went elsewhere while this waited: a fix now would take
+                            // the camera back. Nothing more is asked for.
+                            locationManager.removeUpdates(this);
+                            return;
+                        }
+                        answered[0] = true;
                         float lon = (float) location.getLongitude();
                         float lat = (float) location.getLatitude();
-                        currentLocationCallback.setCurrentLocation(lon, lat);
+                        // On the render thread, as iOS delivers: the callbacks move the camera.
+                        com.badlogic.gdx.Gdx.app.postRunnable(() -> currentLocationCallback.setCurrentLocation(lon, lat));
                         if (location.getProvider().equals(LocationManager.GPS_PROVIDER)) {
                             locationManager.removeUpdates(this);
                         }
@@ -558,15 +725,48 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     public void onStatusChanged(String provider, int status, Bundle extras) {
                     }
                 };
-                Location lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                if (lastKnownLocation == null) {
+                // Only ask providers the device has: asking a missing one (no "network" provider on
+                // devices without Google services, or on the emulator) throws and crashes the app.
+                // The GPS one only with precise access: given "approximate", asking it throws too.
+                List<String> providers = locationManager.getAllProviders();
+                boolean hasGps = providers.contains(LocationManager.GPS_PROVIDER)
+                        && ActivityCompat.checkSelfPermission(context, ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+                boolean hasNetwork = providers.contains(LocationManager.NETWORK_PROVIDER);
+                // Android 12's own "fused" provider, where one of those two is missing: without
+                // Google's services there is often no network provider, and with approximate
+                // access there is no GPS one, so a de-Googled phone given "approximate" had no
+                // source at all. The fused one answers there, blurred to the access given.
+                boolean hasFused = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+                        && providers.contains(LocationManager.FUSED_PROVIDER)
+                        && !(hasGps && hasNetwork);
+                Location lastKnownLocation = hasGps ? locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) : null;
+                if (lastKnownLocation == null && hasNetwork) {
                     lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                }
+                if (lastKnownLocation == null && hasFused) {
+                    lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.FUSED_PROVIDER);
                 }
                 if (lastKnownLocation != null) {
                     locationListener.onLocationChanged(lastKnownLocation);
                 }
-                locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, locationListener, null);
-                locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, locationListener, null);
+                if (hasNetwork) {
+                    locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, locationListener, null);
+                }
+                if (hasGps) {
+                    locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, locationListener, null);
+                }
+                if (hasFused) {
+                    locationManager.requestSingleUpdate(LocationManager.FUSED_PROVIDER, locationListener, null);
+                }
+                // Bounded: removed only by a GPS fix, which indoors never comes, the request
+                // kept the GPS searching for as long as the app ran.
+                android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+                main.postDelayed(() -> locationManager.removeUpdates(locationListener), LOCATION_REQUEST_MILLIS);
+                // No position in a while, and none known from before: the reader is not left
+                // waiting in silence. With location off, the dialog above settles it instead.
+                if (!offSettingsShown) {
+                    main.postDelayed(unavailable, NO_FIX_MILLIS);
+                }
             }
 
         };
@@ -604,7 +804,8 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                                     java.util.Calendar c = java.util.Calendar.getInstance();
                                     c.set(year, month, day, hour, minute, 0);
                                     c.set(java.util.Calendar.MILLISECOND, 0);
-                                    sky.setCustomTimeMillis(c.getTimeInMillis());
+                                    long millis = c.getTimeInMillis();
+                                    com.badlogic.gdx.Gdx.app.postRunnable(() -> sky.setCustomTimeMillis(millis));
                                 },
                                 cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE), true);
                         timeDlg.show();
@@ -612,7 +813,8 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
                     cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH),
                     cal.get(java.util.Calendar.DAY_OF_MONTH));
             dateDlg.setButton(android.app.DatePickerDialog.BUTTON_NEUTRAL,
-                    s("Sky_time_device_clock"), (dialog, which) -> sky.clearCustomTime());
+                    s("Sky_time_device_clock"), (dialog, which) ->
+                            com.badlogic.gdx.Gdx.app.postRunnable(sky::clearCustomTime));
             dateDlg.show();
         });
     }
@@ -627,21 +829,17 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
         PixmapIO.PNG writer = new PixmapIO.PNG(pixmap.getWidth() * pixmap.getHeight());
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try {
-            writer.write(outputStream, pixmap);
-            writer.dispose();
-            pixmap.dispose();
+            try {
+                writer.write(outputStream, pixmap);
+            } finally {
+                writer.dispose();
+                pixmap.dispose();
+            }
             byte[] bytesPng = outputStream.toByteArray();
             Bitmap bitmap = BitmapFactory.decodeByteArray(bytesPng, 0, bytesPng.length);
-
-            Intent intentShare = new Intent(Intent.ACTION_SEND);
-            intentShare.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            intentShare.setType("image/jpeg");
-
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Images.Media.TITLE, "title");
-            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-            Uri uri = context.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    values);
+            if (bitmap == null) {
+                throw new IOException("the snapshot could not be decoded");
+            }
 
             // Encoded to memory first, so the view's position and pose go into the file's
             // EXIF block before it is written out.
@@ -651,20 +849,77 @@ public class NativeScreenCallerAndroid extends NativeScreenCaller {
             if (info != null) {
                 jpeg = com.peaknav.utils.ExifWriter.embedInJpeg(jpeg, info);
             }
-            OutputStream bytes = context.getContentResolver().openOutputStream(uri);
-            try {
-                bytes.write(jpeg);
-            } finally {
-                bytes.close();
-            }
+
+            Intent intentShare = new Intent(Intent.ACTION_SEND);
+            intentShare.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intentShare.setType("image/jpeg");
+
+            Uri uri = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
+                    ? snapshotInMediaStore(jpeg) : snapshotInCache(jpeg);
 
             intentShare.putExtra(Intent.EXTRA_STREAM, uri);
+            intentShare.setClipData(android.content.ClipData.newRawUri("", uri));
+            intentShare.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             Intent intentChooser = Intent.createChooser(intentShare, "Share This Image");
-            intentChooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intentChooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivityAndPause(intentChooser);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } catch (IOException | RuntimeException e) {
+            // Said, not thrown: this runs on a worker, where an exception went nowhere, and
+            // the share button showed "Loading..." and then nothing.
+            e.printStackTrace();
+            makeToast(s("Save_failed"));
         }
+    }
+
+    /** Android 10 and later: the picture among the device's images, which needs no permission there. */
+    private Uri snapshotInMediaStore(byte[] jpeg) throws IOException {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Images.Media.TITLE, "title");
+        values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+        Uri uri = context.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                values);
+        if (uri == null) {
+            throw new IOException("no place for the snapshot among the images");
+        }
+        OutputStream bytes = context.getContentResolver().openOutputStream(uri);
+        if (bytes == null) {
+            throw new IOException("the snapshot's place cannot be written");
+        }
+        try {
+            bytes.write(jpeg);
+        } finally {
+            bytes.close();
+        }
+        return uri;
+    }
+
+    /**
+     * Android 9 and older, where writing among the device's images takes a storage permission
+     * the app does not ask for: the picture in the cache's "shared" folder, handed over through
+     * the app's FileProvider as a shared GPX is. The one before it is removed.
+     */
+    private Uri snapshotInCache(byte[] jpeg) throws IOException {
+        java.io.File dir = new java.io.File(context.getCacheDir(), "shared");
+        dir.mkdirs();
+        java.io.File[] old = dir.listFiles();
+        if (old != null) {
+            for (java.io.File file : old) {
+                if (file.getName().startsWith("PeakNav_") && file.getName().endsWith(".jpg")) {
+                    file.delete();
+                }
+            }
+        }
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.ENGLISH)
+                .format(new java.util.Date());
+        java.io.File file = new java.io.File(dir, "PeakNav_" + stamp + ".jpg");
+        OutputStream out = new java.io.FileOutputStream(file);
+        try {
+            out.write(jpeg);
+        } finally {
+            out.close();
+        }
+        return androidx.core.content.FileProvider.getUriForFile(
+                context, context.getPackageName() + ".fileprovider", file);
     }
 
     /**

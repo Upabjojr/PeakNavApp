@@ -58,7 +58,7 @@ public class MapTile {
     public final Tile tile;
     public final Tile tileMinZoom;
     private final int edgeLength;
-    public transient ElevationImageAbstract elevationImage = null;
+    public transient volatile ElevationImageAbstract elevationImage = null;
     // public ReentrantReadWriteLock tileLock = new ReentrantReadWriteLock();
     public final PixmapLayers pixmapLayers;
     // public boolean[] welded = {false, false, false, false};
@@ -287,7 +287,9 @@ public class MapTile {
 
     private final ConcurrentHashMap<PixmapLayerName, Texture> textureMap = new ConcurrentHashMap<>();
     private final Queue<DrawingPair> texturePixmapMap = new LinkedBlockingQueue<>();
-    private final Set<PixmapLayerName> textureLayerAdded = new HashSet<>();
+    /** Added to by the road executor and the two satellite threads at once: a concurrent set. */
+    private final Set<PixmapLayerName> textureLayerAdded =
+            Collections.newSetFromMap(new ConcurrentHashMap<PixmapLayerName, Boolean>());
 
     // Version of the GPX paths this tile's GPX_PATH texture was drawn for (see GpxTileRasterizer);
     // -1 means never drawn, so a tile picks the paths up as it loads.
@@ -313,7 +315,18 @@ public class MapTile {
     }
 
     public synchronized void setMapTileState(MapTileState mapTileState) {
+        if (this.mapTileState != mapTileState) {
+            STATE_CHANGES.incrementAndGet();
+        }
         this.mapTileState = mapTileState;
+    }
+
+    /** Counts every change of any tile's state: the welders wait on those (TileBatchRenderer). */
+    private static final java.util.concurrent.atomic.AtomicInteger STATE_CHANGES =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    public static int stateChanges() {
+        return STATE_CHANGES.get();
     }
 
     public void setMapTileStateNoData() {
@@ -662,46 +675,79 @@ public class MapTile {
         // blockSatelliteTexture = getSatelliteTextureBlock(getMinZoomTileWithElevFactor());
 
         setMapTileState(MapTileState.IS_DRAWN);
+        // The labels are checked against the terrain again, now that there is more of it.
+        if (getC().dataRetrieveThreadManager != null) {
+            getC().dataRetrieveThreadManager.terrainDrawn();
+        }
     }
 
     public Future<?> submitToExecutor(ElevationImageProvider provider) {
         provider.incrementReferenceCounter();
         future = getC().executorEleLoad.submit(() -> {
-            elevationImage = provider.provideForMapTile(MapTile.this);
-            // elevationImageMesh = elevationImageStorage.retrieveMesh();
-            if (elevationImage == null) {
-                // This probably means the elevation file has not been found:
-                setMapTileState(MapTileState.ELEVATION_DATA_NOT_FOUND);
-                return;
+            // The count comes down on every way out. A missing elevation file, or anything
+            // thrown below, left it raised: a provider that could never be evicted or disposed.
+            try {
+                if (disposed) {
+                    return;   // replaced while it waited in the queue
+                }
+                // Kept in a local: the render thread sets the field to null when it disposes the
+                // tile, and reading it again below threw NullPointerException here.
+                ElevationImageAbstract image = provider.provideForMapTile(MapTile.this);
+                // elevationImageMesh = elevationImageStorage.retrieveMesh();
+                if (image == null) {
+                    // This probably means the elevation file has not been found:
+                    setMapTileState(MapTileState.ELEVATION_DATA_NOT_FOUND);
+                    return;
+                }
+                pixmapLock.lock();
+                try {
+                    if (disposed) {
+                        // Disposed while the crop was made: nothing will dispose it but this.
+                        image.dispose();
+                        return;
+                    }
+                    elevationImage = image;
+                } finally {
+                    pixmapLock.unlock();
+                }
+                callVertexRetrieval(image);
+                if (tileBoundingBox.toBoundingBox().contains(
+                        getC().L.getTargetLatLong()
+                )) {
+                    float ele = image.getTileElevationLatitsFromMaxCoords(
+                            getC().L.getTargetLongitude(), getC().L.getTargetLatitude());
+                    getC().L.setCurrentTerrainEle(ele);
+                }
+            } catch (IllegalStateException disposedMeanwhile) {
+                if (!disposed) {
+                    throw disposedMeanwhile;
+                }
+            } finally {
+                provider.decrementReferenceCounter();
             }
-            callVertexRetrieval();
-            if (tileBoundingBox.toBoundingBox().contains(
-                    getC().L.getTargetLatLong()
-            )) {
-                float ele = elevationImage.getTileElevationLatitsFromMaxCoords(
-                        getC().L.getTargetLongitude(), getC().L.getTargetLatitude());
-                getC().L.setCurrentTerrainEle(ele);
-            }
-            provider.decrementReferenceCounter();
         });
         return future;
     }
 
     public void recomputeNormals() {
         future = getC().executorEleLoad.submit(() -> {
-            elevationImage.setVertexNormals(vertices);
+            ElevationImageAbstract image = elevationImage;
+            if (image == null || disposed) {
+                return;
+            }
+            image.setVertexNormals(vertices);
             Gdx.app.postRunnable(this::uploadMeshVertices);
         });
     }
 
-    private void callVertexRetrieval() {
+    private void callVertexRetrieval(ElevationImageAbstract image) {
         getAppState().setLastAnyMapTileUpdateTimeToNow();
 
         // This two are meant to avoid computing vertices and indices on the OpenGL thread:
-        elevationImage.getMeshVertices();
-        elevationImage.getMeshIndices();
+        image.getMeshVertices();
+        image.getMeshIndices();
 
-        float[] oldVertices = elevationImage.getMeshVertices();
+        float[] oldVertices = image.getMeshVertices();
         if (vertices == null) {
             vertices = new float[oldVertices.length];
         }

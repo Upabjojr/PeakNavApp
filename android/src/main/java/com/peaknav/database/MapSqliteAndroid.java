@@ -64,68 +64,66 @@ public class MapSqliteAndroid extends MapSqlite {
 
     @Override
     public void addToDownloadQueueElevationTile(Tile tile) {
-        SQLiteStatement stmt = sqLiteDatabase.compileStatement(
-                sqlInsertIntoDownloadQueue);
-        stmt.clearBindings();
-        stmt.bindLong(1, tile.tileX);
-        stmt.bindLong(2, tile.tileY);
-        stmt.bindLong(3, tile.zoomLevel);
-        stmt.bindString(4, LAYER_ELEV);
-        stmt.executeInsert();
+        try (SQLiteStatement stmt = sqLiteDatabase.compileStatement(sqlInsertIntoDownloadQueue)) {
+            stmt.clearBindings();
+            stmt.bindLong(1, tile.tileX);
+            stmt.bindLong(2, tile.tileY);
+            stmt.bindLong(3, tile.zoomLevel);
+            stmt.bindString(4, LAYER_ELEV);
+            stmt.executeInsert();
+        }
     }
 
     @Override
     public void addToDownloadQueueMapData(int tileX, int tileY, int tileZ, PbfLayer pbfLayer) {
-        SQLiteStatement statement = sqLiteDatabase.compileStatement (
-                sqlInsertIntoDownloadQueue);
-        statement.bindLong (1, tileX);
-        statement.bindLong (2, tileY);
-        statement.bindLong (3, tileZ);
-        statement.bindString(4, pbfLayer.name());
-        statement.executeUpdateDelete();
+        try (SQLiteStatement statement = sqLiteDatabase.compileStatement(sqlInsertIntoDownloadQueue)) {
+            statement.bindLong (1, tileX);
+            statement.bindLong (2, tileY);
+            statement.bindLong (3, tileZ);
+            statement.bindString(4, pbfLayer.name());
+            statement.executeUpdateDelete();
+        }
     }
 
     @Override
     public synchronized void updateDownloadQueueMapDataTimestamp(QueuedTile queuedTile, Timestamp now) {
-        SQLiteStatement statement = sqLiteDatabase.compileStatement (
-                sqlUpdateDownloadQueueMapData);
-        statement.clearBindings();
-        statement.bindLong(1, now.getTime());
-        statement.bindLong (2, queuedTile.tileX);
-        statement.bindLong (3, queuedTile.tileY);
-        statement.bindLong (4, queuedTile.tileZ);
-        statement.bindString(5, queuedTile.layer);
-        statement.executeUpdateDelete();
+        try (SQLiteStatement statement = sqLiteDatabase.compileStatement(sqlUpdateDownloadQueueMapData)) {
+            statement.clearBindings();
+            statement.bindLong(1, now.getTime());
+            statement.bindLong (2, queuedTile.tileX);
+            statement.bindLong (3, queuedTile.tileY);
+            statement.bindLong (4, queuedTile.tileZ);
+            statement.bindString(5, queuedTile.layer);
+            statement.executeUpdateDelete();
+        }
     }
 
     @Override
     public void removeDownloadQueueMapData(QueuedTile queuedTile) {
-        SQLiteStatement statement = sqLiteDatabase.compileStatement (
-                sqlRemoveDownloadQueueMapData);
-        statement.clearBindings();
-        statement.bindLong (1, queuedTile.tileX);
-        statement.bindLong (2, queuedTile.tileY);
-        statement.bindLong (3, queuedTile.tileZ);
-        statement.bindString(4, queuedTile.layer);
-        statement.executeUpdateDelete();
+        try (SQLiteStatement statement = sqLiteDatabase.compileStatement(sqlRemoveDownloadQueueMapData)) {
+            statement.clearBindings();
+            statement.bindLong (1, queuedTile.tileX);
+            statement.bindLong (2, queuedTile.tileY);
+            statement.bindLong (3, queuedTile.tileZ);
+            statement.bindString(4, queuedTile.layer);
+            statement.executeUpdateDelete();
+        }
     }
 
     @Override
     public void cleanQueue() {
-        SQLiteStatement statement = sqLiteDatabase.compileStatement(
-                sqlRemoveDownloadQueueNotDownloaded);
-        statement.executeUpdateDelete();
+        try (SQLiteStatement statement = sqLiteDatabase.compileStatement(sqlRemoveDownloadQueueNotDownloaded)) {
+            statement.executeUpdateDelete();
+        }
     }
 
 
     @Override
     public boolean existDownloadedTiles() {
-        Cursor cursor = sqLiteDatabase.rawQuery(countDownloadQueue, new String[]{});
-        cursor.moveToFirst();
-        int count2 = cursor.getInt(0);
-        if (count2 == 0)
-            return false;
-        return true;
+        try (Cursor cursor = sqLiteDatabase.rawQuery(countDownloadQueue, new String[]{})) {
+            cursor.moveToFirst();
+            return cursor.getInt(0) != 0;
+        }
     }
 
     @Override
@@ -141,8 +139,9 @@ public class MapSqliteAndroid extends MapSqlite {
 
     public List<QueuedTile> getDownloadQueue() {
         List<QueuedTile> queuedTiles = new ArrayList<>(512);
-        Cursor rs = sqLiteDatabase.rawQuery(
-                sqlQueryDownloadQueue, new String[]{});
+        // Closed on every way out, as every cursor here is: they were left to the collector,
+        // and this runs whenever the place screen opens or a download ends.
+        try (Cursor rs = sqLiteDatabase.rawQuery(sqlQueryDownloadQueue, new String[]{})) {
         if (rs.getCount() > 0) {
             rs.moveToFirst();
             do {
@@ -157,12 +156,13 @@ public class MapSqliteAndroid extends MapSqlite {
                 queuedTiles.add(queuedTile);
             } while (rs.moveToNext());
         }
+        }
         return queuedTiles;
     }
 
     @Override
     public List<Tile> getListOfDownloadedTiles(String layer_name) {
-        Cursor cur = sqLiteDatabase.rawQuery(sqlQueryDownloadedTiles, new String[] { layer_name });
+        try (Cursor cur = sqLiteDatabase.rawQuery(sqlQueryDownloadedTiles, new String[] { layer_name })) {
         List<Tile> tiles = new ArrayList<>(cur.getCount());
         if (cur.getCount() > 0) {
             cur.moveToFirst();
@@ -175,5 +175,6 @@ public class MapSqliteAndroid extends MapSqlite {
             } while (cur.moveToNext());
         }
         return tiles;
+        }
     }
 }

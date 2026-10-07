@@ -1,7 +1,5 @@
 package com.peaknav.viewer;
 
-import static com.peaknav.elevation.ElevationUtils.getElevationLatitsFromMaxCoords;
-import static com.peaknav.utils.PeakNavUtils.containsUnrenderableCharacters;
 
 import com.peaknav.pbf.Tag;
 import com.peaknav.geo.Tile;
@@ -185,7 +183,14 @@ public class MapDataManager {
                         break;
                     case "isolation_parent":
                         String isolationParentS = tags.get("isolation_parent");
-                        isolationParent = Integer.parseInt(isolationParentS);
+                        // Guarded as the height and the prominence are: one value that is no
+                        // integer threw out of the whole tile's list, and its labels, and those
+                        // of every tile after it in the read, did not appear.
+                        try {
+                            isolationParent = Integer.parseInt(isolationParentS.trim());
+                        } catch (NumberFormatException | NullPointerException notAnId) {
+                            // left unknown
+                        }
                         break;
                 }
             }
@@ -197,24 +202,50 @@ public class MapDataManager {
             if (name == null || drawLabelCategory == null)
                 continue;
             if (ele == null) {
-                ele = getElevationLatitsFromMaxCoords(lon, lat, false);
+                // No "ele" tag - most villages and huts have none: the height of the loaded
+                // terrain. This used to ask ElevationUtils, whose lookup always comes back
+                // empty (see PhotoSkylineAligner.loadedTerrain), so every such place was
+                // dropped: Strembo, Pinzolo, Carisolo, the whole of Val Rendena. It also
+                // returned latits where the tag is in metres.
+                float terrain = PhotoSkylineAligner.loadedTerrain().elevationMeters(lat, lon);
+                if (!Float.isNaN(terrain)) {
+                    ele = terrain;
+                } else if (drawLabelCategory != DrawLabelCategory.PEAK) {
+                    // Its terrain is not loaded yet. A place or hut is kept, and gets its
+                    // height when the terrain arrives (PoiObject.resolveElevation). A peak's
+                    // label prints its height, so a peak still waits for the next read.
+                    ele = Float.NaN;
+                }
             }
-            if (containsUnrenderableCharacters(name)) {
+            // Non-Latin rather than undrawable: the fonts draw Greek and Cyrillic for the
+            // translations, but labels are Latin (see FontCharacters.containsNonLatin) -
+            // unless the reader reads the name's own script (LabelScripts), who sees it as
+            // it is written. The Latin form is kept for the interface's own text, which the
+            // app's fonts draw (PoiObject.getUiName).
+            String latinName = null;
+            if (com.peaknav.utils.FontCharacters.containsNonLatin(name)) {
                 // Latin forms from the data first; kana romanized if that is all there
                 // is; and for a kanji-only Japanese name with no reading anywhere, no
                 // label at all - the fallback transliterator reads kanji as Chinese,
                 // which mislabelled every such mountain in Japan ("gao zuo shan" on
                 // 高座山). Chinese and Korean names pass through and keep their correct
                 // romanizations.
-                name = CjkLabelNames.bestLatinName(
+                latinName = CjkLabelNames.bestLatinName(
                         name, name_en, name_ja_rm, name_latn, name_hira,
                         hasJaTag, lat, lon);
-                if (name == null) {
-                    continue;
+                if (!com.peaknav.utils.LabelScripts.keepsOwnScript(name)) {
+                    if (latinName == null) {
+                        continue;
+                    }
+                    name = latinName;
+                    latinName = null;
                 }
             }
             if (ele != null) {
-                poiList.add(new PoiObject(name, lon, lat, ele, tags, prominence, isolationParent, drawLabelCategory));
+                PoiObject poiObject = new PoiObject(name, lon, lat, ele, tags, prominence, isolationParent, drawLabelCategory);
+                poiObject.osmId = pointOfInterest.id;
+                poiObject.setLatinName(latinName);
+                poiList.add(poiObject);
             }
         }
         return poiList;

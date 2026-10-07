@@ -43,6 +43,12 @@ public final class CoordinateLinks {
             query = rest.substring(mark + 1);
         }
 
+        // RFC 5870 parameters after the point: geo:46.0207,7.7491;u=35 (uncertainty in metres).
+        int parameters = path.indexOf(';');
+        if (parameters >= 0) {
+            path = path.substring(0, parameters);
+        }
+
         // q= wins when it holds a coordinate: the marker form leaves the path at 0,0.
         if (query != null) {
             for (String part : query.split("&")) {
@@ -80,7 +86,9 @@ public final class CoordinateLinks {
         try {
             double lat = Double.parseDouble(parts[0].trim());
             double lon = Double.parseDouble(parts[1].trim());
-            if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+            // Written as what is accepted, not what is refused: parseDouble reads "NaN", and
+            // NaN is neither below -90 nor above 90.
+            if (!(lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180)) {
                 return null;
             }
             return new double[]{lat, lon};
@@ -112,6 +120,10 @@ public final class CoordinateLinks {
         try {
             return java.net.URLDecoder.decode(s, "UTF-8");
         } catch (java.io.UnsupportedEncodingException impossible) {
+            return s;
+        } catch (IllegalArgumentException malformed) {
+            // "%" with no two hex digits after it, as "q=46.02%" is on the way to "%2C" being
+            // typed: thrown from the search box's key listener, it ended the app.
             return s;
         }
     }

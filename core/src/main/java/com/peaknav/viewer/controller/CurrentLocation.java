@@ -24,8 +24,9 @@ public class CurrentLocation {
 
     private volatile float currentLatitude;
     private volatile float currentLongitude;
-    private Double targetAfterUpdateLat = null;
-    private Double targetAfterUpdateLon = null;
+    /** Where to go once the tiles are updated, latitude and longitude, or null: set and taken whole. */
+    private final java.util.concurrent.atomic.AtomicReference<double[]> targetAfterUpdate =
+            new java.util.concurrent.atomic.AtomicReference<>();
 
     private enum LocationState {
         NEVER_SET,
@@ -56,11 +57,13 @@ public class CurrentLocation {
         currentLatitude = targetLatitude;
         currentLongitude = targetLongitude;
         currentLocationNotSet = false;
-        getC().getMapViewerScreen().setCurrentCoordLocation(
-                targetLongitude,
-                targetLatitude,
-                currentTerrainEle
-        );
+        // On the render thread: this is called from the elevation loader when a tile holding
+        // the target lands, and what follows moves the camera, sets the elevation bar (whose
+        // change event moves the camera again and shows a toast) and shows or hides widgets -
+        // none of which may happen beside the frame being drawn.
+        final float lon = targetLongitude, lat = targetLatitude, ele = currentTerrainEle;
+        com.badlogic.gdx.Gdx.app.postRunnable(
+                () -> getC().getMapViewerScreen().setCurrentCoordLocation(lon, lat, ele));
     }
 
     private volatile float currentTerrainEle;
@@ -109,7 +112,24 @@ public class CurrentLocation {
      */
     private static final double TARGET_MOVED_EPSILON_DEG = 1e-4;
 
+    /**
+     * Counts the times the target was moved somewhere new other than by a position fix: a
+     * search, a tap, a link. A location request remembers it, and a fix arriving after it
+     * changed is dropped - GPS can take minutes, and its fix took the camera back from
+     * wherever the user had gone meanwhile.
+     */
+    private volatile int movesByUser;
+
+    public int getMovesByUser() {
+        return movesByUser;
+    }
+
     public void setCurrentTargetCoords(double lat, double lon, boolean checkMissing, boolean fromGps) {
+        if (!fromGps
+                && (Math.abs(lat - targetLatitude) > TARGET_MOVED_EPSILON_DEG
+                        || Math.abs(lon - targetLongitude) > TARGET_MOVED_EPSILON_DEG)) {
+            movesByUser++;
+        }
         if (!fromGps
                 && (Math.abs(lat - targetLatitude) > TARGET_MOVED_EPSILON_DEG
                         || Math.abs(lon - targetLongitude) > TARGET_MOVED_EPSILON_DEG)
@@ -128,11 +148,8 @@ public class CurrentLocation {
         targetLatitude = (float) lat;
         targetLongitude = (float) lon;
 
-        if (checkMissing && shouldAskToDownloadMissingData(lat, lon)) {
-            // Remember that this area has been asked about before showing the dialog, so a moving
-            // GPS fix (which re-targets on every update) cannot raise it again and again.
-            getC().checkMissingData.dismiss(lat, lon);
-            getNativeScreenCaller().askForDownloadScreen(lat, lon);
+        if (checkMissing) {
+            askToDownloadMissingData(lat, lon);
         }
         getC().elevationImageProviderManager.setProviderForTargetCoords(targetLatitude, targetLongitude);
 
@@ -149,13 +166,32 @@ public class CurrentLocation {
     private static final long DOWNLOAD_SETTLE_MILLIS = 30_000L;
 
     /**
+     * Raises the modal "download missing data?" dialog for this place, once, if it is wanted.
+     *
+     * <p>Two callers ask, at the two moments the answer is knowable. {@link #setCurrentTargetCoords}
+     * asks up front, from the files that ought to be on disk; the tile updater asks when it finds
+     * it cannot build anything for the target (see UpdateMapTilesRunnable), which is the moment the
+     * user actually sees nothing happen. Whichever gets there first marks the area asked-about, so
+     * the second is a no-op.
+     */
+    public void askToDownloadMissingData(double lat, double lon) {
+        if (!shouldAskToDownloadMissingData(lat, lon)) {
+            return;
+        }
+        // Remember that this area has been asked about before showing the dialog, so a moving
+        // GPS fix (which re-targets on every update) cannot raise it again and again.
+        getC().checkMissingData.dismiss(lat, lon);
+        getNativeScreenCaller().askForDownloadScreen(lat, lon);
+    }
+
+    /**
      * Whether to raise the modal "download missing data?" dialog. This is deliberately much more
      * reluctant than the in-app banner (see MapViewerScreen/TableDownloadData), which stays
      * visible whenever data is missing and is the non-intrusive way to offer the download.
      */
     private boolean shouldAskToDownloadMissingData(double lat, double lon) {
         if (getNativeScreenCaller() == null) {
-            // iOS does not provide one.
+            // The headless renderer, and any platform yet to build a dialog.
             return false;
         }
         if (getAppState().isMapDataDownloadStarted()
@@ -335,16 +371,57 @@ public class CurrentLocation {
     }
 
     public void setCurrentTargetCoordsAfterTileUpdates(double lat, double lon) {
-        this.targetAfterUpdateLat = lat;
-        this.targetAfterUpdateLon = lon;
+        targetAfterUpdate.set(new double[]{lat, lon});
+    }
+
+    /**
+     * Where the map was, and where it was sent, when it went to a place whose download was
+     * just starting: {fromLat, fromLon, toLat, toLon}. For {@link #dropTargetWaitingForDownload}.
+     */
+    private final java.util.concurrent.atomic.AtomicReference<double[]> movedForDownload =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    /**
+     * Goes to a place whose data is about to be downloaded, without asking about what is
+     * missing there, and remembers where from: stopping the download comes back.
+     */
+    public void setCurrentTargetCoordsForDownload(double lat, double lon) {
+        movedForDownload.set(currentLocationNotSet ? null
+                : new double[]{currentLatitude, currentLongitude, lat, lon});
+        setCurrentTargetCoords(lat, lon, false);
+    }
+
+    /**
+     * The download was stopped: gives up a place that was waiting for it. The one to go to when
+     * the download ends is forgotten; and a target already moved there when the download
+     * started goes back to where the map was, or the screen would stay on "loading" over a
+     * place that is not coming, or land on the part of it that did. Left alone if the map has
+     * landed there already, or the user has gone somewhere else since.
+     */
+    public void dropTargetWaitingForDownload() {
+        targetAfterUpdate.set(null);
+        double[] moved = movedForDownload.getAndSet(null);
+        if (moved == null) {
+            return;
+        }
+        if (Math.abs(moved[2] - targetLatitude) > TARGET_MOVED_EPSILON_DEG
+                || Math.abs(moved[3] - targetLongitude) > TARGET_MOVED_EPSILON_DEG) {
+            return;
+        }
+        if (currentTerrainEleFired == LocationState.ELEVATION_SET
+                && currentLatitude == targetLatitude && currentLongitude == targetLongitude) {
+            return;
+        }
+        setCurrentTargetCoords(moved[0], moved[1], false);
+        // The place screen saved the new place for the next start; that too.
+        saveCoordinatesToPreferences(moved[0], moved[1]);
     }
 
     public void checkTargetCoordsAfterTileUpdates() {
-        if (targetAfterUpdateLat != null && targetAfterUpdateLon != null) {
-            setCurrentTargetCoords(targetAfterUpdateLat, targetAfterUpdateLon);
+        double[] target = targetAfterUpdate.getAndSet(null);
+        if (target != null) {
+            setCurrentTargetCoords(target[0], target[1]);
         }
-        targetAfterUpdateLon = null;
-        targetAfterUpdateLat = null;
     }
 
 }

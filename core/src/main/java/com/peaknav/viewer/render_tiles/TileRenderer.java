@@ -46,28 +46,6 @@ public class TileRenderer {
     public void initialize() {
     }
 
-    public List<Tile> getTileZoomScaledPositions(LatLong center, double maxDistance, byte zoomLevel,
-                                                 int tileSize) {
-
-        TileAlgorithmScaledRanges algo = new TileAlgorithmScaledRanges(
-                (float)center.getLatitude(), (float)center.getLongitude(), zoomLevel, tileSize,
-                maxDistance
-        );
-        List<Tile> tiles = algo.getTiles();
-
-        final LatLong current = getC().L.getTargetLatLong();
-
-        Collections.sort(tiles, (tile1, tile2) -> {
-            LatLong center1 = tile1.getBoundingBox().getCenterPoint();
-            LatLong center2 = tile2.getBoundingBox().getCenterPoint();
-            double d1 = LatLongUtils.distance(center1, current);
-            double d2 = LatLongUtils.distance(center2, current);
-            return Double.compare(d1, d2);
-        });
-
-        return tiles;
-    }
-
     public void drawExecutorStop() {
         tileRendererExecutor.stopLoop();
     }

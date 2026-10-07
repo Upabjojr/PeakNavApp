@@ -71,7 +71,13 @@ final class RestServer {
         try {
             if ("GET".equals(method) && "/status".equals(path)) {
                 json(x, 200, "{\"ok\":true,\"orbiting\":" + renderer.isOrbiting()
+                        + ",\"suppressed_prompts\":" + renderer.suppressedPrompts()
+                        + ",\"messages\":" + renderer.messages()
                         + "," + renderer.labelDiagnostics() + "," + renderer.quietDiagnostics() + "}");
+            } else if ("GET".equals(method) && "/prompts".equals(path)) {
+                prompts(x);
+            } else if ("GET".equals(method) && "/messages".equals(path)) {
+                messages(x);
             } else if ("GET".equals(method) && "/openapi.json".equals(path)) {
                 resource(x, "openapi.json", "application/json");
             } else if ("POST".equals(method) && "/position".equals(path)) {
@@ -130,6 +136,56 @@ final class RestServer {
         } catch (Exception failed) {
             json(x, 500, "{\"error\":" + quote(String.valueOf(failed)) + "}");
         }
+    }
+
+    /**
+     * What the app tried to ask: every dialog, chooser and browser launch the renderer
+     * intercepted, oldest first. {@code ?after=N} returns only those after sequence number N,
+     * so a client can poll with the {@code last_seq} of its previous call.
+     */
+    private void prompts(HttpExchange x) throws IOException {
+        int afterSeq = afterSeq(x);
+        entries(x, "prompts", renderer.suppressedPrompts(), renderer.suppressedPromptsAfter(afterSeq));
+    }
+
+    /**
+     * What the app told the reader and asked nothing with - its toasts: "Download complete!",
+     * a track that could not be read - oldest first, as {@code /prompts}. They would be on
+     * screen for a second; here they are kept for a client to read.
+     */
+    private void messages(HttpExchange x) throws IOException {
+        int afterSeq = afterSeq(x);
+        entries(x, "messages", renderer.messages(), renderer.messagesAfter(afterSeq));
+    }
+
+    private int afterSeq(HttpExchange x) {
+        String after = query(x).get("after");
+        try {
+            return after == null ? 0 : Integer.parseInt(after);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("after wants a sequence number");
+        }
+    }
+
+    /** {@code {total, <name>: [{seq, time_ms, kind, detail}], last_seq}}. */
+    private void entries(HttpExchange x, String name, int total,
+            java.util.List<FileSnapshotWriter.SuppressedPrompt> entries) throws IOException {
+        StringBuilder out = new StringBuilder("{\"total\":").append(total)
+                .append(",\"").append(name).append("\":[");
+        String separator = "";
+        int last = 0;
+        for (FileSnapshotWriter.SuppressedPrompt entry : entries) {
+            out.append(separator).append("{\"seq\":").append(entry.seq)
+                    .append(",\"time_ms\":").append(entry.timeMillis)
+                    .append(",\"kind\":").append(quote(entry.kind))
+                    .append(",\"detail\":").append(quote(entry.detail)).append('}');
+            separator = ",";
+            last = entry.seq;
+        }
+        // The last one listed, not the count read before: one recorded in between is not
+        // skipped by the next call's ?after.
+        json(x, 200, out.append("],\"last_seq\":").append(Math.max(last, total))
+                .append('}').toString());
     }
 
     /** Move the map; optionally download what is missing there and wait for quiet. */
@@ -498,6 +554,19 @@ final class RestServer {
     }
 
     private static String quote(String s) {
-        return "\"" + String.valueOf(s).replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        // Control characters escaped too: prompt texts carry line breaks.
+        StringBuilder out = new StringBuilder("\"");
+        for (char c : String.valueOf(s).toCharArray()) {
+            if (c == '"' || c == '\\') {
+                out.append('\\').append(c);
+            } else if (c == '\n') {
+                out.append("\\n");
+            } else if (c < 0x20) {
+                out.append(String.format("\\u%04x", (int) c));
+            } else {
+                out.append(c);
+            }
+        }
+        return out.append('"').toString();
     }
 }

@@ -4,8 +4,8 @@
     package="com.peaknav">
     <uses-feature android:glEsVersion="0x00020000" android:required="true"/>
 
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:required="false" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:required="false" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -24,12 +24,36 @@
     </queries>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- A map data download goes on with the screen locked or the app in the background, in a
+         foreground service with a notification (MapDataDownloadService): without one Android
+         froze the app within seconds and the download stood still until it was opened again.
+         The wake lock keeps the CPU awake under it. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Android 13+: without it the service runs but its notification is never shown, and the
+         user cannot even switch the app's notifications on. Asked for when a download starts. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Android 10+ redacts GPS EXIF from imported images unless the app holds this;
          without it the "go to where this photo was taken" import cannot read a location. -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 
-    <uses-permission android:name="android.permission.CAMERA" android:required="false" />
-    <uses-feature android:name="android.hardware.camera2.full" android:required="false" />
+    <!-- No com.google.android.gms.permission.AD_ID here, unlike the Play build: there is no
+         Google Play services on F-Droid, and nothing in the app reads the advertising ID. -->
+
+    <!-- The CAMERA permission tells Play the app needs a rear camera, with autofocus, unless the
+         features say otherwise: devices without one did not see the app at all. It works
+         without - the camera button is the only thing that needs it. ("required" on a
+         uses-permission is ignored; it belongs here, and camera2.full is no feature name.) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <!-- Nor a GPS: the position also comes from the network, or from a search. -->
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.location.network" android:required="false" />
 
     <!-- android:largeHeap raises the heap ceiling from the default (268 MB on this class of
          device, as the crash reports show) to whatever the manufacturer allows, typically 512 MB.
@@ -60,7 +84,7 @@
 
         <activity
             android:name="com.peaknav.views.AndroidLauncher"
-            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density|fontScale|locale|layoutDirection"
             android:label="@string/app_name"
             android:launchMode="singleTask"
             android:screenOrientation="fullSensor"
@@ -79,6 +103,18 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
+            </intent-filter>
+
+            <!-- Open a JPEG or PNG directly - "Open with" from a file manager, a gallery or a
+                 download - the same as a shared photo. Only the two types the background can
+                 decode: claiming image/* would put PeakNav in the list for HEIC and GIF too. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="image/jpeg" />
+                <data android:mimeType="image/png" />
             </intent-filter>
 
             <!-- Receive a shared GPX track. GPX has no single agreed MIME type, so accept the ones
@@ -167,6 +203,10 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <service
+            android:name="com.peaknav.compatibility.MapDataDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>
