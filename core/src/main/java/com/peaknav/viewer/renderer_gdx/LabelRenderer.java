@@ -171,9 +171,17 @@ public class LabelRenderer {
         // The world x is a longitude scaled at the frame's reference latitude, and that
         // reference is the target's - the same one MapTile and the label geometry above use -
         // so it, not the camera's own latitude, is what converts back.
+        //
+        // Except between a new target being set and the camera being placed on it: the camera
+        // is still where the previous target left it, in that target's frame. Measured from the
+        // new one, a camera a continent away read a round-Earth drop of R(sec θ - 1) - past 90°
+        // that is tens of millions of metres, negative - until the camera got there.
         PerspectiveCameraExt cam = MapViewerSingleton.getViewerInstance().cam;
+        boolean reached = getC().L.isTargetReached();
+        float refLat = reached ? getC().L.getTargetLatitude() : (float) getC().L.getCurrentLatitude();
+        float refLon = reached ? getC().L.getTargetLongitude() : (float) getC().L.getCurrentLongitude();
         float lat = cam.position.y;
-        float lon = Units.convertLatitsToLonits(cam.position.x, getC().L.getTargetLatitude());
+        float lon = Units.convertLatitsToLonits(cam.position.x, refLat);
         // Above the copyright notice at the bottom, clear of the corner buttons.
         float py = COORDINATES_PILL_Y * widgetUnitStep;
         float elevationY = py;
@@ -197,7 +205,7 @@ public class LabelRenderer {
             // The viewpoint's height above the sea: the camera's, put back on the round Earth
             // the world frame flattens it off.
             float metres = Units.convertLatitsToMeters(cam.position.z
-                    + ElevationUtils.getElevationCorrectionForRoundEarth(lat, lon));
+                    + ElevationUtils.roundEarthDropLatits(lat - refLat, lon - refLon, refLat));
             int shown = Math.round(P.getUnitSystem() == com.peaknav.utils.PreferencesManager.UnitSystem.IMPERIAL
                     ? metres * 3.28084f : metres);
             if (shown != elevationCachedValue || P.getUnitSystem() != elevationCachedUnits) {
