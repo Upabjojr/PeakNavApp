@@ -126,9 +126,60 @@ project(':core') {
                     .collect { assetsFolder.relativePath(it) }.sort().join("\n") + "\n"
         }
     }
+    // The place-search index, assets/geonames_index.362/, is not in git: it is made from the
+    // GeoNames dumps, OpenStreetMap peaks and Wikidata by the tools in core/src/tools and tools/
+    // (README.md, "Build"), a long job that needs some 9 GB of OSM extracts. A build from a bare
+    // clone - F-Droid's - can instead fetch the very index a release shipped, zipped and attached
+    // to that GitHub release, with -PpeaknavFetchSearchIndex=true. The archive's SHA-256 is fixed
+    // here, so the build fails rather than ship anything else.
+    def searchIndexUrl = 'https://github.com/Upabjojr/PeakNavApp/releases/download/1.3.3/peaknav-search-index-1.3.3.zip'
+    def searchIndexSha256 = 'd7824dfe7b13e490f3184131c762bfd3f720782be8d8ad8a85a2691f36e9b73f'
+    def fetchSearchIndex = findProperty('peaknavFetchSearchIndex') == 'true'
+    tasks.register('fetchSearchIndex') {
+        group = 'peaknav'
+        description = 'Downloads the search index a release shipped into assets/geonames_index.362/.'
+        def indexDir = file("${rootDir}/assets/geonames_index.362")
+        def archive = layout.buildDirectory.file('search-index/peaknav-search-index.zip').get().asFile
+        inputs.property('url', searchIndexUrl)
+        inputs.property('sha256', searchIndexSha256)
+        outputs.dir(indexDir)
+        doLast {
+            archive.parentFile.mkdirs()
+            logger.lifecycle("downloading ${searchIndexUrl}")
+            new URL(searchIndexUrl).withInputStream { input -> archive.withOutputStream { it << input } }
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            archive.eachByte(1 << 16) { buf, len -> digest.update(buf, 0, len) }
+            def actual = digest.digest().encodeHex().toString()
+            if (actual != searchIndexSha256) {
+                throw new GradleException("${archive.name}: SHA-256 ${actual}, expected ${searchIndexSha256}")
+            }
+            indexDir.deleteDir()
+            indexDir.mkdirs()
+            new java.util.zip.ZipFile(archive).withCloseable { zip ->
+                zip.entries().each { entry ->
+                    // Only the index's own files, flat in geonames_index.362/: nothing in the
+                    // archive can write anywhere else.
+                    def m = entry.name =~ /^geonames_index\.362\/([A-Za-z0-9_.]+)$/
+                    if (entry.isDirectory()) {
+                        return
+                    }
+                    if (!m.matches()) {
+                        throw new GradleException("${archive.name}: unexpected entry ${entry.name}")
+                    }
+                    new File(indexDir, m.group(1)).withOutputStream { out ->
+                        zip.getInputStream(entry).withCloseable { out << it }
+                    }
+                }
+            }
+        }
+    }
+
     tasks.register("generateGeonamesAssetIndex") {
         def assetsDir = file("${rootDir}/assets/geonames_index.362")
         def indexFile = new File(assetsDir, "filelist.txt")
+        if (fetchSearchIndex) {
+            dependsOn 'fetchSearchIndex'
+        }
 
         // The index is optional: it is built separately from the GeoNames dumps, and a checkout
         // without it (F-Droid's, for one) still builds; the app then searches online only.

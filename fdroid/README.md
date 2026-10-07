@@ -21,10 +21,14 @@ bare clone with no manual steps, and a packaging recipe merged into
   (the wrapper JAR stays out of git; F-Droid supplies its own).
 * **`settings.gradle` includes a module only when its directory exists**, so the recipe deletes
   the non-Android targets instead of patching build files.
-* **No offline place index.** `assets/geonames_index.362/` is built separately from the GeoNames
-  dumps and is not something F-Droid's server can rebuild, so this build ships without it; the
-  app then searches online only: Search (or Enter) asks OpenStreetMap's Nominatim. (In 1.3.2
-  nothing called the online search, so this build found no place at all; fixed in 1.3.3.)
+* **The offline place index, fetched.** `assets/geonames_index.362/` is not in git: it is
+  made from the GeoNames dumps, OpenStreetMap peaks (9 GB of extracts) and Wikidata, which
+  F-Droid's server cannot reasonably redo. The recipe sets `peaknavFetchSearchIndex=true`, and
+  `:core:fetchSearchIndex` downloads the index a release shipped, zipped and attached to that
+  GitHub release, checks its SHA-256 (fixed in `build.gradle`) and unpacks it. Without the
+  property the build ships no index and Search (or Enter) asks OpenStreetMap's Nominatim only.
+  For a new index: zip it as `geonames_index.362/*` without `filelist.txt`, attach it to the
+  release, and update the URL and hash in `build.gradle`.
 * **The store listing** in [`fastlane/metadata/android/`](../fastlane/metadata/android/): title,
   summary, description in the app's seven languages, the icon and eight portrait store
   screenshots; the credit for the photo in the picture-overlay one is in the descriptions and in
