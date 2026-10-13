@@ -47,6 +47,7 @@ ICONS=(
   "icon_checkbox_download_data:128:128"
   "icon_checkbox_download_data2:128:128"
   "icon_checkbox_sun:256:256"
+  "icon_checkbox_contours:128:128"
   "icon_gyro:128:128"
   "icon_gyro_pressed:128:128"
   "icon_map:256:256"

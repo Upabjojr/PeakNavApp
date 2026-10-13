@@ -108,6 +108,7 @@ satellite work is pending, and tile updates have been quiet for 2 s; and
 | `setElevation(fraction)` | viewpoint height as a position on the app's elevation bar |
 | `setLabel(Label, on)` / `clearLabels()` | peaks, place names, cities, mountain ranges, islands, lakes, alpine huts, roads, pistes, navigation |
 | `setSky` / `setConstellations` / `setSunShading` / `setHorizonCompass` | sky and shading |
+| `setContourLines(on)` | contour lines on the terrain |
 | `downloadMissingData(lat, lon, timeout)` | fetch what the area is missing, and wait |
 | `awaitTilesLoaded` / `awaitLabelsRendered` / `settle` | waiting |
 | `suppressedPrompts()` | how many UI prompts were intercepted (tests assert 0) |

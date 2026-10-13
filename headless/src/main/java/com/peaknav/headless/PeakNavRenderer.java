@@ -1408,6 +1408,12 @@ public final class PeakNavRenderer implements AutoCloseable {
         return this;
     }
 
+    /** Contour lines on the terrain, at an interval the shader picks from the view. */
+    public PeakNavRenderer setContourLines(final boolean enabled) {
+        onRenderThread(() -> P.setContourLines(enabled));
+        return this;
+    }
+
     /** The compass strip across the horizon - worth turning off for a clean image. */
     public PeakNavRenderer setHorizonCompass(final boolean enabled) {
         onRenderThread(() -> P.setHorizonCompass(enabled));

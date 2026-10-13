@@ -118,6 +118,7 @@ public final class RenderCli {
                 renderer.setSkyTimeMillis(skyTimeMillis);
             }
             applyToggle(options, "sun-shading", renderer::setSunShading);
+            applyToggle(options, "contour-lines", renderer::setContourLines);
             if (options.containsKey("sky-mode")) {
                 String mode = options.get("sky-mode").trim().toLowerCase();
                 int value = mode.equals("day") ? 1 : mode.equals("night") ? 2
@@ -570,6 +571,7 @@ public final class RenderCli {
                         + "  --sky-labels on|off       every caption on the sky at once:\n"
                         + "                            constellation, star and planet names\n"
                         + "  --sun-shading on|off      shade terrain by sun position\n"
+                        + "  --contour-lines on|off    contour lines on the terrain\n"
                         + "  --horizon-compass on|off  the compass strip across the horizon\n"
                         + "  --coordinates on|off      the coordinates pill at the bottom\n"
                         + "  --corner-compass on|off   the compass rose in the corner\n"

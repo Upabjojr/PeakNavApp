@@ -95,6 +95,17 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     that are also highways, so rivers are labelled but not drawn, and pistes are switched off
     altogether - not drawn, not labelled, no menu switch - by `PreferencesManager.PISTES_IN_MAP_DATA`
     until the extraction also keeps `piste:type` ways.
+  - **Contour lines** are the terrain shader's own work, no texture and no per-tile pass:
+    `vertex_shader.glsl` hands the fragment shader each vertex's true elevation in metres
+    (`v_elevation` - the mesh's z has the round Earth's drop taken off it, see
+    `MapTile.correctForRoundEarth`, so the shader puts it back from the same formula and the
+    point the tile was flattened around, `u_roundEarthRef`), and the contours block of
+    `fragment_shader.glsl` draws lines from it. The interval is picked per pixel from how many
+    metres of height the pixel spans (`CONTOUR_BASE` halved and doubled: 25, 50, 100, 200 m ...),
+    the lines of a level fade in where they are `CONTOUR_MIN_PIXELS` apart, every fourth line is
+    bold, and the levels are blended so a moving camera never makes a line jump. Switched by the
+    main menu's "Contour lines" (`P.isContourLines()`, read every frame); headless:
+    `setContourLines`, `--contour-lines`, REST `contour_lines`.
 - **`desktop`** — LWJGL3 launcher (`DesktopLauncher`), Swing-based native screens.
 - **`android`** — Android launcher/activity, fragments, native screens.
 - **`ios`** — RoboVM launcher plus a real `IOSLoadFactory`: logging, caches, file

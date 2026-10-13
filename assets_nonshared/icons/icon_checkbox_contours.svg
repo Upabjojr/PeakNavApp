@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="240mm" height="240mm" viewBox="0 0 240 240" version="1.1"
+     xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <clipPath id="disc"><circle cx="120" cy="120" r="120"/></clipPath>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fbeede"/>
+      <stop offset="1" stop-color="#f3d9b5"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+
+  <g clip-path="url(#disc)">
+    <rect x="0" y="0" width="240" height="240" fill="url(#paper)"/>
+
+    <!-- contour loops around a summit, every fourth one bold -->
+    <g fill="none" stroke="#8a5a2b" stroke-width="4" stroke-linejoin="round">
+      <path d="M-20 200 C 20 150, 10 90, 60 50 S 170 -10, 220 40 S 280 160, 230 230 S 60 260, -20 200 Z" stroke-width="7"/>
+      <path d="M10 196 C 40 150, 30 100, 72 66 S 165 14, 206 56 S 254 160, 212 216 S 70 246, 10 196 Z"/>
+      <path d="M36 186 C 60 150, 50 110, 86 82 S 158 40, 192 72 S 230 158, 196 200 S 82 232, 36 186 Z"/>
+      <path d="M60 176 C 78 150, 70 120, 98 98 S 150 66, 180 90 S 208 154, 180 184 S 94 218, 60 176 Z"/>
+      <path d="M82 164 C 94 148, 88 128, 108 112 S 146 92, 168 108 S 188 150, 166 170 S 104 200, 82 164 Z" stroke-width="7"/>
+      <path d="M102 152 C 108 142, 104 132, 118 124 S 144 114, 156 124 S 168 148, 154 158 S 114 174, 102 152 Z"/>
+    </g>
+    <!-- the summit -->
+    <circle cx="131" cy="140" r="5" fill="#3a2716"/>
+  </g>
+
+  <circle cx="120" cy="120" r="118.5" fill="none" stroke="#3a2716" stroke-width="3"/>
+</svg>

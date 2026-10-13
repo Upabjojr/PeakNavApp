@@ -1256,6 +1256,43 @@ class PeakNavRendererTest {
     }
 
     @Test
+    @Order(22)
+    @DisplayName("contour lines are drawn by the shader when switched on, and gone when off")
+    void contourLinesAreDrawnAndRemoved() throws Exception {
+        // The contours come from the interpolated elevation in the terrain shader - no texture
+        // and no per-tile work - so this is the check that the shader compiles with them on a
+        // real GL context, paints a real share of a mountain view, and leaves no trace when off.
+        renderer.setLabel(PeakNavRenderer.Label.ROADS, false);
+        renderer.moveTo(LAT, LON);
+        assertTrue(renderer.awaitTilesLoaded(120_000), "the view should reach a settled state");
+        renderer.aim(225f, -8f);   // towards the Matterhorn, slopes filling the frame
+        renderer.setContourLines(false);
+        renderer.settle(1_500);
+        File without = newTempFile("no-contours.png");
+        renderer.capture(without);
+
+        renderer.setContourLines(true);
+        renderer.settle(800);
+        File with = newTempFile("contours.png");
+        renderer.capture(with);
+
+        renderer.setContourLines(false);
+        renderer.settle(800);
+        File offAgain = newTempFile("no-contours-2.png");
+        renderer.capture(offAgain);
+        renderer.setLabel(PeakNavRenderer.Label.ROADS, true);
+
+        int changed = differingPixels(ImageIO.read(without), ImageIO.read(with));
+        assertTrue(changed > WIDTH * HEIGHT / 100,
+                "switching the contour lines on should change a real part of a mountain view; changed "
+                        + changed + " pixels");
+        int drift = differingPixels(ImageIO.read(without), ImageIO.read(offAgain));
+        assertTrue(drift < changed / 4,
+                "with the contour lines off again the frame should be back as it was; " + drift
+                        + " pixels differ against " + changed + " with them on");
+    }
+
+    @Test
     @Order(23)
     @DisplayName("over a photograph: the snapshot is the picture with the paths on it, not a blank frame")
     void photoSnapshotCarriesThePictureAndThePaths() throws Exception {

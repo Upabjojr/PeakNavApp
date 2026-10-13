@@ -18,6 +18,7 @@ varying vec2 v_texCoord0;
 
 varying vec3 v_normal;
 varying float distance;
+varying float v_elevation;   // metres above sea level, see vertex_shader.glsl
 
 uniform sampler2D u_textureSatellite;
 uniform sampler2D u_textureSatBlock;
@@ -53,6 +54,22 @@ uniform vec4 u_trailAlpine;
 uniform vec3 u_dash;                 // x dashes per stored phase turn, y dash share, z cycles/s
 uniform int u_pistesSet;
 uniform float u_pixelAngle;
+
+// ---- Contour lines ----------------------------------------------------------------------------
+// Drawn from the interpolated elevation alone, so they take no texture and follow the mesh
+// exactly. The interval is chosen per pixel from how many metres of height the pixel spans:
+// the lines of a level start to show where they are CONTOUR_MIN_PIXELS apart and fade in from
+// there, so a steep face shows 100 m lines while the gentle slope beside it shows 25 m ones, and
+// nothing ever bunches into moire. The intervals are CONTOUR_BASE halved and doubled (..., 25,
+// 50, 100, 200 m, ...); every fourth line is drawn bolder; and the levels are blended so that
+// moving the camera never makes a line appear, vanish or thicken with a jump.
+uniform int u_contoursSet;
+const float CONTOUR_BASE = 100.0;        // metres: the interval of level 0
+const float CONTOUR_MIN_LEVEL = -2.0;    // no finer than 25 m: below that the data is noise
+const float CONTOUR_MIN_PIXELS = 7.0;    // the lines of a level start to show at this spacing
+const vec3 CONTOUR_COLOR = vec3(0.50, 0.30, 0.13);
+const float CONTOUR_ALPHA_THIN = 0.5;
+const float CONTOUR_ALPHA_BOLD = 0.75;
 
 // ---- Ski slopes ----------------------------------------------------------------------------------
 // The ski slopes viewer's own texture (see PisteRasterizer): RG the flow phase along the nearest
@@ -137,6 +154,13 @@ float cover(float d, float hw, float px) {
     return clamp((hw - d) / px + 0.5, 0.0, 1.0);
 }
 
+// How much of the pixel a contour line of half-width hw pixels covers, with a contour every
+// `interval` metres of height and one pixel spanning `de` metres of it: a one-pixel ramp.
+float contourCover(float e, float interval, float de, float hw) {
+    float d = abs(fract(e / interval + 0.5) - 0.5) * interval / de;
+    return clamp(hw - d + 0.5, 0.0, 1.0);
+}
+
 // The outline around a line: dark around a light colour, light around a dark one, so whatever
 // the user picks keeps an edge against the terrain (the same rule as RoadStyle.casingFor).
 vec3 casingOf(vec3 c) {
@@ -189,6 +213,36 @@ void main() {
         gl_FragColor = vec4(satellite.rgb * relief, satellite.a);
     } else if (u_whiteBackground == 1) {
         gl_FragColor = vec4(vec3(light), 1.0);
+    }
+
+    // Contour lines, on the terrain under everything drawn along the ground.
+    if (u_contoursSet == 1) {
+        float e = v_elevation;
+#ifdef ROADS_DERIVATIVES
+        // Metres of height from this pixel to the next: the elevation's own screen gradient.
+        float de = length(vec2(dFdx(e), dFdy(e)));
+#else
+        // Without derivatives: the ground a pixel spans, times the terrain's slope.
+        vec3 cn = normalize(v_normal);
+        float slope = length(cn.xy) / max(cn.z, 0.05);
+        float de = distance * METERS_PER_LATIT * u_pixelAngle * max(slope, 0.35);
+#endif
+        de = max(de, 1e-4);
+        // Level k has lines every CONTOUR_BASE * 2^k metres; k0 is the finest whose lines are at
+        // least CONTOUR_MIN_PIXELS apart here, f how far it is past that (0 just reached, 1 at
+        // twice the spacing or more). Each level is drawn thin, and two levels up again in bold;
+        // the weight f on the newest of each pair keeps every change continuous.
+        float lod = log2(de * CONTOUR_MIN_PIXELS / CONTOUR_BASE);
+        float k0 = max(ceil(lod), CONTOUR_MIN_LEVEL);
+        float f = clamp(k0 - lod, 0.0, 1.0);
+        float i0 = CONTOUR_BASE * exp2(k0);
+        float thin = max(contourCover(e, i0, de, 0.5) * f, contourCover(e, 2.0 * i0, de, 0.5));
+        float bold = max(contourCover(e, 4.0 * i0, de, 0.9) * f, contourCover(e, 8.0 * i0, de, 0.9));
+        vec3 cc = CONTOUR_COLOR * mix(1.0, light / flatLight, LINE_RELIEF);
+        vec3 ccol = gl_FragColor.rgb;
+        ccol = mix(ccol, cc, thin * CONTOUR_ALPHA_THIN);
+        ccol = mix(ccol, cc * 0.8, bold * CONTOUR_ALPHA_BOLD);
+        gl_FragColor = vec4(ccol, gl_FragColor.a);
     }
 
     // What the roads add to this pixel on their own, and how much of it they cover. In the

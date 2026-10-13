@@ -81,6 +81,13 @@ public class MapTile {
     // private Texture blockSatelliteTexture = null;
     private final LatLong center;
     private float[] vertices = null;
+    /**
+     * The point the mesh was flattened around, in world units (x longitude scaled to latits,
+     * y latitude): where {@link #correctForRoundEarth} took nothing off. The terrain shader
+     * reads it to recover each vertex's true elevation for the contour lines.
+     */
+    private volatile float roundEarthRefX = 0f;
+    private volatile float roundEarthRefY = 0f;
 
     /** Whether a texture of this layer has reached the GPU, as opposed to being drawn empty. */
     public boolean hasLayerTexture(PixmapLayerName pixmapLayerName) {
@@ -586,6 +593,18 @@ public class MapTile {
             float dz = elevationCorrectionForRoundEarth(vertices, i, cLon, cLat, corrForRadius, dx, dy);
             vertices[i + 2] -= dz;
         }
+        roundEarthRefX = (float) Units.convertLonitsToLatits(cLon, cLat);
+        roundEarthRefY = cLat;
+    }
+
+    /** X of the point the mesh was flattened around, in world units. */
+    public float getRoundEarthRefX() {
+        return roundEarthRefX;
+    }
+
+    /** Y of the point the mesh was flattened around, in world units. */
+    public float getRoundEarthRefY() {
+        return roundEarthRefY;
     }
 
     public void buildModelInstance() {

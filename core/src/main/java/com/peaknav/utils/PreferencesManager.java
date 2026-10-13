@@ -23,6 +23,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LARGE_FONTS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_BASE_ROADS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SUN_SHADING;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_CONTOUR_LINES;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_COMPASS_LOCATION;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_COORDINATES;
@@ -93,6 +94,7 @@ public class PreferencesManager {
     private Map<PixmapLayerName, Long> lastChange = new TreeMap<>();
     private boolean layerVisibleOpenStreetMap;
     private boolean sunShading;
+    private boolean contourLines;
     private boolean horizonCompass;
     private boolean compassLocation;
     private boolean showCoordinates;
@@ -253,6 +255,7 @@ public class PreferencesManager {
         labelsVisible = preferences.getBoolean(VIEWER_SHOW_ALL_LABELS, true);
         layerVisibleUnderlayLayer = preferences.getBoolean(VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER, true);
         sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
+        contourLines = preferences.getBoolean(VIEWER_CONTOUR_LINES, false);
         horizonCompass = preferences.getBoolean(VIEWER_HORIZON_COMPASS, true);
         // All three compass-and-location items default to on for a fresh install.
         compassLocation = preferences.getBoolean(VIEWER_COMPASS_LOCATION, true);
@@ -569,6 +572,11 @@ public class PreferencesManager {
         return sunShading;
     }
 
+    /** Whether contour lines are drawn on the terrain (the shader reads this every frame). */
+    public boolean isContourLines() {
+        return contourLines;
+    }
+
     /** Whether the cardinal-direction markers (N, NE, E, …) are drawn on the sky horizon. */
     public boolean isHorizonCompass() {
         return horizonCompass;
@@ -742,6 +750,12 @@ public class PreferencesManager {
     public void setSunShading(boolean enabled) {
         sunShading = enabled;
         preferences.putBoolean(VIEWER_SUN_SHADING, enabled);
+        preferences.flush();
+    }
+
+    public void setContourLines(boolean enabled) {
+        contourLines = enabled;
+        preferences.putBoolean(VIEWER_CONTOUR_LINES, enabled);
         preferences.flush();
     }
 

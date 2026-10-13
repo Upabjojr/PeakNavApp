@@ -25,6 +25,7 @@ public interface Constants {
         String VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER = "viewerLayerVisibleUnderlayLayer";
         String VIEWER_LAYER_VISIBLE_BASE_ROADS = "viewerLayerVisibleBaseRoads";
         String VIEWER_SUN_SHADING = "viewerSunShading";
+        String VIEWER_CONTOUR_LINES = "viewerContourLines";
         String VIEWER_HORIZON_COMPASS = "viewerHorizonCompass";
         String VIEWER_COMPASS_LOCATION = "viewerCompassLocation";
         String VIEWER_SHOW_COORDINATES = "viewerShowCoordinates";

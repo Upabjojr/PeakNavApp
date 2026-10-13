@@ -348,6 +348,27 @@ public class TileBatchRenderer {
                             }
                         });
 
+                        // Contour lines: the preference read every frame, like the sun. Set through
+                        // the guarded setter, since the roads overlay compiles the same source
+                        // with the terrain colour unused, where a driver may drop the uniform.
+                        BaseShader.Uniform u_contoursSet = new BaseShader.Uniform("u_contoursSet");
+                        shader.register(u_contoursSet, new BaseShader.GlobalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                shader.set(inputID, P.isContourLines() ? 1 : 0);
+                            }
+                        });
+                        // The point each tile's mesh was flattened around (MapTile.correctForRoundEarth),
+                        // so the vertex shader can put the round Earth's drop back into the elevation.
+                        BaseShader.Uniform u_roundEarthRef = new BaseShader.Uniform("u_roundEarthRef");
+                        shader.register(u_roundEarthRef, new BaseShader.LocalSetter() {
+                            @Override
+                            public void set(BaseShader shader, int inputID, Renderable renderable, Attributes combinedAttributes) {
+                                MapTile tile = ((MapTile.RenderableUserData) renderable.userData).mapTile;
+                                shader.set(inputID, tile.getRoundEarthRefX(), tile.getRoundEarthRefY());
+                            }
+                        });
+
                         return shader;
                     }
                 };

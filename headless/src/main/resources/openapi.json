@@ -251,6 +251,10 @@
                   "sun_shading": {
                     "type": "boolean"
                   },
+                  "contour_lines": {
+                    "type": "boolean",
+                    "description": "Contour lines on the terrain, at an interval the renderer picks from the view."
+                  },
                   "horizon_compass": {
                     "type": "boolean"
                   },

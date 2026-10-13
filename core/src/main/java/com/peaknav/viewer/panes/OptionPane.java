@@ -2187,6 +2187,15 @@ public class OptionPane {
         checkBoxSunShading.setProgrammaticChangeEvents(false);
         buttons.add(checkBoxSunShading);
 
+        // Contour lines on the terrain: read by the shader every frame too, so no redraw either.
+        ImageTextButtonOptionPane checkBoxContourLines = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_contours.png", s("Contour_lines"), true);
+        addCheckingStateProperty(checkBoxContourLines, () -> P.isContourLines());
+        checkBoxContourLines.addClickListener(() -> changer.execute(
+                () -> P.setContourLines(checkBoxContourLines.isChecked())));
+        checkBoxContourLines.setProgrammaticChangeEvents(false);
+        buttons.add(checkBoxContourLines);
+
         ImageTextButtonOptionPane buttonMapDataDownload = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_download_data.png", s("Download_map_data"), false);
         buttonMapDataDownload.addListener(new ChangeListener() {
             @Override
