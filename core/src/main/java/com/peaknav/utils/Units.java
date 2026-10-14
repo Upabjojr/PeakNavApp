@@ -155,9 +155,11 @@ public class Units {
      * <li>Tablets and unfolded foldables (Android, iOS): capped at {@link #MAX_UI_SHORT_SIDE_DP},
      * so the controls stay finger-sized instead of growing with the screen. On iOS the app
      * works in pixels and the backend's density is its ppi / 160.
-     * <li>Desktop: a fixed 480 window pixels, 48 px buttons, however large or small the window
-     * is and however it is resized. The monitor's reported density is not used: it is often a
-     * guess, and a mouse pointer does not need fingertip-sized targets anyway.
+     * <li>Desktop: a fixed 480 window pixels, 48 px buttons, however large the window is and
+     * however it is resized - but never more than the window's own short side, so that the
+     * controls fit a window smaller than that (see {@link #desktopUiShortSide}). The monitor's
+     * reported density is not used: it is often a guess, and a mouse pointer does not need
+     * fingertip-sized targets anyway.
      * <li>The headless renderer: the real short side (see {@link #setProportionalInterface}).
      * </ul>
      */
@@ -171,7 +173,22 @@ public class Units {
                 || type == com.badlogic.gdx.Application.ApplicationType.iOS) {
             return shortSide * uiScale(shortSide, Gdx.graphics.getDensity());
         }
-        return MAX_UI_SHORT_SIDE_DP;
+        return desktopUiShortSide(shortSide);
+    }
+
+    /**
+     * {@link #getUiShortSide()} on the desktop, for a window whose short side is this many
+     * pixels: {@link #MAX_UI_SHORT_SIDE_DP} while the window has that much, else the window's
+     * own short side. Sized for 480 pixels whatever the window had, the controls ran off the
+     * edge of a smaller one: on a Raspberry Pi's 800 x 480 touchscreen, where the panel and
+     * the title bar leave a window about 400 pixels tall, the buttons along the bottom were
+     * below the screen's border. The size is taken when the map screen opens, as on a phone.
+     */
+    static float desktopUiShortSide(float shortSidePixels) {
+        if (!(shortSidePixels > 0f)) {
+            return MAX_UI_SHORT_SIDE_DP;
+        }
+        return Math.min(MAX_UI_SHORT_SIDE_DP, shortSidePixels);
     }
 
     /** {@link #getUiShortSide()} as a fraction of the screen's real short side. */

@@ -11,10 +11,25 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Window;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3WindowAdapter;
 import com.peaknav.viewer.MapApp;
 
+import org.lwjgl.glfw.GLFW;
+
 public class DesktopLauncher {
 	public static final String appName = "PeakNav";
 
 	private static MapApp mapApp;
+
+	/** The window's size where the display has room for it: libGDX's own default. */
+	static final int DEFAULT_WINDOW_WIDTH = 640;
+	static final int DEFAULT_WINDOW_HEIGHT = 480;
+
+	/**
+	 * Room kept for the window manager's title bar and borders - GLFW cannot measure them
+	 * before the window exists - and for the window not to touch the edge of the screen.
+	 */
+	static final int WINDOW_FRAME_ALLOWANCE = 64;
+
+	/** No window smaller than this, whatever the display: the app needs some room to draw. */
+	static final int MIN_WINDOW_SIDE = 240;
 
 	DesktopLauncher() {
 	}
@@ -73,11 +88,59 @@ public class DesktopLauncher {
 		}
 	}
 
+	/**
+	 * A window that fits the display it opens on.
+	 *
+	 * <p>The default 640 x 480 window is as tall as a Raspberry Pi's 800 x 480 touchscreen,
+	 * and its panel and the title bar leave less than that: the window manager put the window
+	 * where it could, and its bottom - the buttons along it - was below the screen's border.
+	 * The window is sized from the primary monitor's work area, the screen less its panels and
+	 * docks, and never larger than the default, so a monitor with the room still gets 640 x 480.
+	 *
+	 * <p>Failure-proof, like the other steps that run before the app: on any trouble the window
+	 * keeps its default size.
+	 */
+	private static void fitWindowToDisplay (Lwjgl3ApplicationConfiguration config) {
+		int width = DEFAULT_WINDOW_WIDTH;
+		int height = DEFAULT_WINDOW_HEIGHT;
+		try {
+			// Initialises GLFW, which the work area query below needs (and the backend
+			// initialises it only once, so this costs the app's own start nothing).
+			Lwjgl3ApplicationConfiguration.getDisplayMode();
+			long monitor = GLFW.glfwGetPrimaryMonitor();
+			if (monitor != 0L) {
+				int[] x = new int[1], y = new int[1], w = new int[1], h = new int[1];
+				GLFW.glfwGetMonitorWorkarea(monitor, x, y, w, h);
+				width = windowSideWithin(w[0], DEFAULT_WINDOW_WIDTH);
+				height = windowSideWithin(h[0], DEFAULT_WINDOW_HEIGHT);
+			}
+		} catch (Throwable neverStopTheApp) {
+			System.err.println("PeakNav: could not measure the display (" + neverStopTheApp
+					+ "); the window keeps its default size");
+		}
+		config.setWindowedMode(width, height);
+	}
+
+	/**
+	 * One side of the window for a work area of {@code available} pixels along it: the
+	 * default, when the work area has room for it and the window's frame, else what is left
+	 * after the frame - never below {@link #MIN_WINDOW_SIDE}. An unknown work area (0, or a
+	 * negative size from a monitor GLFW could not read) gives the default.
+	 */
+	static int windowSideWithin (int available, int preferred) {
+		if (available <= 0) {
+			return preferred;
+		}
+		int fits = available - WINDOW_FRAME_ALLOWANCE;
+		return Math.max(MIN_WINDOW_SIDE, Math.min(preferred, fits));
+	}
+
 	public static void main (String[] arg) {
 		prepareMacWindowSystem();
 		warnIfNoDesktopSupport();
 		installLabelRasterizer();
 		Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
+		fitWindowToDisplay(config);
 		config.setForegroundFPS(60);
 		config.setTitle(appName);
 		config.setWindowListener(new Lwjgl3WindowAdapter() {

@@ -24,4 +24,24 @@ public class TestUiScale {
         assertEquals(1f, Units.uiScale(1600, 0f), 1e-6f);
         assertEquals(1f, Units.uiScale(0, 2f), 1e-6f);
     }
+
+    @Test
+    void desktopWindowsKeepTheFixedSize() {
+        assertEquals(480f, Units.desktopUiShortSide(480), 1e-6f, "the default 640 x 480 window");
+        assertEquals(480f, Units.desktopUiShortSide(1080), 1e-6f, "a maximised window on a 1080p monitor");
+        assertEquals(480f, Units.desktopUiShortSide(2160), 1e-6f, "4K");
+    }
+
+    @Test
+    void aSmallDesktopWindowGetsControlsThatFitIt() {
+        // A Raspberry Pi's 800 x 480 touchscreen, less its panel and the window's title bar.
+        assertEquals(400f, Units.desktopUiShortSide(400), 1e-6f);
+        assertEquals(300f, Units.desktopUiShortSide(300), 1e-6f);
+    }
+
+    @Test
+    void aDesktopWindowWithoutASizeKeepsTheFixedSize() {
+        assertEquals(480f, Units.desktopUiShortSide(0), 1e-6f, "minimised on Windows: 0 x 0");
+        assertEquals(480f, Units.desktopUiShortSide(Float.NaN), 1e-6f);
+    }
 }
