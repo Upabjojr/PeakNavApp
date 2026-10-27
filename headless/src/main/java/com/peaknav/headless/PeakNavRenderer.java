@@ -1414,6 +1414,32 @@ public final class PeakNavRenderer implements AutoCloseable {
         return this;
     }
 
+    /**
+     * How many elevations are written along the contour lines: 0 none, 1 few, 2 some, 3 many
+     * (see {@code ContourLabels}). They show only while the contour lines are on.
+     */
+    public PeakNavRenderer setContourLabels(final int amount) {
+        if (amount < 0 || amount > com.peaknav.contours.ContourLabels.AMOUNT_MAX) {
+            throw new IllegalArgumentException("contour labels: 0 to "
+                    + com.peaknav.contours.ContourLabels.AMOUNT_MAX + ", got " + amount);
+        }
+        onRenderThread(() -> P.setContourLabels(amount));
+        return this;
+    }
+
+    /** Parses "off", "few", "some" or "many" (or 0 to 3) into a contour label amount. */
+    public static int parseContourLabels(String value) {
+        String v = value.trim().toLowerCase(java.util.Locale.ROOT);
+        switch (v) {
+            case "off": case "none": case "0": return 0;
+            case "few": case "1": return 1;
+            case "some": case "2": return 2;
+            case "many": case "3": return 3;
+            default:
+                throw new IllegalArgumentException("contour labels want off, few, some or many; got: " + value);
+        }
+    }
+
     /** The compass strip across the horizon - worth turning off for a clean image. */
     public PeakNavRenderer setHorizonCompass(final boolean enabled) {
         onRenderThread(() -> P.setHorizonCompass(enabled));
@@ -1772,6 +1798,14 @@ public final class PeakNavRenderer implements AutoCloseable {
         return out[0];
     }
 
+    /** The contour elevations written in the last frame. */
+    public List<String> contourLabelsDrawn() {
+        final List<String> out = new java.util.ArrayList<>();
+        onRenderThread(() -> out.addAll(
+                mapApp.mapViewerScreen.labelRenderer.getContourLabelRenderer().drawnTexts()));
+        return out;
+    }
+
     /** The street, track and trail names drawn in the last frame. */
     public List<String> roadNamesDrawn() {
         final List<String> out = new java.util.ArrayList<>();
@@ -1807,7 +1841,7 @@ public final class PeakNavRenderer implements AutoCloseable {
         return this;
     }
 
-    /** The roads menus, as their "..." buttons open them: 1 roads and pistes, 2 the roads' style, 3 the pistes'. */
+    /** The Map layers menus, as their "..." buttons open them: 1 the group, 2 the roads' style, 3 the pistes', 4 the contour lines'. */
     public PeakNavRenderer openRoadsMenu(final int level) {
         onRenderThread(() -> {
             com.peaknav.viewer.panes.OptionPane pane = mapApp.mapViewerScreen.optionPane;
@@ -1816,6 +1850,8 @@ public final class PeakNavRenderer implements AutoCloseable {
                 pane.openRoadsStyleSubmenu();
             } else if (level == 3) {
                 pane.openPistesSubmenu();
+            } else if (level == 4) {
+                pane.openContoursSubmenu();
             } else {
                 pane.openRoadsSubmenu();
             }

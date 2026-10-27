@@ -53,6 +53,8 @@ public class LabelRenderer {
     private static final float TILT_LIMIT = 0.9995f;
     /** Names of streets, tracks and trails, tilted along their ways. */
     private final RoadNameRenderer roadNameRenderer;
+    /** Elevations written along the contour lines. */
+    private final ContourLabelRenderer contourLabelRenderer;
 
     public LabelRenderer(
             SpriteBatch spriteBatch, ShapeRenderer shapeRenderer, Texture compassTexture,
@@ -67,10 +69,15 @@ public class LabelRenderer {
         h = w;
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         roadNameRenderer = new RoadNameRenderer(spriteBatch, shapeRenderer, widgetUnitStep);
+        contourLabelRenderer = new ContourLabelRenderer(spriteBatch, widgetUnitStep);
     }
 
     public RoadNameRenderer getRoadNameRenderer() {
         return roadNameRenderer;
+    }
+
+    public ContourLabelRenderer getContourLabelRenderer() {
+        return contourLabelRenderer;
     }
 
     // Labels drawn since the last render() began; published to PeakNavAppState once per
@@ -118,8 +125,10 @@ public class LabelRenderer {
 
     public void render(float deltaTime) {
         labelsDrawnThisFrame = 0;
-        // Road names first, underneath: the peaks, places and areas are drawn over them. The road
-        // name renderer asks the main Labels switch itself, so it forgets what it was showing.
+        // The contours' elevations first, lowest of all: they belong to the ground. Then the road
+        // names; the peaks, places and areas are drawn over them. Both renderers ask the main
+        // Labels switch themselves, so they forget what they were showing.
+        contourLabelRenderer.render();
         roadNameRenderer.render();
         // renderBackgroundPixmap();
         if (P.isLabelsVisible()) {

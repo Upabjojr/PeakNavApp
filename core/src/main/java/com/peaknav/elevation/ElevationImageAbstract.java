@@ -44,6 +44,11 @@ public abstract class ElevationImageAbstract {
 
     protected abstract short[] computeElevationsFromImages();
 
+    /** Elevations along each side of the grid (see {@link #getTileMatrixElevationLatits}). */
+    public int getEdgeLength() {
+        return edgeLength;
+    }
+
     public float getTileMatrixElevationLatits(int x, int y) {
         short[] elevations = getElevations();
         float elevation = elevations[x + edgeLength * (edgeLength - 1 - y)];

@@ -62,7 +62,7 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     distance field across the line - and the lifts block draws each kind its own way: red cabins
     for cable cars, orange for gondolas, white chairs, yellow handles on a dashed line for drag
     lifts, blue stripes for magic carpets. Runs and lifts are labelled through `RoadLabelPlanner.
-    planPistes`/`planLifts` and `RoadNameRenderer`. Switched in the Roads "..." submenu: "Ski
+    planPistes`/`planLifts` and `RoadNameRenderer`. Switched in the Map layers "..." submenu: "Ski
     pistes" (`P.isSkiSlopesVisible()`), and in its "..." piste names, lifts and lift names; independent of
     `PISTES_IN_MAP_DATA`, which still gates the pistes the road textures would carry.
   - `roads/` — roads, tracks, trails and pistes, drawn by the GPU on every platform.
@@ -103,9 +103,17 @@ Gradle modules (`settings.gradle`): `core`, `desktop`, `android`, `ios`, `html`,
     `fragment_shader.glsl` draws lines from it. The interval is picked per pixel from how many
     metres of height the pixel spans (`CONTOUR_BASE` halved and doubled: 25, 50, 100, 200 m ...),
     the lines of a level fade in where they are `CONTOUR_MIN_PIXELS` apart, every fourth line is
-    bold, and the levels are blended so a moving camera never makes a line jump. Switched by the
-    main menu's "Contour lines" (`P.isContourLines()`, read every frame); headless:
-    `setContourLines`, `--contour-lines`, REST `contour_lines`.
+    bold, and the levels are blended so a moving camera never makes a line jump. Switched by
+    "Contour lines" in the main menu's "Map layers" submenu, and again in its "..." submenu (`P.isContourLines()`, read every
+    frame); headless: `setContourLines`, `--contour-lines`, REST `contour_lines`. Their
+    elevations are written by `viewer/renderer_gdx/ContourLabelRenderer`: `contours/
+    ContourLabelPlanner` finds spots on each loaded tile's own elevation grid (levels every
+    100 m, one spot per level per 250 m block fixed on the globe), and a spot is labelled only
+    where the shader draws its line bold - `ContourLabels.labelled` mirrors the shader's interval
+    choice, so keep its constants equal to the shader's. That "..." submenu's "Elevation labels"
+    button steps through none, few, some and many (`P.getContourLabels()`; blocks kept, labels
+    at once and the room around each, see `ContourLabels`); headless: `setContourLabels`,
+    `--contour-labels`, REST `contour_labels`, `contourLabelsDrawn()`.
 - **`desktop`** — LWJGL3 launcher (`DesktopLauncher`), Swing-based native screens.
 - **`android`** — Android launcher/activity, fragments, native screens.
 - **`ios`** — RoboVM launcher plus a real `IOSLoadFactory`: logging, caches, file

@@ -29,6 +29,7 @@ import static com.peaknav.viewer.imgmapprovider.SatelliteImageProvider.Satellite
 
 import com.peaknav.compatibility.NativeScreenCaller;
 import com.peaknav.network.DownloadProvider;
+import com.peaknav.contours.ContourLabels;
 import com.peaknav.roads.RoadStyle;
 import com.peaknav.ui.TextFieldsCallback;
 import com.peaknav.viewer.imgmapprovider.SatelliteImageProvider;
@@ -86,6 +87,8 @@ public class OptionPane {
     private final Table selectRoadsGroup;
     /** The ski pistes' submenu: their names. */
     private final Table selectPistes;
+    /** The contour lines' "..." submenu, under Map layers. */
+    private final Table selectContours;
     /** Re-read the road style into the roads submenus' swatches and sliders when one opens. */
     private final List<Runnable> roadMenuRefreshers = new ArrayList<>();
     private final float buttonWidth;
@@ -162,6 +165,7 @@ public class OptionPane {
         selectRoads = createRoadsMenu(false);
         selectRoadsOneColumn = createRoadsMenu(true);
         selectPistes = createPistesMenu();
+        selectContours = createContoursMenu();
         selectRoadsGroup = createRoadsGroupMenu();
         // tableAppInfo = createTableAppInfo();
         table = getPreferencesTable(false);
@@ -315,7 +319,7 @@ public class OptionPane {
         return new Table[]{table, tableOneColumn, getSelectBoxSatelliteSource(), getSelectBoxDownloadSource(),
                 getSelectBoxUnits(), getSelectInfoOpts(), getSelectLanguage(), getSelectStorage(), getSelectGpx(), getSelectPathsAndMarkers(),
                 getSelectMarkers(), getSelectLabels(), getSelectLabelsOneColumn(), getSelectSky(), getSelectCompass(), getSelectRoads(),
-                getSelectRoadsOneColumn(), getSelectRoadsGroup(), getSelectPistes()};
+                getSelectRoadsOneColumn(), getSelectRoadsGroup(), getSelectPistes(), getSelectContours()};
     }
 
     /** Whether the options menu, or any of its submenus, is on screen. */
@@ -323,7 +327,7 @@ public class OptionPane {
         Table[] menus = {table, tableOneColumn, getSelectBoxSatelliteSource(), getSelectBoxDownloadSource(),
                 getSelectBoxUnits(), getSelectInfoOpts(), getSelectLanguage(), getSelectStorage(), getSelectGpx(), getSelectPathsAndMarkers(),
                 getSelectMarkers(), getSelectLabels(), getSelectLabelsOneColumn(), getSelectSky(), getSelectCompass(), getSelectRoads(),
-                getSelectRoadsOneColumn(), getSelectRoadsGroup(), getSelectPistes()};
+                getSelectRoadsOneColumn(), getSelectRoadsGroup(), getSelectPistes(), getSelectContours()};
         for (Table menu : menus) {
             if (menu != null && menu.isVisible()) {
                 return true;
@@ -378,6 +382,10 @@ public class OptionPane {
 
     public Table getSelectPistes() {
         return selectPistes;
+    }
+
+    public Table getSelectContours() {
+        return selectContours;
     }
 
     /* private Table createSatelliteSourceSelectBox2() {
@@ -1111,14 +1119,15 @@ public class OptionPane {
     }
 
     /**
-     * The main menu's "Trails & pistes" switch: everything its submenu holds at once - roads and
-     * paths, the ski runs and the lifts. The row is named for the group, so switching it off has
-     * to leave nothing of the group drawn; it used to turn off the roads alone and leave the
-     * pistes and the lifts on the map.
+     * The main menu's "Map layers" switch: everything its submenu holds at once - roads and
+     * paths, the ski runs and the lifts, the contour lines. The row is named for the group, so
+     * switching it off has to leave nothing of the group drawn; it used to turn off the roads
+     * alone and leave the pistes and the lifts on the map.
      */
     private void applyRoutesGroupVisible(boolean checked) {
         P.setPisteVisible(checked);
         P.setLiftsVisible(checked);
+        P.setContourLines(checked);
         applyRoadsVisible(checked);   // last: it is the one that offers the download and redraws
     }
 
@@ -1136,6 +1145,13 @@ public class OptionPane {
         selectPistes.setVisible(true);
     }
 
+    /** Opens the contour lines' own "..." submenu (the switch and the elevation labels); for scripts and tests. */
+    public void openContoursSubmenu() {
+        openRoadsSubmenu();
+        selectRoadsGroup.setVisible(false);
+        selectContours.setVisible(true);
+    }
+
     /** Opens the roads and paths' own "..." submenu (colours, dashes, names); for scripts and tests. */
     public void openRoadsStyleSubmenu() {
         openRoadsSubmenu();
@@ -1151,6 +1167,7 @@ public class OptionPane {
         selectRoads.setVisible(false);
         selectRoadsOneColumn.setVisible(false);
         selectPistes.setVisible(false);
+        selectContours.setVisible(false);
         selectRoadsGroup.setVisible(true);
     }
 
@@ -1170,9 +1187,10 @@ public class OptionPane {
     }
 
     /**
-     * The main menu's Roads "..." submenu: roads and paths on or off, with a "..." for their
-     * colours, dashes and names; the ski pistes on or off, with a "..." for their names; and Back
-     * to the main menu.
+     * The main menu's Map layers "..." submenu: roads and paths on or off, with a "..." for
+     * their colours, dashes and names; the ski pistes on or off, with a "..." for their names;
+     * the contour lines on or off, and how many of their elevations are written; and Back to the
+     * main menu.
      */
     private Table createRoadsGroupMenu() {
         final Table table = new Table();
@@ -1212,6 +1230,17 @@ public class OptionPane {
             table.setVisible(false);
         });
 
+        // Contour lines on or off, with a "..." for their submenu: the same switch again, and how
+        // many of their elevations are written.
+        final ImageTextButtonOptionPane checkBoxContourLines = contourLinesSwitch();
+        Table contoursRow = switchWithMore(checkBoxContourLines, () -> {
+            for (Runnable refresher : roadMenuRefreshers) {
+                refresher.run();
+            }
+            selectContours.setVisible(true);
+            table.setVisible(false);
+        });
+
         ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
                 "icons/icon_back.png", s("Back"), false);
         back.addClickListener(() -> {
@@ -1222,10 +1251,78 @@ public class OptionPane {
         List<Table> rows = new ArrayList<>();
         rows.add(roadsRow);
         rows.add(pistesRow);
+        rows.add(contoursRow);
         rows.add(back);
         addButtonsToTable(table, rows, true);
         table.setVisible(false);
         return table;
+    }
+
+    /**
+     * A "Contour lines" switch. The shader reads the setting every frame, so switching redraws
+     * nothing. Built once for the Map layers row and once for the contours' own submenu; the
+     * refreshers keep the two in step.
+     */
+    private ImageTextButtonOptionPane contourLinesSwitch() {
+        final ImageTextButtonOptionPane checkBox = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_contours.png", s("Contour_lines"), true);
+        checkBox.addClickListener(() -> changer.execute(
+                () -> P.setContourLines(checkBox.isChecked())));
+        checkBox.setProgrammaticChangeEvents(false);
+        roadMenuRefreshers.add(() -> checkBox.setChecked(P.isContourLines()));
+        return checkBox;
+    }
+
+    /**
+     * The contour lines' "..." submenu: the lines on or off, how many of their elevations are
+     * written - none, few, some or many, a tap stepping to the next - and Back to Map layers.
+     */
+    private Table createContoursMenu() {
+        final Table table = new Table();
+        table.center();
+        table.setFillParent(true);
+
+        final ImageTextButtonOptionPane checkBoxContourLines = contourLinesSwitch();
+
+        // Asking for some labels turns the lines on, as touching a sky option turns the sky on.
+        final ImageTextButtonOptionPane buttonContourLabels = getC().widgetGetter.getImageTextButton(
+                "icons/icon_checkbox_contours.png", contourLabelsText(), false);
+        buttonContourLabels.addClickListener(() -> {
+            P.setContourLabels(P.getContourLabels() + 1);
+            if (P.getContourLabels() != ContourLabels.AMOUNT_OFF && !P.isContourLines()) {
+                P.setContourLines(true);
+                checkBoxContourLines.setChecked(true);
+            }
+            buttonContourLabels.getLabel().setText(contourLabelsText());
+        });
+        roadMenuRefreshers.add(() -> buttonContourLabels.getLabel().setText(contourLabelsText()));
+
+        ImageTextButtonOptionPane back = getC().widgetGetter.getImageTextButton(
+                "icons/icon_back.png", s("Back"), false);
+        back.addClickListener(() -> {
+            table.setVisible(false);
+            openRoadsGroup(); // one level up
+        });
+
+        List<Table> rows = new ArrayList<>();
+        rows.add(checkBoxContourLines);
+        rows.add(buttonContourLabels);
+        rows.add(back);
+        addButtonsToTable(table, rows, true);
+        table.setVisible(false);
+        return table;
+    }
+
+    /** The elevation labels' button: "Elevation labels: Few", and so on. */
+    private static String contourLabelsText() {
+        String amount;
+        switch (P.getContourLabels()) {
+            case ContourLabels.AMOUNT_FEW: amount = s("Contour_labels_few"); break;
+            case ContourLabels.AMOUNT_SOME: amount = s("Contour_labels_some"); break;
+            case ContourLabels.AMOUNT_MANY: amount = s("Contour_labels_many"); break;
+            default: amount = s("Contour_labels_off"); break;
+        }
+        return s("Contour_labels") + ": " + amount;
     }
 
     /** The ski pistes' "..." submenu: the runs' names, the lifts and their names, and Back. */
@@ -2120,11 +2217,11 @@ public class OptionPane {
         });
         buttons.add(buttonGpxMenu);
 
-        // Named for everything under it - roads and paths, ski pistes, lifts - not after the
-        // first of its submenu rows, which keeps the name "Roads and paths".
+        // Named for everything under it - roads and paths, ski pistes, lifts, contour lines - not
+        // after the first of its submenu rows, which keeps the name "Roads and paths".
         ImageTextButtonOptionPane checkBoxLayerVisibleBaseRoads = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_roads.png", s("Routes_group"), true);
         addCheckingStateProperty(checkBoxLayerVisibleBaseRoads, () -> P.isViewerLayerVisibleBaseRoads()
-                || P.isSkiSlopesVisible() || P.isLiftsVisible());
+                || P.isSkiSlopesVisible() || P.isLiftsVisible() || P.isContourLines());
         checkBoxLayerVisibleBaseRoads.addClickListener(() -> changer.execute(
                 () -> applyRoutesGroupVisible(checkBoxLayerVisibleBaseRoads.isChecked())));
         checkBoxLayerVisibleBaseRoads.setProgrammaticChangeEvents(false);
@@ -2186,15 +2283,6 @@ public class OptionPane {
                 () -> P.setSunShading(checkBoxSunShading.isChecked())));
         checkBoxSunShading.setProgrammaticChangeEvents(false);
         buttons.add(checkBoxSunShading);
-
-        // Contour lines on the terrain: read by the shader every frame too, so no redraw either.
-        ImageTextButtonOptionPane checkBoxContourLines = getC().widgetGetter.getImageTextButton(
-                "icons/icon_checkbox_contours.png", s("Contour_lines"), true);
-        addCheckingStateProperty(checkBoxContourLines, () -> P.isContourLines());
-        checkBoxContourLines.addClickListener(() -> changer.execute(
-                () -> P.setContourLines(checkBoxContourLines.isChecked())));
-        checkBoxContourLines.setProgrammaticChangeEvents(false);
-        buttons.add(checkBoxContourLines);
 
         ImageTextButtonOptionPane buttonMapDataDownload = getC().widgetGetter.getImageTextButton("icons/icon_checkbox_download_data.png", s("Download_map_data"), false);
         buttonMapDataDownload.addListener(new ChangeListener() {
@@ -2339,6 +2427,7 @@ public class OptionPane {
         selectRoadsOneColumn.setVisible(false);
         selectRoadsGroup.setVisible(false);
         selectPistes.setVisible(false);
+        selectContours.setVisible(false);
         // tableAppInfo.setVisible(false);
 
         optionsButton.setChecked(true);
@@ -2364,6 +2453,7 @@ public class OptionPane {
         selectRoadsOneColumn.setVisible(false);
         selectRoadsGroup.setVisible(false);
         selectPistes.setVisible(false);
+        selectContours.setVisible(false);
         // tableAppInfo.setVisible(false);
         optionsButton.setChecked(false);
         changer.submit(() -> getC().widgetGetter.setCopyrightLabel(

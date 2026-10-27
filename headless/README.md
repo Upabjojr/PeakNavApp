@@ -109,6 +109,7 @@ satellite work is pending, and tile updates have been quiet for 2 s; and
 | `setLabel(Label, on)` / `clearLabels()` | peaks, place names, cities, mountain ranges, islands, lakes, alpine huts, roads, pistes, navigation |
 | `setSky` / `setConstellations` / `setSunShading` / `setHorizonCompass` | sky and shading |
 | `setContourLines(on)` | contour lines on the terrain |
+| `setContourLabels(n)` | elevations along the contour lines: 0 off, 1 few, 2 some, 3 many |
 | `downloadMissingData(lat, lon, timeout)` | fetch what the area is missing, and wait |
 | `awaitTilesLoaded` / `awaitLabelsRendered` / `settle` | waiting |
 | `suppressedPrompts()` | how many UI prompts were intercepted (tests assert 0) |

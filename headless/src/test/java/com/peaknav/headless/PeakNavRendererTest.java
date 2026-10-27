@@ -1257,7 +1257,7 @@ class PeakNavRendererTest {
 
     @Test
     @Order(22)
-    @DisplayName("contour lines are drawn by the shader when switched on, and gone when off")
+    @DisplayName("contour lines are drawn by the shader when switched on, and gone when off, and carry their elevations when asked")
     void contourLinesAreDrawnAndRemoved() throws Exception {
         // The contours come from the interpolated elevation in the terrain shader - no texture
         // and no per-tile work - so this is the check that the shader compiles with them on a
@@ -1280,7 +1280,30 @@ class PeakNavRendererTest {
         renderer.settle(800);
         File offAgain = newTempFile("no-contours-2.png");
         renderer.capture(offAgain);
+
+        // Their elevations: written on the lines while both are on, each a level the planner
+        // labels; none with the amount at none, and none when the lines go off.
+        renderer.setContourLines(true);
+        renderer.setContourLabels(2);
+        renderer.settle(1_500);
+        java.util.List<String> elevations = renderer.contourLabelsDrawn();
+        renderer.setContourLabels(0);
+        renderer.settle(800);
+        java.util.List<String> noAmount = renderer.contourLabelsDrawn();
+        renderer.setContourLabels(2);
+        renderer.setContourLines(false);
+        renderer.settle(800);
+        java.util.List<String> noLines = renderer.contourLabelsDrawn();
+        renderer.setContourLabels(0);
         renderer.setLabel(PeakNavRenderer.Label.ROADS, true);
+
+        assertTrue(!elevations.isEmpty(), "the slopes towards the Matterhorn should carry elevations");
+        for (String e : elevations) {
+            assertTrue(e.matches("[0-9]+") && Integer.parseInt(e) % 100 == 0,
+                    "a contour label is a level in whole hundreds of metres: " + e);
+        }
+        assertTrue(noAmount.isEmpty(), "with the amount at none, no elevations: " + noAmount);
+        assertTrue(noLines.isEmpty(), "with the lines off, their elevations go too: " + noLines);
 
         int changed = differingPixels(ImageIO.read(without), ImageIO.read(with));
         assertTrue(changed > WIDTH * HEIGHT / 100,

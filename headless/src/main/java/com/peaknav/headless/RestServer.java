@@ -250,6 +250,11 @@ final class RestServer {
         setIf(body, "sky_time_label", renderer::setSkyTimeLabel);
         setIf(body, "sun_shading", renderer::setSunShading);
         setIf(body, "contour_lines", renderer::setContourLines);
+        if (body.has("contour_labels")) {
+            JsonValue v = body.get("contour_labels");
+            renderer.setContourLabels(v.isNumber() ? v.asInt()
+                    : PeakNavRenderer.parseContourLabels(v.asString()));
+        }
         setIf(body, "satellite", renderer::setSatelliteVisible);
         setIf(body, "label_auto_update", renderer::setLabelAutoUpdate);
         if (body.has("refresh_labels") && body.getBoolean("refresh_labels")) {

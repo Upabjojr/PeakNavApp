@@ -24,6 +24,7 @@ import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_BASE_
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SUN_SHADING;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_CONTOUR_LINES;
+import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_CONTOUR_LABELS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_HORIZON_COMPASS;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_COMPASS_LOCATION;
 import static com.peaknav.utils.Constants.PREFERENCES.VIEWER_SHOW_COORDINATES;
@@ -95,6 +96,8 @@ public class PreferencesManager {
     private boolean layerVisibleOpenStreetMap;
     private boolean sunShading;
     private boolean contourLines;
+    /** How many elevations are written along the contour lines: ContourLabels.AMOUNT_OFF to AMOUNT_MANY. */
+    private int contourLabels;
     private boolean horizonCompass;
     private boolean compassLocation;
     private boolean showCoordinates;
@@ -256,6 +259,8 @@ public class PreferencesManager {
         layerVisibleUnderlayLayer = preferences.getBoolean(VIEWER_LAYER_VISIBLE_UNDERLAY_LAYER, true);
         sunShading = preferences.getBoolean(VIEWER_SUN_SHADING, true);
         contourLines = preferences.getBoolean(VIEWER_CONTOUR_LINES, false);
+        contourLabels = clampContourLabels(preferences.getInteger(VIEWER_CONTOUR_LABELS,
+                com.peaknav.contours.ContourLabels.AMOUNT_OFF));
         horizonCompass = preferences.getBoolean(VIEWER_HORIZON_COMPASS, true);
         // All three compass-and-location items default to on for a fresh install.
         compassLocation = preferences.getBoolean(VIEWER_COMPASS_LOCATION, true);
@@ -577,6 +582,11 @@ public class PreferencesManager {
         return contourLines;
     }
 
+    /** How many elevations are written along the contour lines, from ContourLabels.AMOUNT_OFF up. */
+    public int getContourLabels() {
+        return contourLabels;
+    }
+
     /** Whether the cardinal-direction markers (N, NE, E, …) are drawn on the sky horizon. */
     public boolean isHorizonCompass() {
         return horizonCompass;
@@ -757,6 +767,19 @@ public class PreferencesManager {
         contourLines = enabled;
         preferences.putBoolean(VIEWER_CONTOUR_LINES, enabled);
         preferences.flush();
+    }
+
+    /** Sets the amount of contour labels; past the largest it wraps round to none, as the menu steps. */
+    public void setContourLabels(int amount) {
+        contourLabels = amount > com.peaknav.contours.ContourLabels.AMOUNT_MAX
+                ? com.peaknav.contours.ContourLabels.AMOUNT_OFF : clampContourLabels(amount);
+        preferences.putInteger(VIEWER_CONTOUR_LABELS, contourLabels);
+        preferences.flush();
+    }
+
+    private static int clampContourLabels(int amount) {
+        return Math.max(com.peaknav.contours.ContourLabels.AMOUNT_OFF,
+                Math.min(com.peaknav.contours.ContourLabels.AMOUNT_MAX, amount));
     }
 
     public boolean isViewerLayerVisibleBaseRoads() {
