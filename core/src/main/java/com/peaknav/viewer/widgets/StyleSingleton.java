@@ -35,6 +35,20 @@ public class StyleSingleton {
     private volatile CheckBox.CheckBoxStyle checkBoxStyle = null;
     private float minSize;
 
+    /** A baked font read ahead by {@link #prepareBakedFonts}: its metrics and its pages, decoded. */
+    private static final class PreparedFont {
+        final BakedFontFile.Loaded loaded;
+        final Pixmap[] pages;
+
+        PreparedFont(BakedFontFile.Loaded loaded, Pixmap[] pages) {
+            this.loaded = loaded;
+            this.pages = pages;
+        }
+    }
+
+    /** By {@link FontSpecs#ALL} index, until {@link #generateAllFonts} takes them; null if none. */
+    private PreparedFont[] preparedFonts;
+
     public void updateMinSize() {
         // The short side as far as sizes go: capped on a tablet, fixed on the desktop.
         minSize = com.peaknav.utils.Units.getUiShortSide();
@@ -56,13 +70,15 @@ public class StyleSingleton {
      * when the baked one is missing or unreadable.
      */
     public synchronized void generateAllFonts() {
+        PreparedFont[] prepared = preparedFonts;
+        preparedFonts = null;
         FreeTypeFontGenerator generator = null;
         BitmapFont[] fonts = new BitmapFont[FontSpecs.ALL.length];
         try {
             for (int i = 0; i < FontSpecs.ALL.length; i++) {
                 FontSpecs.Spec spec = FontSpecs.ALL[i];
                 int displaySize = spec.displaySize(minSize);
-                BitmapFont font = loadBakedFont(spec, displaySize);
+                BitmapFont font = loadBakedFont(spec, displaySize, prepared == null ? null : prepared[i]);
                 if (font == null) {
                     if (generator == null) {
                         generator = new FreeTypeFontGenerator(Gdx.files.internal(FontSpecs.TTF));
@@ -99,28 +115,27 @@ public class StyleSingleton {
      * (it would blur) or cannot be read. Its pages carry mipmaps - they are square powers of
      * two, which OpenGL ES 2 wants for them - so drawn smaller it stays smooth.
      */
-    private static BitmapFont loadBakedFont(FontSpecs.Spec spec, int displaySize) {
+    private static BitmapFont loadBakedFont(FontSpecs.Spec spec, int displaySize, PreparedFont prepared) {
         if (displaySize > spec.bakedSize() * 1.02f) {
+            disposePages(prepared);
             return null;
         }
-        com.badlogic.gdx.files.FileHandle metrics =
-                Gdx.files.internal(FontSpecs.DIRECTORY + "/" + spec.name + ".bin");
-        if (!metrics.exists()) {
+        com.badlogic.gdx.files.FileHandle metrics = bakedMetrics(spec);
+        if (prepared == null && !metrics.exists()) {
             return null;
         }
         com.badlogic.gdx.utils.Array<com.badlogic.gdx.graphics.g2d.TextureRegion> pages =
                 new com.badlogic.gdx.utils.Array<>();
         try {
-            BakedFontFile.Loaded loaded;
-            java.io.InputStream in = metrics.read();
-            try {
-                loaded = BakedFontFile.read(new java.io.BufferedInputStream(in));
-            } finally {
-                in.close();
-            }
+            BakedFontFile.Loaded loaded = prepared != null ? prepared.loaded : readMetrics(metrics);
             for (int i = 0; i < loaded.pages; i++) {
-                Texture page = new Texture(
-                        Gdx.files.internal(FontSpecs.DIRECTORY + "/" + spec.name + "_" + i + ".png"), true);
+                com.badlogic.gdx.files.FileHandle file = bakedPage(spec, i);
+                // From the file, as before, unless the page was decoded ahead; either way the
+                // texture keeps the file, so it can be loaded again when the GL context is lost.
+                Texture page = prepared != null
+                        ? new Texture(new com.badlogic.gdx.graphics.glutils.FileTextureData(
+                                file, prepared.pages[i], null, true))
+                        : new Texture(file, true);
                 page.setFilter(Texture.TextureFilter.MipMapLinearLinear, Texture.TextureFilter.Linear);
                 pages.add(new com.badlogic.gdx.graphics.g2d.TextureRegion(page));
             }
@@ -134,6 +149,70 @@ public class StyleSingleton {
             }
             Gdx.app.error("StyleSingleton", "baked font " + spec.name + " unreadable, generating it", unreadable);
             return null;
+        }
+    }
+
+    private static com.badlogic.gdx.files.FileHandle bakedMetrics(FontSpecs.Spec spec) {
+        return Gdx.files.internal(FontSpecs.DIRECTORY + "/" + spec.name + ".bin");
+    }
+
+    private static com.badlogic.gdx.files.FileHandle bakedPage(FontSpecs.Spec spec, int page) {
+        return Gdx.files.internal(FontSpecs.DIRECTORY + "/" + spec.name + "_" + page + ".png");
+    }
+
+    private static BakedFontFile.Loaded readMetrics(com.badlogic.gdx.files.FileHandle metrics)
+            throws java.io.IOException {
+        java.io.InputStream in = metrics.read();
+        try {
+            return BakedFontFile.read(new java.io.BufferedInputStream(in));
+        } finally {
+            in.close();
+        }
+    }
+
+    private static void disposePages(PreparedFont prepared) {
+        if (prepared != null) {
+            for (Pixmap page : prepared.pages) {
+                page.dispose();
+            }
+        }
+    }
+
+    /**
+     * Reads the baked fonts and decodes their pages ahead of {@link #generateAllFonts}, which
+     * then only has to hand the pages to OpenGL. Decoding them is most of what loading the fonts
+     * costs, and unlike the upload it needs no render thread: MapApp's start-up on Android has a
+     * worker do it while the render thread goes on drawing. Any thread; after
+     * {@link #updateMinSize}. A font that cannot be read here is left to generateAllFonts.
+     */
+    public void prepareBakedFonts() {
+        PreparedFont[] prepared = new PreparedFont[FontSpecs.ALL.length];
+        for (int i = 0; i < FontSpecs.ALL.length; i++) {
+            FontSpecs.Spec spec = FontSpecs.ALL[i];
+            if (spec.displaySize(minSize) > spec.bakedSize() * 1.02f) {
+                continue;
+            }
+            com.badlogic.gdx.files.FileHandle metrics = bakedMetrics(spec);
+            if (!metrics.exists()) {
+                continue;
+            }
+            Pixmap[] pages = null;
+            int decoded = 0;
+            try {
+                BakedFontFile.Loaded loaded = readMetrics(metrics);
+                pages = new Pixmap[loaded.pages];
+                for (; decoded < loaded.pages; decoded++) {
+                    pages[decoded] = new Pixmap(bakedPage(spec, decoded));
+                }
+                prepared[i] = new PreparedFont(loaded, pages);
+            } catch (Exception unreadable) {
+                for (int j = 0; j < decoded; j++) {
+                    pages[j].dispose();
+                }
+            }
+        }
+        synchronized (this) {
+            preparedFonts = prepared;
         }
     }
 

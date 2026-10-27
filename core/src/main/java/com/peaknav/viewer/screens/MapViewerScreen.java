@@ -1619,6 +1619,12 @@ public class MapViewerScreen implements Screen {
 	private Stage stageNavigationOverview;
 
 	public void showOnceGraphics() {
+		showOnceGraphicsBase();
+		showOnceWidgets();
+	}
+
+	/** The batches, shaders, camera, fonts and stages; {@link #showOnceGraphics}'s first part. */
+	public void showOnceGraphicsBase() {
 		spriteBatch = new SpriteBatch();
 		spriteBatchOutlines = new SpriteBatch();
 		spriteBatchOutlines.setShader(new ShaderProgram(
@@ -1646,9 +1652,10 @@ public class MapViewerScreen implements Screen {
 		getC().styleSingleton.generateAllFonts();
 
 		createStagesOnce();
+	}
 
-		// BitmapFont bitmapFont = new BitmapFont();
-
+	/** The interface's tables and overlays; {@link #showOnceGraphics}'s second part. */
+	public void showOnceWidgets() {
 		createTablesOnces();
 	}
 
@@ -1790,7 +1797,22 @@ public class MapViewerScreen implements Screen {
 		);
 	}
 
+	/** Whether {@link #showOnceData} found a download the app was closed during. */
+	private boolean resumeDownload;
+
+	/**
+	 * Everything the map screen needs once, in one go. MapApp's start-up on Android runs the
+	 * same parts on frames of their own instead - showOnceData, showOnceGraphicsBase,
+	 * showOnceWidgets, showOnceFinish - so that no frame keeps the render thread long.
+	 */
 	public void showOnce() {
+		showOnceData();
+		showOnceGraphics();
+		showOnceFinish();
+	}
+
+	/** Preferences, translations and the database: the part of {@link #showOnce} that draws nothing. */
+	public void showOnceData() {
 
 		P = new PreferencesManager();
 
@@ -1809,7 +1831,7 @@ public class MapViewerScreen implements Screen {
 		// with half a place and nothing fetching the rest. Taken up again instead, once the
 		// screen is built - unless downloads were never consented to, when there is nothing to
 		// take up.
-		boolean resumeDownload = P.isCollectDownloadInfo() && !mapSqlite.getDownloadQueue().isEmpty();
+		resumeDownload = P.isCollectDownloadInfo() && !mapSqlite.getDownloadQueue().isEmpty();
 		if (!resumeDownload) {
 			mapSqlite.cleanQueue();
 		} else {
@@ -1822,9 +1844,10 @@ public class MapViewerScreen implements Screen {
 		getC().cacheDirManager = new CacheDirManager();
 
 		getC().checkMissingData = new CheckMissingData(mapSqlite);
+	}
 
-		showOnceGraphics();
-
+	/** The controller, the data threads and the saved place: what {@link #showOnce} does last. */
+	public void showOnceFinish() {
 		createControllerOnce();
 
 		//controller.pinchZoomFactor;

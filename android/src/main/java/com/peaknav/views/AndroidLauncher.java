@@ -233,6 +233,8 @@ public class AndroidLauncher extends FragmentActivity implements AndroidFragment
 
 		MapViewerAndroidSingleton.initializeAndroidLoadFactory(getApplicationContext(),this);
 		mapApp = new MapApp(MapViewerAndroidSingleton.getLoadFactory());
+		// A frame for each step of the start-up, not all of it in one: see setStartUpInSteps.
+		mapApp.setStartUpInSteps(true);
 		MapViewerAndroidSingleton.setAppInstance(mapApp);
 
 		MapViewerAndroidSingleton.getAppInstance();
